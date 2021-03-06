@@ -185,6 +185,37 @@ def test_replace_root_copy1():
     assert not tvm.ir.structural_equal(func_ref.body, target)
 
 
+def test_replace_root_copy2():
+    s, target = replace_ir_builder(deep_copy=True)
+
+    old_hash = s.mod.functions.__hash__()
+    func_ref = s.mod.functions
+    sref = s.get_sref(s.mod["main"].body.block)
+    s.replace(sref, target)
+    # Check the new body equals to target
+    assert old_hash != s.mod.functions.__hash__()
+    tvm.ir.assert_structural_equal(s.mod["main"].body.block, target)
+    # Check the original func remains unchanged
+    assert old_hash == func_ref.__hash__()
+    for _, v in func_ref.items():
+        assert not tvm.ir.structural_equal(v.body.block, target)
+
+
+def test_replace_root_copy3():
+    s, target = replace_ir_builder(deep_copy=True)
+
+    old_hash = s.mod.__hash__()
+    func_ref = s.mod
+    sref = s.get_sref(s.mod["main"].body.block)
+    s.replace(sref, target)
+    # Check the new body equals to target
+    assert old_hash != s.mod.__hash__()
+    tvm.ir.assert_structural_equal(s.mod["main"].body.block, target)
+    # Check the original func remains unchanged
+    assert old_hash == func_ref.__hash__()
+    assert not tvm.ir.structural_equal(func_ref["main"].body.block, target)
+
+
 def test_replace_block_remap():
     func = util.element_wise_stmt()
     s = tir.Schedule(func, debug_mode=True)
@@ -225,5 +256,7 @@ if __name__ == "__main__":
     test_replace_root_write()
     test_replace_root_copy0()
     test_replace_root_copy1()
+    test_replace_root_copy2()
+    test_replace_root_copy3()
     test_replace_block_remap()
     test_replace_block_in_opaque_block()
