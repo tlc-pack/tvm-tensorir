@@ -16,10 +16,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "../tir/schedule/analysis.h"
-
 #include <numeric>
 
+#include "../tir/schedule/analysis.h"
 #include "../tir/schedule/primitives/primitives.h"
 #include "./utils.h"
 #include "analysis.h"
