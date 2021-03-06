@@ -175,17 +175,17 @@ void VerifySRefTree(const ScheduleState& self) {
         const BaseFunc& base_func = kv.second;
         if (const auto* func = base_func.as<PrimFuncNode>()) {
           VisitStmt(func->body);
-          ICHECK_EQ(n_sref_visited_, static_cast<int>(self_->stmt2ref.size()));
-          for (const auto& kv : self_->scopes) {
-            const StmtSRef& sref = kv.first;
-            ICHECK(sref->stmt != nullptr);
-            ICHECK(self_->stmt2ref.count(sref->stmt));
-            const StmtSRef& sref2 = self_->stmt2ref.at(sref->stmt);
-            ICHECK(sref.same_as(sref2));
-          }
-          ICHECK_EQ(n_block_sref_visited_, static_cast<int>(self_->scopes.size()));
         }
       }
+      ICHECK_EQ(n_sref_visited_, static_cast<int>(self_->stmt2ref.size()));
+      for (const auto& kv : self_->scopes) {
+        const StmtSRef& sref = kv.first;
+        ICHECK(sref->stmt != nullptr);
+        ICHECK(self_->stmt2ref.count(sref->stmt));
+        const StmtSRef& sref2 = self_->stmt2ref.at(sref->stmt);
+        ICHECK(sref.same_as(sref2));
+      }
+      ICHECK_EQ(n_block_sref_visited_, static_cast<int>(self_->scopes.size()));
     }
 
     // Valida each block

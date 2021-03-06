@@ -20,6 +20,7 @@ import gc
 
 import tvm
 from tvm import tir
+from tvm.ir import IRModule
 
 import util
 
@@ -28,6 +29,25 @@ def replace_ir_builder(deep_copy=False, realize=False):
     func = util.element_wise_stmt()
     new_func = tvm.script.from_source(tvm.script.asscript(func))
     s = tir.ScheduleState(new_func, debug_mode=True)
+    # The target stmt
+    target = tvm.tir.Block([], [], [], [], {}, [], "", "target", s.mod["main"].body.block.body[1])
+    if realize:
+        target = tvm.tir.BlockRealize([], 1, target)
+    if deep_copy:
+        target.__setstate__(target.__getstate__())
+
+    # It's important to collect garbage explicitly to make
+    # sure that there is only one reference of the function
+    gc.collect()
+    return s, target
+
+
+def replace_ir_builder_module(deep_copy=False, realize=False):
+    func = util.element_wise_stmt()
+    new_func = tvm.script.from_source(tvm.script.asscript(func))
+    other_func = tvm.script.from_source(tvm.script.asscript(func))
+    mod = IRModule(functions={"main": new_func, "other": other_func})
+    s = tir.ScheduleState(mod, debug_mode=True)
     # The target stmt
     target = tvm.tir.Block([], [], [], [], {}, [], "", "target", s.mod["main"].body.block.body[1])
     if realize:
@@ -247,6 +267,26 @@ def test_replace_block_in_opaque_block():
     # tvm.ir.assert_structural_equal(sref.stmt, new_for_loop)
 
 
+def test_replace_ir_module():
+    s, target = replace_ir_builder_module(deep_copy=True)
+
+    old_hash = s.mod["main"].__hash__()
+    other_func_hash = s.mod["other"].__hash__()
+    func_ref = s.mod["main"]
+
+    # old_hash = s.mod["other"].__hash__()
+    # func_ref = s.mod["other"]
+    sref = s.get_sref(s.mod["main"].body.block)
+    s.replace(sref, target)
+    # Check the new body equals to target
+    assert old_hash != s.mod["main"].__hash__()
+    tvm.ir.assert_structural_equal(s.mod["main"].body.block, target)
+    # Check the original func remains unchanged
+    assert old_hash == func_ref.__hash__()
+    assert not tvm.ir.structural_equal(func_ref.body, target)
+    assert other_func_hash == s.mod["other"].__hash__()
+
+
 if __name__ == "__main__":
     test_replace_direct_write0()
     test_replace_direct_write1()
@@ -260,3 +300,4 @@ if __name__ == "__main__":
     test_replace_root_copy3()
     test_replace_block_remap()
     test_replace_block_in_opaque_block()
+    test_replace_ir_module()
