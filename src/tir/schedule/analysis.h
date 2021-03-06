@@ -118,6 +118,12 @@ bool HasSingleChild(const StmtSRef& loop_or_block_sref);
 
 Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref);
 
+/*!
+ * \brief Get the pointer to the PrimFunc that the statement pointed by sref belongs to
+ * \param self The state of scheduling
+ * \param sref The sref to the statement in the query
+ * \return A pointer to the PrimFunc the statement belongs to
+ */
 const PrimFuncNode* GetBelongFunc(const ScheduleState& self, const StmtSRef& sref);
 
 }  // namespace tir

@@ -715,15 +715,23 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
       // Not replacing a root
       UpdateSRef(this, child_sref, child_tgt_stmt.get());
     }
-    // Update the body of the `this->mod`
+    // Ensure the uniqueness of `this->mod` and `this->mod->functions`
     IRModuleNode* new_mod = this->mod.CopyOnWrite();
     MapNode* new_map = new_mod->functions.CopyOnWrite();
+    // Move out the PrimFunc where the sref belong while ensuring uniqueness
     PrimFunc ref_new_func = Downcast<PrimFunc>(std::move(new_map->at(g_var)));
     ICHECK(ref_new_func.get() == g_func);
     PrimFuncNode* new_func = ref_new_func.CopyOnWrite();
-    new_mod->functions.Set(g_var, ref_new_func);
-    // Assign `child_tgt_stmt`, which is a Block, to the root block
+    // If `g_func` was not unique, after the 3 lines above:
+    //   `ref_new_func` points to a unique PrimFunc
+    //   `g_func` points to the previous PrimFunc if it is not unique
+    // If `g_func` was unique, after the 3 lines above:
+    //   `ref_new_func` points to the same unique function that `g_func` points to
+    // Then, move the `ref_new_func` back
+    new_map->at(g_var) = std::move(ref_new_func);
+    // Update the body of the function the sref belongs to Assign
     const auto* realize = TVM_TYPE_AS(realize, g_func->body, BlockRealizeNode);
+    // Make `child_tgt_stmt` the root block
     const auto* child_block = TVM_TYPE_AS(child_block, child_tgt_stmt, BlockNode);
     ObjectPtr<BlockRealizeNode> new_realize = make_object<BlockRealizeNode>(*realize);
     new_realize->block = GetRef<Block>(child_block);

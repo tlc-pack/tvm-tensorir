@@ -53,7 +53,7 @@ class ScheduleStateNode : public runtime::Object {
   /*! \brief The mapping from block/for stmt to its sref */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief In debug mode, we do extra correctness checking after each replacement */
-  mutable bool debug_mode;
+  bool debug_mode;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("mod", &mod);
