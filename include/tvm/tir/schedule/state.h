@@ -40,8 +40,6 @@
 namespace tvm {
 namespace tir {
 
-// TODO(@junrushao1994): change `std::unordered_map` to `Map`?
-
 /*!
  * \brief The state of scheduling, which provides a primitive `Replace` as an interface of all the
  * scheduling primitives to transform the TensorIR.

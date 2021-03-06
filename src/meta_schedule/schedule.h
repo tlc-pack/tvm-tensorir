@@ -111,7 +111,6 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * \brief Get the child blocks of a specific parent block/loop
    * \param block_rv The random variable that points to the parent block
    * \return A list of child blocks
-   * TODO(@junrushao1994): revisit
    */
   Array<BlockRV> GetChildBlocks(const BlockRV& block_rv) final;
   /*!

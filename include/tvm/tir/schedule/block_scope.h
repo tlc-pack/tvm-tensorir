@@ -151,7 +151,6 @@ class DepEdge : public runtime::ObjectRef {
 /*! \brief An object recording the producer-consumer dependency between child blocks of a scope */
 class BlockScopeNode : public runtime::Object {
  public:
-  // TODO(@junrushao1994): Change std::unordered_map to Map
   /*! \brief The forward dependency edges of the block */
   std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual> forward_edges;
   /*! \brief The backward dependency edges of the block */
