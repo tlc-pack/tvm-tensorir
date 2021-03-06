@@ -132,15 +132,13 @@ struct EntryPtrComparator {
 struct SearchTaskHasher {
   size_t operator()(const SearchTask& task) const {
     size_t hash = std::hash<String>()(task->task_name);
-    hash ^= std::hash<String>()(task->target->str()) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<String>()(task->target_host->str()) + 0xdeadbeef + (hash << 3) + (hash >> 5);
+    hash ^= std::hash<String>()(task->target->str());
     return hash;
   }
 };
 struct SearchTaskEqual {
   TVM_DLL bool operator()(const SearchTask& task1, const SearchTask& task2) const {
-    return task1->task_name == task2->task_name && task1->target->str() == task2->target->str() &&
-           task1->target_host->str() == task2->target_host->str();
+    return task1->task_name == task2->task_name && task1->target->str() == task2->target->str();
   }
 };
 

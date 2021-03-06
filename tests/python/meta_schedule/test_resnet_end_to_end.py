@@ -24,8 +24,10 @@ import pytest
 import tvm
 import tvm.relay.testing
 from tvm import meta_schedule as ms
-from tvm import relay, te
+from tvm import relay, te, auto_scheduler
 from tvm.contrib import graph_runtime as runtime
+from tvm.contrib.utils import tempdir
+
 
 # import logging
 # logging.basicConfig(level=logging.DEBUG)  # to dump TVM IR after fusion
@@ -95,9 +97,13 @@ def get_network(name, batch_size, layout="NHWC", dtype="float32"):
     return mod, params, input_shape, output_shape
 
 
-RPC_KEY = "test"
-TARGET = tvm.target.Target("llvm")
-TARGET_HOST = tvm.target.Target("llvm")
+RPC_KEY = "raspi4b-aarch64"
+network = "resnet-50"
+batch_size = 1
+layout = "NHWC"
+target = tvm.target.Target("raspberry-pi/4b-64")
+dtype = "float32"
+TARGET_HOST = tvm.target.Target("raspberry-pi/4b-64")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=True),
@@ -122,6 +128,7 @@ SPACE = ms.space.PostOrderApply(
     postprocs=[
         ms.postproc.rewrite_parallel_vectorize_unroll(),
         ms.postproc.rewrite_reduction_block(),
+        ms.postproc.disallow_dynamic_loops(),
         ms.postproc.rewrite_layout()
     ],
 )
@@ -130,77 +137,99 @@ SPACE = ms.space.PostOrderApply(
 @pytest.mark.skip(reason="needs RPC")
 def test_end_to_end_resnet(log):
     os.environ["TVM_TRACKER_KEY"] = RPC_KEY
-    mod, params, input_shape, output_shape = get_network("resnet-50", 1)
+    mod, params, input_shape, output_shape = get_network(network, batch_size, layout, dtype=dtype)
 
-    ctx = tvm.context("llvm", 0)
     data = np.random.uniform(-1, 1, size=input_shape).astype("float32")
 
-    lib_std = relay.build_module.build(mod, TARGET, params=params)
-    with tvm.transform.PassContext(opt_level=3, config={"relay.with_tir_schedule": True,
-                                                        "relay.backend.use_meta_schedule": True}):
-        tir_func = relay.build_module.build_primfunc(mod, TARGET, params=params)
+    lib_std = relay.build_module.build(mod, target, params=params)
 
-    tuned_result = {}
-    i = 0
-    for target, func_map in tir_func.items():
-        print(target)
-        print("task num:", len(func_map))
-        tuned_result[target] = {}
-        for _, func in func_map.items():
-            # print("func_name:", func_name)
-            i += 1
-            sch = ms.autotune(
-                task=ms.SearchTask(
-                    workload=func,
-                    target=TARGET,
-                    target_host=TARGET_HOST,
-                    log_file=log,
-                ),
-                space=SPACE,
-                strategy=ms.strategy.Evolutionary(
-                    total_measures=2048,
-                    num_measures_per_iter=64,
-                    population=2048,
-                    init_measured_ratio=0.2,
-                    genetic_algo_iters=10,
-                    p_mutate=0.85,
-                    mutator_probs={
-                        ms.mutator.mutate_tile_size(): 0.95,
-                        ms.mutator.mutate_compute_location(): 0.05,
-                    },
-                    cost_model=ms.XGBModel(),
-                    eps_greedy=0.20,
-                ),
-                measurer=ms.ProgramMeasurer(
-                    measure_callbacks=[
-                        ms.RecordToFile(),
-                    ]
-                ),
-                seed=1023
-            )
-            tuned_result[target][func] = sch.sch.module
+    tir_funcs = ms.extract_tasks(mod["main"], params, target, TARGET_HOST)
+    print("func num:", len(tir_funcs))
+    for func in tir_funcs:
+        sch = ms.autotune(
+            task=ms.SearchTask(
+                workload=func,
+                target=target,
+                target_host=TARGET_HOST,
+                log_file=log,
+            ),
+            space=SPACE,
+            strategy=ms.strategy.Evolutionary(
+                total_measures=16,
+                num_measures_per_iter=16,
+                population=2048,
+                init_measured_ratio=0.2,
+                genetic_algo_iters=10,
+                p_mutate=0.85,
+                mutator_probs={
+                    ms.mutator.mutate_tile_size(): 0.90,
+                    ms.mutator.mutate_compute_location(): 0.05,
+                    ms.mutator.mutate_auto_unroll(): 0.03,
+                    ms.mutator.mutate_parallel(max_jobs_per_core=16): 0.02
+                },
+                cost_model=ms.XGBModel(),
+                eps_greedy=0.25,
+            ),
+            measurer=ms.ProgramMeasurer(
+                measure_callbacks=[
+                    ms.RecordToFile(),
+                ]
+            ),
+            seed=1023
+        )
     with ms.ApplyHistoryBest(log, SPACE):
         with tvm.transform.PassContext(opt_level=3, config={"relay.with_tir_schedule": True,
                                                             "relay.backend.use_meta_schedule": True}):
-            lib = relay.build_module.build(mod, TARGET, params=params, tune_result={})
+            lib = relay.build_module.build(mod, target, params=params)
 
-    def run_module(lib):
-        module = runtime.GraphModule(lib["default"](ctx))
-        module.set_input("data", data)
-        print("Evaluate inference time cost...")
-        ftimer = module.module.time_evaluator("run", ctx, number=1, repeat=10)
-        prof_res = np.array(ftimer().results) * 1000  # convert to millisecond
-        print(
-            "Mean inference time (std dev): %.2f ms (%.2f ms)"
-            % (np.mean(prof_res), np.std(prof_res))
-        )
-        module.run()
-        return module.get_output(0, tvm.nd.empty(output_shape))
+    def run_module(lib, use_arm):
+        if not use_arm:
+            ctx = tvm.context("llvm", 0)
+            module = runtime.GraphModule(lib["default"](ctx))
+            module.set_input("data", data)
+            print("Evaluate inference time cost...")
+            ftimer = module.module.time_evaluator("run", ctx, number=10, repeat=100, min_repeat_ms=50)
+            prof_res = np.array(ftimer().results) * 1000  # convert to millisecond
+            print(prof_res)
+            print(
+                "Mean inference time (std dev): %.2f ms (%.2f ms)"
+                % (np.mean(prof_res), np.std(prof_res))
+            )
+            module.run()
+            return module.get_output(0)
+        else:
+            # Export library
+            tmp = tempdir()
+            filename = "net.tar"
+            lib.export_library(tmp.relpath(filename))
 
-    std = run_module(lib_std).asnumpy()
-    out = run_module(lib).asnumpy()
+            # Upload module to device
+            print("Upload...")
+            remote = auto_scheduler.utils.request_remote(RPC_KEY, "172.16.2.241", 4445, timeout=10000)
+            remote.upload(tmp.relpath(filename))
+            rlib = remote.load_module(filename)
+
+            # Create graph runtime
+            ctx = remote.cpu()
+            module = runtime.GraphModule(rlib["default"](ctx))
+            data_tvm = tvm.nd.array((np.random.uniform(size=data.shape)).astype("float32"))
+            module.set_input("data", data_tvm)
+            # Evaluate
+            print("Evaluate inference time cost...")
+            ftimer = module.module.time_evaluator("run", ctx, repeat=3, min_repeat_ms=500)
+            prof_res = np.array(ftimer().results) * 1e3  # convert to millisecond
+            print(
+                "Mean inference time (std dev): %.2f ms (%.2f ms)" % (np.mean(prof_res), np.std(prof_res))
+            )
+
+            module.run()
+            return module.get_output(0)
+
+    use_arm = RPC_KEY == "raspi4b-aarch64"
+    std = run_module(lib_std, use_arm).asnumpy()
+    out = run_module(lib, use_arm).asnumpy()
     np.testing.assert_allclose(out, std, rtol=1e-4, atol=1e-4)
 
 
 if __name__ == "__main__":
-    test_end_to_end_resnet("resnet.json")
+    test_end_to_end_resnet("resnet_ms_rewrite_arm.json")

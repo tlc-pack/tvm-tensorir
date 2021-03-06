@@ -169,23 +169,27 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
         }
       }
 
+      if (use_meta_schedule_) {
+        const auto* fmeta_schedule =
+            runtime::Registry::Get("meta_schedule.relay_integration.auto_schedule_primfunc");
+        ICHECK(fmeta_schedule != nullptr)
+            << "meta_schedule.relay_integration.auto_schedule_primfunc is not registered";
+        const auto* fcreate_func = runtime::Registry::Get("te.CreateFunc");
+        ObjectRef func = (*fcreate_func)(tensor_outs);
+        ObjectRef obj = (*fmeta_schedule)(func);
+        if (obj.defined()) {
+          prim_func = Downcast<tir::PrimFunc>(obj);
+        }
+      }
+
       // Use TOPI schdule if user specificed, or the function has no auto_scheduler schedule.
-      if (!schedule.defined()) {
+      if (!schedule.defined() && !prim_func.defined()) {
         ICHECK(anchor_implementation_.defined());
         auto pass_ctx = transform::PassContext::Current();
         bool with_tir = pass_ctx->GetConfig<Bool>("relay.with_tir_schedule", Bool(false)).value();
         if (with_tir) {
           prim_func = anchor_implementation_.PrimFunc(anchor_attrs_, tensor_outs, target_);
-          if (use_meta_schedule_) {
-            const auto* fmeta_schedule =
-                runtime::Registry::Get("meta_schedule.relay_integration.auto_schedule_primfunc");
-            ICHECK(fmeta_schedule != nullptr)
-                << "meta_schedule.relay_integration.auto_schedule_primfunc is not registered";
-            ObjectRef obj = (*fmeta_schedule)(prim_func);
-            if (obj.defined()) {
-              prim_func = Downcast<tir::PrimFunc>(obj);
-            }
-          }
+
         } else {
           schedule = anchor_implementation_.Schedule(anchor_attrs_, tensor_outs, target_);
           for (const auto& scalar : scalars_) {
