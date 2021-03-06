@@ -81,7 +81,7 @@ void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block
     return;
   }
   const auto* consumer_block = consumer_block_sref->GetStmt<BlockNode>();
-  const StmtSRef& parent_block_sref = GetScopeSRef(consumer_block_sref);
+  const StmtSRef& parent_block_sref = GetScopeRoot(consumer_block_sref);
   // Gather all the producers
   struct Producer {
     /*! \brief The block that writes the buffer */
@@ -171,16 +171,22 @@ void VerifySRefTree(const ScheduleState& self) {
           n_block_sref_visited_(0) {}
 
     void Verify() {
-      VisitStmt(self_->func->body);
-      ICHECK_EQ(n_sref_visited_, static_cast<int>(self_->stmt2ref.size()));
-      for (const auto& kv : self_->scopes) {
-        const StmtSRef& sref = kv.first;
-        ICHECK(sref->stmt != nullptr);
-        ICHECK(self_->stmt2ref.count(sref->stmt));
-        const StmtSRef& sref2 = self_->stmt2ref.at(sref->stmt);
-        ICHECK(sref.same_as(sref2));
+      IRModule mod = self_->Module();
+      for (const auto& kv : mod->functions) {
+        const BaseFunc& base_func = kv.second;
+        if (const auto* func = base_func.as<PrimFuncNode>()) {
+          VisitStmt(func->body);
+          ICHECK_EQ(n_sref_visited_, static_cast<int>(self_->stmt2ref.size()));
+          for (const auto& kv : self_->scopes) {
+            const StmtSRef& sref = kv.first;
+            ICHECK(sref->stmt != nullptr);
+            ICHECK(self_->stmt2ref.count(sref->stmt));
+            const StmtSRef& sref2 = self_->stmt2ref.at(sref->stmt);
+            ICHECK(sref.same_as(sref2));
+          }
+          ICHECK_EQ(n_block_sref_visited_, static_cast<int>(self_->scopes.size()));
+        }
       }
-      ICHECK_EQ(n_block_sref_visited_, static_cast<int>(self_->scopes.size()));
     }
 
     // Valida each block
@@ -278,7 +284,7 @@ void VerifySRefTree(const ScheduleState& self) {
   SRefTreeVerifier::Verify(self.get());
 }
 
-StmtSRef GetScopeSRef(const StmtSRef& sref) {
+StmtSRef GetScopeRoot(const StmtSRef& sref) {
   for (const StmtSRefNode* p = sref->parent; p != nullptr; p = p->parent) {
     if (p->stmt->IsInstance<BlockNode>()) {
       return GetRef<StmtSRef>(p);
@@ -336,7 +342,7 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
 
 Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref) {
   Array<DepEdge> pred_edges = self->scopes
-                                  .at(GetScopeSRef(block_sref))  //
+                                  .at(GetScopeRoot(block_sref))  //
                                   ->GetPredecessors(block_sref);
   Array<StmtSRef> results;
   results.reserve(pred_edges.size());
@@ -350,7 +356,7 @@ Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sr
 
 Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref) {
   Array<DepEdge> succ_edges = self->scopes
-                                  .at(GetScopeSRef(block_sref))  //
+                                  .at(GetScopeRoot(block_sref))  //
                                   ->GetSuccessors(block_sref);
   Array<StmtSRef> results;
   results.reserve(succ_edges.size());
@@ -454,6 +460,27 @@ StmtSRef GetSRefTreeRoot(const StmtSRef& sref) {
   for (; p->parent != nullptr; p = p->parent) {
   }
   return GetRef<StmtSRef>(p);
+}
+
+const PrimFuncNode* GetBelongFunc(const ScheduleState& self, const StmtSRef& sref) {
+  const StmtSRefNode* p = sref.get();
+  for (; p->parent != nullptr; p = p->parent) {
+  }
+  IRModule mod = self->Module();
+  for (const auto& kv : mod->functions) {
+    const BaseFunc& base_func = kv.second;
+    if (const auto* func = base_func.as<PrimFuncNode>()) {
+      if (const auto* realize = func->body.as<BlockRealizeNode>()) {
+        if (realize->block.get() == p->stmt) {
+          return func;
+        }
+      }
+    }
+  }
+  LOG(FATAL) << "IndexError: Could not get the correpsonding function in the schedule state of the "
+                "statement:\n"
+             << GetRef<Stmt>(sref->stmt);
+  throw;
 }
 
 }  // namespace tir

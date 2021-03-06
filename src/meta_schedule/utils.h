@@ -154,7 +154,7 @@ inline bool DomainEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
 template <class FPredicate>
 inline Optional<tir::StmtSRef> FindBlockSRef(const tir::ScheduleState& sch, FPredicate predicate) {
   Optional<tir::StmtSRef> result = NullOpt;
-  tir::PreOrderVisit(sch->func->body, [&sch, &result, &predicate](const ObjectRef& obj) -> bool {
+  auto f_visit = [&sch, &result, &predicate](const ObjectRef& obj) -> bool {
     if (result.defined()) {
       return false;
     }
@@ -165,7 +165,14 @@ inline Optional<tir::StmtSRef> FindBlockSRef(const tir::ScheduleState& sch, FPre
       }
     }
     return true;
-  });
+  };
+  IRModule mod = sch->Module();
+  for (const auto& kv : mod->functions) {
+    const BaseFunc& base_func = kv.second;
+    if (const auto* func = base_func.as<tir::PrimFuncNode>()) {
+      tir::PreOrderVisit(func->body, f_visit);
+    }
+  }
   return result;
 }
 

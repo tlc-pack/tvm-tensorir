@@ -606,7 +606,6 @@ class PostprocVerifyGPUCode {
         {"max_shared_memory_per_block", Extract(target, "shared_memory_per_block")},
         {"max_local_memory_per_block", Extract(target, "registers_per_block")},
         {"max_threads_per_block", Extract(target, "max_threads_per_block")},
-        {"max_vector_bytes", Extract(target, "vector_unit_bytes")},
         {"max_vthread", Integer(8)},
     };
     return tir::VerifyGPUCode(func, constraints);
@@ -614,14 +613,13 @@ class PostprocVerifyGPUCode {
 
   bool Proc(const SearchTask& task, const Schedule& sch) const {
     static tir::transform::Sequential passes = MakePasses();
-    GlobalVar main_func("main");
     IRModule mod = sch->Module();
     try {
       mod = passes(std::move(mod));
     } catch (const dmlc::Error& e) {
       return false;
     }
-    return VerifyGPU(Downcast<tir::PrimFunc>(mod->Lookup(main_func)), task->target);
+    return VerifyGPU(GetOnlyFunc(mod), task->target);
   }
 };
 

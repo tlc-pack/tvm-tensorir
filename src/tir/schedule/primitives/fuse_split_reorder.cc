@@ -178,7 +178,7 @@ StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef& in
   Array<Stmt> outer_children = GetChildren(GetRef<Stmt>(outer));
   CHECK(outer_children.size() == 1 && outer_children[0].get() == inner)
       << "ValueError: 'fuse' expects 'inner' to be the only child of 'outer'";
-  CHECK(GetScopeSRef(outer_sref).get() == GetScopeSRef(inner_sref).get())
+  CHECK(GetScopeRoot(outer_sref).get() == GetScopeRoot(inner_sref).get())
       << "ValueError: 'fuse' expects 'inner' and 'outer' to be in the same block scope";
   // Step 2. Create fused loop var and replace the loop var used in inner and outer loop
   arith::Analyzer analyzer;
@@ -244,7 +244,7 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& order) {
   std::unordered_map<const StmtSRefNode*, const StmtSRefNode*> successor;
   // Gather all the loops under parent_block
   int n_loops_not_found = order.size();
-  for (const StmtSRefNode* loop : GetLoopsPostOrder(self, GetScopeSRef(order[0]))) {
+  for (const StmtSRefNode* loop : GetLoopsPostOrder(self, GetScopeRoot(order[0]))) {
     bool is_in_reorder_list = loops.count(loop);
     bool has_inner_loop = successor.count(loop);
     if (is_in_reorder_list || has_inner_loop) {

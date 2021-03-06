@@ -390,7 +390,9 @@ class ScheduleNode : public runtime::Object {
 class Schedule : public runtime::ObjectRef {
  public:
   TVM_DLL static Schedule Concrete(PrimFunc func, int64_t seed, bool debug_mode);
+  TVM_DLL static Schedule Concrete(IRModule func, int64_t seed, bool debug_mode);
   TVM_DLL static Schedule Meta(PrimFunc func, int64_t seed, bool debug_mode);
+  TVM_DLL static Schedule Meta(IRModule func, int64_t seed, bool debug_mode);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };
 

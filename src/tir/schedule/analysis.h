@@ -71,7 +71,7 @@ IterVarType GetLoopIterType(const ScheduleState& self, const StmtSRef& loop_sref
  * \param sref The block or loop sref to be retrieved
  * \return The sref to the scope root block
  */
-StmtSRef GetScopeSRef(const StmtSRef& sref);
+StmtSRef GetScopeRoot(const StmtSRef& sref);
 
 /******** Block-loop relation ********/
 /*!
@@ -117,6 +117,8 @@ StmtSRef GetSRefTreeRoot(const StmtSRef& sref);
 bool HasSingleChild(const StmtSRef& loop_or_block_sref);
 
 Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref);
+
+const PrimFuncNode* GetBelongFunc(const ScheduleState& self, const StmtSRef& sref);
 
 }  // namespace tir
 }  // namespace tvm

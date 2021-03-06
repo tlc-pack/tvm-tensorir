@@ -44,19 +44,16 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
   using tir::ConcreteScheduleNode::state;
   /*! \brief The symbol table */
   using tir::ConcreteScheduleNode::symbol_table;
-  /*! \brief The random number sampler */
-  Sampler sampler;
-  /*! \brief The original TIR PrimFunc to be scheduled */
-  tir::PrimFunc orig_func;
   /*! \brief The trace of the program execution */
   Trace trace;
+  /*! \brief The random number sampler */
+  Sampler sampler;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("state", &state);
     v->Visit("symbol_table", &symbol_table);
-    // `sampler` is not visited
-    v->Visit("orig_func", &orig_func);
     v->Visit("trace", &trace);
+    // `sampler` is not visited
   }
 
   static constexpr const char* _type_key = "meta_schedule.Schedule";
@@ -305,9 +302,8 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
 class Schedule : public tir::Schedule {
  public:
   using TSymbolTable = ScheduleNode::TSymbolTable;
-
   explicit Schedule(tir::PrimFunc func, int64_t seed = -1, bool debug_mode = false);
-
+  explicit Schedule(IRModule mod, int64_t seed = -1, bool debug_mode = false);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, tir::Schedule, ScheduleNode);
 };
 

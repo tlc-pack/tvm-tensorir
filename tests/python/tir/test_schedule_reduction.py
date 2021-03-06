@@ -264,12 +264,12 @@ def test_reduction_decompose():
     C = s.get_block("update")
     i, _, _ = s.get_axes(C)
     s.decompose_reduction(C, i)
-    tvm.ir.assert_structural_equal(matmul_decompose0, s.module)
+    tvm.ir.assert_structural_equal(matmul_decompose0, s.mod["main"])
     # Test 2
     s = tir.Schedule(matmul, debug_mode=True)
     C = s.get_block("update")
     s.decompose_reduction(C, loop=None)
-    tvm.ir.assert_structural_equal(matmul_decompose1, s.module)
+    tvm.ir.assert_structural_equal(matmul_decompose1, s.mod["main"])
 
 
 def test_reduction_merge():
@@ -277,7 +277,7 @@ def test_reduction_merge():
     init = s.get_block("init")
     update = s.get_block("update")
     s.merge_reduction(init, update)
-    tvm.ir.assert_structural_equal(matmul, s.module)
+    tvm.ir.assert_structural_equal(matmul, s.mod["main"])
 
 
 def test_reduction_blockize():
@@ -285,14 +285,14 @@ def test_reduction_blockize():
     C = s.get_block("update")
     _, j, _ = s.get_axes(C)
     s.blockize(j)
-    tvm.ir.assert_structural_equal(matmul_blockized, s.module)
+    tvm.ir.assert_structural_equal(matmul_blockized, s.mod["main"])
 
 
 def test_reduction_compute_inline():
     s = tir.Schedule(matmul_scale, debug_mode=True)
     D = s.get_block("D")
     s.compute_inline(D)
-    tvm.ir.assert_structural_equal(s.module, matmul_scale_inline)
+    tvm.ir.assert_structural_equal(s.mod["main"], matmul_scale_inline)
 
 
 def test_reduction_rfactor():
@@ -304,9 +304,9 @@ def test_reduction_rfactor():
     _, ki = s.split(k, factor=32)
     _, kii = s.split(ki, factor=4)
     _ = s.rfactor(kii, factor=0)
-    tvm.ir.assert_structural_equal(s.module, matmul_rfactor)
+    tvm.ir.assert_structural_equal(s.mod["main"], matmul_rfactor)
 
-    f = tvm.build(s.module, target="llvm")
+    f = tvm.build(s.mod["main"], target="llvm")
     a_np = np.random.uniform(size=(128, 128)).astype("float32")
     b_np = np.random.uniform(size=(128, 128)).astype("float32")
     a = tvm.nd.array(a_np)
@@ -321,9 +321,9 @@ def test_reduction_rfactor():
     C = s.get_block("C")
     b, i, j = s.get_axes(C)
     _ = s.rfactor(j, 1)
-    tvm.ir.assert_structural_equal(s.module, square_sum_rfactor)
+    tvm.ir.assert_structural_equal(s.mod["main"], square_sum_rfactor)
 
-    f = tvm.build(s.module, target="llvm")
+    f = tvm.build(s.mod["main"], target="llvm")
     a_np = np.random.uniform(size=(16, 256, 256)).astype("float32")
     a = tvm.nd.array(a_np)
     c = tvm.nd.array(np.zeros((16,), dtype="float32"))
@@ -338,9 +338,9 @@ def test_reduction_rfactor():
     fuse = s.fuse(i, j)
     _, fi = s.split(fuse, factor=1)
     _ = s.rfactor(fi, 0)
-    tvm.ir.assert_structural_equal(s.module, square_sum_square_root_rfactor)
+    tvm.ir.assert_structural_equal(s.mod["main"], square_sum_square_root_rfactor)
 
-    f = tvm.build(s.module, target="llvm")
+    f = tvm.build(s.mod["main"], target="llvm")
     a_np = np.random.uniform(size=(16, 256, 256)).astype("float32")
     a = tvm.nd.array(a_np)
     c = tvm.nd.array(np.zeros((16,), dtype="float32"))
@@ -362,7 +362,7 @@ def test_reduction_allreduce():
     s.bind(ax_j, thread_x)
     s.bind(ax_i, thread_y)
 
-    f = tvm.build(s.module, target="cuda")
+    f = tvm.build(s.mod["main"], target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
     a = tvm.nd.array(a_np, ctx)
     b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)
@@ -378,7 +378,7 @@ def test_reduction_allreduce():
     _, ax_i, ax_j = s.get_axes(B_block)
     s.bind(ax_j, thread_x)
 
-    f = tvm.build(s.module, target="cuda")
+    f = tvm.build(s.mod["main"], target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
     a = tvm.nd.array(a_np, ctx)
     b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)
@@ -394,7 +394,7 @@ def test_reduction_allreduce():
     _, ax_i, ax_j = s.get_axes(B_block)
     s.bind(ax_i, thread_x)
 
-    f = tvm.build(s.module, target="cuda")
+    f = tvm.build(s.mod["main"], target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
     a = tvm.nd.array(a_np, ctx)
     b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)
@@ -422,7 +422,7 @@ def test_reduction_allreduce():
 
     s.reverse_compute_at(B_block, ax_i_rf_o)
 
-    f = tvm.build(s.module, target="cuda")
+    f = tvm.build(s.mod["main"], target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
     a = tvm.nd.array(a_np, ctx)
     b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)

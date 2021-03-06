@@ -33,18 +33,23 @@ namespace tir {
 tir::Schedule tir::Schedule::Meta(tir::PrimFunc func, int64_t seed, bool debug_mode) {
   return meta_schedule::Schedule(func, seed, debug_mode);
 }
+tir::Schedule tir::Schedule::Meta(IRModule mod, int64_t seed, bool debug_mode) {
+  return meta_schedule::Schedule(mod, seed, debug_mode);
+}
 }  // namespace tir
 
 namespace meta_schedule {
 
-Schedule::Schedule(tir::PrimFunc func, int64_t seed, bool debug_mode) {
+Schedule::Schedule(tir::PrimFunc func, int64_t seed, bool debug_mode)
+    : Schedule(IRModule({{GlobalVar("main"), func}}), seed, debug_mode) {}
+
+Schedule::Schedule(IRModule mod, int64_t seed, bool debug_mode) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
-  n->state = tir::ScheduleState(func, debug_mode);
+  n->state = tir::ScheduleState(mod, debug_mode);
   n->symbol_table = {};
   if (seed != -1) {
     n->sampler.Seed(seed);
   }
-  n->orig_func = func;
   n->trace = Trace();
   this->data_ = std::move(n);
 }
@@ -58,7 +63,6 @@ Schedule ScheduleNode::Copy(int new_seed) const {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->state = std::move(p->state);
   n->symbol_table = std::move(p->symbol_table);
-  n->orig_func = orig_func;
   n->trace = Trace(this->trace->insts, this->trace->decisions);
   n->sampler.Seed(new_seed);
   return Schedule(std::move(n));
@@ -297,8 +301,17 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkLoop")
     .set_body_method<Schedule>(&ScheduleNode::MarkLoop);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkBlock")
     .set_body_method<Schedule>(&ScheduleNode::MarkBlock);
-TVM_REGISTER_GLOBAL("meta_schedule.Schedule")  //
-    .set_body_typed(tir::Schedule::Meta);
+TVM_REGISTER_GLOBAL("meta_schedule.Schedule")
+    .set_body_typed([](ObjectRef obj, int64_t seed, bool debug_mode) -> Schedule {
+      if (const auto* func = obj.as<tir::PrimFuncNode>()) {
+        return Schedule(GetRef<tir::PrimFunc>(func), seed, debug_mode);
+      }
+      if (const auto* mod = obj.as<IRModuleNode>()) {
+        return Schedule(GetRef<IRModule>(mod), seed, debug_mode);
+      }
+      LOG(FATAL) << "TypeError: Expects `IRModule` or `PrimFunc`, but gets: " << obj->GetTypeKey();
+      throw;
+    });
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed([](Schedule self, int new_seed) {
   return self->Copy(new_seed);
 });

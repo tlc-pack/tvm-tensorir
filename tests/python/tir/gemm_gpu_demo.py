@@ -18,7 +18,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 n = 2048
-device = 'cuda'
+device = "cuda"
 ctx = tvm.context(device, 0)
 mod = tvm.script.create_module({"matmul": matmul})
 
@@ -31,12 +31,12 @@ b = tvm.nd.array(b_np, ctx)
 c = tvm.nd.array(np.zeros((n, n)).astype("float32"), ctx)
 
 
-def build_and_test(func):
+def build_and_test(mod):
     if not ctx.exist:
         print("Skip because %s is not enabled" % device)
         return
-    f = tvm.build(func, target=device)
-    print(tvm.script.asscript(func))
+    f = tvm.build(mod["main"], target=device)
+    print(tvm.script.asscript(mod))
     f(a, b, c)
     tvm.testing.assert_allclose(c.asnumpy(), np.dot(a_np.T, b_np), rtol=1e-5)
 
@@ -121,5 +121,11 @@ s.double_buffer(BB)
 s.decompose_reduction(CC, decompose_pos)
 
 with tvm.transform.PassContext(
-        config={"tir.UnrollLoop": {"auto_max_step": 128, "explicit_unroll": device != "cuda"}}):
-    build_and_test(s.module)
+    config={
+        "tir.UnrollLoop": {
+            "auto_max_step": 128,
+            "explicit_unroll": device != "cuda",
+        },
+    }
+):
+    build_and_test(s.mod)

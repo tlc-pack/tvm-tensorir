@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from tvm._ffi import register_object as _register_object
-from tvm.ir import PrimExpr
+from tvm.ir import PrimExpr, IRModule
 from tvm.runtime import Object, String
 
 from . import _ffi_api_schedule
@@ -99,13 +99,13 @@ class BlockScope(Object):
 class ScheduleState(Object):
     """The state of scheduling"""
 
-    func: PrimFunc
+    mod: IRModule
     debug_mode: bool
 
-    def __init__(self, func: PrimFunc, debug_mode: bool):
+    def __init__(self, func_or_mod: Union[PrimFunc, IRModule], debug_mode: bool):
         self.__init_handle_by_constructor__(
             _ffi_api_schedule.ScheduleState,  # pylint: disable=no-member
-            func,
+            func_or_mod,
             debug_mode,
         )
 
@@ -154,17 +154,17 @@ class Schedule(Object):
 
     state: ScheduleState
 
-    def __init__(self, func: PrimFunc, debug_mode: bool = False):
+    def __init__(self, func_or_mod: Union[PrimFunc, IRModule], debug_mode: bool = False):
         self.__init_handle_by_constructor__(
             _ffi_api_schedule.Schedule,  # pylint: disable=no-member
-            func,
+            func_or_mod,
             -1,  # seed
             debug_mode,
         )
 
     @property
-    def module(self) -> PrimFunc:
-        return self.state.func
+    def mod(self) -> IRModule:
+        return _ffi_api_schedule.ScheduleModule(self)  # pylint: disable=no-member
 
     def show(self, rand_var: Union[LoopRV, BlockRV, ExprRV]) -> str:
         # TODO(@junrushao1994): complete it

@@ -54,7 +54,7 @@ namespace tir {
       << "` points to `Loop`, but gets: " << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
 
 #define TVM_TYPE_AS_E(Result, From, Type) \
-  From.as<Type>();                        \
+  (From).as<Type>();                      \
   ICHECK(Result)
 
 #define TVM_TYPE_AS(Result, From, Type)                                           \

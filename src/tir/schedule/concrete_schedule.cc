@@ -26,8 +26,12 @@ namespace tvm {
 namespace tir {
 
 Schedule Schedule::Concrete(PrimFunc func, int64_t seed, bool debug_mode) {
+  return Schedule::Concrete(IRModule({{GlobalVar("main"), func}}), seed, debug_mode);
+}
+
+Schedule Schedule::Concrete(IRModule mod, int64_t seed, bool debug_mode) {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
-  n->state = ScheduleState(func, debug_mode);
+  n->state = ScheduleState(mod, debug_mode);
   n->symbol_table = {};
   return Schedule(std::move(n));
 }
@@ -163,7 +167,7 @@ Schedule ConcreteScheduleNode::Copy() const {
   const ScheduleState& src_state = this->state;
   SRefTranslator trans(src_state);
   ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
-  n->func = src_state->func;
+  n->mod = src_state->mod;
   n->scopes = trans.Trans(src_state->scopes);
   n->stmt2ref = trans.Trans(src_state->stmt2ref);
   n->debug_mode = src_state->debug_mode;
@@ -177,9 +181,7 @@ void ConcreteScheduleNode::Seed(int64_t seed) {
   // do nothing
 }
 
-IRModule ConcreteScheduleNode::Module() const {
-  return IRModule({{GlobalVar("main"), this->state->func}});
-}
+IRModule ConcreteScheduleNode::Module() const { return state->Module(); }
 
 /******** Lookup random variables ********/
 
@@ -526,7 +528,17 @@ void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin
 /******** FFI ********/
 
 TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);
-TVM_REGISTER_GLOBAL("tir.schedule.Schedule").set_body_typed(Schedule::Concrete);
+TVM_REGISTER_GLOBAL("tir.schedule.Schedule")
+    .set_body_typed([](ObjectRef obj, int64_t seed, bool debug_mode) -> Schedule {
+      if (const auto* func = obj.as<PrimFuncNode>()) {
+        return Schedule::Concrete(GetRef<PrimFunc>(func), seed, debug_mode);
+      }
+      if (const auto* mod = obj.as<IRModuleNode>()) {
+        return Schedule::Concrete(GetRef<IRModule>(mod), seed, debug_mode);
+      }
+      LOG(FATAL) << "TypeError: Expects `IRModule` or `PrimFunc`, but gets: " << obj->GetTypeKey();
+      throw;
+    });
 
 }  // namespace tir
 }  // namespace tvm
