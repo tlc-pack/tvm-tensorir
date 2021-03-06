@@ -181,13 +181,22 @@ TVM_DLL double CountFlop(const tir::PrimFunc& func);
  * \param self The TIR schedule
  * \param block_sref The block to be analyzed
  * \return A pair indicating the cumulative length of spacial and reduction loop axes. Or (-1, -1)
- *         if invalid.
+ *         if some loops are dynamic or with type other than kDataPar and kCommReduce.
  */
-TVM_DLL std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::ScheduleState& self,
-                                                                 const tir::StmtSRef& block_sref);
+TVM_DLL std::pair<int64_t, int64_t> GetCumulativeSpaceAndReductionLength(
+    const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Check if the block needs rfactor
+ * \brief Check if the block needs rfactor. The conditions are:
+ *          1. The block is a reduction block and has trivial binding.
+ *          2. Every the loop axis out side the block must be either spatial axis or reduction axis.
+ *          3. There is at least one reduction loop.
+ *          4. The outside loops are continuous, and the body of the innermost loop is exactly
+ *             the block.
+ *          5. The outside loops are not dynamic.
+ *          6. a. For blocks which need MultiLevelTiling, don't perform rfactor if we have enough
+ *                parallelism on spatial loops
+ *             b. For other blocks, always try to perform rfactor.
  * \param task The search task
  * \param self The TIR schedule
  * \param block_sref The block to be analyzed

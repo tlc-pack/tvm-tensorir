@@ -897,22 +897,34 @@ SearchRule SimplifyComputeWithConstTensor(int max_innermost_factor) {
  * \brief Reorder the reduction loops to innermost positions if needed.
  * \param sch The Meta-Schedule schedule
  * \param block_rv The block where to apply the reorder
+ * \param fused_reduce_loop The fusion-generated loop to return.
+ * \param num_spatial_loops The number of spatial loops to return.
  * \note Before invoking this helper function, make sure that the block has only spatial and
  *       reduction loop axes.
  */
-void ReorderReductionLoops(const Schedule& sch, const BlockRV& block_rv) {
+void ReorderAndFuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
+                                  LoopRV* fused_reduce_loop, int* num_spatial_loops) {
   Array<LoopRV> loops = sch->GetAxes(block_rv);
+  Array<tir::StmtSRef> loop_srefs;
+  for (const LoopRV& loop_rv : loops) {
+    loop_srefs.push_back(sch->GetSRef(loop_rv));
+  }
+
   Array<LoopRV> new_order;
   // Step 1. Add spatial loops.
-  for (const LoopRV& loop_rv : loops) {
-    if (GetLoopIterType(sch->state, sch->GetSRef(loop_rv)) == tir::kDataPar) {
-      new_order.push_back(loop_rv);
+  *num_spatial_loops = 0;
+  for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
+    if (GetLoopIterType(sch->state, loop_srefs[i]) == tir::kDataPar) {
+      new_order.push_back(loops[i]);
+      (*num_spatial_loops)++;
     }
   }
   // Step 2. Add reduction loops.
-  for (const LoopRV& loop_rv : loops) {
-    if (GetLoopIterType(sch->state, sch->GetSRef(loop_rv)) == tir::kCommReduce) {
-      new_order.push_back(loop_rv);
+  Array<LoopRV> reduction_loops;
+  for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
+    if (GetLoopIterType(sch->state, loop_srefs[i]) == tir::kCommReduce) {
+      new_order.push_back(loops[i]);
+      reduction_loops.push_back(loops[i]);
     }
   }
   // Step 3. Apply reordering if new_order differs from the original order.
@@ -927,36 +939,8 @@ void ReorderReductionLoops(const Schedule& sch, const BlockRV& block_rv) {
   if (need_reorder) {
     sch->Reorder(new_order);
   }
-}
 
-/*!
- * \brief Fuse all the reduction loops, and get the number of spatial loops and the fusion-generated
- *        loop
- * \param sch The Meta-Schedule schedule
- * \param block_rv The block where to apply the fusion
- * \param fused_reduce_loop The fusion-generated loop to return.
- * \param num_spatial_loops The number of spatial loops to return.
- * \note Before invoking this helper function, make sure that all the reduction loops continuous
- *       and innermost.
- */
-void FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
-                        LoopRV* fused_reduce_loop, int* num_spatial_loops) {
-  // All the loops are made sure to be either spatial loops or reduction loops.
-  // All the reduction loops are made sure to be continuous and innermost.
-  Array<LoopRV> loops = sch->GetAxes(block_rv);
-  Array<LoopRV> reduction_loops;
-  *num_spatial_loops = 0;
-  for (const LoopRV& loop_rv : loops) {
-    tir::IterVarType type = GetLoopIterType(sch->state, sch->GetSRef(loop_rv));
-    if (type == tir::kDataPar) {
-      CHECK(reduction_loops.empty());
-      (*num_spatial_loops)++;
-    } else {
-      CHECK_EQ(type, tir::kCommReduce);
-      reduction_loops.push_back(loop_rv);
-    }
-  }
-
+  // Step 4. Fuse all the reduction loops if there are multiple reduction loops.
   CHECK(!reduction_loops.empty()) << "ValueError: There should be at least one reduction loop";
   if (reduction_loops.size() > 1) {
     *fused_reduce_loop = sch->Fuse(reduction_loops);
@@ -1001,12 +985,13 @@ class RuleAddRFactor {
 
     // Make a copy of the original schedule.
     Schedule ori_sch = sch->Copy(sch->sampler.ForkSeed());
-    // Reorder the loop axes if reduction loops are not innermost.
-    ReorderReductionLoops(sch, block_rv);
 
+    // Reorder the loop axes if reduction loops are not innermost.
+    // After the reordering, fuse all the reduction loops.
     int num_spatial_loops;
     LoopRV fused_reduce_loop;
-    FuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
+    ReorderAndFuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
+
     Array<Optional<PrimExpr>> factors;
     for (const tir::Var& factor :
          sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor)) {
