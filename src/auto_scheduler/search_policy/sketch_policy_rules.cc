@@ -231,7 +231,7 @@ std::vector<std::pair<State, int>> RuleAddCacheWrite::Apply(const SketchPolicyNo
   return {std::make_pair(std::move(tmp_s), stage_id)};
 }
 
-/********** RuleAddRFactor **********/
+/********** RuleAddRfactor **********/
 
 SketchGenerationRule::ConditionKind RuleAddRfactor::MeetCondition(const SketchPolicyNode& policy,
                                                                   const State& state,
