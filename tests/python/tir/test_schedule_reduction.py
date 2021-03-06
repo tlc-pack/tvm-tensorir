@@ -349,7 +349,6 @@ def test_reduction_rfactor():
     tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.skip("Needs GPU")
 def test_reduction_allreduce():
     ctx = tvm.gpu(0)
     # Test 1
