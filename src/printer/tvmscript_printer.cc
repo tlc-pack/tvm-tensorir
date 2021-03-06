@@ -90,6 +90,8 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
   int current_num_;
   /*! \brief loop stack without annotations */
   std::vector<For> loop_stack_;
+  /*! \brief analyzer for simplifying*/
+  arith::Analyzer analyzer_;
 
   Doc VisitExpr_(const CastNode* op) override;
   Doc VisitExpr_(const VarNode* op) override;
@@ -1078,7 +1080,7 @@ Doc TVMScriptPrinter::PrintLoop(const For& loop) {
   Doc res;
   res << "for " << Print(loop->loop_var)
       << " in tir." + std::string(ForKind2String(loop->kind)) + "(" << Print(loop->min) << ", "
-      << Print(arith::Analyzer().Simplify(loop->min + loop->extent));
+      << Print(analyzer_.Simplify(loop->min + loop->extent));
   if (loop->thread_binding.defined()) {
     res << ", thread = ";
     res << Print(loop->thread_binding.value()->thread_tag);

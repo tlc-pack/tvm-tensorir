@@ -117,6 +117,16 @@ class BufferSlice(ObjectGeneric):
         self.slices = slices
         self.span = span
 
+    def __str__(self):
+        regions: List[str] = []
+        for s in self.slices:
+            if s.stop is None:
+                regions.append(str(s.start))
+            else:
+                regions.append(str(s.start) + ": " + str(s.stop))
+
+        return self.buffer.name + "[" + ", ".join(regions) + "]"
+
     def asobject(self) -> BufferLoad:
         """Convert object."""
         for s in self.slices:

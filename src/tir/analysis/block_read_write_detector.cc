@@ -41,6 +41,12 @@ class BlockReadWriteDetector : public StmtExprVisitor {
   Array<BufferRegion> CollectReads();
   /*! \brief Return write regions of the block */
   Array<BufferRegion> CollectWrites();
+  /*!
+   * \brief Return opaque buffer regions of the block
+   * \note The buffer accessed by load/store or call with buffer.data will
+   *       be marked as opaque.
+   */
+  Array<BufferRegion> CollectOpaques();
   /*! \brief overload operator() to make sure it accepts a block node */
   void operator()(const Stmt &stmt);
 
@@ -51,6 +57,8 @@ class BlockReadWriteDetector : public StmtExprVisitor {
   std::vector<Buffer> read_buffers_;
   /*! \brief The buffers that the current block writes */
   std::vector<Buffer> writes_buffers_;
+  /*! \brief The opaque buffer which is access by buffer.data */
+  std::vector<Buffer> opaque_buffers_;
   /*! \brief The read regions of the current block */
   std::vector<std::vector<tvm::arith::IntSet>> read_regions_;
   /*! \brief The write regions of the current block */
@@ -102,6 +110,10 @@ Array<BufferRegion> BlockReadWriteDetector::CollectWrites() {
     res.push_back(BufferRegion(writes_buffers_[i], region));
   }
   return res;
+}
+
+Array<BufferRegion> CollectOpaques() {
+
 }
 
 void BlockReadWriteDetector::VisitStmt_(const ForNode* op) {
@@ -184,10 +196,10 @@ void BlockReadWriteDetector::Update(std::vector<Buffer>* buffers,
   regions->push_back(region);
 }
 
-std::pair<Array<BufferRegion>, Array<BufferRegion>> GetBlockAccessRegion(const Block& block) {
+Array<Array<BufferRegion>> GetBlockAccessRegion(const Block& block) {
   BlockReadWriteDetector detector;
   detector(block);
-  return std::make_pair(detector.CollectReads(), detector.CollectWrites());
+  return {detector.CollectReads(), detector.CollectWrites(), detector.CollectWrites()};
 }
 
 }  // namespace tir

@@ -25,6 +25,7 @@ import json
 import operator
 import inspect
 from synr import ast, Transformer, to_ast
+from typing import Union
 
 import tvm
 from tvm import IRModule
@@ -40,7 +41,7 @@ from .special_stmt import SpecialStmt
 from .scope_handler import ScopeHandler, WithScopeHandler, ForScopeHandler
 from . import _ffi_api
 from .diagnostics import TVMDiagnosticCtx
-from .utils import from_synr_span
+from .utils import from_synr_span, from_tvm_span
 from .node import Slice, BufferSlice
 
 
@@ -184,7 +185,7 @@ class TVMScriptParser(Transformer):
 
         return transform_res
 
-    def report_error(self, message, span):
+    def report_error(self, message: str, span: Union[ast.Span, tvm.ir.Span]):
         """Report an error occuring at a location.
 
         This just dispatches to synr's DiagnosticContext.
@@ -193,9 +194,11 @@ class TVMScriptParser(Transformer):
         ----------
         message : str
             Error message
-        span : synr.ast.Span
+        span : synr.ast.Span or TVM.ir.Span
             Location of the error
         """
+        if isinstance(span, tvm.ir.Span):
+            span = from_tvm_span(span)
         self.error(message, span)
 
     def parse_body(self, parent):
@@ -741,7 +744,7 @@ class TVMScriptParser(Transformer):
         By now only 2 types of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
                Var[index] Buffer element access()
-            2. Buffer[start: stop, start: stop, ...], Realize
+            2. Buffer[start: stop, start: stop, ...], BufferRealize
         """
 
         symbol = self.transform(node.params[0])

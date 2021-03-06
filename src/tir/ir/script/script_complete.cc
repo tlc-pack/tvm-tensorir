@@ -64,8 +64,8 @@ class ScriptCompleter : public StmtMutator {
     if (block->reads.empty() || block->writes.empty()) {
       auto access_region = GetBlockAccessRegion(block);
       auto n = CopyOnWrite(block.operator->());
-      if (!n->reads.defined()) n->reads = access_region.first;
-      if (!n->writes.defined()) n->writes = access_region.second;
+      if (!n->reads.defined()) n->reads = access_region[0];
+      if (!n->writes.defined()) n->writes = access_region[1];
       return Block(n);
     } else {
       return std::move(block);

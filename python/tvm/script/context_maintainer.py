@@ -19,6 +19,7 @@
 from typing import List, Mapping, Union, Optional, Dict, Callable
 
 import tvm
+from tvm.ir import Span
 from tvm.tir import Var, Buffer, PrimExpr, Stmt, MatchBufferRegion
 from tvm.runtime import Object
 from .node import BufferSlice
@@ -31,21 +32,21 @@ class BlockInfo:
 
     alloc_buffers: List[Buffer]
     match_buffers: List[MatchBufferRegion]
-    binding: Mapping[Var, PrimExpr]
-    reads: List[BufferSlice]
-    writes: List[BufferSlice]
-    annotations: Mapping[str, Object]
-    predicate: PrimExpr
+    iter_bindings: Mapping[Var, PrimExpr]
+    reads: Optional[List[BufferSlice]]
+    writes: Optional[List[BufferSlice]]
+    annotations: Optional[Mapping[str, Object]]
+    predicate: Optional[PrimExpr]
     init: Optional[Stmt]
 
     def __init__(self):
         self.alloc_buffers = []
         self.match_buffers = []
-        self.binding = {}
-        self.reads = []
-        self.writes = []
-        self.annotations = {}
-        self.predicate = tvm.tir.const(True, "bool")
+        self.iter_bindings = {}
+        self.reads = None
+        self.writes = None
+        self.annotations = None
+        self.predicate = None
         self.init = None
 
 
@@ -63,10 +64,10 @@ class ContextMaintainer:
     func_dict_attr: Mapping[str, Object]
     func_var_env_dict: Mapping[Var, str]
     # parser and analyzer
-    _report_error: Callable[[str, synr.ast.Span], None]
+    _report_error: Callable[[str, Union[Span, synr.ast.Span]], None]
     analyzer: tvm.arith.Analyzer
 
-    def __init__(self, report_error: Callable[[str, synr.ast.Span], None]):
+    def __init__(self, _report_error: Callable[[str, Union[Span, synr.ast.Span]], None]):
         # scope context
         self.node_stack = []  # AST nodes of scopes
         self.block_info_stack = []  # Block info of scopes
@@ -78,7 +79,7 @@ class ContextMaintainer:
         self.func_dict_attr = {}  # func_attr of function
         self.func_var_env_dict = {}  # map from var to env_name
         # parser and analyzer
-        self._report_error = report_error
+        self._report_error = _report_error
         self.analyzer = tvm.arith.Analyzer()
 
     def enter_scope(self, nodes: Optional[List[synr.ast.Node]] = None):
@@ -145,7 +146,7 @@ class ContextMaintainer:
                 return symbols[name]
         return None
 
-    def report_error(self, message: str, span: synr.ast.Span):
+    def report_error(self, message: str, span: Union[Span, synr.ast.Span]):
         self._report_error(message, span)
 
     def current_block_scope(self) -> BlockInfo:

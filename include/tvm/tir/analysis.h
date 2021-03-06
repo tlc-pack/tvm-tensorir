@@ -31,7 +31,6 @@
 #include <tvm/tir/function.h>
 #include <tvm/tir/op_attr_types.h>
 #include <tvm/tir/stmt.h>
-#include <tvm/tir/stmt_functor.h>
 
 #include <string>
 #include <unordered_map>
@@ -150,10 +149,13 @@ TVM_DLL bool VerifyGPUCode(const PrimFunc& func, Map<String, PrimExpr> constrain
  * \brief Auto detect the block read/write region according to body stmt
  *        It will detect the read/write region as an array in order of appearance in AST
  * \param block The block to be detcted
- * \return Read and write region of the block
+ * \return Array of access regions.
+ *         There are three arrays of BufferRegion:
+ *           - first: read regions
+ *           - second: write regions
+ *           - third: opaque regions
  */
-// TODO(Siyuan) : fix return type
-std::pair<Array<BufferRegion>, Array<BufferRegion>> GetBlockAccessRegion(const Block& block);
+Array<Array<BufferRegion>> GetBlockAccessRegion(const Block& block);
 
 // Pass variants of verification analysis
 // directly throws RuntimeError when verification fails.

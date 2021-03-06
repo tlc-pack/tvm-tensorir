@@ -144,7 +144,7 @@ def test_no_body():
     check_error(no_body, 3)
 
 
-def allocate_with_buffers():
+def allocate_with_buffers() -> None:
     with tir.allocate([1], "float32", "") as [A, B]:  # error
         tir.evaluate(1.0)
 
@@ -153,7 +153,7 @@ def test_allocate_with_buffers():
     check_error(allocate_with_buffers, 2)
 
 
-def inconsistent_binding():
+def inconsistent_binding() -> None:
     with tir.block([128, 128], "init") as [vi]:  # error
         tir.evaluate(1.0)
 
@@ -162,7 +162,7 @@ def test_inconsistent_binding():
     check_error(inconsistent_binding, 2)
 
 
-def invalid_block_axes(a: ty.handle):
+def invalid_block_axes(a: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32")
     with tir.block([A], "init") as [vi]:  # error
         tir.evaluate(1.0)
@@ -172,7 +172,7 @@ def test_invalid_block_axes():
     check_error(invalid_block_axes, 3)
 
 
-def miss_block_bind():
+def miss_block_bind() -> None:
     with tir.block([16, 16], "init") as [vi, vj]:  # error
         tir.bind(vi, 1)
         tir.evaluate(1.0)
@@ -182,7 +182,7 @@ def test_miss_block_bind():
     check_error(miss_block_bind, 2)
 
 
-def invalid_loop_var():
+def invalid_loop_var() -> None:
     for i, j in range(0, 16):  # error
         tir.evaluate(1.0)
 
@@ -191,7 +191,7 @@ def test_invalid_loop_var():
     check_error(invalid_loop_var, 2)
 
 
-def inconsistent_grid():
+def inconsistent_grid() -> None:
     for i in tir.grid(16, 16):  # error
         tir.evaluate(1.0)
 
@@ -200,7 +200,7 @@ def test_inconsistent_grid():
     check_error(inconsistent_grid, 2)
 
 
-def invalid_match_buffer_region():
+def invalid_match_buffer_region() -> None:
     with tir.block([16, 16], "init") as [vi, vj]:
         A = tir.match_buffer_region(vi)  # error
         tir.evaluate(1.0)
@@ -210,7 +210,7 @@ def test_invalid_match_buffer_region():
     check_error(invalid_match_buffer_region, 3)
 
 
-def duplicate_buffer():
+def duplicate_buffer() -> None:
     A = tir.alloc_buffer((128, 128), "float32")
     with tir.block([16, 16], "init") as [vi, vj]:
         A = tir.alloc_buffer((128, 128), "float32")  # error
@@ -219,6 +219,58 @@ def duplicate_buffer():
 
 def test_duplicate_buffer():
     check_error(duplicate_buffer, 4)
+
+
+def duplicate_reads() -> None:
+    A = tir.alloc_buffer((128, 128), "float32")
+    with tir.block([16, 16], "init") as [vi, vj]:
+        tir.reads(A[0: 8, 0: 8])
+        tir.reads(A[0: 16, 0: 16])  # error
+        tir.evaluate(1.0)
+
+
+def duplicate_writes() -> None:
+    A = tir.alloc_buffer((128, 128), "float32")
+    with tir.block([16, 16], "init") as [vi, vj]:
+        tir.writes(A[0: 8, 0: 8])
+        tir.writes(A[0: 16, 0: 16])  # error
+        tir.evaluate(1.0)
+
+
+def duplicate_predicate() -> None:
+    with tir.block([16, 16], "init") as [vi, vj]:
+        tir.where(1)
+        tir.where(0)  # error
+
+
+def duplicate_annotations() -> None:
+    with tir.block([16, 16], "init") as [vi, vj]:
+        tir.block_attr({})
+        tir.block_attr({})  # error
+
+
+def duplicate_init() -> None:
+    with tir.block([16, 16], "init") as [vi, vj]:
+        with tir.init():
+            tir.evaluate(1.0)
+        with tir.init():  # error
+            tir.evaluate(1.0)
+
+
+def test_duplicate_block_signature():
+    check_error(duplicate_reads, 5)
+    check_error(duplicate_writes, 5)
+    check_error(duplicate_predicate, 4)
+    check_error(duplicate_annotations, 4)
+    check_error(duplicate_init, 5)
+
+
+@tvm.script.tir
+def error_read_input() -> None:
+    A = tir.alloc_buffer((128, 128), "float32")
+    with tir.block([16, 16], "init") as [vi, vj]:
+        tir.reads(A[0, 0], A[1, 1])
+        tir.evaluate(1.0)
 
 
 def check_error(module, rel_lineno):
@@ -265,3 +317,4 @@ if __name__ == "__main__":
     test_inconsistent_grid()
     test_invalid_match_buffer_region()
     test_duplicate_buffer()
+    test_duplicate_block_signature()

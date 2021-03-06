@@ -17,13 +17,15 @@
 """TVM Script Parser Special Stmt Classes"""
 # pylint: disable=unused-argument, no-self-argument, inconsistent-return-statements
 # pylint: disable=relative-beyond-top-level
-from typing import Callable, List, Optional, Tuple, Any
+from typing import Callable, List, Optional, Tuple, Any, Mapping, Union
 
 import synr
 from synr import ast
 
 import tvm.tir
+from tvm.runtime import Object
 from tvm import te
+from tvm.ir import Span
 from .utils import get_param_list, from_synr_span, from_buffer_slice
 from .registry import register
 from .context_maintainer import ContextMaintainer
@@ -225,8 +227,11 @@ class BlockVarBind(SpecialStmt):
     """
 
     def __init__(self):
-        def bind(block_var, binding, span=None):
-            self.context.current_block_scope().binding[block_var] = binding
+        def bind(iter_var, values, span=None):
+            block_scope = self.context.current_block_scope()
+            if iter_var in block_scope.iter_bindings:
+                self.context.report_error("Duplicate iter_var bindings of " + str(iter_var), span)
+            block_scope.iter_bindings[iter_var] = values
 
         super().__init__(bind, def_symbol=False)
 
@@ -244,8 +249,17 @@ class BlockReads(SpecialStmt):
     """
 
     def __init__(self):
-        def reads(read_regions, span=None):
-            self.context.current_block_scope().reads = (
+        def reads(read_regions: Union[BufferSlice, List[BufferSlice]], span: Span = None):
+            assert self.context
+            block_scope = self.context.current_block_scope()
+            if block_scope.reads is not None:
+                self.context.report_error(
+                    "Duplicate write region declaration, "
+                    + "previous one is "
+                    + str(", ".join(str(x) for x in block_scope.reads)),
+                    span,
+                )
+            block_scope.reads = (
                 [read_regions] if not isinstance(read_regions, list) else read_regions
             )
 
@@ -265,9 +279,18 @@ class BlockWrites(SpecialStmt):
     """
 
     def __init__(self):
-        def writes(writes, span=None):
-            self.context.current_block_scope().writes = (
-                [writes] if not isinstance(writes, list) else writes
+        def writes(write_region: Union[BufferSlice, List[BufferSlice]], span: Span = None):
+            assert self.context
+            block_scope = self.context.current_block_scope()
+            if block_scope.writes is not None:
+                self.context.report_error(
+                    "Duplicate write region declaration, "
+                    + "previous one is "
+                    + str(", ".join(str(x) for x in block_scope.writes)),
+                    span,
+                )
+            block_scope.writes = (
+                [write_region] if not isinstance(write_region, list) else write_region
             )
 
         super().__init__(writes, def_symbol=False)
@@ -286,12 +309,21 @@ class BlockAttr(SpecialStmt):
     """
 
     def __init__(self):
-        def block_attr(attrs, span=None):
+        def block_attr(attrs: Mapping[str, Object], span: Span = None):
+            assert self.context
+            block_scope = self.context.current_block_scope()
+            if block_scope.annotations is not None:
+                self.context.report_error(
+                    "Duplicate block annotations declaration, "
+                    + "previous one is "
+                    + str(block_scope.annotations),
+                    span,
+                )
             attrs = {
                 key: tvm.tir.StringImm(val) if isinstance(val, str) else val
                 for key, val in attrs.items()
             }
-            self.context.current_block_scope().annotations = attrs
+            block_scope.annotations = attrs
 
         super().__init__(block_attr, def_symbol=False)
 
@@ -310,7 +342,16 @@ class BlockPredicate(SpecialStmt):
 
     def __init__(self):
         def where(predicate, span=None):
-            self.context.current_block_scope().predicate = predicate
+            block_scope = self.context.current_block_scope()
+            if block_scope.predicate is not None:
+                self.context.report_error(
+                    "Duplicate block predicate declaration, "
+                    + "previous one is "
+                    + str(block_scope.predicate),
+                    span,
+                )
+
+            block_scope.predicate = predicate
 
         super().__init__(where, def_symbol=False)
 
@@ -348,7 +389,7 @@ class BlockMatchBufferRegion(SpecialStmt):
             if not isinstance(source, BufferSlice):
                 self.context.report_error(
                     "match_buffer_region needs a buffer region as source",
-                    span=self.node.span,
+                    span=span,
                 )
             buffer_region = from_buffer_slice(source)
             shape = [r.extent for r in buffer_region.region]

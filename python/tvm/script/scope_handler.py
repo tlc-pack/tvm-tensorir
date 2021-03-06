@@ -255,8 +255,15 @@ class Block(WithScopeHandler):
                     )
 
             # create block read/write regions
-            reads: List[BufferRegion] = [from_buffer_slice(read) for read in block_info.reads]
-            writes: List[BufferRegion] = [from_buffer_slice(write) for write in block_info.writes]
+
+            reads: List[BufferRegion] = (
+                [from_buffer_slice(read) for read in block_info.reads] if block_info.reads else []
+            )
+            writes: List[BufferRegion] = (
+                [from_buffer_slice(write) for write in block_info.writes]
+                if block_info.writes
+                else []
+            )
             inner = tvm.tir.Block(
                 block_iters,
                 reads,
@@ -269,26 +276,31 @@ class Block(WithScopeHandler):
                 block_info.annotations,
                 span,
             )
-            # create block var binding
+            # create block var iter binding
             values: List[PrimExpr]
-            if not block_info.binding:
+            if not block_info.iter_bindings:
                 values = self.context.loop_stack[-2].copy()
                 if len(values) == 0:
                     values = [tvm.tir.const(float("nan"), dtype="float32")] * len(block_iters)
                 elif len(values) != len(block_iters):
                     self.context.report_error(
-                        "Autocomplete block var binding expect larger number of loops",
+                        "Autocomplete block iter var binding expect larger number of loops",
                         self.node.span,
                     )
             else:
                 for block_var in self.block_vars:
-                    if block_var not in block_info.binding:
+                    if block_var not in block_info.iter_bindings:
                         self.context.report_error(
-                            "Missing block var binding for " + block_var.name,
+                            "Missing block iter var binding for " + block_var.name,
                             self.node.span,
                         )
-                values = [block_info.binding[block_var] for block_var in self.block_vars]
-            body = tvm.tir.BlockRealize(values, block_info.predicate, inner, span)
+                values = [block_info.iter_bindings[block_var] for block_var in self.block_vars]
+            predicate = (
+                tvm.tir.const(True, "bool")
+                if block_info.predicate is None
+                else block_info.predicate
+            )
+            body = tvm.tir.BlockRealize(values, predicate, inner, span)
             return body
 
         super().__init__(func=block, concise_scope=False, def_symbol=True)
@@ -317,6 +329,8 @@ class InitBlock(WithScopeHandler):
     def __init__(self):
         def init(span: Span = None):
             assert self.context
+            if self.context.block_info_stack[-2].init is not None:
+                self.context.report_error("Duplicate init block declaration", span)
             self.context.block_info_stack[-2].init = self.body
 
         super().__init__(func=init, concise_scope=False, def_symbol=True)

@@ -106,3 +106,14 @@ def from_synr_span(span: synr.ast.Span) -> Span:
         span.start_column,
         span.end_column,
     )
+
+
+def from_tvm_span(span: Span) -> synr.ast.Span:
+    """Convert a TVM span to a synr span"""
+    return synr.ast.Span(
+        span.source_name.name,
+        span.line,
+        span.column,
+        span.end_line,
+        span.end_column,
+    )
