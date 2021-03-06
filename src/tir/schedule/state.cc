@@ -660,7 +660,10 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
       }
     }
     ICHECK(g_var.defined() && g_func != nullptr);
-    need_module_copy = !(this->mod.unique() && this->mod->functions.unique() && g_func->unique());
+    need_module_copy = num_copy_steps == i ||             //
+                       !this->mod.unique() ||             //
+                       !this->mod->functions.unique() ||  //
+                       !g_func->unique();
   }
   // Loop invariant:
   //
@@ -678,7 +681,7 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   StmtSRefNode* child_sref = src_sref.get();
   Stmt child_tgt_stmt = std::move(tgt_stmt);
   for (int i = 0; (need_module_copy || i <= num_copy_steps) && child_sref->parent != nullptr; ++i) {
-    bool parent_unique = !need_module_copy && i == num_copy_steps;
+    bool can_cow_parent = !need_module_copy && i == num_copy_steps;
     // replacing `child_sref->stmt` to `child_tgt_stmt`.
     const StmtNode* parent_stmt = child_sref->parent->stmt;
     const StmtNode* child_src_stmt = child_sref->stmt;
@@ -693,9 +696,9 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     // Step 2.2. Create `new_parent_stmt`, by mutating the body of `parent_stmt`,
     Stmt new_parent_stmt = ChildReplacer::Mutate(parent_stmt, child_src_stmt, child_tgt_stmt,
                                                  /*seq_index=*/child_sref->seq_index,
-                                                 /*allow_copy_on_write=*/parent_unique);
+                                                 /*allow_copy_on_write=*/can_cow_parent);
     // Step 2.3. Go to next parent
-    if (parent_unique) {
+    if (can_cow_parent) {
       // If the node can be directly mutated inplace,
       // then there is no need to update its parent and the function
       break;
@@ -704,7 +707,7 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     child_sref = child_sref->parent;
   }
   // Step 3. Handle the case that we mutate the root
-  if (child_sref->parent == nullptr) {
+  if (need_module_copy) {
     // From the loop invariant, upon exit, while its subtree is properly set,
     // `child_sref` is not properly to `child_tgt_stmt` yet.
     if (src_sref->parent != nullptr) {
