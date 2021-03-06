@@ -625,46 +625,42 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   //   The visit stops when all the ancestors are uniquely referenced, i.e. can mutate inplace.
   //   Along the way, because we create a new ancestor path,
   //   we need to update those sref points from old ancestors to newly created ones
-  // `num_copy_steps` is the maximum number of hops until we need to copy
-  // To reach a node that can be mutated in-place, it needs `num_copy_steps + 1` hops
+  // Variables:
+  // 1) `num_copy_steps`. The maximum number of hops until we need to copy. To reach a node that can
+  // be mutated in-place, it needs `num_copy_steps + 1` hops.
+  // 2) `need_module_copy`. If true, need to mutate the PrimFunc and IRModule the sref belongs to.
+  // 3) `g_var` and `g_func`. Indicate which GlobalVar and PrimFunc the sref corresponds to
   int num_copy_steps = -1;
-  // The PrimFunc that `src_sref` belongs to, and its corresponding GlobalVar
+  bool need_module_copy = false;
   const PrimFuncNode* g_func = nullptr;
   GlobalVar g_var;
   {
+    int i = 0;
     const StmtSRefNode* p = src_sref.get();
-    for (int i = 0;; ++i) {
+    for (;; ++i, p = p->parent) {
       if (!p->stmt->unique()) {
         num_copy_steps = i;
       }
-      if (p->parent != nullptr) {
-        p = p->parent;
-        continue;
+      if (p->parent == nullptr) {
+        break;
       }
-      // Find `g_func` and `g_var`
-      for (const auto& kv : this->mod->functions) {
-        const GlobalVar& var = kv.first;
-        const BaseFunc& base_func = kv.second;
-        if (const auto* func = base_func.as<PrimFuncNode>()) {
-          if (const auto* realize = func->body.as<BlockRealizeNode>()) {
-            if (realize->block.get() == p->stmt) {
-              g_var = var;
-              g_func = func;
-              break;
-            }
+    }
+    // Find `g_func` and `g_var`
+    for (const auto& kv : this->mod->functions) {
+      const GlobalVar& var = kv.first;
+      const BaseFunc& base_func = kv.second;
+      if (const auto* func = base_func.as<PrimFuncNode>()) {
+        if (const auto* realize = func->body.as<BlockRealizeNode>()) {
+          if (realize->block.get() == p->stmt) {
+            g_var = var;
+            g_func = func;
+            break;
           }
         }
       }
-      ICHECK(g_var.defined() && g_func != nullptr);
-      // If the function itself is not unique, then we assume the root is not unique
-      if (this->mod.unique() && this->mod->functions.unique() && g_func->unique()) {
-        // all the way up beyond the AST is unique, then do nothing
-      } else {
-        // something is not unique, then do one more step
-        num_copy_steps = i + 1;
-      }
-      break;
     }
+    ICHECK(g_var.defined() && g_func != nullptr);
+    need_module_copy = !(this->mod.unique() && this->mod->functions.unique() && g_func->unique());
   }
   // Loop invariant:
   //
@@ -681,8 +677,8 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   // 3) `tgt_stmt` is of type Loop or Block
   StmtSRefNode* child_sref = src_sref.get();
   Stmt child_tgt_stmt = std::move(tgt_stmt);
-  for (int i = 0; i <= num_copy_steps && child_sref->parent != nullptr; ++i) {
-    bool parent_unique = (i == num_copy_steps);
+  for (int i = 0; (need_module_copy || i <= num_copy_steps) && child_sref->parent != nullptr; ++i) {
+    bool parent_unique = !need_module_copy && i == num_copy_steps;
     // replacing `child_sref->stmt` to `child_tgt_stmt`.
     const StmtNode* parent_stmt = child_sref->parent->stmt;
     const StmtNode* child_src_stmt = child_sref->stmt;
