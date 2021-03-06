@@ -95,7 +95,7 @@ class ScheduleNode : public runtime::Object {
   /*!
    * \brief Take the PrimFunc out of the schedule
    */
-  virtual IRModule Module() const = 0;
+  virtual IRModule Module() const { return state->mod; }
   /*!
    * \brief Seed the randomness
    * \param seed The new random seed, -1 if use device random

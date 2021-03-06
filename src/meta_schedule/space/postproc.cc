@@ -408,7 +408,7 @@ class PostprocRewriteUnboundBlocks {
       if (block_) {
         return;
       }
-      if (Optional<String> opt_ann = GetAnn(sch_->GetSRef(loop), tir::attr::loop_type)) {
+      if (Optional<String> opt_ann = GetBinding(sch_->GetSRef(loop))) {
         String ann = opt_ann.value();
         if (ann == "threadIdx.x" || ann == "blockIdx.x" || ann == "vthread") {
           return;
@@ -443,7 +443,7 @@ class PostprocRewriteUnboundBlocks {
     for (const LoopRV& loop_rv : loop_rvs) {
       tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
       tir::IterVarType iter_type = GetLoopIterType(sch->state, loop_sref);
-      if (iter_type != tir::kDataPar || GetAnn(loop_sref, tir::attr::loop_type).defined()) {
+      if (iter_type != tir::kDataPar || GetBinding(loop_sref).defined()) {
         break;
       }
       ++n_spatial_loops;
@@ -521,15 +521,7 @@ class PostprocRewriteReductionBlock {
         tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
         if (GetLoopIterType(sch->state, loop_sref) != tir::kDataPar) {
           // Insert the initializing block above the first loop which is not data parallel.
-          BlockRV init = sch->DecomposeReduction(block_rv, loop_rvs[i]);
-          Array<LoopRV> loops = sch->GetAxes(init);
-          if (!loops.empty()) {
-            const LoopRV& last_loop = loops.back();
-            const tir::StmtSRef& loop_sref = sch->GetSRef(last_loop);
-            if (HasSingleChild(loop_sref)) {
-              sch->Vectorize(last_loop);
-            }
-          }
+          sch->DecomposeReduction(block_rv, loop_rvs[i]);
           break;
         }
       }

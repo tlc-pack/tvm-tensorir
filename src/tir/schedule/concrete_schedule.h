@@ -51,8 +51,6 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   void Seed(int64_t seed = -1) override;
 
-  IRModule Module() const override;
-
  public:
   /******** Lookup random variables ********/
   Block Get(const BlockRV& block_rv) const final;
@@ -67,9 +65,7 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   StmtSRef GetSRef(const LoopRV& loop_rv) const final;
 
-  StmtSRef GetSRef(const Stmt& stmt) const final;
-
-  StmtSRef GetSRef(const StmtNode* stmt) const final;
+  using ScheduleNode::GetSRef;
 
  public:
   /******** Sampling ********/

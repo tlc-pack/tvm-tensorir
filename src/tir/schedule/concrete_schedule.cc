@@ -181,8 +181,6 @@ void ConcreteScheduleNode::Seed(int64_t seed) {
   // do nothing
 }
 
-IRModule ConcreteScheduleNode::Module() const { return state->Module(); }
-
 /******** Lookup random variables ********/
 
 Block ConcreteScheduleNode::Get(const BlockRV& block_rv) const {
@@ -260,16 +258,6 @@ StmtSRef ConcreteScheduleNode::GetSRef(const LoopRV& loop_rv) const {
     LOG(FATAL) << "ValueError: The StmtSRef has expired";
   }
   return GetRef<StmtSRef>(sref);
-}
-
-StmtSRef ConcreteScheduleNode::GetSRef(const Stmt& stmt) const { return this->GetSRef(stmt.get()); }
-
-StmtSRef ConcreteScheduleNode::GetSRef(const StmtNode* stmt) const {
-  auto it = this->state->stmt2ref.find(stmt);
-  if (it == this->state->stmt2ref.end()) {
-    LOG(FATAL) << "IndexError: The stmt doesn't exist in the IR";
-  }
-  return it->second;
 }
 
 /******** Block/Loop relation ********/

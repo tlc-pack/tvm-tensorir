@@ -28,7 +28,7 @@ from threading import Thread
 from typing import Any, Callable, List, Tuple
 
 import psutil
-from tvm import arith, ir, rpc
+from tvm import ir, rpc
 from tvm._ffi import register_func
 from tvm.autotvm.measure.measure_methods import set_cuda_target_arch
 from tvm.contrib import ndk as build_func_ndk
@@ -545,7 +545,7 @@ def rpc_runner_run(
         This is only has effect on CPU task.
     f_create_args: Callable[[TVMContext], List[NDArray]] = None
         Optional callback to create arguments for functions to measure. This can be used for sparse
-        workloads when we cannot use random tensors for measurment.
+        workloads when we cannot use random tensors for measurement.
     verbose: int = 1
         Verbosity level. 0 for silent, 1 to output information during program measuring.
 

@@ -64,9 +64,6 @@ class ScheduleStateNode : public runtime::Object {
     v->Visit("debug_mode", &debug_mode);
   }
 
-  /*! \return Take the IRModule out of the schedule */
-  IRModule Module() const { return mod; }
-
   /*!
    * \brief Replace the part of the AST, as being pointed to by `src_sref`,
    * with a specific statement `tgt_stmt`, and maintain the sref tree accordingly.

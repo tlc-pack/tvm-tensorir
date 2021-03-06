@@ -37,7 +37,7 @@ StmtSRef ScheduleNode::GetSRef(const StmtNode* stmt) const {
   return it->second;
 }
 
-StmtSRef ScheduleNode::GetSRef(const Stmt& stmt) const { return GetSRef(stmt.get()); }
+StmtSRef ScheduleNode::GetSRef(const Stmt& stmt) const { return this->GetSRef(stmt.get()); }
 
 /**************** FFI ****************/
 

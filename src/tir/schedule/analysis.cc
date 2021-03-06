@@ -171,8 +171,7 @@ void VerifySRefTree(const ScheduleState& self) {
           n_block_sref_visited_(0) {}
 
     void Verify() {
-      IRModule mod = self_->Module();
-      for (const auto& kv : mod->functions) {
+      for (const auto& kv : self_->mod->functions) {
         const BaseFunc& base_func = kv.second;
         if (const auto* func = base_func.as<PrimFuncNode>()) {
           VisitStmt(func->body);
@@ -466,8 +465,7 @@ const PrimFuncNode* GetBelongFunc(const ScheduleState& self, const StmtSRef& sre
   const StmtSRefNode* p = sref.get();
   for (; p->parent != nullptr; p = p->parent) {
   }
-  IRModule mod = self->Module();
-  for (const auto& kv : mod->functions) {
+  for (const auto& kv : self->mod->functions) {
     const BaseFunc& base_func = kv.second;
     if (const auto* func = base_func.as<PrimFuncNode>()) {
       if (const auto* realize = func->body.as<BlockRealizeNode>()) {
