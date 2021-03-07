@@ -113,9 +113,6 @@ class ScheduleState(Object):
     def get_sref(self, stmt: Stmt) -> Optional[StmtSRef]:
         return _ffi_api_schedule.ScheduleStateGetSRef(self, stmt)  # pylint: disable=no-member
 
-    def scope(self, block: StmtSRef) -> BlockScope:
-        return _ffi_api_schedule.ScheduleStateGetScope(self, block)  # pylint: disable=no-member
-
     def replace(
         self,
         src_sref: StmtSRef,

@@ -779,11 +779,6 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetSRef")
       auto it = self->stmt2ref.find(stmt.get());
       return it != self->stmt2ref.end() ? it->second : Optional<StmtSRef>(NullOpt);
     });
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetScope")
-    .set_body_typed([](ScheduleState self, StmtSRef block_sref) -> Optional<BlockScope> {
-      auto it = self->scopes.find(block_sref);
-      return it != self->scopes.end() ? (*it).second : Optional<BlockScope>(NullOpt);
-    });
 
 }  // namespace tir
 }  // namespace tvm
