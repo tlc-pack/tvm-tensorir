@@ -262,6 +262,22 @@ StmtSRef ConcreteScheduleNode::GetSRef(const LoopRV& loop_rv) const {
   return GetRef<StmtSRef>(sref);
 }
 
+void ConcreteScheduleNode::RemoveRV(const BlockRV& block_rv) { RemoveFromSymbolTable(block_rv); }
+
+void ConcreteScheduleNode::RemoveRV(const LoopRV& loop_rv) { RemoveFromSymbolTable(loop_rv); }
+
+void ConcreteScheduleNode::RemoveRV(const VarRV& var_rv) { RemoveFromSymbolTable(var_rv); }
+
+void ConcreteScheduleNode::RemoveFromSymbolTable(const ObjectRef& obj) {
+  auto it = this->symbol_table_.find(obj);
+  if (it != this->symbol_table_.end()) {
+    this->symbol_table_.erase(obj);
+  } else {
+    LOG(FATAL) << "IndexError: Cannot find the object in the symbol table: " << obj;
+    throw;
+  }
+}
+
 /******** Block/Loop relation ********/
 
 BlockRV ConcreteScheduleNode::GetBlock(const String& name) {

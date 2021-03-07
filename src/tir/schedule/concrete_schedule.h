@@ -82,6 +82,12 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   StmtSRef GetSRef(const LoopRV& loop_rv) const final;
 
+  void RemoveRV(const BlockRV& block_rv) final;
+
+  void RemoveRV(const LoopRV& loop_rv) final;
+
+  void RemoveRV(const VarRV& var_rv) final;
+
   using ScheduleNode::GetSRef;
 
  public:
@@ -184,6 +190,8 @@ class ConcreteScheduleNode : public ScheduleNode {
   /******** Utility functions ********/
  protected:
   void MakeCopy(ScheduleState* new_state, TSymbolTable* new_symbol_table) const;
+
+  void RemoveFromSymbolTable(const ObjectRef& rv);
 
   template <class T>
   inline Array<T> SetRV(const Array<StmtSRef>& srefs) {

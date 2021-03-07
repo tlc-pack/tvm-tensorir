@@ -595,12 +595,10 @@ class RuleRandomComputeLocation {
         sch->ComputeAt(block_rv, compute_at_loc, true);
       } catch (const dmlc::Error& e) {
         // ComputeAt fails, cleanup the following before re-try:
-        // 1) sym_tab
-        // 2) decisions
-        // 3) trace
+        // 1) trace: instruction & decisions
+        // 2) sym_tab
         sch->trace->Pop();
-        // TODO
-        // sch->symbol_table_.erase(compute_at_loc);
+        sch->RemoveRV(compute_at_loc);
         continue;
       }
       break;
