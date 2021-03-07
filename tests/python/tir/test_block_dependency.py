@@ -50,11 +50,11 @@ def test_element_wise_dependency():
     block_b = s.get_sref(s.get_block("B"))
     block_c = s.get_sref(s.get_block("C"))
     # Check get_predecessors
-    (predecessor_c,) = s.state.scope(root).get_predecessors(block_c)
+    (predecessor_c,) = s.state.scopes[root].get_predecessors(block_c)
     assert predecessor_c.dst.same_as(block_b)
     assert predecessor_c.type == tir.schedule.DepEdge.kRAW
     # Check get_successor
-    (successor_b,) = s.state.scope(root).get_successor(block_b)
+    (successor_b,) = s.state.scopes[root].get_successor(block_b)
     assert successor_b.dst.same_as(block_c)
     assert predecessor_c.type == tir.schedule.DepEdge.kRAW
 
@@ -66,7 +66,7 @@ def test_matmul_dependency():
     init = s.get_sref(s.get_block("init"))
     update = s.get_sref(s.get_block("update"))
     # Check predecessors
-    p0, p1 = s.state.scope(root).get_predecessors(update)
+    p0, p1 = s.state.scopes[root].get_predecessors(update)
     assert p0.dst.same_as(init)
     assert p1.dst.same_as(init)
     # WAW and RAW
@@ -74,7 +74,7 @@ def test_matmul_dependency():
         p0.type == tir.schedule.DepEdge.kWAW and p1.type == tir.schedule.DepEdge.kRAW
     )
     # Check successors
-    p0, p1 = s.state.scope(root).get_successor(init)
+    p0, p1 = s.state.scopes[root].get_successor(init)
     assert p0.dst == update
     assert p1.dst == update
     # WAW and RAW

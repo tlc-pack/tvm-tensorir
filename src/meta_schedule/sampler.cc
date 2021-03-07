@@ -318,6 +318,9 @@ std::vector<int> Sampler::SamplePerfectTile(int n_splits, int extent) {
 }
 
 std::vector<int> Sampler::SamplePerfectTile(int n_splits, int extent, int max_innermost_factor) {
+  if (max_innermost_factor == -1) {
+    return this->SamplePerfectTile(n_splits, extent);
+  }
   CHECK_GE(n_splits, 2) << "ValueError: Cannot tile a loop into " << n_splits << " splits";
   std::vector<int> innermost_candidates;
   innermost_candidates.reserve(max_innermost_factor);
