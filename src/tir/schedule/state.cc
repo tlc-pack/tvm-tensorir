@@ -664,13 +664,15 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   {
     int i = 0;
     const StmtSRefNode* p = src_sref.get();
-    for (;; ++i, p = p->parent) {
+    for (;;) {
       if (!p->stmt->unique()) {
         num_copy_steps = i;
       }
       if (p->parent == nullptr) {
         break;
       }
+      ++i;
+      p = p->parent;
     }
     // Find `g_func` and `g_var` where the `src_sref` is in
     g_func = GetRootPrimFunc(this->mod, p->stmt, &g_var);

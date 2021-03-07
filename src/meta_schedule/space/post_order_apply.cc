@@ -119,13 +119,13 @@ class BlockCollector : public tir::StmtVisitor {
  public:
   /*! \brief Constructor */
   explicit BlockCollector(const tir::Schedule& sch) : sch_(sch) {
-    const auto* realize = GetOnlyFunc(sch->Mod())->body.as<tir::BlockRealizeNode>();
+    const auto* realize = GetOnlyFunc(sch->mod())->body.as<tir::BlockRealizeNode>();
     root_block_ = realize->block.get();
   }
 
   /*! \brief Entry point */
   Array<tir::StmtSRef> Run() {
-    VisitStmt(GetOnlyFunc(sch_->Mod())->body);
+    VisitStmt(GetOnlyFunc(sch_->mod())->body);
     Array<tir::StmtSRef> result = std::move(result_);
     return result;
   }

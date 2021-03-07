@@ -55,7 +55,7 @@ class PostprocRewriteTensorize {
 
   Optional<tir::StmtSRef> FindTensorized(const Schedule& sch) {
     Optional<tir::StmtSRef> result = NullOpt;
-    tir::PrimFunc func = GetOnlyFunc(sch->Mod());
+    tir::PrimFunc func = GetOnlyFunc(sch->mod());
     tir::PreOrderVisit(func->body, [&result, &sch](const ObjectRef& obj) -> bool {
       if (const auto* block = obj.as<tir::BlockNode>()) {
         tir::StmtSRef block_sref = sch->GetSRef(block);
@@ -393,14 +393,14 @@ class PostprocRewriteUnboundBlocks {
     /*! \brief Find the first block that is not bound to any thread axes */
     static Optional<tir::StmtSRef> Find(const tir::Schedule& sch) {
       UnboundBlockFinder finder(sch);
-      finder(GetOnlyFunc(sch->Mod())->body);
+      finder(GetOnlyFunc(sch->mod())->body);
       return finder.block_ == nullptr ? Optional<tir::StmtSRef>(NullOpt)
                                       : sch->GetSRef(finder.block_);
     }
 
    private:
     explicit UnboundBlockFinder(const tir::Schedule& sch) : sch_(sch), block_(nullptr) {
-      const auto* realize = GetOnlyFunc(sch->Mod())->body.as<tir::BlockRealizeNode>();
+      const auto* realize = GetOnlyFunc(sch->mod())->body.as<tir::BlockRealizeNode>();
       root_block_ = realize->block.get();
     }
 
@@ -512,7 +512,7 @@ class PostprocRewriteReductionBlock {
   }
 
   bool Proc(const Schedule& sch) const {
-    while (const tir::BlockNode* block = Find(GetOnlyFunc(sch->Mod())->body)) {
+    while (const tir::BlockNode* block = Find(GetOnlyFunc(sch->mod())->body)) {
       BlockRV block_rv = sch->GetBlock(block->name_hint);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
@@ -555,7 +555,7 @@ class PostprocDisallowDynamicLoops {
       }
       return true;
     };
-    tir::PreOrderVisit(GetOnlyFunc(sch->Mod())->body, f_visit);
+    tir::PreOrderVisit(GetOnlyFunc(sch->mod())->body, f_visit);
     return !has_dyn_ext;
   }
 };
@@ -605,7 +605,7 @@ class PostprocVerifyGPUCode {
 
   bool Proc(const SearchTask& task, const Schedule& sch) const {
     static tir::transform::Sequential passes = MakePasses();
-    IRModule mod = sch->Mod();
+    IRModule mod = sch->mod();
     try {
       mod = passes(std::move(mod));
     } catch (const dmlc::Error& e) {

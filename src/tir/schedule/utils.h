@@ -76,7 +76,7 @@ inline String Repr(const PrimFunc& func) {
   return s;
 }
 
-inline String Repr(const Schedule& self) { return Repr(self->Mod()); }
+inline String Repr(const Schedule& self) { return Repr(self->mod()); }
 
 /*!
  * \brief Convert a tvm::runtime::Array to std::vector
