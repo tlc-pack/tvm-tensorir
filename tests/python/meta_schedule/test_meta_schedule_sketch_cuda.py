@@ -54,6 +54,7 @@ SPACE = ms.space.PostOrderApply(
 
 def _fix_sampling_tile_size(
     sch: ms.Schedule,
+    func: tir.PrimFunc,
     possible_decisions: List[List[List[int]]],
     expected: List[tir.PrimFunc],
 ):
@@ -72,9 +73,9 @@ def _fix_sampling_tile_size(
         for inst, decision in zip(insts, decisions):
             new_decisions[inst] = decision
         trace = ms.Trace(sch.trace.insts, new_decisions)
-        new_sch = ms.Schedule(sch.orig_func)
+        new_sch = ms.Schedule(func)
         trace.apply(new_sch)
-        results = [tvm.ir.structural_equal(new_sch.module, i) for i in expected]
+        results = [tvm.ir.structural_equal(new_sch.mod["main"], i) for i in expected]
         if sum(results) >= 1:
             return
     assert False
@@ -94,7 +95,7 @@ def _get_support(func: tir.PrimFunc, task_name: str):
 def _debug(support: List[ms.Schedule]):
     for i, sch in enumerate(support):
         print(f"###### {i}")
-        print(tvm.script.asscript(sch.module))
+        print(tvm.script.asscript(sch.mod["main"]))
         for inst in sch.trace.insts:
             if inst in sch.trace.decisions:
                 print(sch.trace.decisions[inst], ",")
@@ -173,6 +174,7 @@ def test_meta_schedule_sketch_cuda_matmul():
     assert len(support) == 1
     _fix_sampling_tile_size(
         sch=support[0],
+        func=func,
         possible_decisions=possible_decisions,
         expected=expected,
     )
@@ -282,6 +284,7 @@ def test_meta_schedule_sketch_cuda_conv2d_nchw_bias_bn_relu():  # pylint: disabl
     assert len(support) == 1
     _fix_sampling_tile_size(
         sch=support[0],
+        func=func,
         possible_decisions=possible_decisions,
         expected=expected,
     )

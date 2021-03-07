@@ -119,7 +119,9 @@ class StateCreator : private StmtVisitor {
     ScheduleStateNode* self = n.get();
     // Set `n->mod`
     n->mod = std::move(mod);
-    // Set `n->stmt2ref` and `n->block_info`
+    // Set `n->debug_mode`
+    n->debug_mode = debug_mode;
+    // Set `n->stmt2ref` and `n->scopes`
     StateCreator creator(self);
     for (const auto& kv : n->mod->functions) {
       const BaseFunc& base_func = kv.second;

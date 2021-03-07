@@ -363,7 +363,7 @@ def _check_serialization(sch, func) -> ms.Schedule:
     record = sch.trace.serialize()
     new_sch = ms.Schedule(func)
     ms.Trace.deserialize(record, new_sch)
-    assert tvm.ir.structural_equal(new_sch.module, sch.module)
+    assert tvm.ir.structural_equal(new_sch.mod["main"], sch.mod["main"])
     py_repr = "\n".join(sch.trace.as_python())
     new_py_repr = "\n".join(new_sch.trace.as_python())
     assert py_repr == new_py_repr
@@ -372,8 +372,8 @@ def _check_serialization(sch, func) -> ms.Schedule:
 
 def test_meta_schedule_creation():
     sch = ms.Schedule(func=matmul)
-    assert tvm.ir.structural_equal(sch.orig_func, sch.module)
     assert len(sch.trace.insts) == 0
+    assert len(sch.trace.decisions) == 0
     _check_serialization(sch, func=matmul)
 
 
@@ -535,9 +535,9 @@ def test_meta_schedule_split():
     sch = ms.Schedule(func=matmul)
     i, _, _ = sch.get_axes(sch.get_block("matmul"))
     i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in sch.split(i, factors=[-1, 8, 32])]
-    assert tvm.ir.structural_equal(i_0, sch.module.body.block.body)
-    assert tvm.ir.structural_equal(i_1, sch.module.body.block.body.body)
-    assert tvm.ir.structural_equal(i_2, sch.module.body.block.body.body.body)
+    assert tvm.ir.structural_equal(i_0, sch.mod["main"].body.block.body)
+    assert tvm.ir.structural_equal(i_1, sch.mod["main"].body.block.body.body)
+    assert tvm.ir.structural_equal(i_2, sch.mod["main"].body.block.body.body.body)
     _check_serialization(sch, func=matmul)
 
 
@@ -547,7 +547,7 @@ def test_meta_schedule_reorder():
     sch.reorder(i_2, i_1, i_0)
     i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in [i_0, i_1, i_2]]
 
-    tir_sch = tir.Schedule(func=matmul, debug_mode=True)
+    tir_sch = tir.Schedule(matmul, debug_mode=True)
     ti_0, ti_1, ti_2 = tir_sch.get_axes(tir_sch.get_block("matmul"))
     tir_sch.reorder(ti_2, ti_1, ti_0)
 
@@ -563,7 +563,7 @@ def test_meta_schedule_compute_at():
     matmul_block = sch.get_block("matmul")
     _, _, i_2 = sch.get_axes(matmul_block)
     sch.compute_at(plus_one_block, i_2)
-    assert tvm.ir.structural_equal(sch.module, plus_one_matmul_fused)
+    assert tvm.ir.structural_equal(sch.mod["main"], plus_one_matmul_fused)
     _check_serialization(sch, func=plus_one_matmul)
 
 
@@ -573,7 +573,7 @@ def test_meta_schedule_reverse_compute_at():
     matmul_block = sch.get_block("matmul")
     _, i_1, _ = sch.get_axes(matmul_block)
     sch.reverse_compute_at(relu_block, i_1)
-    assert tvm.ir.structural_equal(sch.module, matmul_relu_fused)
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_relu_fused)
     _check_serialization(sch, func=matmul_relu)
 
 
@@ -581,7 +581,7 @@ def test_meta_schedule_compute_inline():
     sch = ms.Schedule(func=elementwise)
     block = sch.get_block(name="B")
     sch.compute_inline(block=block)
-    assert tvm.ir.structural_equal(sch.module, elementwise_inlined)
+    assert tvm.ir.structural_equal(sch.mod["main"], elementwise_inlined)
     _check_serialization(sch, func=elementwise)
 
 
@@ -590,7 +590,7 @@ def test_meta_schedule_cache_read():
     block = sch.get_block("matmul")
     sch.cache_read(block, i=1, storage_scope="local")
     sch.cache_read(block, i=2, storage_scope="local")
-    assert tvm.ir.structural_equal(sch.module, matmul_cache_read)
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_cache_read)
     _check_serialization(sch, func=matmul)
 
 
@@ -598,7 +598,7 @@ def test_meta_schedule_cache_write():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     sch.cache_write(block, i=0, storage_scope="local")
-    assert tvm.ir.structural_equal(sch.module, matmul_cache_write)
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_cache_write)
     _check_serialization(sch, func=matmul)
 
 
@@ -607,7 +607,7 @@ def test_meta_schedule_blockize():
     block = sch.get_block("matmul")
     _, _, k = sch.get_axes(block)
     sch.blockize(k)
-    assert tvm.ir.structural_equal(sch.module, matmul_blockized)
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_blockized)
     _check_serialization(sch, func=matmul)
 
 
@@ -616,7 +616,7 @@ def test_meta_schedule_decompose_reduction():
     block = sch.get_block("matmul")
     _, _, k = sch.get_axes(block)
     sch.decompose_reduction(block, k)
-    assert tvm.ir.structural_equal(sch.module, matmul_decomposed)
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_decomposed)
     _check_serialization(sch, func=matmul)
 
 
@@ -631,7 +631,7 @@ def test_meta_schedule_tensorize():
     sch.reorder(i_o, j_o, k_o, i_i, j_i, k_i)
     sch.decompose_reduction(block, k_o)
     sch.tensorize(i_i, "ms_test.tensor_intrin")
-    assert tvm.ir.structural_equal(sch.module, matmul_tensorized)
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_tensorized)
     _check_serialization(sch, func=matmul)
 
 

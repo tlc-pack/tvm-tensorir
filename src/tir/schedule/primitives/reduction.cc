@@ -68,7 +68,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     CHECK(ListContainsElement(loops, loop_sref))
         << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
     // Cond 1. Check block is reduction
-    CHECK(self->scopes.at(GetScopeSRef(block_sref))->IsReduction(block_sref))
+    CHECK(self->scopes.at(GetScopeRoot(block_sref))->IsReduction(block_sref))
         << "decompose_reduction expect the block to be a reduction block";
     // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
@@ -247,10 +247,10 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
   ExprDeepEqual equal;
   CHECK(equal(init_realize->predicate, update_realize->predicate))
       << "ValueError: 'merge_reduction' expects the predicate of init and update to be the same";
-  const StmtSRef& scope = GetScopeSRef(init_sref);
+  const StmtSRef& scope = GetScopeRoot(init_sref);
   StmtSRef lca = LowestCommonAncestor({init_sref, update_sref}, scope);
   // Cond 1. Check init_block is under the same scope with update_sref
-  CHECK_EQ(scope.get(), GetScopeSRef(update_sref).get())
+  CHECK_EQ(scope.get(), GetScopeRoot(update_sref).get())
       << "TypeError: 'merge_reduction' expects the 'init' and 'update' to be under the same scope";
   // Cond 3. Write region of 'init' is the same as that of 'update' under LCA
   {
@@ -334,7 +334,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   StmtSRef block_sref = child_blocks[0];
   BlockRealize block_realize = GetBlockRealize(block_sref);
   Block block = block_realize->block;
-  BlockScope scope = self->scopes.at(GetScopeSRef(block_sref));
+  BlockScope scope = self->scopes.at(GetScopeRoot(block_sref));
   CHECK(scope->IsReduction(block_sref)) << "ValueError: can only rfactor a reduction block";
 
   // Collect the information of loops and blocks.
@@ -623,7 +623,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   }
 
   // Insert the rfactor buffer into the scope block's allocation.
-  StmtSRef scope_sref = GetScopeSRef(block_sref);
+  StmtSRef scope_sref = GetScopeRoot(block_sref);
   Block scope_block = GetRef<Block>(scope_sref->GetStmt<BlockNode>()),
         new_scope_block = scope_block;
   new_scope_block.CopyOnWrite()->alloc_buffers.push_back(rf_buf);

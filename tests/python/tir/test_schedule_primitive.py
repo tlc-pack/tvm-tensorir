@@ -425,7 +425,7 @@ def test_fuse():
     s.fuse(outer, inner)
     mod = tvm.script.create_module({"fused_element_wise": fused_element_wise})
     fused_func = mod["fused_element_wise"]
-    tvm.ir.assert_structural_equal(fused_func, s.module)
+    tvm.ir.assert_structural_equal(fused_func, s.mod["main"])
 
 
 def test_split_fuse():
@@ -440,7 +440,7 @@ def test_split_fuse():
     s.split(inner, nparts=10)
     mod = tvm.script.create_module({"split_element_wise": split_element_wise})
     split_func = mod["split_element_wise"]
-    tvm.ir.assert_structural_equal(split_func, s.module)
+    tvm.ir.assert_structural_equal(split_func, s.mod["main"])
 
 
 def test_compute_at():
@@ -453,7 +453,7 @@ def test_compute_at():
     s.compute_at(B, outer)
     mod = tvm.script.create_module({"compute_at_element_wise": compute_at_element_wise})
     split_func = mod["compute_at_element_wise"]
-    tvm.ir.assert_structural_equal(split_func, s.module)
+    tvm.ir.assert_structural_equal(split_func, s.mod["main"])
 
 
 def test_reverse_compute_at():
@@ -467,7 +467,7 @@ def test_reverse_compute_at():
     j1, j2 = s.split(j, factor=16)
     s.reorder(i1, j1, i2, j2)
     s.reverse_compute_at(C, i2)
-    tvm.ir.assert_structural_equal(reverse_compute_at_element_wise, s.module)
+    tvm.ir.assert_structural_equal(reverse_compute_at_element_wise, s.mod["main"])
 
 
 def test_fuse_loop_sref():
@@ -483,7 +483,7 @@ def test_fuse_loop_sref():
     mod = tvm.script.create_module({"predicate_fuse": predicate_fuse})
     predicate_fuse_func = mod["predicate_fuse"]
 
-    tvm.ir.assert_structural_equal(s.module, predicate_fuse_func)
+    tvm.ir.assert_structural_equal(s.mod["main"], predicate_fuse_func)
 
 
 def test_reorder_normal():
@@ -498,7 +498,7 @@ def test_reorder_normal():
     s.fuse(i, j)
     mod = tvm.script.create_module({"matmul_reorder": matmul_reorder})
     matmul_reorder_func = mod["matmul_reorder"]
-    tvm.ir.assert_structural_equal(s.module, matmul_reorder_func)
+    tvm.ir.assert_structural_equal(s.mod["main"], matmul_reorder_func)
 
 
 def test_compute_inline():
@@ -511,7 +511,7 @@ def test_compute_inline():
 
     inlined_func = inline_element_wise
 
-    tvm.ir.assert_structural_equal(inlined_func, s.module)
+    tvm.ir.assert_structural_equal(inlined_func, s.mod["main"])
 
 
 def test_reverse_compute_inline():
@@ -521,7 +521,7 @@ def test_reverse_compute_inline():
     s = tir.Schedule(func, debug_mode=True)
     C = s.get_block("C")
     s.reverse_compute_inline(C)
-    tvm.ir.assert_structural_equal(element_wise_reverse_inline, s.module)
+    tvm.ir.assert_structural_equal(element_wise_reverse_inline, s.mod["main"])
 
 
 def test_compute_at_fail():
@@ -554,7 +554,7 @@ def test_reduction():
     s.decompose_reduction(update, k)
     mod = tvm.script.create_module({"matmul_reduction": matmul_reduction})
     matmul_reduction_func = mod["matmul_reduction"]
-    tvm.ir.assert_structural_equal(s.module, matmul_reduction_func)
+    tvm.ir.assert_structural_equal(s.mod["main"], matmul_reduction_func)
 
 
 def test_cache_read():
@@ -568,7 +568,7 @@ def test_cache_read():
     _ = s.cache_read(B, 0, "local")
     mod = tvm.script.create_module({"cache_read": cache_read})
     cached_func = mod["cache_read"]
-    tvm.ir.assert_structural_equal(cached_func, s.module)
+    tvm.ir.assert_structural_equal(cached_func, s.mod["main"])
 
 
 def test_cache_write():
@@ -579,7 +579,7 @@ def test_cache_write():
     _ = s.cache_write(C, 0, "local")
     mod = tvm.script.create_module({"cache_write": cache_write})
     cached_func = mod["cache_write"]
-    tvm.ir.assert_structural_equal(cached_func, s.module)
+    tvm.ir.assert_structural_equal(cached_func, s.mod["main"])
 
 
 def test_blockize():
@@ -595,7 +595,7 @@ def test_blockize():
     s.blockize(xi)
     mod = tvm.script.create_module({"blockize": blockize})
     blockized_func = mod["blockize"]
-    tvm.ir.assert_structural_equal(blockized_func, s.module)
+    tvm.ir.assert_structural_equal(blockized_func, s.mod["main"])
 
 
 def test_cache_read_write():
@@ -604,13 +604,13 @@ def test_cache_read_write():
     s = tir.Schedule(func, debug_mode=True)
     blockA = s.get_block("A")
     s.cache_read(blockA, 0, "local")
-    tvm.ir.assert_structural_equal(test_func_cache_read, s.module)
+    tvm.ir.assert_structural_equal(test_func_cache_read, s.mod["main"])
 
     # schedule cache write
     s = tir.Schedule(func, debug_mode=True)
     blockA = s.get_block("A")
     s.cache_write(blockA, 0, "local")
-    tvm.ir.assert_structural_equal(test_func_cache_write, s.module)
+    tvm.ir.assert_structural_equal(test_func_cache_write, s.mod["main"])
 
 
 def test_blockize_schedule():
@@ -626,7 +626,7 @@ def test_blockize_schedule():
     s.blockize(xi)
     s.reverse_compute_at(C, yo)
     s.blockize(s.get_axes(C)[-2])
-    tvm.ir.assert_structural_equal(s.module, blockize_schedule_1)
+    tvm.ir.assert_structural_equal(s.mod["main"], blockize_schedule_1)
     # test 2
     s = tir.Schedule(func, debug_mode=True)
     B = s.get_block("B")
@@ -638,7 +638,7 @@ def test_blockize_schedule():
     s.blockize(xi)
     s.compute_at(B, yo)
     s.blockize(s.get_axes(B)[-2])
-    tvm.ir.assert_structural_equal(s.module, blockize_schedule_1)
+    tvm.ir.assert_structural_equal(s.mod["main"], blockize_schedule_1)
     # test 3
     s = tir.Schedule(func, debug_mode=True)
     B = s.get_block("B")
@@ -653,7 +653,7 @@ def test_blockize_schedule():
     yCo, yCi = s.split(yC, factor=32)
     s.reorder(xCo, yCo, xCi, yCi)
     s.compute_at(b_outer, yCo)
-    tvm.ir.assert_structural_equal(s.module, blockize_schedule_2)
+    tvm.ir.assert_structural_equal(s.mod["main"], blockize_schedule_2)
 
 
 def test_pragma():
@@ -663,7 +663,7 @@ def test_pragma():
     i, _, _ = s.get_axes(C)
     s.pragma(i, "auto_unroll_max_step", 16)
     s.pragma(i, "unroll_explicit", False)
-    tvm.ir.assert_structural_equal(matmul_pragma, s.module)
+    tvm.ir.assert_structural_equal(matmul_pragma, s.mod["main"])
 
 
 def test_double_buffer():
@@ -671,7 +671,7 @@ def test_double_buffer():
     s = tir.Schedule(func, debug_mode=True)
     B = s.get_block("B")
     s.double_buffer(B)
-    tvm.ir.assert_structural_equal(element_wise_double_buffer, s.module)
+    tvm.ir.assert_structural_equal(element_wise_double_buffer, s.mod["main"])
 
 
 if __name__ == "__main__":

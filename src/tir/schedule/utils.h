@@ -123,7 +123,7 @@ namespace tir {
       << "` points to `Loop`, but gets: " << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
 
 #define TVM_TYPE_AS_E(Result, From, Type) \
-  From.as<Type>();                        \
+  (From).as<Type>();                      \
   ICHECK(Result)
 
 #define TVM_TYPE_AS(Result, From, Type)                                           \
@@ -145,7 +145,7 @@ inline String Repr(const PrimFunc& func) {
   return s;
 }
 
-inline String Repr(const Schedule& self) { return Repr(self->Module()); }
+inline String Repr(const Schedule& self) { return Repr(self->mod()); }
 
 /*!
  * \brief Convert a tvm::runtime::Array to std::vector
@@ -267,7 +267,7 @@ BufferRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
  * \brief remove the AST leaf and its parent subtree which has only one leaf
  * \param sref The sref of Block/Loop to be removed
  * \param root The AST root
- * \return The orginal stmt and the removed stmt of the subtree rooted by the parent node
+ * \return The original stmt and the removed stmt of the subtree rooted by the parent node
  */
 std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
 
@@ -296,7 +296,7 @@ bool StmtExprContainsVar(const ObjectRef& obj, const std::vector<Var>& vars);
 bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*>& vars);
 
 inline void UpdateScope(ScheduleState self, const StmtSRef& sref) {
-  self->scopes[sref] = BlockScope(tir::GetChildBlocks(self, sref));
+  self->scopes.Set(sref, BlockScope(tir::GetChildBlocks(self, sref)));
 }
 
 class StmtReplacer : public StmtMutator {

@@ -100,6 +100,22 @@ class ScheduleNode : public runtime::Object {
    * \return The corresponding block/loop sref
    */
   virtual StmtSRef GetSRef(const Stmt& stmt) const;
+  /******** Remove random variables ********/
+  /*!
+   * \brief Remove a random variable from the symbol table
+   * \param block_rv The symbol to be removed
+   */
+  virtual void RemoveRV(const BlockRV& block_rv) = 0;
+  /*!
+   * \brief Remove a random variable from the symbol table
+   * \param block_rv The symbol to be removed
+   */
+  virtual void RemoveRV(const LoopRV& loop_rv) = 0;
+  /*!
+   * \brief Remove a random variable from the symbol table
+   * \param block_rv The symbol to be removed
+   */
+  virtual void RemoveRV(const VarRV& var_rv) = 0;
 
  public:
   /******** Sampling ********/

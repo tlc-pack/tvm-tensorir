@@ -119,13 +119,13 @@ class BlockCollector : public tir::StmtVisitor {
  public:
   /*! \brief Constructor */
   explicit BlockCollector(const tir::Schedule& sch) : sch_(sch) {
-    const auto* realize = GetOnlyFunc(sch->Module())->body.as<tir::BlockRealizeNode>();
+    const auto* realize = GetOnlyFunc(sch->mod())->body.as<tir::BlockRealizeNode>();
     root_block_ = realize->block.get();
   }
 
   /*! \brief Entry point */
   Array<tir::StmtSRef> Run() {
-    VisitStmt(GetOnlyFunc(sch_->Module())->body);
+    VisitStmt(GetOnlyFunc(sch_->mod())->body);
     Array<tir::StmtSRef> result = std::move(result_);
     return result;
   }
@@ -174,7 +174,7 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
         ICHECK(block) << "TypeError: Expects BlockNode, but gets: "
                       << block_sref->stmt->GetTypeKey();
         // TODO(@junrushao1994): replace this quick hack
-        if (!tir::GetBlocks(sch->state, block->name_hint).empty()) {
+        if (!tir::GetBlocks(sch->state(), block->name_hint).empty()) {
           // apply the rule to the block
           Array<Schedule> applied =
               rule->Apply(task, sch, /*block=*/sch->GetBlock(block->name_hint));

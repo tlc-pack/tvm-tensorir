@@ -34,29 +34,29 @@ class Schedule;
 /*! \brief The meta schedule class */
 class ScheduleNode : public tir::ConcreteScheduleNode {
  private:
-  using tir::ScheduleNode::Copy;
+  friend class tir::Schedule;
+  using tir::ConcreteScheduleNode::Copy;
 
- public:
+ protected:
   friend class Schedule;
   using TSymbolTable = tir::ConcreteScheduleNode::TSymbolTable;
 
   /*! \brief The schedule state */
-  using tir::ConcreteScheduleNode::state;
+  using tir::ConcreteScheduleNode::state_;
   /*! \brief The symbol table */
-  using tir::ConcreteScheduleNode::symbol_table;
-  /*! \brief The random number sampler */
-  Sampler sampler;
-  /*! \brief The original TIR PrimFunc to be scheduled */
-  tir::PrimFunc orig_func;
+  using tir::ConcreteScheduleNode::symbol_table_;
+
+ public:
   /*! \brief The trace of the program execution */
   Trace trace;
+  /*! \brief The random number sampler */
+  Sampler sampler;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("state", &state);
-    v->Visit("symbol_table", &symbol_table);
-    // `sampler` is not visited
-    v->Visit("orig_func", &orig_func);
+    // `state_` is not visited
+    // `symbol_table_` is not visited
     v->Visit("trace", &trace);
+    // `sampler` is not visited
   }
 
   static constexpr const char* _type_key = "meta_schedule.Schedule";
@@ -69,7 +69,10 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * original schedule, and vice versa.
    * \return A new schedule.
    */
-  Schedule Copy(int new_seed) const;
+  Schedule Copy(int64_t new_seed) const;
+
+  void Seed(int64_t seed = -1) final;
+
   /**************** Sampling ****************/
   /*!
    * \brief Apply the instruction SamplePerfectTile
@@ -114,7 +117,6 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * \brief Get the child blocks of a specific parent block/loop
    * \param block_rv The random variable that points to the parent block
    * \return A list of child blocks
-   * TODO(@junrushao1994): revisit
    */
   Array<BlockRV> GetChildBlocks(const BlockRV& block_rv) final;
   /*!
@@ -305,9 +307,8 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
 class Schedule : public tir::Schedule {
  public:
   using TSymbolTable = ScheduleNode::TSymbolTable;
-
   explicit Schedule(tir::PrimFunc func, int64_t seed = -1, bool debug_mode = false);
-
+  explicit Schedule(IRModule mod, int64_t seed = -1, bool debug_mode = false);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, tir::Schedule, ScheduleNode);
 };
 

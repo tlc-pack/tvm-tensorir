@@ -61,12 +61,12 @@ b = tvm.nd.array(b_np)
 c = tvm.nd.array(np.zeros((M, N)).astype("float32"))
 
 
-def build_and_test(func):
-    build_func = tvm.build(func, target=target)
+def build_and_test(mod):
+    build_func = tvm.build(mod["main"], target=target)
     build_func(a, b, c)
     tvm.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy()), rtol=1e-5)
     evaluator = build_func.time_evaluator(build_func.entry_name, ctx, number=1)
-    print(tvm.script.asscript(func))
+    print(tvm.script.asscript(mod))
     return evaluator(a, b, c).mean
 
 
@@ -91,10 +91,10 @@ i_o, i_i = s.split(i, factor=bn)
 j_o, j_i = s.split(j, factor=bn)
 k_o, k_i = s.split(k, factor=4)
 s.reorder(i_o, j_o, k_o, k_i, i_i, j_i)
-func_opt1 = s.module
+func_opt1 = s.mod
 
 # s.decompose_reduction(update, j_o)
-print("Opt1: %f" % build_and_test(s.module))
+print("Opt1: %f" % build_and_test(s.mod))
 
 ################################################################################################
 # Vectorization
@@ -111,10 +111,10 @@ update = s.get_block("C")
 i_o, j_o, k_o, k_i, i_i, j_i = s.get_axes(update)
 
 s.vectorize(j_i)
-func_opt2 = s.module
+func_opt2 = s.mod
 
 s.decompose_reduction(update, j_o)
-print("Opt2: %f" % build_and_test(s.module))
+print("Opt2: %f" % build_and_test(s.mod))
 
 ################################################################################################
 # Loop Permutation
@@ -130,11 +130,11 @@ update = s.get_block("C")
 i_o, j_o, k_o, k_i, i_i, j_i = s.get_axes(update)
 
 s.reorder(i_o, j_o, k_o, i_i, k_i, j_i)
-func_opt3 = s.module
+func_opt3 = s.mod
 
 s.decompose_reduction(update, j_o)
 
-print("Opt3: %f" % build_and_test(s.module))
+print("Opt3: %f" % build_and_test(s.mod))
 
 
 ################################################################################################
@@ -194,10 +194,10 @@ j_o, j_i = s.split(j, factor=bn)
 k_o, k_i = s.split(k, factor=4)
 s.reorder(i_o, j_o, k_o, i_i, k_i, j_i)
 s.vectorize(j_i)
-func_opt3 = s.module
+func_opt3 = s.mod
 
 s.decompose_reduction(update, j_o)
-print("Opt4: %f" % build_and_test(s.module))
+print("Opt4: %f" % build_and_test(s.mod))
 
 ################################################################################################
 # Write cache for blocks
@@ -227,10 +227,10 @@ s.vectorize(j)
 x, y, z = s.get_axes(packedB)
 s.vectorize(z)
 s.parallel(x)
-func_opt5 = s.module
+func_opt5 = s.mod
 
 s.decompose_reduction(cached_update, j_o)
-print("Opt5: %f" % build_and_test(s.module))
+print("Opt5: %f" % build_and_test(s.mod))
 
 ###################################################################################################
 # Parallel
@@ -244,7 +244,7 @@ i_o, j_o, k_o, k_i, i_i, j_i = s.get_axes(cached_update)
 s.parallel(i_o)
 
 s.decompose_reduction(cached_update, j_o)
-print("Opt6: %f" % build_and_test(s.module))
+print("Opt6: %f" % build_and_test(s.mod))
 
 ###################################################################################################
 

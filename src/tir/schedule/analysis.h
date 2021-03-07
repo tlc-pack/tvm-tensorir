@@ -61,7 +61,7 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
  * \param sref The block or loop sref to be retrieved
  * \return The sref to the scope root block
  */
-StmtSRef GetScopeSRef(const StmtSRef& sref);
+StmtSRef GetScopeRoot(const StmtSRef& sref);
 
 /******** Block-loop relation ********/
 /*!
@@ -107,6 +107,14 @@ StmtSRef GetSRefTreeRoot(const StmtSRef& sref);
 bool HasSingleChild(const StmtSRef& loop_or_block_sref);
 
 Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref);
+
+/*!
+ * \brief Get the pointer to the PrimFunc that the statement pointed by sref belongs to
+ * \param self The state of scheduling
+ * \param sref The sref to the statement in the query
+ * \return A pointer to the PrimFunc the statement belongs to
+ */
+const PrimFuncNode* GetRootPrimFunc(const ScheduleState& self, const StmtSRef& sref);
 
 }  // namespace tir
 }  // namespace tvm

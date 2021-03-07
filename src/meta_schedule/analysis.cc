@@ -52,7 +52,7 @@ bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block
 }
 
 bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  tir::StmtSRef parent_block_sref = GetScopeSRef(block_sref);
+  tir::StmtSRef parent_block_sref = GetScopeRoot(block_sref);
   return parent_block_sref->parent == nullptr;
 }
 
@@ -95,14 +95,15 @@ bool IsSpatial(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) 
 }
 
 bool IsOutputBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  tir::StmtSRef parent_sref = tir::GetScopeSRef(block_sref);
+  tir::StmtSRef parent_sref = tir::GetScopeRoot(block_sref);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   const auto* parent = parent_sref->GetStmt<tir::BlockNode>();
   ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   ICHECK(parent) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   if (parent_sref->parent == nullptr) {
+    const tir::PrimFuncNode* func = tir::GetRootPrimFunc(self, parent_sref);
     for (const tir::BufferRegion& write : block->writes) {
-      for (const auto& kv : self->func->buffer_map) {
+      for (const auto& kv : func->buffer_map) {
         if (write->buffer.get() == kv.second.get()) {
           return true;
         }
@@ -224,7 +225,7 @@ Optional<Array<Bool>> GetReadPattern(const Array<tir::IterVar>& block_vars,
 bool IsElementWiseMatch(const tir::ScheduleState& self, const tir::StmtSRef& producer_sref,
                         const tir::StmtSRef& consumer_sref) {
   // Assume consumer is the only consumer of the producer
-  tir::StmtSRef parent_sref = tir::GetScopeSRef(producer_sref);
+  tir::StmtSRef parent_sref = tir::GetScopeRoot(producer_sref);
   const auto* producer = producer_sref->GetStmt<tir::BlockNode>();
   const auto* consumer = consumer_sref->GetStmt<tir::BlockNode>();
   ICHECK(producer) << "TypeError: Expects Block, but gets: " << producer_sref->stmt->GetTypeKey();
