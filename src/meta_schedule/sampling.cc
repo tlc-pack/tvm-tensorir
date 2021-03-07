@@ -40,18 +40,27 @@ std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler
   } else if (decision->defined()) {
     // Case 2. Use previous decision
     result = AsVector<Integer, int64_t>(decision->value());
+    int n = result.size();
+    ICHECK_GE(n, 2);
+    int64_t len = extent;
+    for (int i = n - 1; i > 0; --i) {
+      int64_t& l = result[i];
+      // A previous decision could become invalid because of the change of outer tiles
+      // To handle this case properly, we check if the tiling strategy is still perfect.
+      // If not, we use a trivial default solution (1, 1, ..., 1, L) for rest of the tiles
+      if (len % l != 0) {
+        l = len;
+      }
+      len /= l;
+    }
+    result[0] = len;
   } else {
     // Case 3. Use fresh new sampling result
-    std::vector<int> sampled = sampler->SamplePerfectTile(n, extent);
+    std::vector<int> sampled = sampler->SamplePerfectTile(n, extent, max_innermost_factor);
     result = std::vector<int64_t>(sampled.begin(), sampled.end());
+    ICHECK_LE(sampled.back(), max_innermost_factor);
   }
-  // Record the new decision
-  Array<Integer> new_decision;
-  new_decision.reserve(result.size());
-  for (int64_t i : result) {
-    new_decision.push_back(Integer(i));
-  }
-  *decision = new_decision;
+  *decision = AsArray<int64_t, Integer>(result);
   return result;
 }
 

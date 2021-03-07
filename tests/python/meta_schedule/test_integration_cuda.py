@@ -29,9 +29,9 @@ from tvm import te
 logging.basicConfig()
 logging.getLogger("meta_schedule").setLevel(logging.DEBUG)
 
-RPC_KEY = "jetson-agx-xavier"
-TARGET = tvm.target.Target("nvidia/jetson-agx-xavier")
-TARGET_HOST = tvm.target.Target("llvm -mcpu=carmel -mtriple=aarch64-linux-gnu")
+RPC_KEY = "rtx-3070"
+TARGET = tvm.target.Target("nvidia/geforce-rtx-3070")
+TARGET_HOST = tvm.target.Target("llvm")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.multi_level_tiling(
@@ -101,7 +101,7 @@ def test_integration_matmul():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.module))
+        print(tvm.script.asscript(sch.mod))
 
 
 if __name__ == "__main__":

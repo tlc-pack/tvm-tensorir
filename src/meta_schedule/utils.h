@@ -154,7 +154,7 @@ inline bool DomainEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
 template <class FPredicate>
 inline Optional<tir::StmtSRef> FindBlockSRef(const tir::ScheduleState& sch, FPredicate predicate) {
   Optional<tir::StmtSRef> result = NullOpt;
-  tir::PreOrderVisit(sch->func->body, [&sch, &result, &predicate](const ObjectRef& obj) -> bool {
+  auto f_visit = [&sch, &result, &predicate](const ObjectRef& obj) -> bool {
     if (result.defined()) {
       return false;
     }
@@ -165,21 +165,47 @@ inline Optional<tir::StmtSRef> FindBlockSRef(const tir::ScheduleState& sch, FPre
       }
     }
     return true;
-  });
+  };
+  for (const auto& kv : sch->mod->functions) {
+    const BaseFunc& base_func = kv.second;
+    if (const auto* func = base_func.as<tir::PrimFuncNode>()) {
+      tir::PreOrderVisit(func->body, f_visit);
+    }
+  }
   return result;
 }
 
 /**************** TIR Annotation ****************/
 
-inline bool HasBinding(const tir::StmtSRef& sref, const String& thread_binding) {
-  const auto* loop = sref->GetStmt<tir::ForNode>();
-  ICHECK(loop) << "ValueError: Expect loop sref here";
-  if (loop->thread_binding) {
-    ICHECK(loop->thread_binding.value()->iter_type == tir::IterVarType::kThreadIndex);
-    return loop->thread_binding.value()->thread_tag == thread_binding;
-  } else {
+inline bool HasBinding(const tir::StmtSRef& loop_sref, const String& thread_tag) {
+  const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  if (!loop->thread_binding.defined()) {
     return false;
   }
+  tir::IterVar binding = loop->thread_binding.value();
+  if (binding->iter_type != tir::IterVarType::kThreadIndex) {
+    return false;
+  }
+  return binding->thread_tag == thread_tag;
+}
+
+inline Optional<String> GetBinding(const tir::StmtSRef& loop_sref) {
+  const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  if (!loop->thread_binding.defined()) {
+    return NullOpt;
+  }
+  tir::IterVar binding = loop->thread_binding.value();
+  if (loop->kind == tir::ForKind::kParallel) {
+    return String("parallel");
+  } else if (loop->kind == tir::ForKind::kVectorized) {
+    return String("vectorized");
+  } else if (loop->kind == tir::ForKind::kUnrolled) {
+    return String("unrolled");
+  }
+  if (binding->iter_type != tir::IterVarType::kThreadIndex) {
+    return NullOpt;
+  }
+  return binding->thread_tag;
 }
 
 inline Optional<String> GetAnn(const tir::StmtSRef& sref, const String& ann_key) {

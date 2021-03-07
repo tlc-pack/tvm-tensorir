@@ -33,48 +33,49 @@ namespace tir {
 tir::Schedule tir::Schedule::Meta(tir::PrimFunc func, int64_t seed, bool debug_mode) {
   return meta_schedule::Schedule(func, seed, debug_mode);
 }
+tir::Schedule tir::Schedule::Meta(IRModule mod, int64_t seed, bool debug_mode) {
+  return meta_schedule::Schedule(mod, seed, debug_mode);
+}
 }  // namespace tir
 
 namespace meta_schedule {
 
-Schedule::Schedule(tir::PrimFunc func, int64_t seed, bool debug_mode) {
+Schedule::Schedule(tir::PrimFunc func, int64_t seed, bool debug_mode)
+    : Schedule(IRModule({{GlobalVar("main"), func}}), seed, debug_mode) {}
+
+Schedule::Schedule(IRModule mod, int64_t seed, bool debug_mode) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
-  n->state = tir::ScheduleState(func, debug_mode);
-  n->symbol_table = {};
+  n->state_ = tir::ScheduleState(mod, debug_mode);
+  n->symbol_table_ = {};
+  n->analyzer_ = std::make_unique<arith::Analyzer>();
   if (seed != -1) {
     n->sampler.Seed(seed);
   }
-  n->orig_func = func;
   n->trace = Trace();
   this->data_ = std::move(n);
 }
 
-/**************** Copy ****************/
+/**************** Utility ****************/
 
-Schedule ScheduleNode::Copy(int new_seed) const {
-  tir::Schedule parent = tir::ConcreteScheduleNode::Copy();
-  const auto* p = parent.as<ConcreteScheduleNode>();
-  ICHECK(p != nullptr);
+Schedule ScheduleNode::Copy(int64_t new_seed) const {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
-  n->state = std::move(p->state);
-  n->symbol_table = std::move(p->symbol_table);
-  n->orig_func = orig_func;
+  tir::ConcreteScheduleNode::MakeCopy(&n->state_, &n->symbol_table_);
+  n->analyzer_ = std::make_unique<arith::Analyzer>();
   n->trace = Trace(this->trace->insts, this->trace->decisions);
   n->sampler.Seed(new_seed);
   return Schedule(std::move(n));
 }
 
-/**************** Sampling ****************/
+void ScheduleNode::Seed(int64_t seed) { this->sampler.Seed(seed); }
 
-using tir::FromRV;
-using tir::SetRV;
+/**************** Sampling ****************/
 
 Array<tir::Var> ScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n,
                                                 int max_innermost_factor,
                                                 Optional<Array<Integer>> decision) {
   std::vector<int64_t> result = meta_schedule::SamplePerfectTile(
-      this->state, &this->sampler, this->GetSRef(loop_rv), n, max_innermost_factor, &decision);
-  Array<tir::Var> result_rvs = SetRV(this, AsArray<int64_t, Integer>(result));
+      state_, &this->sampler, this->GetSRef(loop_rv), n, max_innermost_factor, &decision);
+  Array<tir::Var> result_rvs = SetRV(AsArray<int64_t, Integer>(result));
   // Record the instruction
   this->trace->Append(SamplePerfectTileAttrs::Make(loop_rv, n, max_innermost_factor, result_rvs),
                       decision);
@@ -85,16 +86,16 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,  //
                                          const Array<FloatImm>& probs,      //
                                          Optional<Integer> decision) {
   int64_t result =
-      meta_schedule::SampleCategorical(this->state, &this->sampler, candidates, probs, &decision);
-  tir::Var result_rv = SetRV(this, result);
+      meta_schedule::SampleCategorical(state_, &this->sampler, candidates, probs, &decision);
+  tir::Var result_rv = SetRV(result);
   this->trace->Append(SampleCategoricalAttrs::Make(candidates, probs, result_rv), decision);
   return result_rv;
 }
 
 LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block_rv, Optional<Integer> decision) {
-  tir::StmtSRef result = meta_schedule::SampleComputeLocation(this->state, &this->sampler,
+  tir::StmtSRef result = meta_schedule::SampleComputeLocation(state_, &this->sampler,
                                                               this->GetSRef(block_rv), &decision);
-  LoopRV result_rv = SetRV<LoopRV>(this, result);
+  LoopRV result_rv = SetRV<LoopRV>(result);
   this->trace->Append(SampleComputeLocationAttrs::Make(block_rv, result_rv), decision);
   return result_rv;
 }
@@ -161,14 +162,12 @@ void ScheduleNode::Reorder(const Array<LoopRV>& order) {
 void ScheduleNode::ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
                              bool preserve_unit_loop) {
   tir::ConcreteScheduleNode::ComputeAt(block_rv, loop_rv, preserve_unit_loop);
-  // TODO
   this->trace->Append(ComputeAtAttrs::Make(block_rv, loop_rv));
 }
 
 void ScheduleNode::ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
                                     bool preserve_unit_loop) {
   tir::ConcreteScheduleNode::ReverseComputeAt(block_rv, loop_rv, preserve_unit_loop);
-  // TODO
   this->trace->Append(ReverseComputeAtAttrs::Make(block_rv, loop_rv));
 }
 
@@ -275,7 +274,7 @@ void ScheduleNode::MarkLoop(const LoopRV& loop_rv, const String& ann_key, const 
   ICHECK(ann_val->IsInstance<tir::StringImmNode>() || ann_val->IsInstance<IntImmNode>())
       << "TypeError: Only StringImm and IntImm are supported for now, but gets: "
       << ann_val->GetTypeKey();
-  AddAnn(this->state, this->GetSRef(loop_rv), ann_key, ann_val);
+  AddAnn(state_, this->GetSRef(loop_rv), ann_key, ann_val);
   this->trace->Append(MarkLoopAttrs::Make(loop_rv, ann_key, ann_val));
 }
 
@@ -283,8 +282,7 @@ void ScheduleNode::MarkBlock(const BlockRV& block_rv, const String& ann_key,
                              const PrimExpr& ann_val) {
   PrimExpr value = this->Get(ann_val);
   const auto* int_imm = TVM_TYPE_AS(int_imm, value, IntImmNode);
-  AddAnn(this->state, this->GetSRef(block_rv), ann_key,
-         tir::StringImm(std::to_string(int_imm->value)));
+  AddAnn(state_, this->GetSRef(block_rv), ann_key, tir::StringImm(std::to_string(int_imm->value)));
   this->trace->Append(MarkBlockAttrs::Make(block_rv, ann_key, ann_val));
 }
 
@@ -297,8 +295,17 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkLoop")
     .set_body_method<Schedule>(&ScheduleNode::MarkLoop);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkBlock")
     .set_body_method<Schedule>(&ScheduleNode::MarkBlock);
-TVM_REGISTER_GLOBAL("meta_schedule.Schedule")  //
-    .set_body_typed(tir::Schedule::Meta);
+TVM_REGISTER_GLOBAL("meta_schedule.Schedule")
+    .set_body_typed([](ObjectRef obj, int64_t seed, bool debug_mode) -> Schedule {
+      if (const auto* func = obj.as<tir::PrimFuncNode>()) {
+        return Schedule(GetRef<tir::PrimFunc>(func), seed, debug_mode);
+      }
+      if (const auto* mod = obj.as<IRModuleNode>()) {
+        return Schedule(GetRef<IRModule>(mod), seed, debug_mode);
+      }
+      LOG(FATAL) << "TypeError: Expects `IRModule` or `PrimFunc`, but gets: " << obj->GetTypeKey();
+      throw;
+    });
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed([](Schedule self, int new_seed) {
   return self->Copy(new_seed);
 });

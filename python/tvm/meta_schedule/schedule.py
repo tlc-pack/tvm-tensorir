@@ -44,7 +44,6 @@ class Schedule(TIRSchedule):
     """
 
     state: ScheduleState
-    orig_func: tir.PrimFunc
     trace: Trace
 
     def __init__(  # pylint: disable=super-init-not-called

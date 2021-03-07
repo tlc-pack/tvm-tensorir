@@ -76,6 +76,33 @@ void UpdateSRef(ScheduleStateNode* self, StmtSRefNode* sref, const StmtNode* new
   sref->stmt = new_stmt;
 }
 
+/*!
+ * \brief Get PrimFunc and GlobalVar that the root block belongs to
+ * \param mod The IRModule
+ * \param root_block The root block of the PrimFunc
+ * \param result_g_var The result GlobalVar
+ * \return The result PrimFunc where the root block belongs to
+ */
+const PrimFuncNode* GetRootPrimFunc(const IRModule& mod, const StmtNode* root_block,
+                                    GlobalVar* result_g_var) {
+  for (const auto& kv : mod->functions) {
+    const GlobalVar& g_var = kv.first;
+    const BaseFunc& base_func = kv.second;
+    if (const auto* func = base_func.as<PrimFuncNode>()) {
+      if (const auto* realize = func->body.as<BlockRealizeNode>()) {
+        if (realize->block.get() == root_block) {
+          *result_g_var = g_var;
+          return func;
+        }
+      }
+    }
+  }
+  LOG(FATAL) << "IndexError: Could not get the correpsonding function in the schedule state of the "
+                "statement:\n"
+             << GetRef<Stmt>(root_block);
+  throw;
+}
+
 /**************** Creation ****************/
 
 /*! \brief A helper class to create a new ScheduleStateNode */
@@ -85,21 +112,27 @@ class StateCreator : private StmtVisitor {
    * \brief The entry function
    * \param self The schedule state to be completed
    */
-  static ObjectPtr<ScheduleStateNode> Create(PrimFunc func, bool debug_mode) {
+  static ObjectPtr<ScheduleStateNode> Create(IRModule mod, bool debug_mode) {
     ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
     ScheduleStateNode* self = n.get();
-    // Set `n->func`
-    n->func = std::move(func);
+    // Set `n->mod`
+    n->mod = std::move(mod);
     // Set `n->debug_mode`
     n->debug_mode = debug_mode;
-    // Set `n->stmt2ref`
-    // Set `n->scopes`
-    (StateCreator(self)).VisitStmt(self->func->body);
+    // Set `n->stmt2ref` and `n->scopes`
+    StateCreator creator(self);
+    for (const auto& kv : n->mod->functions) {
+      const BaseFunc& base_func = kv.second;
+      if (const auto* func = base_func.as<PrimFuncNode>()) {
+        creator.VisitStmt(func->body);
+      }
+    }
     return n;
   }
 
  private:
-  explicit StateCreator(ScheduleStateNode* self) : self_(self), srefs_{} {}
+  explicit StateCreator(ScheduleStateNode* self)
+      : self_(self), srefs_{}, realizes_{}, block_frames_{} {}
 
   /*!
    * \brief Add a new statement to the stack, which becomes the current scope
@@ -139,7 +172,7 @@ class StateCreator : private StmtVisitor {
     sref->binding_valid =
         ValidateBlockBinding(GetRef<BlockRealize>(realizes_.back()), loop_var_ranges);
     // Collect `scopes` info
-    self_->scopes[sref] = BlockScope(std::move(block_frames_.back().leaf_blocks));
+    self_->scopes.Set(sref, BlockScope(std::move(block_frames_.back().leaf_blocks)));
     block_frames_.pop_back();
     // Update parent scope if exists
     if (!block_frames_.empty()) {
@@ -183,8 +216,8 @@ class StateCreator : private StmtVisitor {
 
 /**************** Constructor ****************/
 
-ScheduleState::ScheduleState(PrimFunc func, bool debug_mode) {
-  data_ = StateCreator::Create(func, debug_mode);
+ScheduleState::ScheduleState(IRModule mod, bool debug_mode) {
+  data_ = StateCreator::Create(mod, debug_mode);
   // Verify the region cover
   ScheduleState self = GetRef<ScheduleState>(get());
   for (const auto& it : self->scopes) {
@@ -192,6 +225,9 @@ ScheduleState::ScheduleState(PrimFunc func, bool debug_mode) {
     VerifyRegionCover(self, sref);
   }
 }
+
+ScheduleState::ScheduleState(PrimFunc func, bool debug_mode)
+    : ScheduleState(IRModule({{GlobalVar("main"), func}}), debug_mode) {}
 
 /**************** Replace ****************/
 
@@ -442,7 +478,7 @@ class SRefUpdater : public StmtVisitor {
     VisitStmt(op->body);
     parents_.pop_back();
     // Additionally, need to update the scope because the block is changed
-    self_->scopes[sref] = BlockScope(tir::GetChildBlocks(self_, sref));
+    self_->scopes.Set(sref, BlockScope(tir::GetChildBlocks(self_, sref)));
   }
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
@@ -616,20 +652,34 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   //   The visit stops when all the ancestors are uniquely referenced, i.e. can mutate inplace.
   //   Along the way, because we create a new ancestor path,
   //   we need to update those sref points from old ancestors to newly created ones
-  // `num_copy_steps` is the maximum number of hops until we need to copy
-  // To reach a node that can be mutated in-place, it needs `num_copy_steps + 1` hops
+  // Variables:
+  // 1) `num_copy_steps`. The maximum number of hops until we need to copy. To reach a node that can
+  // be mutated in-place, it needs `num_copy_steps + 1` hops.
+  // 2) `need_module_copy`. If true, need to mutate the PrimFunc and IRModule the sref belongs to.
+  // 3) `g_var` and `g_func`. Indicate which GlobalVar and PrimFunc the sref corresponds to
   int num_copy_steps = -1;
+  bool need_module_copy = false;
+  const PrimFuncNode* g_func = nullptr;
+  GlobalVar g_var;
   {
     int i = 0;
-    for (const StmtSRefNode* ptr = src_sref.get(); ptr != nullptr; ptr = ptr->parent, ++i) {
-      if (!ptr->stmt->unique()) {
+    const StmtSRefNode* p = src_sref.get();
+    for (;;) {
+      if (!p->stmt->unique()) {
         num_copy_steps = i;
       }
+      if (p->parent == nullptr) {
+        break;
+      }
+      ++i;
+      p = p->parent;
     }
-    // If the function itself is not unique, then we assume the root is not unique
-    if (!this->func.unique()) {
-      num_copy_steps = i;
-    }
+    // Find `g_func` and `g_var` where the `src_sref` is in
+    g_func = GetRootPrimFunc(this->mod, p->stmt, &g_var);
+    need_module_copy = num_copy_steps == i ||             //
+                       !this->mod.unique() ||             //
+                       !this->mod->functions.unique() ||  //
+                       !g_func->unique();
   }
   // Loop invariant:
   //
@@ -646,8 +696,8 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   // 3) `tgt_stmt` is of type Loop or Block
   StmtSRefNode* child_sref = src_sref.get();
   Stmt child_tgt_stmt = std::move(tgt_stmt);
-  for (int i = 0; i <= num_copy_steps && child_sref->parent != nullptr; ++i) {
-    bool parent_unique = (i == num_copy_steps);
+  for (int i = 0; (need_module_copy || i <= num_copy_steps) && child_sref->parent != nullptr; ++i) {
+    bool can_cow_parent = !need_module_copy && i == num_copy_steps;
     // replacing `child_sref->stmt` to `child_tgt_stmt`.
     const StmtNode* parent_stmt = child_sref->parent->stmt;
     const StmtNode* child_src_stmt = child_sref->stmt;
@@ -662,9 +712,9 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     // Step 2.2. Create `new_parent_stmt`, by mutating the body of `parent_stmt`,
     Stmt new_parent_stmt = ChildReplacer::Mutate(parent_stmt, child_src_stmt, child_tgt_stmt,
                                                  /*seq_index=*/child_sref->seq_index,
-                                                 /*allow_copy_on_write=*/parent_unique);
+                                                 /*allow_copy_on_write=*/can_cow_parent);
     // Step 2.3. Go to next parent
-    if (parent_unique) {
+    if (can_cow_parent) {
       // If the node can be directly mutated inplace,
       // then there is no need to update its parent and the function
       break;
@@ -673,22 +723,35 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     child_sref = child_sref->parent;
   }
   // Step 3. Handle the case that we mutate the root
-  if (child_sref->parent == nullptr) {
+  if (need_module_copy) {
     // From the loop invariant, upon exit, while its subtree is properly set,
     // `child_sref` is not properly to `child_tgt_stmt` yet.
     if (src_sref->parent != nullptr) {
       // Not replacing a root
       UpdateSRef(this, child_sref, child_tgt_stmt.get());
     }
-    // Update the body of the `this->func`
-    PrimFuncNode* new_func = this->func.CopyOnWrite();
-    // Assign `child_tgt_stmt`, which is a Block, to the root block
-    const auto* realize = TVM_TYPE_AS(realize, func->body, BlockRealizeNode);
+    // Ensure the uniqueness of `this->mod` and `this->mod->functions`
+    IRModuleNode* new_mod = this->mod.CopyOnWrite();
+    MapNode* new_map = new_mod->functions.CopyOnWrite();
+    // Move out the PrimFunc where the sref belong while ensuring uniqueness
+    PrimFunc ref_new_func = Downcast<PrimFunc>(std::move(new_map->at(g_var)));
+    ICHECK(ref_new_func.get() == g_func);
+    PrimFuncNode* new_func = ref_new_func.CopyOnWrite();
+    // If `g_func` was not unique, after the 3 lines above:
+    //   `ref_new_func` points to a unique PrimFunc
+    //   `g_func` points to the previous PrimFunc if it is not unique
+    // If `g_func` was unique, after the 3 lines above:
+    //   `ref_new_func` points to the same unique function that `g_func` points to
+    // Then, move the `ref_new_func` back
+    new_map->at(g_var) = std::move(ref_new_func);
+    // Update the body of the function the sref belongs to Assign
+    const auto* realize = TVM_TYPE_AS(realize, g_func->body, BlockRealizeNode);
+    // Make `child_tgt_stmt` the root block
     const auto* child_block = TVM_TYPE_AS(child_block, child_tgt_stmt, BlockNode);
     ObjectPtr<BlockRealizeNode> new_realize = make_object<BlockRealizeNode>(*realize);
     new_realize->block = GetRef<Block>(child_block);
     new_func->body = BlockRealize(std::move(new_realize));
-    this->func = GetRef<PrimFunc>(new_func);
+    this->mod = GetRef<IRModule>(new_mod);
   }
   if (this->debug_mode) {
     VerifySRefTree(GetRef<ScheduleState>(this));
@@ -699,18 +762,22 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
 
 TVM_REGISTER_NODE_TYPE(ScheduleStateNode);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleState")
-    .set_body_typed([](PrimFunc func, bool debug_mode) { return ScheduleState(func, debug_mode); });
+    .set_body_typed([](ObjectRef obj, bool debug_mode) {
+      if (const auto* func = obj.as<PrimFuncNode>()) {
+        return ScheduleState(GetRef<PrimFunc>(func), debug_mode);
+      }
+      if (const auto* mod = obj.as<IRModuleNode>()) {
+        return ScheduleState(GetRef<IRModule>(mod), debug_mode);
+      }
+      LOG(FATAL) << "TypeError: Expects `IRModule` or `PrimFunc`, but gets: " << obj->GetTypeKey();
+      throw;
+    });
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateReplace")
     .set_body_method<ScheduleState>(&ScheduleStateNode::Replace);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetSRef")
     .set_body_typed([](ScheduleState self, Stmt stmt) -> Optional<StmtSRef> {
       auto it = self->stmt2ref.find(stmt.get());
       return it != self->stmt2ref.end() ? it->second : Optional<StmtSRef>(NullOpt);
-    });
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetScope")
-    .set_body_typed([](ScheduleState self, StmtSRef block_sref) -> Optional<BlockScope> {
-      auto it = self->scopes.find(block_sref);
-      return it != self->scopes.end() ? it->second : Optional<BlockScope>(NullOpt);
     });
 
 }  // namespace tir

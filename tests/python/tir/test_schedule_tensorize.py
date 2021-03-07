@@ -290,7 +290,7 @@ def test_tensorize_gemm():
 
     s.tensorize(ii, tensor_intrin)
 
-    func = tvm.build(s.module)
+    func = tvm.build(s.mod["main"])
 
     a_np = np.random.uniform(size=(128, 128)).astype("float32")
     b_np = np.random.uniform(size=(128, 128)).astype("float32")
@@ -314,7 +314,7 @@ def test_tensorize_buffer_bind():
     s.decompose_reduction(update, ko)
     tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
     s.tensorize(ii, tensor_intrin)
-    tvm.ir.assert_structural_equal(tensorized_func, s.module)
+    tvm.ir.assert_structural_equal(tensorized_func, s.mod["main"])
 
 
 def test_high_dim_tensorize():
@@ -327,7 +327,7 @@ def test_high_dim_tensorize():
     s.reorder(io, jo, ko, ii, ji, ki)
     tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
     s.tensorize(ii, tensor_intrin)
-    tvm.ir.assert_structural_equal(tensorized_batch_matmul, s.module)
+    tvm.ir.assert_structural_equal(tensorized_batch_matmul, s.mod["main"])
 
 
 def test_tensorize_dot_product():
@@ -344,7 +344,7 @@ def test_tensorize_dot_product():
     a = tvm.nd.array(a_np)
     b = tvm.nd.array(b_np)
     c = tvm.nd.array(np.zeros((1, 4, 4), dtype="float32"), ctx)
-    func = tvm.build(s.module, target=target)
+    func = tvm.build(s.mod["main"], target=target)
     func(a, b, c)
     tvm.testing.assert_allclose(
         c.asnumpy(),

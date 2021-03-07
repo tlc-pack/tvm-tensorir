@@ -558,7 +558,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
   auto outer_realize = BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
 
   self->Replace(loop_sref, outer_realize, {{inner_block, block}});
-  UpdateScope(self, GetScopeSRef(self->stmt2ref.at(outer_block.get())));
+  UpdateScope(self, GetScopeRoot(self->stmt2ref.at(outer_block.get())));
   UpdateScope(self, self->stmt2ref.at(outer_block.get()));
   // Check loop binding
 
@@ -579,7 +579,8 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
     };
     BindingValidator validator;
     validator.self = self;
-    validator(self->func->body);
+    const PrimFuncNode* func = GetRootPrimFunc(self, loop_sref);
+    validator(func->body);
   }
   return self->stmt2ref.at(outer_block.get());
 }

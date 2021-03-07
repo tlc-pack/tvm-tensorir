@@ -90,7 +90,7 @@ def test_vectorize_normal():
     _, _, ji = s.get_axes(B)
     s.vectorize(ji)
     mod = tvm.script.create_module({"predicate_vectorize": predicate_vectorize})
-    tvm.ir.assert_structural_equal(s.module, mod["predicate_vectorize"])
+    tvm.ir.assert_structural_equal(s.mod["main"], mod["predicate_vectorize"])
 
 
 def test_vectorize_complete():
@@ -105,7 +105,7 @@ def test_vectorize_complete():
     mod = tvm.script.create_module(
         {"element_wise_compute_at_vectorize": element_wise_compute_at_vectorize}
     )
-    tvm.ir.assert_structural_equal(s.module, mod["element_wise_compute_at_vectorize"])
+    tvm.ir.assert_structural_equal(s.mod["main"], mod["element_wise_compute_at_vectorize"])
 
 
 def test_vectorize_fail_on_reduce_var():
@@ -124,7 +124,7 @@ def test_unroll_normal():
     _, _, ji = s.get_axes(B)
     s.unroll(ji)
     mod = tvm.script.create_module({"predicate_unroll": predicate_unroll})
-    tvm.ir.assert_structural_equal(s.module, mod["predicate_unroll"])
+    tvm.ir.assert_structural_equal(s.mod["main"], mod["predicate_unroll"])
 
 
 if __name__ == "__main__":

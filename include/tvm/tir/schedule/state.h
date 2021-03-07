@@ -40,26 +40,24 @@
 namespace tvm {
 namespace tir {
 
-// TODO(@junrushao1994): change `std::unordered_map` to `Map`?
-
 /*!
  * \brief The state of scheduling, which provides a primitive `Replace` as an interface of all the
  * scheduling primitives to transform the TensorIR.
  */
 class ScheduleStateNode : public runtime::Object {
  public:
-  /*! \brief The function to be scheduled */
-  PrimFunc func;  // TODO(@junrushao1994): change to IRModule
+  /*! \brief The module to be scheduled */
+  IRModule mod;
   /*! \brief The block scopes of each block sref */
-  std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes;
+  Map<StmtSRef, BlockScope> scopes;
   /*! \brief The mapping from block/for stmt to its sref */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief In debug mode, we do extra correctness checking after each replacement */
   bool debug_mode;
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("func", &func);
-    // `scopes` is not visited
+    v->Visit("mod", &mod);
+    v->Visit("scopes", &scopes);
     // `stmt2ref` is not visited
     v->Visit("debug_mode", &debug_mode);
   }
@@ -96,8 +94,15 @@ class ScheduleStateNode : public runtime::Object {
 class ScheduleState : public runtime::ObjectRef {
  public:
   /*!
+   * \brief Construct a schedule from an IRModule
+   * \param mod The IRModule to be scheduled
+   * \param debug_mode When turned on, additional checks will be performed after each mutation
+   */
+  TVM_DLL explicit ScheduleState(IRModule mod, bool debug_mode);
+  /*!
    * \brief Construct a schedule from a PrimFunc
-   * \param func The PrimFunc to be created
+   * \param mod The PrimFunc to be scheduled
+   * \param debug_mode When turned on, additional checks will be performed after each mutation
    */
   TVM_DLL explicit ScheduleState(PrimFunc func, bool debug_mode);
 

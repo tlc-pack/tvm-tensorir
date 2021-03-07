@@ -567,13 +567,13 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
                           << block_sref->stmt->GetTypeKey();
   CHECK(loop != nullptr) << "TypeError: 'compute_at' expects 'loop' to be a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
-  const StmtSRef& parent_block_sref = GetScopeSRef(block_sref);
+  const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(parent_block_sref);
   Array<DepEdge> edges_to_pred = scope->GetPredecessors(block_sref);
   Array<DepEdge> edges_to_succ = scope->GetSuccessors(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
-  CHECK_EQ(parent_block_sref.get(), GetScopeSRef(loop_sref).get())
+  CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'compute_at' expects 'block' and 'loop' be in the same block";
   // Cond 1. 'block' is complete/reduction block
   CHECK(scope->IsComplete(block_sref) || scope->IsReduction(block_sref))
@@ -668,13 +668,13 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   CHECK(loop != nullptr)
       << "TypeError: 'reverse_compute_at' expects 'loop' to be a loop, but get type: "
       << loop_sref->stmt->GetTypeKey();
-  const StmtSRef& parent_block_sref = GetScopeSRef(block_sref);
+  const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(parent_block_sref);
   Array<DepEdge> edges_to_pred = scope->GetPredecessors(block_sref);
   Array<DepEdge> edges_to_succ = scope->GetSuccessors(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
-  CHECK_EQ(parent_block_sref.get(), GetScopeSRef(loop_sref).get())
+  CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'reverse_compute_at' expects 'block' and 'loop' be in the same block";
   // Cond 1. 'block' is complete/reduction block
   CHECK(scope->IsComplete(block_sref) || scope->IsReduction(block_sref))
@@ -755,7 +755,7 @@ void ComputeInline(ScheduleState self, const StmtSRef& block_sref) {
    *    2. block_sref if a complete Block
    */
   const auto* block = block_sref->GetStmt<BlockNode>();
-  const StmtSRef& scope_block_sref = GetScopeSRef(block_sref);
+  const StmtSRef& scope_block_sref = GetScopeRoot(block_sref);
   const auto* scope_block = scope_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(scope_block_sref);
   CHECK(block->body.as<BufferStoreNode>())
@@ -790,7 +790,7 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
   CHECK(block != nullptr)
       << "TypeError: 'reverse_compute_at' expects 'block' to be a block, but get type: "
       << block_sref->stmt->GetTypeKey();
-  const StmtSRef& scope_block_sref = GetScopeSRef(block_sref);
+  const StmtSRef& scope_block_sref = GetScopeRoot(block_sref);
   const auto* scope_block = scope_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(scope_block_sref);
   // Cond 1. Check block_sref is complete

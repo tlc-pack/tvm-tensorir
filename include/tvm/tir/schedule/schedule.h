@@ -82,20 +82,21 @@ class Schedule;
  * \brief The user-facing abstract schedule class
  */
 class ScheduleNode : public runtime::Object {
- public:
-  /*! \brief The internal state of scheduling */
-  ScheduleState state;
+  friend class Schedule;
 
+ public:
   virtual ~ScheduleNode() = default;
 
   static constexpr const char* _type_key = "tir.Schedule";
   TVM_DECLARE_BASE_OBJECT_INFO(ScheduleNode, runtime::Object);
 
  public:
+  /*! \return The internal state of scheduling */
+  virtual ScheduleState state() const = 0;
   /*!
    * \brief Take the PrimFunc out of the schedule
    */
-  virtual IRModule Module() const = 0;
+  virtual IRModule mod() const { return state()->mod; }
   /*!
    * \brief Seed the randomness
    * \param seed The new random seed, -1 if use device random
@@ -160,6 +161,22 @@ class ScheduleNode : public runtime::Object {
    * \return The corresponding block/loop sref
    */
   virtual StmtSRef GetSRef(const Stmt& stmt) const;
+  /******** Remove random variables ********/
+  /*!
+   * \brief Remove a random variable from the symbol table
+   * \param block_rv The symbol to be removed
+   */
+  virtual void RemoveRV(const BlockRV& block_rv) = 0;
+  /*!
+   * \brief Remove a random variable from the symbol table
+   * \param block_rv The symbol to be removed
+   */
+  virtual void RemoveRV(const LoopRV& loop_rv) = 0;
+  /*!
+   * \brief Remove a random variable from the symbol table
+   * \param block_rv The symbol to be removed
+   */
+  virtual void RemoveRV(const VarRV& var_rv) = 0;
 
  public:
   /******** Sampling ********/
@@ -390,7 +407,9 @@ class ScheduleNode : public runtime::Object {
 class Schedule : public runtime::ObjectRef {
  public:
   TVM_DLL static Schedule Concrete(PrimFunc func, int64_t seed, bool debug_mode);
+  TVM_DLL static Schedule Concrete(IRModule func, int64_t seed, bool debug_mode);
   TVM_DLL static Schedule Meta(PrimFunc func, int64_t seed, bool debug_mode);
+  TVM_DLL static Schedule Meta(IRModule func, int64_t seed, bool debug_mode);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };
 
