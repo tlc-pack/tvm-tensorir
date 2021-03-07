@@ -79,13 +79,13 @@ def schedule_sparse_dense_llvm(func):
     bsr_par = s.get_block("bsr_par")
     bsr_block = s.get_block("bsr_block")
     i, j = s.get_axes(bsr_block)
-    data = s.module.params[1]
-    jo, ji = s.split(j, factor=s.module.buffer_map[data].shape[1])
+    data = s.mod["main"].params[1]
+    jo, ji = s.split(j, factor=s.mod["main"].buffer_map[data].shape[1])
     s.compute_at(bsr_par, ji)
     s.vectorize(ji)
     i_jo = s.fuse(i, jo)
     s.parallel(i_jo)
-    return s.module
+    return s.mod["main"]
 
 
 _sparse_dense_implement_tir = {

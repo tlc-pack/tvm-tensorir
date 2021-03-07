@@ -185,7 +185,7 @@ class MutatorComputeLocation {
         BlockRV block_rv = Downcast<BlockRV>(inputs[0]);
         tir::StmtSRef block_sref = sch->GetSRef(block_rv);
         // Extract locations that can be computed at
-        Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->state, block_sref);
+        Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->state(), block_sref);
         std::vector<int> locs{-2, -1};
         {
           int i = 0;
@@ -366,10 +366,10 @@ class MutatorParallel {
         // Step 2. Fetch the block and the loops above it. Furthermore, get their loop types.
         BlockRV block_rv = Downcast<BlockRV>(inputs[0]);
         tir::StmtSRef block_sref = sch->GetSRef(block_rv);
-        Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state, block_sref);
+        Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
         std::vector<int> loop_types;
         for (const tir::StmtSRef& loop_sref : loop_srefs) {
-          loop_types.emplace_back(GetLoopIterType(sch->state, loop_sref));
+          loop_types.emplace_back(GetLoopIterType(sch->state(), loop_sref));
         }
         // Step 3. Get the original parallel extent.
         int ori_extent = inst->inputs[1].as<IntImmNode>()->value;

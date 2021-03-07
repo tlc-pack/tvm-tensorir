@@ -18,6 +18,8 @@
  */
 #ifndef TVM_TIR_SCHEDULE_CONCRETE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_CONCRETE_SCHEDULE_H_
+#include <tvm/arith/analyzer.h>
+#include <tvm/tir/schedule/schedule.h>
 
 #include <memory>
 #include <utility>
