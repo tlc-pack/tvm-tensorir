@@ -30,8 +30,9 @@ LoopRV::LoopRV() { this->data_ = make_object<LoopRVNode>(); }
 /**************** GetSRef ****************/
 
 StmtSRef ScheduleNode::GetSRef(const StmtNode* stmt) const {
-  auto it = this->state->stmt2ref.find(stmt);
-  if (it == this->state->stmt2ref.end()) {
+  ScheduleState state = this->state();
+  auto it = state->stmt2ref.find(stmt);
+  if (it == state->stmt2ref.end()) {
     LOG(FATAL) << "IndexError: The stmt doesn't exist in the IR";
   }
   return it->second;
@@ -47,6 +48,8 @@ TVM_REGISTER_OBJECT_TYPE(ScheduleNode);
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleModule")  //
     .set_body_method<Schedule>(&ScheduleNode::mod);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetState")  //
+    .set_body_method<Schedule>(&ScheduleNode::state);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSeed")  //
     .set_body_method<Schedule>(&ScheduleNode::Seed);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCopy")  //

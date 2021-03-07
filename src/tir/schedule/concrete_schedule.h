@@ -18,27 +18,40 @@
  */
 #ifndef TVM_TIR_SCHEDULE_CONCRETE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_CONCRETE_SCHEDULE_H_
-
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/schedule/schedule.h>
+
+#include <memory>
+
+namespace tvm {
+namespace meta_schedule {
+class ScheduleNode;
+}  // namespace meta_schedule
+}  // namespace tvm
 
 namespace tvm {
 namespace tir {
 
 class ConcreteScheduleNode : public ScheduleNode {
+  friend class Schedule;
+  friend class meta_schedule::ScheduleNode;
+
  public:
   using TSymbolTable = Map<ObjectRef, ObjectRef>;
 
- public:
+ protected:
+  /*! \brief The internal state of scheduling */
+  ScheduleState state_;
   /*! \brief A symbol table that maps random variables to concrete StmtSRef/Integers */
-  TSymbolTable symbol_table;
+  TSymbolTable symbol_table_;
+  /*! \brief A persistent stateless arithmetic analyzer. */
+  std::unique_ptr<arith::Analyzer> analyzer_;
 
-  mutable arith::Analyzer analyzer;
-
+ public:
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("state", &state);
-    v->Visit("symbol_table", &symbol_table);
-    // `analyzer` is not visitied
+    // `state_` is not visited
+    // `symbol_table_` is not visited
+    // `analyzer_` is not visitied
   }
 
   virtual ~ConcreteScheduleNode() = default;
@@ -47,9 +60,13 @@ class ConcreteScheduleNode : public ScheduleNode {
   TVM_DECLARE_BASE_OBJECT_INFO(ConcreteScheduleNode, ScheduleNode);
 
  public:
+  ScheduleState state() const final { return state_; }
+
   Schedule Copy() const override;
 
-  void Seed(int64_t seed = -1) override;
+  void Seed(int64_t seed = -1) override {
+    // do nothing
+  }
 
  public:
   /******** Lookup random variables ********/
@@ -163,55 +180,55 @@ class ConcreteScheduleNode : public ScheduleNode {
   void Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) override;
 
   void Tensorize(const LoopRV& loop_rv, const String& intrin_name) override;
-};
 
-/******** Utility functions ********/
+  /******** Utility functions ********/
+ protected:
+  template <class T>
+  inline Array<T> SetRV(const Array<StmtSRef>& srefs) {
+    Array<T> result;
+    result.reserve(srefs.size());
+    for (const StmtSRef& sref : srefs) {
+      T rv;
+      this->symbol_table_.Set(rv, sref);
+      result.push_back(rv);
+    }
+    return result;
+  }
 
-template <class T>
-inline Array<T> SetRV(ConcreteScheduleNode* self, const Array<StmtSRef>& srefs) {
-  Array<T> result;
-  result.reserve(srefs.size());
-  for (const StmtSRef& sref : srefs) {
+  template <class T>
+  inline T SetRV(const StmtSRef& sref) {
     T rv;
-    self->symbol_table.Set(rv, sref);
-    result.push_back(rv);
+    this->symbol_table_.Set(rv, sref);
+    return rv;
   }
-  return result;
-}
 
-template <class T>
-inline T SetRV(ConcreteScheduleNode* self, const StmtSRef& sref) {
-  T rv;
-  self->symbol_table.Set(rv, sref);
-  return rv;
-}
-
-inline Var SetRV(ConcreteScheduleNode* self, int64_t number) {
-  Var rv;
-  self->symbol_table.Set(rv, Integer(number));
-  return rv;
-}
-
-inline Array<Var> SetRV(ConcreteScheduleNode* self, const Array<Integer>& numbers) {
-  Array<Var> result;
-  result.reserve(numbers.size());
-  for (int64_t number : numbers) {
+  inline Var SetRV(int64_t number) {
     Var rv;
-    self->symbol_table.Set(rv, Integer(number));
-    result.push_back(rv);
+    this->symbol_table_.Set(rv, Integer(number));
+    return rv;
   }
-  return result;
-}
 
-template <class T>
-inline Array<StmtSRef> FromRV(const ConcreteScheduleNode* self, const Array<T>& rvs) {
-  Array<StmtSRef> result;
-  result.reserve(rvs.size());
-  for (const T& rv : rvs) {
-    result.push_back(self->GetSRef(rv));
+  inline Array<Var> SetRV(const Array<Integer>& numbers) {
+    Array<Var> result;
+    result.reserve(numbers.size());
+    for (int64_t number : numbers) {
+      Var rv;
+      this->symbol_table_.Set(rv, Integer(number));
+      result.push_back(rv);
+    }
+    return result;
   }
-  return result;
-}
+
+  template <class T>
+  inline Array<StmtSRef> FromRV(const Array<T>& rvs) {
+    Array<StmtSRef> result;
+    result.reserve(rvs.size());
+    for (const T& rv : rvs) {
+      result.push_back(this->GetSRef(rv));
+    }
+    return result;
+  }
+};
 
 }  // namespace tir
 }  // namespace tvm

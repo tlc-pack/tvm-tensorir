@@ -82,20 +82,20 @@ class Schedule;
  * \brief The user-facing abstract schedule class
  */
 class ScheduleNode : public runtime::Object {
+  friend class Schedule;
  public:
-  /*! \brief The internal state of scheduling */
-  ScheduleState state;
-
   virtual ~ScheduleNode() = default;
 
   static constexpr const char* _type_key = "tir.Schedule";
   TVM_DECLARE_BASE_OBJECT_INFO(ScheduleNode, runtime::Object);
 
  public:
+  /*! \return The internal state of scheduling */
+  virtual ScheduleState state() const = 0;
   /*!
    * \brief Take the PrimFunc out of the schedule
    */
-  virtual IRModule mod() const { return state->mod; }
+  virtual IRModule mod() const { return state()->mod; }
   /*!
    * \brief Seed the randomness
    * \param seed The new random seed, -1 if use device random

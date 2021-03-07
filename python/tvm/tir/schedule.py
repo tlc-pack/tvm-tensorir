@@ -153,8 +153,6 @@ RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
 class Schedule(Object):
     """The schedule node for TIR"""
 
-    state: ScheduleState
-
     def __init__(self, func_or_mod: Union[PrimFunc, IRModule], debug_mode: bool = False):
         self.__init_handle_by_constructor__(
             _ffi_api_schedule.Schedule,  # pylint: disable=no-member
@@ -166,6 +164,10 @@ class Schedule(Object):
     @property
     def mod(self) -> IRModule:
         return _ffi_api_schedule.ScheduleModule(self)  # pylint: disable=no-member
+
+    @property
+    def state(self) -> ScheduleState:
+        return _ffi_api_schedule.ScheduleGetState(self)  # pylint: disable=no-member
 
     def show(self, rand_var: Union[LoopRV, BlockRV, ExprRV]) -> str:
         # TODO(@junrushao1994): complete it

@@ -72,7 +72,7 @@ class PostprocRewriteTensorize {
   bool CanTensorize(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
                     const tir::TensorIntrin& intrin) {
     Optional<TensorizeInfo> opt_tensorize_info =
-        GetTensorizeLoopMapping(sch->state, block_sref, intrin->description);
+        GetTensorizeLoopMapping(sch->state(), block_sref, intrin->description);
     if (!opt_tensorize_info.defined()) {
       return false;
     }
@@ -93,9 +93,9 @@ class PostprocRewriteTensorize {
     while (Optional<tir::StmtSRef> opt_block_sref = FindTensorized(sch)) {
       tir::StmtSRef block_sref = opt_block_sref.value();
       // Remove the annotation
-      DelAnn(sch->state, block_sref, tir::attr::auto_tensorize);
+      DelAnn(sch->state(), block_sref, tir::attr::auto_tensorize);
       // Get the surrounding loops
-      Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state, block_sref);
+      Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
       // Decompose Reduction
       {
         // (TODO) bohan
@@ -103,7 +103,7 @@ class PostprocRewriteTensorize {
       // Tensorize
       for (const tir::TensorIntrin& intrin : tensor_intrins) {
         if (CanTensorize(sch, block_sref, intrin)) {
-          tir::schedule::Tensorize(sch->state, loop_srefs[0], intrin);
+          tir::schedule::Tensorize(sch->state(), loop_srefs[0], intrin);
           return true;
         }
       }
@@ -144,7 +144,7 @@ class PostprocRewriteCooperativeFetch {
   bool Proc(const Schedule& sch) const {
     int idx = 0;
     while (Optional<tir::StmtSRef> opt_block_sref =
-               FindBlockSRef(sch->state, MakeBlockFinder(sch, &idx))) {
+               FindBlockSRef(sch->state(), MakeBlockFinder(sch, &idx))) {
       // Extract block info
       tir::StmtSRef block_sref = opt_block_sref.value();
       const auto* block = block_sref->GetStmt<tir::BlockNode>();
@@ -156,7 +156,7 @@ class PostprocRewriteCooperativeFetch {
       LoopRV loop_rv = loop_rvs[n_loops - 1 - idx];
       tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
       // Remove the annotation
-      DelAnn(sch->state, loop_sref, tir::attr::loop_type);
+      DelAnn(sch->state(), loop_sref, tir::attr::loop_type);
       // Find the threadIdx.x binding
       PrimExpr thread_idx_extent{nullptr};
       for (const tir::StmtSRefNode* sref = loop_sref->parent;; sref = sref->parent) {
@@ -233,16 +233,16 @@ class PostprocRewriteParallelizeVectorizeUnroll {
   static void RemoveParsedAnn(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
                               const Parsed& parsed) {
     if (parsed.max_parallel_extent != -1) {
-      DelAnn(sch->state, block_sref, tir::attr::auto_parallel_extent);
+      DelAnn(sch->state(), block_sref, tir::attr::auto_parallel_extent);
     }
     if (parsed.max_vectorize_extent != -1) {
-      DelAnn(sch->state, block_sref, tir::attr::auto_vectorize_extent);
+      DelAnn(sch->state(), block_sref, tir::attr::auto_vectorize_extent);
     }
     if (parsed.unroll_explicit != -1) {
-      DelAnn(sch->state, block_sref, tir::attr::auto_unroll_explicit);
+      DelAnn(sch->state(), block_sref, tir::attr::auto_unroll_explicit);
     }
     if (parsed.unroll_implicit != -1) {
-      DelAnn(sch->state, block_sref, tir::attr::auto_unroll_implicit);
+      DelAnn(sch->state(), block_sref, tir::attr::auto_unroll_implicit);
     }
   }
 
@@ -260,7 +260,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       loop_types.reserve(n_loops);
       for (const LoopRV& loop_rv : loop_rvs) {
         loop_srefs.push_back(sch->GetSRef(loop_rv));
-        loop_types.push_back(GetLoopIterType(sch->state, loop_srefs.back()));
+        loop_types.push_back(GetLoopIterType(sch->state(), loop_srefs.back()));
       }
     }
     // Calculate the parallelize extent
@@ -330,7 +330,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
   bool Proc(const Schedule& sch) const {
     Parsed parsed;
     while (Optional<tir::StmtSRef> opt_block_sref =
-               FindBlockSRef(sch->state, MakeAnnParser(&parsed))) {
+               FindBlockSRef(sch->state(), MakeAnnParser(&parsed))) {
       // Extract block info
       tir::StmtSRef block_sref = opt_block_sref.value();
       RemoveParsedAnn(sch, block_sref, parsed);
@@ -442,7 +442,7 @@ class PostprocRewriteUnboundBlocks {
     int n_spatial_loops = 0;
     for (const LoopRV& loop_rv : loop_rvs) {
       tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
-      tir::IterVarType iter_type = GetLoopIterType(sch->state, loop_sref);
+      tir::IterVarType iter_type = GetLoopIterType(sch->state(), loop_sref);
       if (iter_type != tir::kDataPar || GetBinding(loop_sref).defined()) {
         break;
       }
@@ -519,7 +519,7 @@ class PostprocRewriteReductionBlock {
       for (int i = 0; i < n_loops; ++i) {
         const LoopRV& loop_rv = loop_rvs[i];
         tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
-        if (GetLoopIterType(sch->state, loop_sref) != tir::kDataPar) {
+        if (GetLoopIterType(sch->state(), loop_sref) != tir::kDataPar) {
           // Insert the initializing block above the first loop which is not data parallel.
           sch->DecomposeReduction(block_rv, loop_rvs[i]);
           break;

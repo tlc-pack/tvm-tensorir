@@ -77,16 +77,16 @@ class RuleInlinePureSpatial {
 
   static bool NeedsInline(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
                           bool strict_mode) {
-    if (!IsSpatial(sch->state, block_sref)) {
+    if (!IsSpatial(sch->state(), block_sref)) {
       return false;
     }
-    if (IsOutputBlock(sch->state, block_sref)) {
+    if (IsOutputBlock(sch->state(), block_sref)) {
       return false;
     }
-    if (strict_mode && !IsStrictlyInlineable(sch->state, block_sref)) {
+    if (strict_mode && !IsStrictlyInlineable(sch->state(), block_sref)) {
       return false;
     }
-    Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state, block_sref);
+    Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
     for (const tir::StmtSRef& loop_sref : loop_srefs) {
       if (!HasSingleChild(loop_sref)) {
         return false;
@@ -99,7 +99,7 @@ class RuleInlinePureSpatial {
   Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
                         const BlockRV& block_rv) const {
     tir::StmtSRef block_sref = sch->GetSRef(block_rv);
-    if (IsSubrootBlock(sch->state, block_sref) && NeedsInline(sch, block_sref, strict_mode)) {
+    if (IsSubrootBlock(sch->state(), block_sref) && NeedsInline(sch, block_sref, strict_mode)) {
       sch->ComputeInline(block_rv);
     }
     return {sch};
@@ -360,15 +360,15 @@ class RuleMultiLevelTiling {
       }
       BlockRV consumer_rv = consumers[0];
       tir::StmtSRef consumer_sref = sch->GetSRef(consumer_rv);
-      if (!IsSpatial(sch->state, consumer_sref)) {
+      if (!IsSpatial(sch->state(), consumer_sref)) {
         break;
       }
-      if (!IsElementWiseMatch(sch->state, sch->GetSRef(current_block_rv), consumer_sref)) {
+      if (!IsElementWiseMatch(sch->state(), sch->GetSRef(current_block_rv), consumer_sref)) {
         break;
       }
       // Then `consumer_rv` must be an elementwise-matched consumer of `block_rv`
       if (!RuleInlinePureSpatial::NeedsInline(sch, consumer_sref, this->consumer_inline_strict)) {
-        if (IsOutputBlock(sch->state, consumer_sref)) {
+        if (IsOutputBlock(sch->state(), consumer_sref)) {
           result.push_back(consumer_rv);
         }
         break;
@@ -428,7 +428,7 @@ class RuleMultiLevelTiling {
     std::vector<Array<LoopRV>> tiles(structure.size());
     // Get block vars and loop axes
     // TODO: fix
-    Array<Integer> iter_types = GetBlockVarTypes(sch->state, sch->GetSRef(block_rv));
+    Array<Integer> iter_types = GetBlockVarTypes(sch->state(), sch->GetSRef(block_rv));
     Array<LoopRV> axes = sch->GetAxes(block_rv);
     ICHECK_EQ(axes.size(), iter_types.size());
     // For each loop axis, tile it
@@ -508,7 +508,7 @@ class RuleMultiLevelTiling {
     if (HasAnyAnn(block_sref)) {
       return {sch};
     }
-    if (!NeedsMultiLevelTiling(sch->state, block_sref)) {
+    if (!NeedsMultiLevelTiling(sch->state(), block_sref)) {
       return {sch};
     }
     // States
@@ -556,13 +556,13 @@ SearchRule MultiLevelTiling(String structure, int max_innermost_factor, bool mus
 class RuleRandomComputeLocation {
  public:
   bool IsFreeBlock(const tir::Schedule sch, const tir::StmtSRef& block_sref) const {
-    if (!IsSubrootBlock(sch->state, block_sref)) {
+    if (!IsSubrootBlock(sch->state(), block_sref)) {
       return false;
     }
-    if (!sch->state->scopes.at(tir::GetScopeRoot(block_sref))->IsComplete(block_sref)) {
+    if (!sch->state()->scopes.at(tir::GetScopeRoot(block_sref))->IsComplete(block_sref)) {
       return false;
     }
-    Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state, block_sref);
+    Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
     for (const tir::StmtSRef& loop_sref : loop_srefs) {
       if (!HasSingleChild(loop_sref)) {
         return false;
@@ -599,7 +599,8 @@ class RuleRandomComputeLocation {
         // 2) decisions
         // 3) trace
         sch->trace->Pop();
-        sch->symbol_table.erase(compute_at_loc);
+        // TODO
+        // sch->symbol_table_.erase(compute_at_loc);
         continue;
       }
       break;
@@ -643,7 +644,7 @@ class RuleParallelizeVectorizeUnroll {
         warned_num_cores_missing(static_cast<int>(other.warned_num_cores_missing)) {}
 
   static bool IsLeftmostSubroot(const tir::Schedule& sch, tir::StmtSRef block_sref) {
-    if (!IsSubrootBlock(sch->state, block_sref)) {
+    if (!IsSubrootBlock(sch->state(), block_sref)) {
       return false;
     }
     tir::StmtSRefNode* child_sref = block_sref.operator->();
@@ -672,7 +673,7 @@ class RuleParallelizeVectorizeUnroll {
     tir::StmtSRef block_sref = sch->GetSRef(block_rv);
     // Check if the block is root and leaf
     bool is_leftmost_root = IsLeftmostSubroot(sch, block_sref);
-    bool is_leaf = IsLeafBlock(sch->state, block_sref);
+    bool is_leaf = IsLeafBlock(sch->state(), block_sref);
     // Parallelization
     if (max_jobs_per_core != -1 && is_leftmost_root) {
       int max_extent =
@@ -792,7 +793,7 @@ class RuleMarkTensorize {
       }
       Schedule cur_sch = next_sch.value();
       if (Optional<TensorizeInfo> opt_tensorize_info =
-              GetTensorizeLoopMapping(cur_sch->state, block_sref, intrin->description)) {
+              GetTensorizeLoopMapping(cur_sch->state(), block_sref, intrin->description)) {
         BlockizeAndMark(cur_sch, block_rv, intrin->description, opt_tensorize_info.value().get());
         result.push_back(cur_sch);
         next_sch = NullOpt;

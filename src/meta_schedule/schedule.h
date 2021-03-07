@@ -34,24 +34,27 @@ class Schedule;
 /*! \brief The meta schedule class */
 class ScheduleNode : public tir::ConcreteScheduleNode {
  private:
-  using tir::ScheduleNode::Copy;
+  friend class tir::Schedule;
+  using tir::ConcreteScheduleNode::Copy;
 
- public:
+ protected:
   friend class Schedule;
   using TSymbolTable = tir::ConcreteScheduleNode::TSymbolTable;
 
   /*! \brief The schedule state */
-  using tir::ConcreteScheduleNode::state;
+  using tir::ConcreteScheduleNode::state_;
   /*! \brief The symbol table */
-  using tir::ConcreteScheduleNode::symbol_table;
+  using tir::ConcreteScheduleNode::symbol_table_;
+
+ public:
   /*! \brief The trace of the program execution */
   Trace trace;
   /*! \brief The random number sampler */
   Sampler sampler;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("state", &state);
-    v->Visit("symbol_table", &symbol_table);
+    // `state_` is not visited
+    // `symbol_table_` is not visited
     v->Visit("trace", &trace);
     // `sampler` is not visited
   }
@@ -66,7 +69,10 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * original schedule, and vice versa.
    * \return A new schedule.
    */
-  Schedule Copy(int new_seed) const;
+  Schedule Copy(int64_t new_seed) const;
+
+  void Seed(int64_t seed = -1) final;
+
   /**************** Sampling ****************/
   /*!
    * \brief Apply the instruction SamplePerfectTile
