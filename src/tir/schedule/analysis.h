@@ -124,7 +124,7 @@ Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef
  * \param sref The sref to the statement in the query
  * \return A pointer to the PrimFunc the statement belongs to
  */
-const PrimFuncNode* GetBelongFunc(const ScheduleState& self, const StmtSRef& sref);
+const PrimFuncNode* GetRootPrimFunc(const ScheduleState& self, const StmtSRef& sref);
 
 }  // namespace tir
 }  // namespace tvm

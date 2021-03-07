@@ -274,8 +274,6 @@ def test_replace_ir_module():
     other_func_hash = s.mod["other"].__hash__()
     func_ref = s.mod["main"]
 
-    # old_hash = s.mod["other"].__hash__()
-    # func_ref = s.mod["other"]
     sref = s.get_sref(s.mod["main"].body.block)
     s.replace(sref, target)
     # Check the new body equals to target

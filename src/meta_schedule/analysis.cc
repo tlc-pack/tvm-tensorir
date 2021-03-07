@@ -101,7 +101,7 @@ bool IsOutputBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sr
   ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   ICHECK(parent) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   if (parent_sref->parent == nullptr) {
-    const tir::PrimFuncNode* func = tir::GetBelongFunc(self, parent_sref);
+    const tir::PrimFuncNode* func = tir::GetRootPrimFunc(self, parent_sref);
     for (const tir::BufferRegion& write : block->writes) {
       for (const auto& kv : func->buffer_map) {
         if (write->buffer.get() == kv.second.get()) {

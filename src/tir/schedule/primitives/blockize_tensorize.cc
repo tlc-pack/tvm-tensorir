@@ -579,7 +579,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
     };
     BindingValidator validator;
     validator.self = self;
-    const PrimFuncNode* func = GetBelongFunc(self, loop_sref);
+    const PrimFuncNode* func = GetRootPrimFunc(self, loop_sref);
     validator(func->body);
   }
   return self->stmt2ref.at(outer_block.get());

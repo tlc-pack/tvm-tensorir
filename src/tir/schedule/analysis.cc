@@ -461,7 +461,7 @@ StmtSRef GetSRefTreeRoot(const StmtSRef& sref) {
   return GetRef<StmtSRef>(p);
 }
 
-const PrimFuncNode* GetBelongFunc(const ScheduleState& self, const StmtSRef& sref) {
+const PrimFuncNode* GetRootPrimFunc(const ScheduleState& self, const StmtSRef& sref) {
   const StmtSRefNode* p = sref.get();
   for (; p->parent != nullptr; p = p->parent) {
   }
