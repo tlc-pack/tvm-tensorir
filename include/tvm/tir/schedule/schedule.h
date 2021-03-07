@@ -83,6 +83,7 @@ class Schedule;
  */
 class ScheduleNode : public runtime::Object {
   friend class Schedule;
+
  public:
   virtual ~ScheduleNode() = default;
 

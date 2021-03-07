@@ -47,6 +47,7 @@ Schedule::Schedule(IRModule mod, int64_t seed, bool debug_mode) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->state_ = tir::ScheduleState(mod, debug_mode);
   n->symbol_table_ = {};
+  n->analyzer_ = std::make_unique<arith::Analyzer>();
   if (seed != -1) {
     n->sampler.Seed(seed);
   }
@@ -57,12 +58,9 @@ Schedule::Schedule(IRModule mod, int64_t seed, bool debug_mode) {
 /**************** Utility ****************/
 
 Schedule ScheduleNode::Copy(int64_t new_seed) const {
-  tir::Schedule parent = tir::ConcreteScheduleNode::Copy();
-  const auto* p = parent.as<tir::ConcreteScheduleNode>();
-  ICHECK(p != nullptr);
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
-  n->state_ = std::move(p->state_);
-  n->symbol_table_ = std::move(p->symbol_table_);
+  tir::ConcreteScheduleNode::MakeCopy(&n->state_, &n->symbol_table_);
+  n->analyzer_ = std::make_unique<arith::Analyzer>();
   n->trace = Trace(this->trace->insts, this->trace->decisions);
   n->sampler.Seed(new_seed);
   return Schedule(std::move(n));

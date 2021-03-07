@@ -183,6 +183,8 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   /******** Utility functions ********/
  protected:
+  void MakeCopy(ScheduleState* new_state, TSymbolTable* new_symbol_table) const;
+
   template <class T>
   inline Array<T> SetRV(const Array<StmtSRef>& srefs) {
     Array<T> result;

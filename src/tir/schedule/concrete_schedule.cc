@@ -33,6 +33,7 @@ Schedule Schedule::Concrete(IRModule mod, int64_t seed, bool debug_mode) {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
   n->symbol_table_ = {};
+  n->analyzer_ = std::make_unique<arith::Analyzer>();
   return Schedule(std::move(n));
 }
 
@@ -162,7 +163,8 @@ struct SRefTranslator {
   std::unordered_map<const StmtSRefNode*, StmtSRef> trans_;
 };
 
-Schedule ConcreteScheduleNode::Copy() const {
+void ConcreteScheduleNode::MakeCopy(ScheduleState* new_state,
+                                    TSymbolTable* new_symbol_table) const {
   const ScheduleState& src_state = state_;
   SRefTranslator trans(src_state);
   ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
@@ -170,10 +172,15 @@ Schedule ConcreteScheduleNode::Copy() const {
   n->scopes = trans.Trans(src_state->scopes);
   n->stmt2ref = trans.Trans(src_state->stmt2ref);
   n->debug_mode = src_state->debug_mode;
-  ObjectPtr<ConcreteScheduleNode> p = make_object<ConcreteScheduleNode>();
-  p->state_ = ScheduleState(std::move(n));
-  p->symbol_table_ = trans.Trans(this->symbol_table_);
-  return Schedule(std::move(p));
+  *new_state = ScheduleState(std::move(n));
+  *new_symbol_table = trans.Trans(this->symbol_table_);
+}
+
+Schedule ConcreteScheduleNode::Copy() const {
+  ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
+  MakeCopy(&n->state_, &n->symbol_table_);
+  n->analyzer_ = std::make_unique<arith::Analyzer>();
+  return Schedule(std::move(n));
 }
 
 /******** Lookup random variables ********/
@@ -210,7 +217,7 @@ PrimExpr ConcreteScheduleNode::Get(const ExprRV& expr_rv) const {
     int64_t result = this->Get(var);
     return Integer(result);
   });
-  return analyzer_->Simplify(transformed);
+  return this->analyzer_->Simplify(transformed);
 }
 
 StmtSRef ConcreteScheduleNode::GetSRef(const BlockRV& block_rv) const {
@@ -302,7 +309,6 @@ LoopRV ConcreteScheduleNode::Fuse(const Array<LoopRV>& loop_rvs) {
 
 Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
                                           const Array<Optional<ExprRV>>& factor_rvs) {
-  arith::Analyzer analyzer;
   // Prepare for the splitting
   StmtSRef loop_sref = this->GetSRef(loop_rv);
   const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
@@ -315,7 +321,7 @@ Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
   int p = -1;
   for (int i = 0; i < n; ++i) {
     PrimExpr factor = this->Get(factor_rvs[i].value_or(Integer(-1)));
-    if (analyzer.CanProve(factor == -1)) {
+    if (analyzer_->CanProve(factor == -1)) {
       CHECK_EQ(p, -1) << "ValueError: `split` requires at most one `None` factor, but gets: "
                       << factor_rvs;
       p = i;
@@ -329,7 +335,7 @@ Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
     for (int i = 1; i < n; ++i) {
       prod = prod * factors[i];
     }
-    if (analyzer.CanProve(prod == len)) {
+    if (analyzer_->CanProve(prod == len)) {
       p = 0;
       factors[0] = Integer(-1);
     } else {
