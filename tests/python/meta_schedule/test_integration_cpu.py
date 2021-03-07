@@ -97,7 +97,7 @@ def test_matmul_post_order_apply():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.module))
+        print(tvm.script.asscript(sch.mod))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -136,7 +136,7 @@ def test_matmul_relu_post_order_apply():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.module))
+        print(tvm.script.asscript(sch.mod))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -176,7 +176,7 @@ def test_conv1d_post_order_apply():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.module))
+        print(tvm.script.asscript(sch.mod))
 
 
 if __name__ == "__main__":

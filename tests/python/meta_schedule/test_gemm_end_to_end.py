@@ -182,7 +182,7 @@ def test_matmul_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.module))
+        print(tvm.script.asscript(sch.mod))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -210,7 +210,7 @@ def test_matmul_relu_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.module))
+        print(tvm.script.asscript(sch.mod))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -261,7 +261,7 @@ def test_conv2d_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.module))
+        print(tvm.script.asscript(sch.mod))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -375,7 +375,7 @@ def test_matmul_evolutionary_end_to_end():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.module))
+        print(tvm.script.asscript(sch.mod))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -429,7 +429,7 @@ def test_matmul_evolutionary_xgb():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.module))
+        print(tvm.script.asscript(sch.mod))
 
 
 if __name__ == "__main__":

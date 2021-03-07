@@ -333,9 +333,9 @@ def test_tensorcore():
     s.tensorize(s.get_axes(AF)[-2], tir.TensorIntrin(load_a_desc, load_a_intrin))
     s.tensorize(s.get_axes(WF)[-2], tir.TensorIntrin(load_b_desc, load_b_intrin))
 
-    print(tvm.script.asscript(s.module))
-    print(tvm.lower(s.module, None, simple_mode=True))
-    build_and_test(conv, s.module)
+    print(tvm.script.asscript(s.mod["main"]))
+    print(tvm.lower(s.mod["main"], None, simple_mode=True))
+    build_and_test(conv, s.mod["main"])
 
 
 if __name__ == "__main__":
