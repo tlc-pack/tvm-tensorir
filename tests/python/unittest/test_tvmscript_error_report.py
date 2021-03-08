@@ -154,7 +154,7 @@ def test_allocate_with_buffers():
 
 
 def inconsistent_binding() -> None:
-    with tir.block([128, 128], "init") as [vi]:  # error
+    with tir.block([128, 128]) as [vi]:  # error
         tir.evaluate(1.0)
 
 
@@ -164,7 +164,7 @@ def test_inconsistent_binding():
 
 def invalid_block_axes(a: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32")
-    with tir.block([A], "init") as [vi]:  # error
+    with tir.block([A]) as [vi]:  # error
         tir.evaluate(1.0)
 
 
@@ -173,7 +173,7 @@ def test_invalid_block_axes():
 
 
 def miss_block_bind() -> None:
-    with tir.block([16, 16], "init") as [vi, vj]:  # error
+    with tir.block([16, 16]) as [vi, vj]:  # error
         tir.bind(vi, 1)
         tir.evaluate(1.0)
 
@@ -201,7 +201,7 @@ def test_inconsistent_grid():
 
 
 def invalid_match_buffer_region() -> None:
-    with tir.block([16, 16], "init") as [vi, vj]:
+    with tir.block([16, 16]) as [vi, vj]:
         A = tir.match_buffer_region(vi)  # error
         tir.evaluate(1.0)
 
@@ -223,22 +223,22 @@ def test_duplicate_buffer():
 
 def duplicate_reads() -> None:
     A = tir.alloc_buffer((128, 128), "float32")
-    with tir.block([16, 16], "init") as [vi, vj]:
-        tir.reads(A[0: 8, 0: 8])
-        tir.reads(A[0: 16, 0: 16])  # error
+    with tir.block([16, 16]) as [vi, vj]:
+        tir.reads(A[0:8, 0:8])
+        tir.reads(A[0:16, 0:16])  # error
         tir.evaluate(1.0)
 
 
 def duplicate_writes() -> None:
     A = tir.alloc_buffer((128, 128), "float32")
-    with tir.block([16, 16], "init") as [vi, vj]:
-        tir.writes(A[0: 8, 0: 8])
-        tir.writes(A[0: 16, 0: 16])  # error
+    with tir.block([16, 16]) as [vi, vj]:
+        tir.writes(A[0:8, 0:8])
+        tir.writes(A[0:16, 0:16])  # error
         tir.evaluate(1.0)
 
 
 def duplicate_predicate() -> None:
-    with tir.block([16, 16], "init") as [vi, vj]:
+    with tir.block([16, 16]) as [vi, vj]:
         tir.where(1)
         tir.where(0)  # error
 
@@ -278,18 +278,51 @@ def test_opaque_access_during_complete():
 def convert_slice_to_bufferload() -> None:
     A = tir.alloc_buffer((128, 128), "float32")
     with tir.block([16, 16]) as [vi, vj]:
-        A[vi, vj] = A[vi: vi + 2, vj] + 1  # error
+        A[vi, vj] = A[vi : vi + 2, vj] + 1  # error
 
 
 def test_convert_slice_to_bufferload():
     check_error(convert_slice_to_bufferload, 4)
 
 
-def error_read_input() -> None:
+def mismatch_args() -> None:
     A = tir.alloc_buffer((128, 128), "float32")
-    with tir.block([16, 16], "init") as [vi, vj]:
-        tir.reads(A[0, 0], A[1, 1])
+    with tir.block([16, 16]) as [vi, vj]:
+        tir.reads(A[0, 0], A[1, 1])  # error
         tir.evaluate(1.0)
+
+
+def test_mismatch_args():
+    check_error(mismatch_args, 4)
+
+
+def special_stmt_except() -> None:
+    A = tir.alloc_buffer("(128, 128)", "float32")  # error
+    with tir.block([16, 16]) as [vi, vj]:
+        tir.evaluate(1.0)
+
+
+def scope_handler_except() -> None:
+    for i in tir.serial("1", "1"):  # error
+        tir.evaluate(1)
+
+
+def intrin_except_unassign(a: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), "float32")
+    tir.evaluate(A)  # error
+
+
+def intrin_except_assign(a: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), "float32")
+    A[0, 0] = tir.load(A, A, A)  # error
+
+
+def test_tvm_exception_catch():
+    # test catching c++ side exception
+    check_error(special_stmt_except, 2)
+    check_error(scope_handler_except, 2)
+    check_error(intrin_except_unassign, 3)
+    check_error(intrin_except_assign, 3)
 
 
 def check_error(module, rel_lineno):
@@ -339,3 +372,5 @@ if __name__ == "__main__":
     test_duplicate_block_signature()
     test_opaque_access_during_complete()
     test_convert_slice_to_bufferload()
+    test_mismatch_args()
+    test_tvm_exception_catch()

@@ -26,7 +26,7 @@ from tvm.ir import Span, Range
 from tvm.tir import Stmt, PrimExpr, IterVar, Var, Buffer, BufferRegion
 
 from .context_maintainer import ContextMaintainer
-from .utils import get_param_list, from_synr_span, from_buffer_slice
+from .utils import get_param_list, from_synr_span, from_buffer_slice, safe_call
 from .registry import register
 from .node import BufferSlice
 
@@ -61,7 +61,9 @@ class ScopeHandler:
     ):
         self.node = node
         self.context = context
-        return self.func(*arg_list, span=from_synr_span(span))
+        return safe_call(
+            context.report_error, span, self.func, *arg_list, span=from_synr_span(span)
+        )
 
 
 class WithScopeHandler(ScopeHandler):

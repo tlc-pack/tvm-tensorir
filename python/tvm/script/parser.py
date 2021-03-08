@@ -275,6 +275,13 @@ class TVMScriptParser(Transformer):
             internal_args.append(reader.get_kwarg(i + 1 + len(pos_only), arg_name, default=default))
         if varargs is not None:
             internal_args.extend(reader.get_varargs(len(pos_only) + len(kwargs) + 1))
+        elif len(args) + len(kw_args) > len(pos_only) + len(kwargs):
+            self.report_error(
+                "Arguments mismatched. "
+                + f"Expects {len(pos_only) + len(kwargs)} args but gets "
+                + f"{len(args) + len(kw_args)}",
+                node_call.span,
+            )
         return internal_args
 
     def parse_type(self, type_node, parent):
@@ -439,7 +446,11 @@ class TVMScriptParser(Transformer):
         # 2. generate surrounding loops for blocks if necessary
 
         func = safe_call(
-            _ffi_api.Complete, [func, root_info.alloc_buffers], self.report_error, span=node.span
+            self.report_error,
+            node.span,
+            _ffi_api.Complete,
+            func,
+            root_info.alloc_buffers,
         )
 
         self.context.exit_scope()
@@ -668,7 +679,13 @@ class TVMScriptParser(Transformer):
             if isinstance(func, Intrin) and not func.stmt:
                 # pattern 1
                 arg_list = self.parse_arg_list(func, node)
-                return func.handle(arg_list, node.func_name.span)
+                return safe_call(
+                    self.report_error,
+                    node.func_name.span,
+                    func.handle,
+                    arg_list,
+                    node.func_name.span,
+                )
             else:
                 args = [self.transform(arg) for arg in node.params]
                 kw_args = {
@@ -724,7 +741,13 @@ class TVMScriptParser(Transformer):
             )
 
         if isinstance(func, Intrin) and func.stmt:
-            return func.handle(arg_list, node.call.func_name.span)
+            return safe_call(
+                self.report_error,
+                node.call.func_name.span,
+                func.handle,
+                arg_list,
+                node.call.func_name.span,
+            )
         elif isinstance(func, WithScopeHandler) and func.concise_scope and not func.def_symbol:
             func.enter_scope(node, self.context, arg_list, node.call.func_name.span)
             func.body = self.parse_body(node)
@@ -781,7 +804,7 @@ class TVMScriptParser(Transformer):
         This visitor is used to lookup function and symbol names. We have two
         cases to handle here:
         1. If we have a statement of the form `tir.something`, then we lookup
-           `tir.somthing` in the `Registry`. If the function is not in the
+           `tir.something` in the `Registry`. If the function is not in the
            registry, then we try to find a `tvm.ir.op.Op` with the same name.
         2. All other names `tvm.something` are lookup up in this current python
            namespace.

@@ -126,7 +126,7 @@ class ContextMaintainer:
         """Append a symbol into current scope"""
         if isinstance(symbol, Buffer):
             if name in self.symbols[0]:
-                raise self.report_error("Duplicate Buffer name: " + symbol.name, node.span)
+                self.report_error("Duplicate Buffer name: " + symbol.name, node.span)
             self.symbols[0][name] = symbol
         else:
             self.symbols[-1][name] = symbol
