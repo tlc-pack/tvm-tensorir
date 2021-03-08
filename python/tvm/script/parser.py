@@ -41,7 +41,7 @@ from .special_stmt import SpecialStmt
 from .scope_handler import ScopeHandler, WithScopeHandler, ForScopeHandler
 from . import _ffi_api
 from .diagnostics import TVMDiagnosticCtx
-from .utils import from_synr_span, from_tvm_span
+from .utils import from_synr_span, from_tvm_span, safe_call
 from .node import Slice, BufferSlice
 
 
@@ -422,10 +422,6 @@ class TVMScriptParser(Transformer):
         # Emit Scope : Implicit root block
         root_info: BlockInfo = self.context.current_block_scope()
         self.context.exit_block_scope()
-        # Fix the body
-        # 1. generate root block if necessary
-        # 2. generate surrounding loops for blocks if necessary
-        body = _ffi_api.Complete(body, root_info.alloc_buffers)
 
         # return a tir.PrimFunc
         dict_attr = self.context.func_dict_attr
@@ -436,6 +432,14 @@ class TVMScriptParser(Transformer):
             buffer_map=self.context.func_buffer_map,
             attrs=tvm.ir.make_node("DictAttrs", **dict_attr) if dict_attr else None,
             span=from_synr_span(node.span),
+        )
+
+        # Fix the PrimFunc
+        # 1. generate root block if necessary
+        # 2. generate surrounding loops for blocks if necessary
+
+        func = safe_call(
+            _ffi_api.Complete, [func, root_info.alloc_buffers], self.report_error, span=node.span
         )
 
         self.context.exit_scope()
@@ -761,7 +765,9 @@ class TVMScriptParser(Transformer):
                     )
             return tvm.tir.Load("float32", symbol, indexes, True, span=from_synr_span(node.span))
         elif isinstance(symbol, tvm.tir.Buffer):
-            return BufferSlice(symbol, indexes, span=from_synr_span(node.span))
+            return BufferSlice(
+                symbol, indexes, error_report=self.report_error, span=from_synr_span(node.span)
+            )
         else:
             self.report_error(
                 f"Cannot subscript from a {type(symbol).__name__}. Only variables and "

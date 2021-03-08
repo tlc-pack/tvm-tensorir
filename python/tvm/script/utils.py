@@ -20,6 +20,8 @@ from typing import Callable, List, Any, Optional, Tuple, Union
 
 import inspect
 import synr
+
+from .. import TVMError
 from ..ir import Span, SourceName
 from .node import BufferSlice
 from tvm.arith import Analyzer
@@ -117,3 +119,16 @@ def from_tvm_span(span: Span) -> synr.ast.Span:
         span.end_line,
         span.end_column,
     )
+
+
+def safe_call(
+    func: Callable,
+    arg_list: List[Any],
+    error_report: Callable[[str, Union[Span, synr.ast.Span]], None],
+    span: Union[Span, synr.ast.Span],
+):
+    try:
+        return func(*arg_list)
+    except ValueError as e:
+        error_msg = str(e).split("\n")[-1]
+        error_report(error_msg, span)

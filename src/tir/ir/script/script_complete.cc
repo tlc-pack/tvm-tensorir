@@ -36,10 +36,12 @@ namespace tir {
 /*! \brief Generate surrounding loops automatically */
 class ScriptCompleter : public StmtMutator {
  public:
+  explicit ScriptCompleter(Map<Var, Buffer>* buffer_var_map) : buffer_var_map_(buffer_var_map) {}
   /*! \brief Whether the stmt contains at least one block. */
   bool contains_block = false;
 
  private:
+  Map<Var, Buffer>* buffer_var_map_;
   Stmt VisitStmt_(const BlockRealizeNode* op) override {
     contains_block = true;
     Stmt body = StmtMutator::VisitStmt_(op);
@@ -60,12 +62,26 @@ class ScriptCompleter : public StmtMutator {
   }
 
   Stmt VisitStmt_(const BlockNode* op) override {
+    // Buffers allocated in the block can be accessed by its body.
+    for (const auto& alloc_buffer : op->alloc_buffers) {
+      buffer_var_map_->Set(alloc_buffer->data, alloc_buffer);
+    }
     Block block = Downcast<Block>(StmtMutator::VisitStmt_(op));
+    // Remove buffers allocated inside block to detect its access region
+    for (const auto& alloc_buffer : op->alloc_buffers) {
+      buffer_var_map_->erase(alloc_buffer->data);
+    }
     if (block->reads.empty() || block->writes.empty()) {
-      auto access_region = GetBlockAccessRegion(block);
+      auto access_region = GetBlockAccessRegion(block, *buffer_var_map_);
+      const Array<BufferRegion>& reads = access_region[0];
+      const Array<BufferRegion>& writes = access_region[1];
+      const Array<BufferRegion>& opaque = access_region[2];
+      CHECK(opaque.empty())
+          << "ValueError: Can not auto detect buffer access region from tir.Load, tir.Store or "
+             "direct access by buffer data. Please annotation the access region manually";
       auto n = CopyOnWrite(block.operator->());
-      if (!n->reads.defined()) n->reads = access_region[0];
-      if (!n->writes.defined()) n->writes = access_region[1];
+      if (!n->reads.defined()) n->reads = reads;
+      if (!n->writes.defined()) n->writes = writes;
       return Block(n);
     } else {
       return std::move(block);
@@ -73,17 +89,31 @@ class ScriptCompleter : public StmtMutator {
   }
 };
 
-Stmt ScriptComplete(const Stmt& body, const Array<Buffer>& root_allocates) {
-  ScriptCompleter script_completer;
+PrimFunc ScriptComplete(PrimFunc func, const Array<Buffer>& root_allocates) {
+  Map<Var, Buffer> buffer_var_map;
+  for (const auto& pair : func->buffer_map) {
+    const Buffer& buffer = pair.second;
+    buffer_var_map.Set(buffer->data, buffer);
+  }
+  for (const auto& alloc: root_allocates) {
+    buffer_var_map.Set(alloc->data, alloc);
+  }
+  ScriptCompleter script_completer(&buffer_var_map);
   // generate surrounding loops automatically
-  Stmt res = script_completer(body);
+  Stmt res = script_completer(func->body);
   // generate root block automatically
   if (script_completer.contains_block &&
       (!res->IsInstance<BlockRealizeNode>() || !root_allocates.empty())) {
     res = Block({}, {}, {}, "root", res, NullOpt, root_allocates);
     res = BlockRealize({}, Bool(true), Downcast<Block>(res));
   }
-  return res;
+  if (func->body.same_as(res)) {
+    return func;
+  } else {
+    auto fptr = func.CopyOnWrite();
+    fptr->body = res;
+    return func;
+  }
 }
 
 TVM_REGISTER_GLOBAL("script.Complete").set_body_typed(ScriptComplete);

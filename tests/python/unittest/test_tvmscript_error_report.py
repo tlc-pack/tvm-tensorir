@@ -212,7 +212,7 @@ def test_invalid_match_buffer_region():
 
 def duplicate_buffer() -> None:
     A = tir.alloc_buffer((128, 128), "float32")
-    with tir.block([16, 16], "init") as [vi, vj]:
+    with tir.block([16, 16]) as [vi, vj]:
         A = tir.alloc_buffer((128, 128), "float32")  # error
         tir.evaluate(1.0)
 
@@ -244,13 +244,13 @@ def duplicate_predicate() -> None:
 
 
 def duplicate_annotations() -> None:
-    with tir.block([16, 16], "init") as [vi, vj]:
+    with tir.block([16, 16]) as [vi, vj]:
         tir.block_attr({})
         tir.block_attr({})  # error
 
 
 def duplicate_init() -> None:
-    with tir.block([16, 16], "init") as [vi, vj]:
+    with tir.block([16, 16]) as [vi, vj]:
         with tir.init():
             tir.evaluate(1.0)
         with tir.init():  # error
@@ -265,7 +265,26 @@ def test_duplicate_block_signature():
     check_error(duplicate_init, 5)
 
 
-@tvm.script.tir
+def opaque_access_during_complete(a: ty.handle) -> None:  # error
+    A = tir.match_buffer(a, (16, 16), "float32")
+    with tir.block([16, 16]) as [vi, vj]:
+        tir.evaluate(tir.load("float32", A.data, vi * 16 + vj))
+
+
+def test_opaque_access_during_complete():
+    check_error(opaque_access_during_complete, 1)
+
+
+def convert_slice_to_bufferload() -> None:
+    A = tir.alloc_buffer((128, 128), "float32")
+    with tir.block([16, 16]) as [vi, vj]:
+        A[vi, vj] = A[vi: vi + 2, vj] + 1  # error
+
+
+def test_convert_slice_to_bufferload():
+    check_error(convert_slice_to_bufferload, 4)
+
+
 def error_read_input() -> None:
     A = tir.alloc_buffer((128, 128), "float32")
     with tir.block([16, 16], "init") as [vi, vj]:
@@ -318,3 +337,5 @@ if __name__ == "__main__":
     test_invalid_match_buffer_region()
     test_duplicate_buffer()
     test_duplicate_block_signature()
+    test_opaque_access_during_complete()
+    test_convert_slice_to_bufferload()
