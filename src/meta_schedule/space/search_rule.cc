@@ -911,7 +911,7 @@ void ReorderAndFuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
   // Step 1. Add spatial loops.
   *num_spatial_loops = 0;
   for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
-    if (GetLoopIterType(sch->state, loop_srefs[i]) == tir::kDataPar) {
+    if (GetLoopIterType(sch->state(), loop_srefs[i]) == tir::kDataPar) {
       new_order.push_back(loops[i]);
       (*num_spatial_loops)++;
     }
@@ -919,7 +919,7 @@ void ReorderAndFuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
   // Step 2. Add reduction loops.
   Array<LoopRV> reduction_loops;
   for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
-    if (GetLoopIterType(sch->state, loop_srefs[i]) == tir::kCommReduce) {
+    if (GetLoopIterType(sch->state(), loop_srefs[i]) == tir::kCommReduce) {
       new_order.push_back(loops[i]);
       reduction_loops.push_back(loops[i]);
     }
@@ -950,17 +950,18 @@ void ReorderAndFuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
 
 class RuleAddRFactor {
  public:
-  int max_jobs_per_core;
   int max_innermost_factor;
+  int max_jobs_per_core;
   mutable std::atomic<int> warned_num_cores_missing;
 
   explicit RuleAddRFactor(int max_jobs_per_core, int max_innermost_factor)
-      : max_jobs_per_core(max_jobs_per_core),
-        max_innermost_factor(max_innermost_factor),
+      : max_innermost_factor(max_innermost_factor),
+        max_jobs_per_core(max_jobs_per_core),
         warned_num_cores_missing(0) {}
 
   RuleAddRFactor(const RuleAddRFactor& other) noexcept
-      : max_jobs_per_core(other.max_jobs_per_core),
+      : max_innermost_factor(other.max_innermost_factor),
+        max_jobs_per_core(other.max_jobs_per_core),
         warned_num_cores_missing(other.warned_num_cores_missing.load()) {}
 
   /*! \brief Rule application */
@@ -975,7 +976,7 @@ class RuleAddRFactor {
     if (block->writes.size() != 1) {
       return {sch};
     }
-    if (!NeedsRFactor(sch->state, block_sref, task, max_jobs_per_core, &warned_num_cores_missing)
+    if (!NeedsRFactor(sch->state(), block_sref, task, max_jobs_per_core, &warned_num_cores_missing)
         || HasCacheWriteBlock(sch, block_rv, 0)) {
       return {sch};
     }
