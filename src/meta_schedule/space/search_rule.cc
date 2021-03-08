@@ -863,9 +863,8 @@ class RuleSimplifyComputeWithConstTensor {
     Array<Array<LoopRV>> tiled_outer_iters;
     // tile spatial axes
     for (const LoopRV& ax : outer_iters) {
-      Array<Optional<PrimExpr>> factors = AsOptArray<tir::Var, PrimExpr>(
-          sch->SamplePerfectTile(ax, tile_level, max_innermost_factor));
-      tiled_outer_iters.push_back(sch->Split(ax, factors));
+      Array<tir::Var> factors = sch->SamplePerfectTile(ax, tile_level, max_innermost_factor);
+      tiled_outer_iters.push_back(sch->Split(ax, AsOptArray<tir::Var, PrimExpr>(factors)));
     }
     Array<LoopRV> new_loop_order;
     new_loop_order.reserve(tiled_outer_iters.size() * tile_level + unrolled_inner_iters.size());
@@ -990,9 +989,9 @@ class RuleAddRFactor {
     LoopRV fused_reduce_loop;
     ReorderAndFuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
 
-    Array<Optional<PrimExpr>> factors = AsOptArray<tir::Var, PrimExpr>(
-        sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor));
-    const Array<LoopRV>& split_res = sch->Split(fused_reduce_loop, factors);
+    Array<tir::Var> factors = sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor);
+    const Array<LoopRV>& split_res =
+        sch->Split(fused_reduce_loop, AsOptArray<tir::Var, PrimExpr>(factors));
     Array<Schedule> res;
     for (const LoopRV& split_loop : split_res) {
       Schedule sch_tmp = sch->Copy(sch->sampler.ForkSeed());
