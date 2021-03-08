@@ -40,6 +40,7 @@ namespace meta_schedule {
 
 using tir::AsArray;
 using tir::AsVector;
+using tir::AsOptArray;
 
 /*!
  * \brief Compute mean of a FloatImm array.

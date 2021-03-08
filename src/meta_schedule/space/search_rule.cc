@@ -863,10 +863,8 @@ class RuleSimplifyComputeWithConstTensor {
     Array<Array<LoopRV>> tiled_outer_iters;
     // tile spatial axes
     for (const LoopRV& ax : outer_iters) {
-      Array<Optional<PrimExpr>> factors;
-      for (const tir::Var& factor : sch->SamplePerfectTile(ax, tile_level, max_innermost_factor)) {
-        factors.push_back(factor);
-      }
+      Array<Optional<PrimExpr>> factors = AsOptArray<tir::Var, PrimExpr>(
+          sch->SamplePerfectTile(ax, tile_level, max_innermost_factor));
       tiled_outer_iters.push_back(sch->Split(ax, factors));
     }
     Array<LoopRV> new_loop_order;
@@ -964,7 +962,7 @@ class RuleAddRFactor {
 
   RuleAddRFactor(const RuleAddRFactor& other) noexcept
       : max_jobs_per_core(other.max_jobs_per_core),
-        warned_num_cores_missing(static_cast<int>(other.warned_num_cores_missing)) {}
+        warned_num_cores_missing(other.warned_num_cores_missing.load()) {}
 
   /*! \brief Rule application */
   Array<Schedule> Apply(const SearchTask& task,
@@ -992,11 +990,8 @@ class RuleAddRFactor {
     LoopRV fused_reduce_loop;
     ReorderAndFuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
 
-    Array<Optional<PrimExpr>> factors;
-    for (const tir::Var& factor :
-         sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor)) {
-      factors.push_back(factor);
-    }
+    Array<Optional<PrimExpr>> factors = AsOptArray<tir::Var, PrimExpr>(
+        sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor));
     const Array<LoopRV>& split_res = sch->Split(fused_reduce_loop, factors);
     Array<Schedule> res;
     for (const LoopRV& split_loop : split_res) {
@@ -1029,7 +1024,7 @@ SearchRule AddRFactor(int max_jobs_per_core, int max_innermost_factor) {
     return rule.Apply(task, sch, block);
   };
   return SearchRule("add_rfactor", f_apply);
-};
+}
 
 /********** FFI **********/
 

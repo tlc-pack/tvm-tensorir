@@ -19,6 +19,7 @@
 #ifndef SRC_META_SCHEDULE_ANALYSIS_H_
 #define SRC_META_SCHEDULE_ANALYSIS_H_
 
+#include <utility>
 #include <vector>
 
 #include "../tir/schedule/analysis.h"
