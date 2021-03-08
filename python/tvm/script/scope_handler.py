@@ -26,7 +26,7 @@ from tvm.ir import Span, Range
 from tvm.tir import Stmt, PrimExpr, IterVar, Var, Buffer, BufferRegion
 
 from .context_maintainer import ContextMaintainer
-from .utils import get_param_list, from_synr_span, from_buffer_slice, safe_call
+from .utils import get_param_list, tvm_span_from_synr, from_buffer_slice, safe_call
 from .registry import register
 from .node import BufferSlice
 
@@ -62,7 +62,7 @@ class ScopeHandler:
         self.node = node
         self.context = context
         return safe_call(
-            context.report_error, span, self.func, *arg_list, span=from_synr_span(span)
+            context.report_error, span, self.func, *arg_list, span=tvm_span_from_synr(span)
         )
 
 
@@ -128,7 +128,7 @@ class Allocate(WithScopeHandler):
             buffer_ptr_type = tvm.ir.PointerType(tvm.ir.PrimType(dtype))
             self.buffer_var = tvm.tir.Var(name, buffer_ptr_type, span)
 
-        setup_buffer_var(*arg_list, span=from_synr_span(node.lhs.id.span))
+        setup_buffer_var(*arg_list, span=tvm_span_from_synr(node.lhs.id.span))
         context.update_symbol(name, self.buffer_var, node)
 
 
@@ -358,13 +358,13 @@ class ForScopeHandler(ScopeHandler):
         spans = list()
         if isinstance(node.lhs, ast.Var):
             loop_var_names.append(node.lhs.id.name)
-            spans.append(from_synr_span(node.lhs.id.span))
+            spans.append(tvm_span_from_synr(node.lhs.id.span))
         elif isinstance(node.lhs, list):
             for elt in node.lhs:
                 if not isinstance(elt, ast.Var):
                     context.report_error("Invalid loop var", elt.span)
                 loop_var_names.append(elt.id.name)
-                spans.append(from_synr_span(elt.id.span))
+                spans.append(tvm_span_from_synr(elt.id.span))
         else:
             context.report_error("Invalid loop var in loop", span)
 

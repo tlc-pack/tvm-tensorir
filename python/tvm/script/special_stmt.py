@@ -26,7 +26,7 @@ import tvm.tir
 from tvm.runtime import Object
 from tvm import te
 from tvm.ir import Span
-from .utils import get_param_list, from_synr_span, from_buffer_slice, safe_call
+from .utils import get_param_list, tvm_span_from_synr, from_buffer_slice, safe_call
 from .registry import register
 from .context_maintainer import ContextMaintainer
 from .node import BufferSlice
@@ -54,7 +54,7 @@ class SpecialStmt:
         self.node = node
         self.context = context
         return safe_call(
-            context.report_error, span, self.func, *arg_list, span=from_synr_span(span)
+            context.report_error, span, self.func, *arg_list, span=tvm_span_from_synr(span)
         )
 
 

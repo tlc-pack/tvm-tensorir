@@ -100,7 +100,7 @@ def from_buffer_slice(
     return BufferRegion(buffer_slice.buffer, region)
 
 
-def from_synr_span(span: synr.ast.Span) -> Span:
+def tvm_span_from_synr(span: synr.ast.Span) -> Span:
     """Convert a synr span to a TVM span"""
     return Span(
         SourceName(span.filename),
@@ -111,7 +111,7 @@ def from_synr_span(span: synr.ast.Span) -> Span:
     )
 
 
-def from_tvm_span(span: Span) -> synr.ast.Span:
+def synr_span_from_tvm(span: Span) -> synr.ast.Span:
     """Convert a TVM span to a synr span"""
     return synr.ast.Span(
         span.source_name.name,

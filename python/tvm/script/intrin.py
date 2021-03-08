@@ -20,7 +20,7 @@ from typing import List, Any
 
 import tvm.tir
 from .registry import register
-from .utils import get_param_list, from_synr_span
+from .utils import get_param_list, tvm_span_from_synr
 
 
 class Intrin:
@@ -32,7 +32,7 @@ class Intrin:
         return "tir." + self.intrin.__name__, get_param_list(self.intrin)
 
     def handle(self, arg_list: List[Any], span: tvm.ir.Span):
-        return self.intrin(*arg_list, span=from_synr_span(span))
+        return self.intrin(*arg_list, span=tvm_span_from_synr(span))
 
 
 @register

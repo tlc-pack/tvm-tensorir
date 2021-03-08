@@ -94,7 +94,7 @@ class BufferSlice(ObjectGeneric):
             """ Check input index is non-negative integer or PrimExpr"""
             if isinstance(index, int):
                 if index < 0:
-                    error_report("Negative index is allowed during buffer access", span)
+                    error_report("Negative index is not allowed during buffer access", span)
             elif isinstance(index, PrimExpr):
                 if index.dtype != "int32":
                     error_report(

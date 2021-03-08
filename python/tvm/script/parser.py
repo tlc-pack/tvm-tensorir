@@ -41,7 +41,7 @@ from .special_stmt import SpecialStmt
 from .scope_handler import ScopeHandler, WithScopeHandler, ForScopeHandler
 from . import _ffi_api
 from .diagnostics import TVMDiagnosticCtx
-from .utils import from_synr_span, from_tvm_span, safe_call
+from .utils import tvm_span_from_synr, synr_span_from_tvm, safe_call
 from .node import Slice, BufferSlice
 
 
@@ -198,7 +198,7 @@ class TVMScriptParser(Transformer):
             Location of the error
         """
         if isinstance(span, tvm.ir.Span):
-            span = from_tvm_span(span)
+            span = synr_span_from_tvm(span)
         self.error(message, span)
 
     def parse_body(self, parent):
@@ -226,7 +226,7 @@ class TVMScriptParser(Transformer):
             )
         else:
             return (
-                tvm.tir.SeqStmt(body, from_synr_span(ast.Span.union(spans)))
+                tvm.tir.SeqStmt(body, tvm_span_from_synr(ast.Span.union(spans)))
                 if len(body) > 1
                 else body[0]
             )
@@ -438,7 +438,7 @@ class TVMScriptParser(Transformer):
             ret_type=self.parse_type(node.ret_type, node),
             buffer_map=self.context.func_buffer_map,
             attrs=tvm.ir.make_node("DictAttrs", **dict_attr) if dict_attr else None,
-            span=from_synr_span(node.span),
+            span=tvm_span_from_synr(node.span),
         )
 
         # Fix the PrimFunc
@@ -504,12 +504,12 @@ class TVMScriptParser(Transformer):
                 var = tvm.te.var(
                     node.lhs.id.name,
                     self.parse_type(node.ty, node.lhs),
-                    span=from_synr_span(node.lhs.span),
+                    span=tvm_span_from_synr(node.lhs.span),
                 )
                 self.context.update_symbol(var.name, var, node)
                 body = self.parse_body(node)
                 self.context.remove_symbol(var.name)
-                return tvm.tir.LetStmt(var, value, body, span=from_synr_span(node.span))
+                return tvm.tir.LetStmt(var, value, body, span=tvm_span_from_synr(node.span))
 
         self.report_error("Unsupported Assign stmt", node.span)
 
@@ -518,14 +518,14 @@ class TVMScriptParser(Transformer):
         symbol = self.transform(node.params[0])
         indexes = self.transform(node.params[1])
         rhs = self.transform(node.params[2])
-        rhs_span = from_synr_span(node.params[2].span)
+        rhs_span = tvm_span_from_synr(node.params[2].span)
         if isinstance(symbol, tvm.tir.Buffer):
             # BufferStore
             return tvm.tir.BufferStore(
                 symbol,
                 tvm.runtime.convert(rhs, span=rhs_span),
                 indexes,
-                span=from_synr_span(node.span),
+                span=tvm_span_from_synr(node.span),
             )
         else:
             if len(indexes) != 1:
@@ -538,8 +538,8 @@ class TVMScriptParser(Transformer):
                 symbol,
                 tvm.runtime.convert(rhs, span=rhs_span),
                 indexes[0],
-                tvm.runtime.convert(True, span=from_synr_span(node.span)),
-                span=from_synr_span(node.span),
+                tvm.runtime.convert(True, span=tvm_span_from_synr(node.span)),
+                span=tvm_span_from_synr(node.span),
             )
 
     def transform_Assert(self, node):
@@ -554,7 +554,7 @@ class TVMScriptParser(Transformer):
         message = self.transform(node.msg)
         body = self.parse_body(node)
         return tvm.tir.AssertStmt(
-            condition, tvm.runtime.convert(message), body, span=from_synr_span(node.span)
+            condition, tvm.runtime.convert(message), body, span=tvm_span_from_synr(node.span)
         )
 
     def transform_For(self, node):
@@ -648,7 +648,7 @@ class TVMScriptParser(Transformer):
         else:
             else_body = None
 
-        return tvm.tir.IfThenElse(condition, then_body, else_body, span=from_synr_span(node.span))
+        return tvm.tir.IfThenElse(condition, then_body, else_body, span=tvm_span_from_synr(node.span))
 
     def transform_Call(self, node):
         """Call visitor
@@ -668,11 +668,11 @@ class TVMScriptParser(Transformer):
                 lhs = self.transform(node.params[0])
                 rhs = self.transform(node.params[1])
                 return self._binop_maker[node.func_name.name](
-                    lhs, rhs, span=from_synr_span(node.span)
+                    lhs, rhs, span=tvm_span_from_synr(node.span)
                 )
             if node.func_name.name in self._unaryop_maker:
                 rhs = self.transform(node.params[0])
-                return self._unaryop_maker[node.func_name.name](rhs, span=from_synr_span(node.span))
+                return self._unaryop_maker[node.func_name.name](rhs, span=tvm_span_from_synr(node.span))
             self.report_error(f"Unsupported operator {node.func_name.name}.", node.func_name.span)
         else:
             func = self.transform(node.func_name)
@@ -694,7 +694,7 @@ class TVMScriptParser(Transformer):
                 if isinstance(func, tvm.tir.op.Op):
                     # pattern 2
                     return tvm.tir.Call(
-                        kw_args["dtype"], func, args, span=from_synr_span(node.span)
+                        kw_args["dtype"], func, args, span=tvm_span_from_synr(node.span)
                     )
                 elif callable(func):
                     # pattern 3
@@ -786,10 +786,10 @@ class TVMScriptParser(Transformer):
                         "Buffer load indexes expect int or PrimExpr, but get " + type(index),
                         node.span,
                     )
-            return tvm.tir.Load("float32", symbol, indexes, True, span=from_synr_span(node.span))
+            return tvm.tir.Load("float32", symbol, indexes, True, span=tvm_span_from_synr(node.span))
         elif isinstance(symbol, tvm.tir.Buffer):
             return BufferSlice(
-                symbol, indexes, error_report=self.report_error, span=from_synr_span(node.span)
+                symbol, indexes, error_report=self.report_error, span=tvm_span_from_synr(node.span)
             )
         else:
             self.report_error(
@@ -923,7 +923,7 @@ class TVMScriptParser(Transformer):
         Constant values include `None`, `"strings"`, `2` (integers), `4.2`
         (floats), and `true` (booleans).
         """
-        return tvm.runtime.convert(node.value, span=from_synr_span(node.span))
+        return tvm.runtime.convert(node.value, span=tvm_span_from_synr(node.span))
 
     def transform_TypeConstant(self, node):
         """Constant value visitor for types.
