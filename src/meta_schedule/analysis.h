@@ -19,17 +19,19 @@
 #ifndef SRC_META_SCHEDULE_ANALYSIS_H_
 #define SRC_META_SCHEDULE_ANALYSIS_H_
 
+#include <utility>
 #include <vector>
 
 #include "../tir/schedule/analysis.h"
 #include "../tir/schedule/utils.h"
 #include "./schedule.h"
+#include "./search.h"
 
 namespace tvm {
 namespace meta_schedule {
 
 /*!
- * \brief Checks if
+ * \brief Check if
  * 1) number of blocks vars equals to number of loop vars
  * 2) each block var is bound to a loop var directly
  * 3) the order is preserved, i.e. the i-th block var is the i-th loop var
@@ -56,7 +58,7 @@ TVM_DLL bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef&
 TVM_DLL bool IsLeafBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Returns the IterVarType of each block var
+ * \brief Return the IterVarType of each block var
  * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return An array of integers, the IterVarTypes corresponding to each block var in order
@@ -74,7 +76,7 @@ TVM_DLL Array<Integer> GetBlockVarTypes(const tir::ScheduleState& self,
 TVM_DLL bool IsSpatial(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Checks if a block is output block
+ * \brief Check if a block is output block
  * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if it is an output block
@@ -103,7 +105,7 @@ TVM_DLL int CountOp(const tir::ScheduleState& self, const tir::StmtSRef& block_s
 TVM_DLL bool HasBranch(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Checks whether the producer and consumer matches in elementwise way.
+ * \brief Check whether the producer and consumer matches in elementwise way.
  * Assuming consumer_sref is the only consumer of producer_sref.
  * \param self The meta schedule class
  * \param producer_sref The producer block
@@ -114,7 +116,7 @@ TVM_DLL bool IsElementWiseMatch(const tir::ScheduleState& self, const tir::StmtS
                                 const tir::StmtSRef& consumer_sref);
 
 /*!
- * \brief Checks if a block needs multi-level tiling
+ * \brief Check if a block needs multi-level tiling
  * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if the block needs multi-level tiling
@@ -122,7 +124,7 @@ TVM_DLL bool IsElementWiseMatch(const tir::ScheduleState& self, const tir::StmtS
 TVM_DLL bool NeedsMultiLevelTiling(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Checks if a block can be inlined
+ * \brief Check if a block can be inlined
  * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if the block needs multi-level tiling
@@ -174,6 +176,45 @@ TVM_DLL Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState
  * \return The number of floating point operations
  */
 TVM_DLL double CountFlop(const tir::PrimFunc& func);
+
+/*!
+ * \brief Calculate the product of extent of all spatial and reduction loop axes.
+ * \param self The TIR schedule
+ * \param block_sref The block to be analyzed
+ * \return A pair indicating the cumulative length of spacial and reduction loop axes. Or (-1, -1)
+ *         if some loops are dynamic or with type other than kDataPar and kCommReduce.
+ */
+TVM_DLL std::pair<int64_t, int64_t> GetCumulativeSpaceAndReductionLength(
+    const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
+
+/*!
+ * \brief Check if the block needs rfactor. The conditions are:
+ *          1. The block is a reduction block and has trivial binding.
+ *          2. Every the loop axis out side the block must be either spatial axis or reduction axis.
+ *          3. There is at least one reduction loop.
+ *          4. The outside loops are continuous, and the body of the innermost loop is exactly
+ *             the block.
+ *          5. The outside loops are not dynamic.
+ *          6. a. For blocks which need MultiLevelTiling, don't perform rfactor if we have enough
+ *                parallelism on spatial loops
+ *             b. For other blocks, always try to perform rfactor.
+ * \param task The search task
+ * \param self The TIR schedule
+ * \param block_sref The block to be analyzed
+ * \return A boolean indicating if it needs rfactor
+ */
+TVM_DLL bool NeedsRFactor(const tir::ScheduleState& self, const tir::StmtSRef& block_sref,
+                          const SearchTask& task, const int& max_jobs_per_core,
+                          std::atomic<int>* warned_num_cores_missing);
+
+/*!
+ * \brief Check if the block has its cache-write block
+ * \param sch The TIR schedule
+ * \param block_rv The block to be analyzed
+ * \param i The index of the buffer in block's write region
+ * \return A boolean indicating if it has cache-write block
+ */
+TVM_DLL bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv, const int& i);
 
 }  // namespace meta_schedule
 }  // namespace tvm

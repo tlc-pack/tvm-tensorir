@@ -236,7 +236,7 @@ BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, int i, const String& s
 
 BlockRV ScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
   BlockRV result = tir::ConcreteScheduleNode::RFactor(loop_rv, factor_axis);
-  // TODO
+  this->trace->Append(RFactorAttrs::Make(loop_rv, factor_axis, result));
   return result;
 }
 

@@ -97,6 +97,16 @@ template <class TSrc, class TDst>
 Array<TDst> AsArray(const std::vector<TSrc>& vec);
 
 /*!
+ * \brief Convert a tvm::rumtime::Array of TSrc to tvm::runtime::Array of Optional<TDst>
+ * \tparam TSrc The type of elements in the source vector
+ * \tparam TDst The type of elements in the result Array
+ * \param The source Array
+ * \return The result Array
+ */
+template <class TSrc, class TDst>
+inline Array<Optional<TDst> > AsOptArray(const Array<TSrc>& array);
+
+/*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)
  * \param stmt the parent stmt.
  * \param keep_realize if true, get block_realize for blocks
@@ -567,6 +577,17 @@ struct AsVectorImpl<TSrcObjectRef, double> {
 template <class TSrc, class TDst>
 inline std::vector<TDst> AsVector(const Array<TSrc>& vec) {
   return details::AsVectorImpl<TSrc, TDst>()(vec);
+}
+
+/**************** AsOptArray<TSrc, TDst> ****************/
+
+template <class TSrc, class TDst>
+inline Array<Optional<TDst> > AsOptArray(const Array<TSrc>& array) {
+  Array<Optional<TDst> > res;
+  for (const TSrc& x : array) {
+    res.push_back(x);
+  }
+  return res;
 }
 
 }  // namespace tir
