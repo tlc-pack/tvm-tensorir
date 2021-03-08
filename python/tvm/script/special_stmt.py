@@ -26,7 +26,12 @@ import tvm.tir
 from tvm.runtime import Object
 from tvm import te
 from tvm.ir import Span
-from .utils import get_param_list, tvm_span_from_synr, from_buffer_slice, safe_call
+from .utils import (
+    get_param_list,
+    tvm_span_from_synr,
+    buffer_slice_to_region,
+    call_with_error_reporting,
+)
 from .registry import register
 from .context_maintainer import ContextMaintainer
 from .node import BufferSlice
@@ -53,7 +58,7 @@ class SpecialStmt:
     ):
         self.node = node
         self.context = context
-        return safe_call(
+        return call_with_error_reporting(
             context.report_error, span, self.func, *arg_list, span=tvm_span_from_synr(span)
         )
 
@@ -392,7 +397,7 @@ class BlockMatchBufferRegion(SpecialStmt):
                     "match_buffer_region needs a buffer region as source",
                     span=span,
                 )
-            buffer_region = from_buffer_slice(source)
+            buffer_region = buffer_slice_to_region(source)
             shape = [r.extent for r in buffer_region.region]
             buffer = tvm.tir.decl_buffer(
                 shape,

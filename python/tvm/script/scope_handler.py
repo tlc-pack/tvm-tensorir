@@ -26,7 +26,12 @@ from tvm.ir import Span, Range
 from tvm.tir import Stmt, PrimExpr, IterVar, Var, Buffer, BufferRegion
 
 from .context_maintainer import ContextMaintainer
-from .utils import get_param_list, tvm_span_from_synr, from_buffer_slice, safe_call
+from .utils import (
+    get_param_list,
+    tvm_span_from_synr,
+    buffer_slice_to_region,
+    call_with_error_reporting,
+)
 from .registry import register
 from .node import BufferSlice
 
@@ -61,7 +66,7 @@ class ScopeHandler:
     ):
         self.node = node
         self.context = context
-        return safe_call(
+        return call_with_error_reporting(
             context.report_error, span, self.func, *arg_list, span=tvm_span_from_synr(span)
         )
 
@@ -259,10 +264,12 @@ class Block(WithScopeHandler):
             # create block read/write regions
 
             reads: List[BufferRegion] = (
-                [from_buffer_slice(read) for read in block_info.reads] if block_info.reads else []
+                [buffer_slice_to_region(read) for read in block_info.reads]
+                if block_info.reads
+                else []
             )
             writes: List[BufferRegion] = (
-                [from_buffer_slice(write) for write in block_info.writes]
+                [buffer_slice_to_region(write) for write in block_info.writes]
                 if block_info.writes
                 else []
             )

@@ -119,11 +119,14 @@ class BufferSlice(ObjectGeneric):
                 check_index(index)
                 slices.append(Slice(index))
             else:
-                raise ValueError(
+                error_report(
                     "Unsupported index type for BufferSlice, "
                     + "expects int, tvm.tir.PrimExpr, tvm.tir.Slice, but gets "
-                    + str(type(index))
+                    + str(type(index)),
+                    span,
                 )
+
+        # TODO(Siyuan) : add testcases
 
         self.buffer = buffer
         self.slices = slices

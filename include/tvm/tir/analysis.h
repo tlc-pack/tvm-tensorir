@@ -33,7 +33,6 @@
 #include <tvm/tir/stmt.h>
 
 #include <string>
-#include <vector>
 
 namespace tvm {
 namespace tir {

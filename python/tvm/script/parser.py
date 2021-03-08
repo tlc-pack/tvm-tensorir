@@ -41,7 +41,7 @@ from .special_stmt import SpecialStmt
 from .scope_handler import ScopeHandler, WithScopeHandler, ForScopeHandler
 from . import _ffi_api
 from .diagnostics import TVMDiagnosticCtx
-from .utils import tvm_span_from_synr, synr_span_from_tvm, safe_call
+from .utils import tvm_span_from_synr, synr_span_from_tvm, call_with_error_reporting
 from .node import Slice, BufferSlice
 
 
@@ -445,7 +445,7 @@ class TVMScriptParser(Transformer):
         # 1. generate root block if necessary
         # 2. generate surrounding loops for blocks if necessary
 
-        func = safe_call(
+        func = call_with_error_reporting(
             self.report_error,
             node.span,
             _ffi_api.Complete,
@@ -648,7 +648,9 @@ class TVMScriptParser(Transformer):
         else:
             else_body = None
 
-        return tvm.tir.IfThenElse(condition, then_body, else_body, span=tvm_span_from_synr(node.span))
+        return tvm.tir.IfThenElse(
+            condition, then_body, else_body, span=tvm_span_from_synr(node.span)
+        )
 
     def transform_Call(self, node):
         """Call visitor
@@ -672,14 +674,16 @@ class TVMScriptParser(Transformer):
                 )
             if node.func_name.name in self._unaryop_maker:
                 rhs = self.transform(node.params[0])
-                return self._unaryop_maker[node.func_name.name](rhs, span=tvm_span_from_synr(node.span))
+                return self._unaryop_maker[node.func_name.name](
+                    rhs, span=tvm_span_from_synr(node.span)
+                )
             self.report_error(f"Unsupported operator {node.func_name.name}.", node.func_name.span)
         else:
             func = self.transform(node.func_name)
             if isinstance(func, Intrin) and not func.stmt:
                 # pattern 1
                 arg_list = self.parse_arg_list(func, node)
-                return safe_call(
+                return call_with_error_reporting(
                     self.report_error,
                     node.func_name.span,
                     func.handle,
@@ -741,7 +745,7 @@ class TVMScriptParser(Transformer):
             )
 
         if isinstance(func, Intrin) and func.stmt:
-            return safe_call(
+            return call_with_error_reporting(
                 self.report_error,
                 node.call.func_name.span,
                 func.handle,
@@ -786,7 +790,9 @@ class TVMScriptParser(Transformer):
                         "Buffer load indexes expect int or PrimExpr, but get " + type(index),
                         node.span,
                     )
-            return tvm.tir.Load("float32", symbol, indexes, True, span=tvm_span_from_synr(node.span))
+            return tvm.tir.Load(
+                "float32", symbol, indexes, True, span=tvm_span_from_synr(node.span)
+            )
         elif isinstance(symbol, tvm.tir.Buffer):
             return BufferSlice(
                 symbol, indexes, error_report=self.report_error, span=tvm_span_from_synr(node.span)

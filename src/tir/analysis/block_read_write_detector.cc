@@ -89,10 +89,9 @@ class BlockReadWriteDetector : public StmtExprVisitor {
     for (size_t i = 0; i < regions.size(); ++i) {
       Array<Range> region;
       region.reserve(regions[i].size());
-      for (const auto& range : regions[i]) {
-        PrimExpr min = range.min();
-        PrimExpr extent = analyzer_.Simplify(range.max() + 1 - range.min());
-        region.push_back(Range::FromMinExtent(min, extent));
+      for (size_t j = 0 ; j < regions[i].size(); j++ ){
+        tvm::arith::IntSet range = regions[i][j];
+        region.push_back(range.CoverRange(Range::FromMinExtent(0, buffers[i]->shape[j])));
       }
       res.push_back(BufferRegion(buffers[i], region));
     }
@@ -213,7 +212,7 @@ void BlockReadWriteDetector::Update(std::vector<Buffer>* buffers,
   if (buffer_var_map_.find(buffer->data) != buffer_var_map_.end()) return;
   ICHECK_EQ(buffers->size(), regions->size())
       << " Expect the buffer and regions to have the same size ";
-  for (size_t i = 0; i < regions->size(); ++i)
+  for (size_t i = 0; i < regions->size(); ++i) {
     if ((*buffers)[i].same_as(buffer)) {
       ICHECK_EQ((*regions)[i].size(), region.size()) << "Inconsistent buffer dimension";
       for (size_t j = 0; j < region.size(); ++j) {
@@ -221,6 +220,7 @@ void BlockReadWriteDetector::Update(std::vector<Buffer>* buffers,
       }
       return;
     }
+  }
   buffers->push_back(buffer);
   regions->push_back(region);
 }

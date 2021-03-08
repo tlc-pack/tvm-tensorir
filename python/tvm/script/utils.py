@@ -70,7 +70,7 @@ def get_param_list(
     return pos_only, kwargs, full_arg_spec.varargs
 
 
-def from_buffer_slice(
+def buffer_slice_to_region(
     buffer_slice: BufferSlice, analyzer: Optional[Analyzer] = None
 ) -> BufferRegion:
     """Construct BufferRegion from BufferSlice
@@ -122,7 +122,7 @@ def synr_span_from_tvm(span: Span) -> synr.ast.Span:
     )
 
 
-def safe_call(
+def call_with_error_reporting(
     report_error,
     node_span,
     func,
