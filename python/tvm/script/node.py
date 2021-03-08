@@ -126,8 +126,6 @@ class BufferSlice(ObjectGeneric):
                     span,
                 )
 
-        # TODO(Siyuan) : add testcases
-
         self.buffer = buffer
         self.slices = slices
         self.error_report = error_report

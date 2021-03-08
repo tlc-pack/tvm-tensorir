@@ -285,6 +285,16 @@ def test_convert_slice_to_bufferload():
     check_error(convert_slice_to_bufferload, 4)
 
 
+def error_index_type() -> None:
+    A = tir.alloc_buffer((128, 128), "float32")
+    with tir.block([16, 16]) as [vi, vj]:
+        A[vi, vj] = A[vi, 0.0] + 1  # error
+
+
+def test_error_index_type():
+    check_error(error_index_type, 4)
+
+
 def mismatch_args() -> None:
     A = tir.alloc_buffer((128, 128), "float32")
     with tir.block([16, 16]) as [vi, vj]:
@@ -372,5 +382,6 @@ if __name__ == "__main__":
     test_duplicate_block_signature()
     test_opaque_access_during_complete()
     test_convert_slice_to_bufferload()
+    test_error_index_type()
     test_mismatch_args()
     test_tvm_exception_catch()

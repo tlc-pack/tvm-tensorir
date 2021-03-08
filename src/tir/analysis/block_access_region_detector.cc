@@ -82,32 +82,10 @@ class BlockReadWriteDetector : public StmtExprVisitor {
 
   /*! \brief Helper function to collect access regions. */
   Array<BufferRegion> CollectRegions(const std::vector<Buffer>& buffers,
-                                     const std::vector<std::vector<tvm::arith::IntSet>>& regions) {
-    ICHECK_EQ(buffers.size(), regions.size());
-    Array<BufferRegion> res;
-    res.reserve(buffers.size());
-    for (size_t i = 0; i < regions.size(); ++i) {
-      Array<Range> region;
-      region.reserve(regions[i].size());
-      for (size_t j = 0 ; j < regions[i].size(); j++ ){
-        tvm::arith::IntSet range = regions[i][j];
-        region.push_back(range.CoverRange(Range::FromMinExtent(0, buffers[i]->shape[j])));
-      }
-      res.push_back(BufferRegion(buffers[i], region));
-    }
-    return res;
-  }
+                                     const std::vector<std::vector<tvm::arith::IntSet>>& regions);
 
-  void AddOpaque(const Var& buffer_var) {
-    auto it = buffer_var_map_.find(buffer_var);
-    if (it != buffer_var_map_.end()) {
-      const Buffer& buffer = (*it).second;
-      for (const Buffer& opaque_buffer : opaque_buffers_) {
-        if (buffer.same_as(opaque_buffer)) return;
-      }
-      opaque_buffers_.push_back(buffer);
-    }
-  }
+  /*! \brief Helper function to add a opaque buffer. */
+  void AddOpaque(const Var& buffer_var);
 
   void VisitStmt_(const ForNode* op) override;
   void VisitStmt_(const BlockRealizeNode* op) override;
@@ -209,7 +187,7 @@ void BlockReadWriteDetector::Update(std::vector<Buffer>* buffers,
                                     std::vector<std::vector<arith::IntSet>>* regions,
                                     const Buffer& buffer,
                                     const std::vector<arith::IntSet>& region) {
-  if (buffer_var_map_.find(buffer->data) != buffer_var_map_.end()) return;
+  if (buffer_var_map_.find(buffer->data) == buffer_var_map_.end()) return;
   ICHECK_EQ(buffers->size(), regions->size())
       << " Expect the buffer and regions to have the same size ";
   for (size_t i = 0; i < regions->size(); ++i) {
@@ -225,12 +203,43 @@ void BlockReadWriteDetector::Update(std::vector<Buffer>* buffers,
   regions->push_back(region);
 }
 
+Array<BufferRegion> BlockReadWriteDetector::CollectRegions(
+    const std::vector<Buffer>& buffers,
+    const std::vector<std::vector<tvm::arith::IntSet>>& regions) {
+  ICHECK_EQ(buffers.size(), regions.size());
+  Array<BufferRegion> res;
+  res.reserve(buffers.size());
+  for (size_t i = 0; i < regions.size(); ++i) {
+    Array<Range> region;
+    region.reserve(regions[i].size());
+    for (size_t j = 0; j < regions[i].size(); j++) {
+      tvm::arith::IntSet range = regions[i][j];
+      region.push_back(range.CoverRange(Range::FromMinExtent(0, buffers[i]->shape[j])));
+    }
+    res.push_back(BufferRegion(buffers[i], region));
+  }
+  return res;
+}
+
+void BlockReadWriteDetector::AddOpaque(const Var& buffer_var) {
+    auto it = buffer_var_map_.find(buffer_var);
+    if (it != buffer_var_map_.end()) {
+      const Buffer& buffer = (*it).second;
+      for (const Buffer& opaque_buffer : opaque_buffers_) {
+        if (buffer.same_as(opaque_buffer)) return;
+      }
+      opaque_buffers_.push_back(buffer);
+    }
+  }
+
 Array<Array<BufferRegion>> GetBlockAccessRegion(const Block& block,
                                                 const Map<Var, Buffer>& buffer_var_map) {
   BlockReadWriteDetector detector(buffer_var_map);
   detector(block);
   return {detector.CollectReads(), detector.CollectWrites(), detector.CollectOpaques()};
 }
+
+TVM_REGISTER_GLOBAL("tir.analysis.get_block_access_region").set_body_typed(GetBlockAccessRegion);
 
 }  // namespace tir
 }  // namespace tvm
