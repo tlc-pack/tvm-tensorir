@@ -127,6 +127,7 @@ Array<ObjectRef> InstructionNode::Deserialize(const Array<ObjectRef>& record,
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ParallelAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(VectorizeAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(UnrollAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(RFactorAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(BindAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(EnterPostProcAttrs),
       };
@@ -406,6 +407,14 @@ Instruction UnrollAttrs::Make(const LoopRV& loop) {
   return Instruction(/*inputs=*/{loop},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(make_object<UnrollAttrs>()));
+}
+
+Instruction RFactorAttrs::Make(const LoopRV& loop, int factor_axis, const BlockRV& output) {
+  ObjectPtr<RFactorAttrs> n = make_object<RFactorAttrs>();
+  n->factor_axis = factor_axis;
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{output},
+                     /*attrs=*/InstAttrs(std::move(n)));
 }
 
 Instruction BindAttrs::Make(const LoopRV& loop, const String& thread_axis) {
@@ -710,6 +719,15 @@ Array<ObjectRef> UnrollAttrs::Apply(const Schedule& sch,  //
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   sch->Unroll(loop);
   return {};
+}
+
+Array<ObjectRef> RFactorAttrs::Apply(const Schedule& sch, //
+                                     const Array<Optional<ObjectRef>>& inputs,
+                                     const Optional<ObjectRef>& decision) const {
+  CHECK(!decision.defined());
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  return {sch->RFactor(loop, factor_axis)};
 }
 
 Array<ObjectRef> BindAttrs::Apply(const Schedule& sch,  //
@@ -1052,6 +1070,16 @@ void UnrollAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
   py.Print(os);
 }
 
+void RFactorAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                            const Array<String>& outputs,
+                            const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("rfactor");
+  py.AddArgInput("loop", inputs[0]);
+  py.AddArgAttr("factor_axis", this->factor_axis);
+  py.AddOutput(outputs[0]);
+  py.Print(os);
+}
+
 void BindAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                          const Array<String>& outputs, const Optional<ObjectRef>& decision) const {
   PythonAPICall py("bind");
@@ -1138,6 +1166,11 @@ void TensorizeAttrs::Serialize(Array<ObjectRef>* record,
                                const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
   record->push_back(this->tensor_intrin_name);
+}
+
+void RFactorAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+  CHECK(!decision.defined());
+  record->push_back(Integer(factor_axis));
 }
 
 void BindAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
@@ -1234,6 +1267,13 @@ InstAttrs TensorizeAttrs::Deserialize(const Array<ObjectRef>& record,
   return InstAttrs(std::move(n));
 }
 
+InstAttrs RFactorAttrs::Deserialize(const Array<ObjectRef>& record,
+                                    Optional<ObjectRef>* decision) {
+  ObjectPtr<RFactorAttrs> n = make_object<RFactorAttrs>();
+  n->factor_axis = Downcast<Integer>(record[3]);
+  return InstAttrs(std::move(n));
+}
+
 InstAttrs BindAttrs::Deserialize(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
   ObjectPtr<BindAttrs> n = make_object<BindAttrs>();
   n->thread_axis = Downcast<String>(record[3]);
@@ -1297,6 +1337,7 @@ TVM_REGISTER_NODE_TYPE(TensorizeAttrs);
 TVM_REGISTER_NODE_TYPE(ParallelAttrs);
 TVM_REGISTER_NODE_TYPE(VectorizeAttrs);
 TVM_REGISTER_NODE_TYPE(UnrollAttrs);
+TVM_REGISTER_NODE_TYPE(RFactorAttrs);
 TVM_REGISTER_NODE_TYPE(BindAttrs);
 TVM_REGISTER_NODE_TYPE(EnterPostProcAttrs);
 

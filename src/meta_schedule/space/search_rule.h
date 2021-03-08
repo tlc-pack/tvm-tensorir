@@ -129,7 +129,7 @@ TVM_DLL SearchRule RandomComputeLocation();
 /*!
  * \brief Mark parallelize, vectorize and unroll to each block correspondingly
  * \param max_jobs_per_core The maximum number of jobs to be launched per CPU core. It sets the
- * uplimit of CPU parallism, i.e. `num_cores * max_jobs_per_core`. Use -1 to disable parallism.
+ * uplimit of CPU parallelism, i.e. `num_cores * max_jobs_per_core`. Use -1 to disable parallelism.
  * \param max_vectorize_extent The maximum extent to be vectorized. It sets the uplimit of the CPU
  * vectorization. Use -1 to disable vectorization.
  * \param unroll_max_steps The maximum number of unroll steps to be done. Use an empty array to
@@ -147,6 +147,12 @@ TVM_DLL SearchRule ParallelizeVectorizeUnroll(int max_jobs_per_core, int max_vec
  * \return The rule created
  */
 TVM_DLL SearchRule MarkTensorize(Array<tir::TensorIntrin> tensor_intrins);
+
+/*!
+ * \brief Add rfactor to some blocks if needed
+ * \return The rule created
+ */
+TVM_DLL SearchRule AddRFactor(int max_jobs_per_core, int max_innermost_factor);
 
 }  // namespace meta_schedule
 }  // namespace tvm

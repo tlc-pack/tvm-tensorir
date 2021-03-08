@@ -863,11 +863,8 @@ class RuleSimplifyComputeWithConstTensor {
     Array<Array<LoopRV>> tiled_outer_iters;
     // tile spatial axes
     for (const LoopRV& ax : outer_iters) {
-      Array<Optional<PrimExpr>> factors;
-      for (const tir::Var& factor : sch->SamplePerfectTile(ax, tile_level, max_innermost_factor)) {
-        factors.push_back(factor);
-      }
-      tiled_outer_iters.push_back(sch->Split(ax, factors));
+      Array<tir::Var> factors = sch->SamplePerfectTile(ax, tile_level, max_innermost_factor);
+      tiled_outer_iters.push_back(sch->Split(ax, AsOptArray<tir::Var, PrimExpr>(factors)));
     }
     Array<LoopRV> new_loop_order;
     new_loop_order.reserve(tiled_outer_iters.size() * tile_level + unrolled_inner_iters.size());
@@ -889,6 +886,144 @@ SearchRule SimplifyComputeWithConstTensor(int max_innermost_factor) {
     return RuleSimplifyComputeWithConstTensor(max_innermost_factor).Apply(task, sch, block);
   };
   return SearchRule("simplify_compute_with_const_tensor", f_apply);
+}
+
+/********** Helper Functions for RuleAddRFactor and RuleCrossThreadReduction **********/
+
+/*!
+ * \brief Reorder the reduction loops to innermost positions if needed.
+ * \param sch The Meta-Schedule schedule
+ * \param block_rv The block where to apply the reorder
+ * \param fused_reduce_loop The fusion-generated loop to return.
+ * \param num_spatial_loops The number of spatial loops to return.
+ * \note Before invoking this helper function, make sure that the block has only spatial and
+ *       reduction loop axes.
+ */
+void ReorderAndFuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
+                                  LoopRV* fused_reduce_loop, int* num_spatial_loops) {
+  Array<LoopRV> loops = sch->GetAxes(block_rv);
+  Array<tir::StmtSRef> loop_srefs;
+  for (const LoopRV& loop_rv : loops) {
+    loop_srefs.push_back(sch->GetSRef(loop_rv));
+  }
+
+  Array<LoopRV> new_order;
+  // Step 1. Add spatial loops.
+  *num_spatial_loops = 0;
+  for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
+    if (GetLoopIterType(sch->state(), loop_srefs[i]) == tir::kDataPar) {
+      new_order.push_back(loops[i]);
+      (*num_spatial_loops)++;
+    }
+  }
+  // Step 2. Add reduction loops.
+  Array<LoopRV> reduction_loops;
+  for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
+    if (GetLoopIterType(sch->state(), loop_srefs[i]) == tir::kCommReduce) {
+      new_order.push_back(loops[i]);
+      reduction_loops.push_back(loops[i]);
+    }
+  }
+  // Step 3. Apply reordering if new_order differs from the original order.
+  CHECK_EQ(new_order.size(), loops.size());
+  bool need_reorder = false;
+  for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
+    if (!new_order[i].same_as(loops[i])) {
+      need_reorder = true;
+      break;
+    }
+  }
+  if (need_reorder) {
+    sch->Reorder(new_order);
+  }
+
+  // Step 4. Fuse all the reduction loops if there are multiple reduction loops.
+  CHECK(!reduction_loops.empty()) << "ValueError: There should be at least one reduction loop";
+  if (reduction_loops.size() > 1) {
+    *fused_reduce_loop = sch->Fuse(reduction_loops);
+  } else {
+    *fused_reduce_loop = reduction_loops[0];
+  }
+}
+
+/********** AddRFactor **********/
+
+class RuleAddRFactor {
+ public:
+  int max_innermost_factor;
+  int max_jobs_per_core;
+  mutable std::atomic<int> warned_num_cores_missing;
+
+  explicit RuleAddRFactor(int max_jobs_per_core, int max_innermost_factor)
+      : max_innermost_factor(max_innermost_factor),
+        max_jobs_per_core(max_jobs_per_core),
+        warned_num_cores_missing(0) {}
+
+  RuleAddRFactor(const RuleAddRFactor& other) noexcept
+      : max_innermost_factor(other.max_innermost_factor),
+        max_jobs_per_core(other.max_jobs_per_core),
+        warned_num_cores_missing(other.warned_num_cores_missing.load()) {}
+
+  /*! \brief Rule application */
+  Array<Schedule> Apply(const SearchTask& task,
+                        const Schedule& sch, const BlockRV& block_rv) const {
+    // Check the conditions of the rule.
+    tir::StmtSRef block_sref = sch->GetSRef(block_rv);
+    const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+    if (HasAnyAnn(block_sref)) {
+      return {sch};
+    }
+    if (block->writes.size() != 1) {
+      return {sch};
+    }
+    if (!NeedsRFactor(sch->state(), block_sref, task, max_jobs_per_core, &warned_num_cores_missing)
+        || HasCacheWriteBlock(sch, block_rv, 0)) {
+      return {sch};
+    }
+
+    // Make a copy of the original schedule.
+    Schedule ori_sch = sch->Copy(sch->sampler.ForkSeed());
+
+    // Reorder the loop axes if reduction loops are not innermost.
+    // After the reordering, fuse all the reduction loops.
+    int num_spatial_loops;
+    LoopRV fused_reduce_loop;
+    ReorderAndFuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
+
+    Array<tir::Var> factors = sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor);
+    const Array<LoopRV>& split_res =
+        sch->Split(fused_reduce_loop, AsOptArray<tir::Var, PrimExpr>(factors));
+    Array<Schedule> res;
+    for (const LoopRV& split_loop : split_res) {
+      Schedule sch_tmp = sch->Copy(sch->sampler.ForkSeed());
+      const BlockRV& block_rf = sch_tmp->RFactor(split_loop, num_spatial_loops);
+      Array<LoopRV> axes = sch_tmp->GetAxes(block_rf);
+      CHECK_GT(static_cast<int>(axes.size()), num_spatial_loops);
+
+      if (split_loop.same_as(split_res[1])) {
+        Array<LoopRV> new_order;
+        for (int i = 0; i < static_cast<int>(axes.size()); ++i) {
+          if (i != num_spatial_loops) {
+            new_order.push_back(axes[i]);
+          }
+        }
+        new_order.push_back(axes[num_spatial_loops]);
+        sch_tmp->Reorder(new_order);
+      }
+      res.push_back(sch_tmp);
+    }
+
+    res.push_back(ori_sch);
+    return res;
+  }
+};
+
+SearchRule AddRFactor(int max_jobs_per_core, int max_innermost_factor) {
+  RuleAddRFactor rule(max_jobs_per_core, max_innermost_factor);
+  auto f_apply = [rule](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    return rule.Apply(task, sch, block);
+  };
+  return SearchRule("add_rfactor", f_apply);
 }
 
 /********** FFI **********/
@@ -941,6 +1076,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.ParallelizeVectorizeUnroll")
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkTensorize").set_body_typed(MarkTensorize);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.SimplifyComputeWithConstTensor")
     .set_body_typed(SimplifyComputeWithConstTensor);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddRFactor").set_body_typed(AddRFactor);
 
 }  // namespace meta_schedule
 }  // namespace tvm
