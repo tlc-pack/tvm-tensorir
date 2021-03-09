@@ -47,8 +47,8 @@ class StmtSRef(Object):
         return _ffi_api_schedule.StmtSRefInlineMark()  # pylint: disable=no-member
 
 
-@_register_object("tir.DepEdge")
-class DepEdge(Object):
+@_register_object("tir.Dependency")
+class Dependency(Object):
     """An edge in the dependency graph"""
 
     kRAW = 0
@@ -64,7 +64,7 @@ class DepEdge(Object):
 class BlockScope(Object):
     """Dependency Graph that stores read/write dependency between Blocks"""
 
-    def get_predecessors(self, block: StmtSRef) -> List[DepEdge]:
+    def get_predecessors(self, block: StmtSRef) -> List[Dependency]:
         """Get the dependency predecessors of the block
 
         Parameters
@@ -74,12 +74,12 @@ class BlockScope(Object):
 
         Returns
         -------
-        blocks: List of DepEdge
+        blocks: List of Dependency
             The predecessors of the block
         """
         return _ffi_api_schedule.BlockScopeGetPredecessors(self, block)  # pylint: disable=no-member
 
-    def get_successor(self, block: StmtSRef) -> List[DepEdge]:
+    def get_successor(self, block: StmtSRef) -> List[Dependency]:
         """Get the dependency successor of the block
 
         Parameters
@@ -89,7 +89,7 @@ class BlockScope(Object):
 
         Returns
         -------
-        blocks: List of DepEdge
+        blocks: List of Dependency
             The predecessors of the block
         """
         return _ffi_api_schedule.BlockScopeGetSuccessors(self, block)  # pylint: disable=no-member

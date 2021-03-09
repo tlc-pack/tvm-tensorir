@@ -36,8 +36,8 @@ using TBufferReaderWriter =
  */
 void AddEdge(BlockScopeNode* self, const StmtSRef& from, const StmtSRef& to, DepKind type) {
   if (!from.same_as(to)) {
-    self->forward_edges[from].push_back(DepEdge(to, type));
-    self->backward_edges[to].push_back(DepEdge(from, type));
+    self->forward_edges[from].push_back(Dependency(to, type));
+    self->backward_edges[to].push_back(Dependency(from, type));
   }
 }
 
@@ -140,7 +140,7 @@ StmtSRef StmtSRef::RootMark() {
   return result;
 }
 
-DepEdge::DepEdge(StmtSRef dst, DepKind kind) {
+Dependency::Dependency(StmtSRef dst, DepKind kind) {
   ObjectPtr<DependencyNode> node = make_object<DependencyNode>();
   node->dst = std::move(dst);
   node->kind = kind;
@@ -160,8 +160,8 @@ BlockScope::BlockScope(const Array<StmtSRef>& leaf_block_srefs) {
 
 /******** Dependency ********/
 
-Array<DepEdge> BlockScopeNode::GetPredecessors(const StmtSRef& block_sref) const {
-  const std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual>& edges =
+Array<Dependency> BlockScopeNode::GetPredecessors(const StmtSRef& block_sref) const {
+  const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& edges =
       this->backward_edges;
   auto iter = edges.find(block_sref);
   if (iter != edges.end()) {
@@ -171,8 +171,8 @@ Array<DepEdge> BlockScopeNode::GetPredecessors(const StmtSRef& block_sref) const
   }
 }
 
-Array<DepEdge> BlockScopeNode::GetSuccessors(const StmtSRef& block_sref) const {
-  const std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual>& edges =
+Array<Dependency> BlockScopeNode::GetSuccessors(const StmtSRef& block_sref) const {
+  const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& edges =
       this->forward_edges;
   auto iter = edges.find(block_sref);
   if (iter != edges.end()) {

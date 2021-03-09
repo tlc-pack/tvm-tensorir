@@ -45,8 +45,8 @@ Array<Var> GatherVars(const ObjectRef& stmt_or_expr) {
  * \param blocks A list of candidate blocks
  * \return True if there is at least one edge that points to a block in the list
  */
-bool AnyEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& blocks) {
-  for (const DepEdge& edge : edges) {
+bool AnyEdgePointsToABlock(const Array<Dependency>& edges, const Array<StmtSRef>& blocks) {
+  for (const Dependency& edge : edges) {
     for (const StmtSRef& block : blocks) {
       if (edge->dst.same_as(block)) {
         return true;
@@ -63,9 +63,9 @@ bool AnyEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& b
  * \param raw_edge_only Only consider RAW-dependency edges
  * \return True if all edges that have a corresponding block
  */
-bool EachEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& blocks,
+bool EachEdgePointsToABlock(const Array<Dependency>& edges, const Array<StmtSRef>& blocks,
                             bool raw_edge_only) {
-  for (const DepEdge& edge : edges) {
+  for (const Dependency& edge : edges) {
     if (raw_edge_only && edge->kind != DepKind::kRAW) {
       continue;
     }
@@ -88,10 +88,10 @@ bool EachEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& 
  * \param edges List of edges to be extracted
  * \return A list of StmtSRef as the result
  */
-std::vector<StmtSRef> EdgesToSRefs(const Array<DepEdge>& edges) {
+std::vector<StmtSRef> EdgesToSRefs(const Array<Dependency>& edges) {
   std::vector<StmtSRef> result;
   result.reserve(edges.size());
-  for (const DepEdge& edge : edges) {
+  for (const Dependency& edge : edges) {
     result.push_back(edge->dst);
   }
   return result;
@@ -570,8 +570,8 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(parent_block_sref);
-  Array<DepEdge> edges_to_pred = scope->GetPredecessors(block_sref);
-  Array<DepEdge> edges_to_succ = scope->GetSuccessors(block_sref);
+  Array<Dependency> edges_to_pred = scope->GetPredecessors(block_sref);
+  Array<Dependency> edges_to_succ = scope->GetSuccessors(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'compute_at' expects 'block' and 'loop' be in the same block";
@@ -671,8 +671,8 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(parent_block_sref);
-  Array<DepEdge> edges_to_pred = scope->GetPredecessors(block_sref);
-  Array<DepEdge> edges_to_succ = scope->GetSuccessors(block_sref);
+  Array<Dependency> edges_to_pred = scope->GetPredecessors(block_sref);
+  Array<Dependency> edges_to_succ = scope->GetSuccessors(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'reverse_compute_at' expects 'block' and 'loop' be in the same block";

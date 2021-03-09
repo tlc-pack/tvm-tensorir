@@ -89,19 +89,19 @@ struct SRefTranslator {
     return result;
   }
 
-  /*! \brief Translate Array<DepEdge> */
-  Array<DepEdge> Trans(const Array<DepEdge>& list) {
-    Array<DepEdge> result;
+  /*! \brief Translate Array<Dependency> */
+  Array<Dependency> Trans(const Array<Dependency>& list) {
+    Array<Dependency> result;
     result.reserve(list.size());
-    for (const DepEdge& elem : list) {
-      result.push_back(DepEdge(Trans(elem->dst), elem->kind));
+    for (const Dependency& elem : list) {
+      result.push_back(Dependency(Trans(elem->dst), elem->kind));
     }
     return result;
   }
 
-  /*! \brief Translate SMap<StmtSRef, Array<DepEdge>> */
-  SMap<StmtSRef, Array<DepEdge>> Trans(const SMap<StmtSRef, Array<DepEdge>>& map) {
-    SMap<StmtSRef, Array<DepEdge>> result;
+  /*! \brief Translate SMap<StmtSRef, Array<Dependency>> */
+  SMap<StmtSRef, Array<Dependency>> Trans(const SMap<StmtSRef, Array<Dependency>>& map) {
+    SMap<StmtSRef, Array<Dependency>> result;
     result.reserve(map.size());
     for (const auto& kv : map) {
       result[Trans(kv.first)] = Trans(kv.second);

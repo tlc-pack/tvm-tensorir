@@ -95,7 +95,7 @@ void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block
   // Maps a buffer var to its producers
   std::unordered_map<const VarNode*, std::vector<Producer>> buffer_producers;
   // Collect all producers to a buffer by enumerating all RAW predecessors of the consumer
-  for (const DepEdge& edge :
+  for (const Dependency& edge :
        self->scopes.at(parent_block_sref)->GetPredecessors(consumer_block_sref)) {
     if (edge->kind != DepKind::kRAW) {
       continue;
@@ -340,12 +340,12 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
 }
 
 Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<DepEdge> pred_edges = self->scopes
-                                  .at(GetScopeRoot(block_sref))  //
-                                  ->GetPredecessors(block_sref);
+  Array<Dependency> pred_edges = self->scopes
+                                     .at(GetScopeRoot(block_sref))  //
+                                     ->GetPredecessors(block_sref);
   Array<StmtSRef> results;
   results.reserve(pred_edges.size());
-  for (const DepEdge edge : pred_edges) {
+  for (const Dependency& edge : pred_edges) {
     if (edge->kind == DepKind::kRAW || edge->kind == DepKind::kWAW) {
       results.push_back(edge->dst);
     }
@@ -354,12 +354,12 @@ Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sr
 }
 
 Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<DepEdge> succ_edges = self->scopes
-                                  .at(GetScopeRoot(block_sref))  //
-                                  ->GetSuccessors(block_sref);
+  Array<Dependency> succ_edges = self->scopes
+                                     .at(GetScopeRoot(block_sref))  //
+                                     ->GetSuccessors(block_sref);
   Array<StmtSRef> results;
   results.reserve(succ_edges.size());
-  for (const DepEdge edge : succ_edges) {
+  for (const Dependency& edge : succ_edges) {
     if (edge->kind == DepKind::kRAW || edge->kind == DepKind::kWAW) {
       results.push_back(edge->dst);
     }

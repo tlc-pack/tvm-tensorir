@@ -133,7 +133,7 @@ class DependencyNode : public runtime::Object {
     v->Visit("kind", &kind);
   }
 
-  static constexpr const char* _type_key = "tir.DepEdge";
+  static constexpr const char* _type_key = "tir.Dependency";
   TVM_DECLARE_FINAL_OBJECT_INFO(DependencyNode, Object);
 };
 
@@ -141,20 +141,20 @@ class DependencyNode : public runtime::Object {
  * \brief Managed reference to DependencyNode
  * \sa DependencyNode
  */
-class DepEdge : public runtime::ObjectRef {
+class Dependency : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
-  explicit DepEdge(StmtSRef dst, DepKind type);
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(DepEdge, ObjectRef, DependencyNode);
+  explicit Dependency(StmtSRef dst, DepKind type);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Dependency, ObjectRef, DependencyNode);
 };
 
 /*! \brief An object recording the producer-consumer dependency between child blocks of a scope */
 class BlockScopeNode : public runtime::Object {
  public:
   /*! \brief The forward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual> forward_edges;
+  std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual> forward_edges;
   /*! \brief The backward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual> backward_edges;
+  std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual> backward_edges;
   /*! \brief The mapping from the buffer to the blocks who write it */
   std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_writers;
 
@@ -170,13 +170,13 @@ class BlockScopeNode : public runtime::Object {
    * \param block_sref The queried block
    * \return The predecessors edges
    */
-  TVM_DLL Array<DepEdge> GetPredecessors(const StmtSRef& block_sref) const;
+  TVM_DLL Array<Dependency> GetPredecessors(const StmtSRef& block_sref) const;
   /*!
    * \brief Get all blocks that depends on the block
    * \param block_sref The queried block
    * \return The successor edges
    */
-  TVM_DLL Array<DepEdge> GetSuccessors(const StmtSRef& block_sref) const;
+  TVM_DLL Array<Dependency> GetSuccessors(const StmtSRef& block_sref) const;
 
   /******** Property of a block ********/
   /*!

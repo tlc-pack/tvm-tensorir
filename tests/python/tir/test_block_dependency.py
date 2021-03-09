@@ -52,11 +52,11 @@ def test_element_wise_dependency():
     # Check get_predecessors
     (predecessor_c,) = s.state.scopes[root].get_predecessors(block_c)
     assert predecessor_c.dst.same_as(block_b)
-    assert predecessor_c.kind == tir.schedule.DepEdge.kRAW
+    assert predecessor_c.kind == tir.schedule.Dependency.kRAW
     # Check get_successor
     (successor_b,) = s.state.scopes[root].get_successor(block_b)
     assert successor_b.dst.same_as(block_c)
-    assert predecessor_c.kind == tir.schedule.DepEdge.kRAW
+    assert predecessor_c.kind == tir.schedule.Dependency.kRAW
 
 
 def test_matmul_dependency():
@@ -70,17 +70,17 @@ def test_matmul_dependency():
     assert p0.dst.same_as(init)
     assert p1.dst.same_as(init)
     # WAW and RAW
-    assert (p0.kind == tir.schedule.DepEdge.kRAW and p1.kind == tir.schedule.DepEdge.kWAW) or (
-        p0.kind == tir.schedule.DepEdge.kWAW and p1.kind == tir.schedule.DepEdge.kRAW
-    )
+    assert (
+        p0.kind == tir.schedule.Dependency.kRAW and p1.kind == tir.schedule.Dependency.kWAW
+    ) or (p0.kind == tir.schedule.Dependency.kWAW and p1.kind == tir.schedule.Dependency.kRAW)
     # Check successors
     p0, p1 = s.state.scopes[root].get_successor(init)
     assert p0.dst == update
     assert p1.dst == update
     # WAW and RAW
-    assert (p0.kind == tir.schedule.DepEdge.kRAW and p1.kind == tir.schedule.DepEdge.kWAW) or (
-        p0.kind == tir.schedule.DepEdge.kWAW and p1.kind == tir.schedule.DepEdge.kRAW
-    )
+    assert (
+        p0.kind == tir.schedule.Dependency.kRAW and p1.kind == tir.schedule.Dependency.kWAW
+    ) or (p0.kind == tir.schedule.Dependency.kWAW and p1.kind == tir.schedule.Dependency.kRAW)
 
 
 def test_WAR_dependency():

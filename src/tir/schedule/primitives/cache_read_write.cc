@@ -299,7 +299,7 @@ class CacheLocDetector : public StmtVisitor {
   static void Detect(const ScheduleState self, const StmtSRef& block_sref,
                      const StmtSRef& scope_sref, CacheStageInfo* info) {
     std::vector<StmtSRef> related_blocks;
-    for (const DepEdge& x : self->scopes.at(scope_sref)->GetSuccessors(block_sref)) {
+    for (const Dependency& x : self->scopes.at(scope_sref)->GetSuccessors(block_sref)) {
       if (x->kind == DepKind::kRAW) {
         related_blocks.push_back(x->dst);
       }
