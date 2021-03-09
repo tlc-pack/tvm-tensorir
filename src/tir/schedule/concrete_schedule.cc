@@ -94,7 +94,7 @@ struct SRefTranslator {
     Array<DepEdge> result;
     result.reserve(list.size());
     for (const DepEdge& elem : list) {
-      result.push_back(DepEdge(Trans(elem->dst), elem->type));
+      result.push_back(DepEdge(Trans(elem->dst), elem->kind));
     }
     return result;
   }

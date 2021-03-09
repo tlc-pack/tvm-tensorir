@@ -140,10 +140,10 @@ StmtSRef StmtSRef::RootMark() {
   return result;
 }
 
-DepEdge::DepEdge(StmtSRef dst, DepKind type) {
+DepEdge::DepEdge(StmtSRef dst, DepKind kind) {
   ObjectPtr<DepEdgeNode> node = make_object<DepEdgeNode>();
   node->dst = std::move(dst);
-  node->type = type;
+  node->kind = kind;
   data_ = std::move(node);
 }
 

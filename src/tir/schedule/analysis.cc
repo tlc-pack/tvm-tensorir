@@ -97,7 +97,7 @@ void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block
   // Collect all producers to a buffer by enumerating all RAW predecessors of the consumer
   for (const DepEdge& edge :
        self->scopes.at(parent_block_sref)->GetPredecessors(consumer_block_sref)) {
-    if (edge->type != DepKind::kRAW) {
+    if (edge->kind != DepKind::kRAW) {
       continue;
     }
     // i.e. the RAW predecessor is producer
@@ -346,7 +346,7 @@ Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sr
   Array<StmtSRef> results;
   results.reserve(pred_edges.size());
   for (const DepEdge edge : pred_edges) {
-    if (edge->type == DepKind::kRAW || edge->type == DepKind::kWAW) {
+    if (edge->kind == DepKind::kRAW || edge->kind == DepKind::kWAW) {
       results.push_back(edge->dst);
     }
   }
@@ -360,7 +360,7 @@ Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sr
   Array<StmtSRef> results;
   results.reserve(succ_edges.size());
   for (const DepEdge edge : succ_edges) {
-    if (edge->type == DepKind::kRAW || edge->type == DepKind::kWAW) {
+    if (edge->kind == DepKind::kRAW || edge->kind == DepKind::kWAW) {
       results.push_back(edge->dst);
     }
   }

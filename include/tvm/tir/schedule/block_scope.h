@@ -125,12 +125,12 @@ class DepEdgeNode : public runtime::Object {
  public:
   /*! \brief The destination block */
   StmtSRef dst;
-  /*! \brief The dependency type */
-  DepKind type;
+  /*! \brief The dependency kind */
+  DepKind kind;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dst", &dst);
-    v->Visit("type", &type);
+    v->Visit("kind", &kind);
   }
 
   static constexpr const char* _type_key = "tir.DepEdge";

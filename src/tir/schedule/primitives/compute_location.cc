@@ -66,7 +66,7 @@ bool AnyEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& b
 bool EachEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& blocks,
                             bool raw_edge_only) {
   for (const DepEdge& edge : edges) {
-    if (raw_edge_only && edge->type != DepKind::kRAW) {
+    if (raw_edge_only && edge->kind != DepKind::kRAW) {
       continue;
     }
     bool found = false;
@@ -803,7 +803,7 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
   const auto& producers = scope->GetPredecessors(block_sref);
   CHECK_EQ(producers.size(), 1)
       << "ValueError: 'reverse_compute_inline' expects the 'block' has only one producer";
-  CHECK(producers[0]->type == DepKind::kRAW)
+  CHECK(producers[0]->kind == DepKind::kRAW)
       << "ValueError: 'reverse_compute_inline' expects the 'block' has only one producer";
   const StmtSRef& producer_sref = producers[0]->dst;
   // Cond 4. The producer is complete
