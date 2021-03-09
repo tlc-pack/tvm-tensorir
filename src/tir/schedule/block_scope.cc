@@ -36,8 +36,8 @@ using TBufferReaderWriter =
  */
 void AddEdge(BlockScopeNode* self, const StmtSRef& from, const StmtSRef& to, DepKind type) {
   if (!from.same_as(to)) {
-    self->forward_edges[from].push_back(Dependency(to, type));
-    self->backward_edges[to].push_back(Dependency(from, type));
+    self->src2deps[from].push_back(Dependency(to, type));
+    self->dst2deps[to].push_back(Dependency(from, type));
   }
 }
 
@@ -162,7 +162,7 @@ BlockScope::BlockScope(const Array<StmtSRef>& leaf_block_srefs) {
 
 Array<Dependency> BlockScopeNode::GetDepsBySrc(const StmtSRef& block_sref) const {
   const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& edges =
-      this->backward_edges;
+      this->dst2deps;
   auto iter = edges.find(block_sref);
   if (iter != edges.end()) {
     return iter->second;
@@ -173,7 +173,7 @@ Array<Dependency> BlockScopeNode::GetDepsBySrc(const StmtSRef& block_sref) const
 
 Array<Dependency> BlockScopeNode::GetDepsByDst(const StmtSRef& block_sref) const {
   const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& edges =
-      this->forward_edges;
+      this->src2deps;
   auto iter = edges.find(block_sref);
   if (iter != edges.end()) {
     return iter->second;

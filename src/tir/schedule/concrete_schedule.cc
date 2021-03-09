@@ -126,8 +126,8 @@ struct SRefTranslator {
       const StmtSRef& old_sref = kv.first;
       const BlockScope& old_scope = kv.second;
       ObjectPtr<BlockScopeNode> scope = make_object<BlockScopeNode>();
-      scope->forward_edges = Trans(old_scope->forward_edges);
-      scope->backward_edges = Trans(old_scope->backward_edges);
+      scope->src2deps = Trans(old_scope->src2deps);
+      scope->dst2deps = Trans(old_scope->dst2deps);
       scope->buffer_writers = Trans(old_scope->buffer_writers);
       result.Set(Trans(old_sref), BlockScope(std::move(scope)));
     }

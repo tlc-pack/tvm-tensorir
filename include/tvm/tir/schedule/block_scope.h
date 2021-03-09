@@ -152,9 +152,9 @@ class Dependency : public runtime::ObjectRef {
 class BlockScopeNode : public runtime::Object {
  public:
   /*! \brief The forward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual> forward_edges;
+  std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual> src2deps;
   /*! \brief The backward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual> backward_edges;
+  std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual> dst2deps;
   /*! \brief The mapping from the buffer to the blocks who write it */
   std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_writers;
 
