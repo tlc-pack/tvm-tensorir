@@ -146,7 +146,8 @@ TVM_DLL bool VerifyGPUCode(const PrimFunc& func, Map<String, PrimExpr> constrain
  * \brief Auto detect the block read/write region according to body stmt
  *        It will detect the read/write region as an array in order of appearance in AST
  * \param block The block to be detected
- * \param buffer_var_map The outside buffers which may be accessed the block
+ * \param buffer_var_map The outside buffers which may be accessed the block.
+ *                       It is a map from buffer var to the buffer.
  * \return Array of access regions.
  *         There are three arrays of BufferRegion:
  *           - first: read regions

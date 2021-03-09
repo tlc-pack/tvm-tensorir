@@ -795,7 +795,7 @@ class TVMScriptParser(Transformer):
             )
         elif isinstance(symbol, tvm.tir.Buffer):
             return BufferSlice(
-                symbol, indexes, error_report=self.report_error, span=tvm_span_from_synr(node.span)
+                symbol, indexes, self.report_error, span=tvm_span_from_synr(node.span)
             )
         else:
             self.report_error(

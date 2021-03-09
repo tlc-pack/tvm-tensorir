@@ -72,7 +72,8 @@ class BufferSlice(ObjectGeneric):
     indexes : List[Union[Slice, PrimExpr, int]]
         The access indexes can be slice, PrimExpr or int.
 
-    error_report:
+    report_error: Callable[[str, Union[Span, synr.ast.Span]], None]
+        The error report func
 
     span : Optional[Span]
         The location of the buffer access in the source.
@@ -80,30 +81,30 @@ class BufferSlice(ObjectGeneric):
 
     buffer: Buffer
     slices: List[Slice]
-    error_report: Callable[[str, Union[Span, synr.ast.Span]], None]
+    report_error: Callable[[str, Union[Span, synr.ast.Span]], None]
     span: Optional[Span]
 
     def __init__(
         self,
         buffer: Buffer,
         indexes: List[Union[Slice, PrimExpr, int]],
-        error_report: Callable[[str, Union[Span, synr.ast.Span]], None],
+        report_error: Callable[[str, Union[Span, synr.ast.Span]], None],
         span: Optional[Span] = None,
     ):
         def check_index(index: Union[int, PrimExpr]):
             """ Check input index is non-negative integer or PrimExpr"""
             if isinstance(index, int):
                 if index < 0:
-                    error_report("Negative index is not allowed during buffer access", span)
+                    report_error("Negative index is not allowed during buffer access", span)
             elif isinstance(index, PrimExpr):
                 if index.dtype != "int32":
-                    error_report(
+                    report_error(
                         "index expects a integer type PrimExpr but gets type " + str(index.dtype),
                         index.span,
                     )
                 pass
             else:
-                error_report(
+                report_error(
                     "Unsupported index type, expects int or tvm.tir.PrimExpr, but gets "
                     + str(type(index)),
                     span,
@@ -119,7 +120,7 @@ class BufferSlice(ObjectGeneric):
                 check_index(index)
                 slices.append(Slice(index))
             else:
-                error_report(
+                report_error(
                     "Unsupported index type for BufferSlice, "
                     + "expects int, tvm.tir.PrimExpr, tvm.tir.Slice, but gets "
                     + str(type(index)),
@@ -128,7 +129,7 @@ class BufferSlice(ObjectGeneric):
 
         self.buffer = buffer
         self.slices = slices
-        self.error_report = error_report
+        self.report_error = report_error
         self.span = span
 
     def __str__(self):
@@ -145,7 +146,7 @@ class BufferSlice(ObjectGeneric):
         """Convert object."""
         for s in self.slices:
             if s.stop is not None:
-                self.error_report("BufferLoad only accepts elementwise access", self.span)
+                self.report_error("BufferLoad only accepts elementwise access", self.span)
 
         indices = [s.start for s in self.slices]
         return BufferLoad(self.buffer, indices, span=self.span)
