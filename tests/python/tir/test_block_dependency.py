@@ -53,8 +53,8 @@ def test_element_wise_dependency():
     (predecessor_c,) = s.state.scopes[root].get_deps_by_src(block_c)
     assert predecessor_c.dst.same_as(block_b)
     assert predecessor_c.kind == tir.schedule.Dependency.kRAW
-    # Check get_successor
-    (successor_b,) = s.state.scopes[root].get_successor(block_b)
+    # Check get_deps_by_dst
+    (successor_b,) = s.state.scopes[root].get_deps_by_dst(block_b)
     assert successor_b.dst.same_as(block_c)
     assert predecessor_c.kind == tir.schedule.Dependency.kRAW
 
@@ -74,7 +74,7 @@ def test_matmul_dependency():
         p0.kind == tir.schedule.Dependency.kRAW and p1.kind == tir.schedule.Dependency.kWAW
     ) or (p0.kind == tir.schedule.Dependency.kWAW and p1.kind == tir.schedule.Dependency.kRAW)
     # Check successors
-    p0, p1 = s.state.scopes[root].get_successor(init)
+    p0, p1 = s.state.scopes[root].get_deps_by_dst(init)
     assert p0.dst == update
     assert p1.dst == update
     # WAW and RAW

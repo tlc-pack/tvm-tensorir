@@ -171,7 +171,7 @@ Array<Dependency> BlockScopeNode::GetDepsBySrc(const StmtSRef& block_sref) const
   }
 }
 
-Array<Dependency> BlockScopeNode::GetSuccessors(const StmtSRef& block_sref) const {
+Array<Dependency> BlockScopeNode::GetDepsByDst(const StmtSRef& block_sref) const {
   const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& edges =
       this->forward_edges;
   auto iter = edges.find(block_sref);
@@ -345,8 +345,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefInlineMark")  //
     .set_body_typed(StmtSRef::InlineMark);
 TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetDepsBySrc")
     .set_body_method<BlockScope>(&BlockScopeNode::GetDepsBySrc);
-TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetSuccessors")
-    .set_body_method<BlockScope>(&BlockScopeNode::GetSuccessors);
+TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetDepsByDst")
+    .set_body_method<BlockScope>(&BlockScopeNode::GetDepsByDst);
 TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefStmt")
     .set_body_typed([](StmtSRef sref) -> Optional<Stmt> {
       return sref->stmt != nullptr ? GetRef<Stmt>(sref->stmt) : Optional<Stmt>(NullOpt);

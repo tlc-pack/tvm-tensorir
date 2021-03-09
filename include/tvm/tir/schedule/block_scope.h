@@ -176,7 +176,7 @@ class BlockScopeNode : public runtime::Object {
    * \param block_sref The queried block
    * \return The successor edges
    */
-  TVM_DLL Array<Dependency> GetSuccessors(const StmtSRef& block_sref) const;
+  TVM_DLL Array<Dependency> GetDepsByDst(const StmtSRef& block_sref) const;
 
   /******** Property of a block ********/
   /*!

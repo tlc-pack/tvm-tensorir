@@ -356,7 +356,7 @@ Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sr
 Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref) {
   Array<Dependency> succ_edges = self->scopes
                                      .at(GetScopeRoot(block_sref))  //
-                                     ->GetSuccessors(block_sref);
+                                     ->GetDepsByDst(block_sref);
   Array<StmtSRef> results;
   results.reserve(succ_edges.size());
   for (const Dependency& edge : succ_edges) {

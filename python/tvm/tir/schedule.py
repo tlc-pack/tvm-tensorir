@@ -79,7 +79,7 @@ class BlockScope(Object):
         """
         return _ffi_api_schedule.BlockScopeGetDepsBySrc(self, block)  # pylint: disable=no-member
 
-    def get_successor(self, block: StmtSRef) -> List[Dependency]:
+    def get_deps_by_dst(self, block: StmtSRef) -> List[Dependency]:
         """Get the dependency successor of the block
 
         Parameters
@@ -92,7 +92,7 @@ class BlockScope(Object):
         blocks: List of Dependency
             The predecessors of the block
         """
-        return _ffi_api_schedule.BlockScopeGetSuccessors(self, block)  # pylint: disable=no-member
+        return _ffi_api_schedule.BlockScopeGetDepsByDst(self, block)  # pylint: disable=no-member
 
 
 @_register_object("tir.ScheduleState")

@@ -571,7 +571,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(parent_block_sref);
   Array<Dependency> edges_to_pred = scope->GetDepsBySrc(block_sref);
-  Array<Dependency> edges_to_succ = scope->GetSuccessors(block_sref);
+  Array<Dependency> edges_to_succ = scope->GetDepsByDst(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'compute_at' expects 'block' and 'loop' be in the same block";
@@ -672,7 +672,7 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(parent_block_sref);
   Array<Dependency> edges_to_pred = scope->GetDepsBySrc(block_sref);
-  Array<Dependency> edges_to_succ = scope->GetSuccessors(block_sref);
+  Array<Dependency> edges_to_succ = scope->GetDepsByDst(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'reverse_compute_at' expects 'block' and 'loop' be in the same block";
@@ -815,7 +815,7 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
       << "ValueError: 'reverse_compute_inline' expects the producer of 'block' to contain a single "
          "BufferStore";
   // Cond 6. The producer has only one consumer(which is block_sref)
-  const auto& consumers = scope->GetSuccessors(producer_sref);
+  const auto& consumers = scope->GetDepsByDst(producer_sref);
   CHECK_EQ(consumers.size(), 1) << "ValueError: 'reverse_compute_inline' expects 'block' is the "
                                    "only consumer of its producer";
   CHECK_EQ(consumers[0]->dst, block_sref) << "ValueError: 'reverse_compute_inline' expects 'block' "
