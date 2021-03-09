@@ -45,6 +45,12 @@ bool ContainsVar(const ObjectRef& stmt_or_expr, const Var& var);
  * \return A boolean indicating if any var in the list is found in stmt/expr
  */
 bool ContainsVar(const ObjectRef& stmt_or_expr, const std::unordered_set<const VarNode*>& var);
+/*!
+ * \brief Collect the variables that appear in the specific Stmt or Expr
+ * \param stmt_or_expr The Stmt or Expr
+ * \return All variables that appear
+ */
+std::unordered_set<const VarNode*> Vars(const ObjectRef& stmt_or_expr);
 
 /******** Verification ********/
 /*!
