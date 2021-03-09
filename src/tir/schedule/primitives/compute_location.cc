@@ -570,7 +570,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(parent_block_sref);
-  Array<Dependency> edges_to_pred = scope->GetPredecessors(block_sref);
+  Array<Dependency> edges_to_pred = scope->GetDepsBySrc(block_sref);
   Array<Dependency> edges_to_succ = scope->GetSuccessors(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
@@ -671,7 +671,7 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(parent_block_sref);
-  Array<Dependency> edges_to_pred = scope->GetPredecessors(block_sref);
+  Array<Dependency> edges_to_pred = scope->GetDepsBySrc(block_sref);
   Array<Dependency> edges_to_succ = scope->GetSuccessors(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
@@ -800,7 +800,7 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
   CHECK(block->body.as<BufferStoreNode>())
       << "ValueError: 'reverse_compute_inline' expects the 'block' contains a single BufferStore";
   // Cond 3. block_sref has only one RAW producer
-  const auto& producers = scope->GetPredecessors(block_sref);
+  const auto& producers = scope->GetDepsBySrc(block_sref);
   CHECK_EQ(producers.size(), 1)
       << "ValueError: 'reverse_compute_inline' expects the 'block' has only one producer";
   CHECK(producers[0]->kind == DepKind::kRAW)

@@ -96,7 +96,7 @@ void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block
   std::unordered_map<const VarNode*, std::vector<Producer>> buffer_producers;
   // Collect all producers to a buffer by enumerating all RAW predecessors of the consumer
   for (const Dependency& edge :
-       self->scopes.at(parent_block_sref)->GetPredecessors(consumer_block_sref)) {
+       self->scopes.at(parent_block_sref)->GetDepsBySrc(consumer_block_sref)) {
     if (edge->kind != DepKind::kRAW) {
       continue;
     }
@@ -342,7 +342,7 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
 Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref) {
   Array<Dependency> pred_edges = self->scopes
                                      .at(GetScopeRoot(block_sref))  //
-                                     ->GetPredecessors(block_sref);
+                                     ->GetDepsBySrc(block_sref);
   Array<StmtSRef> results;
   results.reserve(pred_edges.size());
   for (const Dependency& edge : pred_edges) {

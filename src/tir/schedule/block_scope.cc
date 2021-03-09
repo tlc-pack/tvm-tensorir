@@ -160,7 +160,7 @@ BlockScope::BlockScope(const Array<StmtSRef>& leaf_block_srefs) {
 
 /******** Dependency ********/
 
-Array<Dependency> BlockScopeNode::GetPredecessors(const StmtSRef& block_sref) const {
+Array<Dependency> BlockScopeNode::GetDepsBySrc(const StmtSRef& block_sref) const {
   const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& edges =
       this->backward_edges;
   auto iter = edges.find(block_sref);
@@ -343,8 +343,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefRootMark")  //
     .set_body_typed(StmtSRef::RootMark);
 TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefInlineMark")  //
     .set_body_typed(StmtSRef::InlineMark);
-TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetPredecessors")
-    .set_body_method<BlockScope>(&BlockScopeNode::GetPredecessors);
+TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetDepsBySrc")
+    .set_body_method<BlockScope>(&BlockScopeNode::GetDepsBySrc);
 TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetSuccessors")
     .set_body_method<BlockScope>(&BlockScopeNode::GetSuccessors);
 TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefStmt")

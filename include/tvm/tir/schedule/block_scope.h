@@ -170,7 +170,7 @@ class BlockScopeNode : public runtime::Object {
    * \param block_sref The queried block
    * \return The predecessors edges
    */
-  TVM_DLL Array<Dependency> GetPredecessors(const StmtSRef& block_sref) const;
+  TVM_DLL Array<Dependency> GetDepsBySrc(const StmtSRef& block_sref) const;
   /*!
    * \brief Get all blocks that depends on the block
    * \param block_sref The queried block

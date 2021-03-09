@@ -64,7 +64,7 @@ class Dependency(Object):
 class BlockScope(Object):
     """Dependency Graph that stores read/write dependency between Blocks"""
 
-    def get_predecessors(self, block: StmtSRef) -> List[Dependency]:
+    def get_deps_by_src(self, block: StmtSRef) -> List[Dependency]:
         """Get the dependency predecessors of the block
 
         Parameters
@@ -77,7 +77,7 @@ class BlockScope(Object):
         blocks: List of Dependency
             The predecessors of the block
         """
-        return _ffi_api_schedule.BlockScopeGetPredecessors(self, block)  # pylint: disable=no-member
+        return _ffi_api_schedule.BlockScopeGetDepsBySrc(self, block)  # pylint: disable=no-member
 
     def get_successor(self, block: StmtSRef) -> List[Dependency]:
         """Get the dependency successor of the block
