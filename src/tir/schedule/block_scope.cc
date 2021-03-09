@@ -30,14 +30,14 @@ using TBufferReaderWriter =
 
 /*!
  * \brief Add a dependency edge.
- * \param from The source of the dependency
- * \param to The destination of the dependecy
- * \param type Type of the dependency
+ * \param src The source of the dependency
+ * \param dst The destination of the dependecy
+ * \param kind Type of the dependency
  */
-void AddEdge(BlockScopeNode* self, const StmtSRef& from, const StmtSRef& to, DepKind type) {
-  if (!from.same_as(to)) {
-    self->src2deps[from].push_back(Dependency(from, to, type));
-    self->dst2deps[to].push_back(Dependency(to, from, type));
+void AddEdge(BlockScopeNode* self, const StmtSRef& src, const StmtSRef& dst, DepKind kind) {
+  if (!src.same_as(dst)) {
+    self->src2deps[src].push_back(Dependency(src, dst, kind));
+    self->dst2deps[dst].push_back(Dependency(dst, src, kind));
   }
 }
 
