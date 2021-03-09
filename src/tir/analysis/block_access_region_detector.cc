@@ -222,15 +222,15 @@ Array<BufferRegion> BlockReadWriteDetector::CollectRegions(
 }
 
 void BlockReadWriteDetector::AddOpaque(const Var& buffer_var) {
-    auto it = buffer_var_map_.find(buffer_var);
-    if (it != buffer_var_map_.end()) {
-      const Buffer& buffer = (*it).second;
-      for (const Buffer& opaque_buffer : opaque_buffers_) {
-        if (buffer.same_as(opaque_buffer)) return;
-      }
-      opaque_buffers_.push_back(buffer);
+  auto it = buffer_var_map_.find(buffer_var);
+  if (it != buffer_var_map_.end()) {
+    const Buffer& buffer = (*it).second;
+    for (const Buffer& opaque_buffer : opaque_buffers_) {
+      if (buffer.same_as(opaque_buffer)) return;
     }
+    opaque_buffers_.push_back(buffer);
   }
+}
 
 Array<Array<BufferRegion>> GetBlockAccessRegion(const Block& block,
                                                 const Map<Var, Buffer>& buffer_var_map) {

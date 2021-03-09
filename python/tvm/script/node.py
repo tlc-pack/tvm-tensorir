@@ -17,10 +17,9 @@
 # pylint: disable=redefined-builtin
 """TVM Script nodes."""
 
+from typing import Optional, Union, List, Callable
 import synr
 
-
-from typing import Optional, Union, List, Callable
 from tvm.runtime import ObjectGeneric
 from tvm.tir import PrimExpr, Buffer, BufferLoad
 from tvm.ir import Span
@@ -102,7 +101,6 @@ class BufferSlice(ObjectGeneric):
                         "index expects a integer type PrimExpr but gets type " + str(index.dtype),
                         index.span,
                     )
-                pass
             else:
                 report_error(
                     "Unsupported index type, expects int or tvm.tir.PrimExpr, but gets "

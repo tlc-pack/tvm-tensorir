@@ -32,8 +32,8 @@ def func() -> None:
         for i, j in tir.grid(8, 8):
             A[i, j] = B[0, 0] + C[0, 0]
         with tir.block([]):
-            tir.reads([A[0: 8, 0: 8], C[8: 16, 8: 16]])
-            tir.writes([A[0: 8, 0: 8]])
+            tir.reads([A[0:8, 0:8], C[8:16, 8:16]])
+            tir.writes([A[0:8, 0:8]])
             for i, j in tir.grid(8, 8):
                 A[i, j] += C[i + 8, j + 8]
         tir.evaluate(D.data)

@@ -26,7 +26,7 @@ Each statement node have subfields that can be visited from python side.
     assert isinstance(st, tvm.tir.stmt.Store)
     assert(st.buffer_var == a)
 """
-from typing import List, Optional, Mapping, Union
+from typing import List, Optional, Mapping
 from enum import IntEnum
 import tvm._ffi
 

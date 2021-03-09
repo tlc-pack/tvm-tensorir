@@ -17,14 +17,14 @@
 """TVM Script Context Maintainer for TIR"""
 
 from typing import List, Mapping, Union, Optional, Dict, Callable
+import synr
+
 
 import tvm
 from tvm.ir import Span
 from tvm.tir import Var, Buffer, PrimExpr, Stmt, MatchBufferRegion
 from tvm.runtime import Object
 from .node import BufferSlice
-
-import synr
 
 
 class BlockInfo:

@@ -21,13 +21,11 @@ from typing import Callable, List, Any, Optional, Tuple, Union
 import inspect
 import synr
 
-from .. import TVMError
-from ..error import DiagnosticError
-from ..ir import Span, SourceName
-from .node import BufferSlice
 from tvm.arith import Analyzer
-from tvm.ir import Range
+from tvm.ir import Range, Span, SourceName
 from tvm.tir import PrimExpr, BufferRegion
+from tvm.error import DiagnosticError
+from .node import BufferSlice
 
 
 def get_param_list(
@@ -129,11 +127,12 @@ def call_with_error_reporting(
     *args,
     **kwargs,
 ):
+    """Call function with exception handling and report error using node_span"""
     try:
         return func(*args, **kwargs)
-    except DiagnosticError as e:
-        raise e
-    except Exception as e:
+    except DiagnosticError as err:
+        raise err
+    except Exception as err:  # pylint: disable=broad-except
         # printing last non-empty row of error message.
-        error_msg = list(filter(None, str(e).split("\n")))[-1]
+        error_msg = list(filter(None, str(err).split("\n")))[-1]
         report_error(error_msg, node_span)

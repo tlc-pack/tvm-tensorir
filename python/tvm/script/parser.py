@@ -24,8 +24,8 @@ use for error reporting.
 import json
 import operator
 import inspect
-from synr import ast, Transformer, to_ast
 from typing import Union
+from synr import ast, Transformer, to_ast
 
 import tvm
 from tvm import IRModule

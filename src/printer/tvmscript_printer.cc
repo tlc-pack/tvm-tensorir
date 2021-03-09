@@ -153,7 +153,7 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
   Doc PrintBuffer(const BufferNode* op);
   Doc AllocBufferDeclaration(const Buffer& buf);
   Doc PrintBufferRegion(const BufferRegionNode* op);
-  Doc PrintMatchBufferRegion(const MatchBufferRegionNode *op);
+  Doc PrintMatchBufferRegion(const MatchBufferRegionNode* op);
   Doc PrintAnnotations(const Map<String, ObjectRef>& annotations);
   static Doc PrintString(const StringObj* op) { return Doc::StrLiteral(op->data); }
 

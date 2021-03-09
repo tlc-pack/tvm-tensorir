@@ -95,7 +95,7 @@ PrimFunc ScriptComplete(PrimFunc func, const Array<Buffer>& root_allocates) {
     const Buffer& buffer = pair.second;
     buffer_var_map.Set(buffer->data, buffer);
   }
-  for (const auto& alloc: root_allocates) {
+  for (const auto& alloc : root_allocates) {
     buffer_var_map.Set(alloc->data, alloc);
   }
   ScriptCompleter script_completer(&buffer_var_map);

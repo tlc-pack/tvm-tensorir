@@ -27,14 +27,13 @@ For example, you can use addexp.a to get the left operand of an Add node.
   assert(isinstance(y, tvm.tir.Add))
   assert(y.a == x)
 """
-from typing import List, Union, Optional
 
 import tvm._ffi
 
 from tvm.runtime import Object, ObjectGeneric, DataType, DataTypeCode, const
-from tvm.ir import PrimExpr, Op, Span
+from tvm.ir import PrimExpr, Op
 import tvm.ir._ffi_api
-from . import generic as _generic, Buffer
+from . import generic as _generic
 from . import _ffi_api
 
 
