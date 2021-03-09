@@ -36,8 +36,9 @@ using TBufferReaderWriter =
  */
 void AddEdge(BlockScopeNode* self, const StmtSRef& src, const StmtSRef& dst, DepKind kind) {
   if (!src.same_as(dst)) {
-    self->src2deps[src].push_back(Dependency(src, dst, kind));
-    self->dst2deps[dst].push_back(Dependency(dst, src, kind));
+    Dependency dep(src, dst, kind);
+    self->src2deps[src].push_back(dep);
+    self->dst2deps[dst].push_back(dep);
   }
 }
 
@@ -163,7 +164,7 @@ BlockScope::BlockScope(const Array<StmtSRef>& leaf_block_srefs) {
 
 Array<Dependency> BlockScopeNode::GetDepsBySrc(const StmtSRef& block_sref) const {
   const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& edges =
-      this->dst2deps;
+      this->src2deps;
   auto iter = edges.find(block_sref);
   if (iter != edges.end()) {
     return iter->second;
@@ -174,7 +175,7 @@ Array<Dependency> BlockScopeNode::GetDepsBySrc(const StmtSRef& block_sref) const
 
 Array<Dependency> BlockScopeNode::GetDepsByDst(const StmtSRef& block_sref) const {
   const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& edges =
-      this->src2deps;
+      this->dst2deps;
   auto iter = edges.find(block_sref);
   if (iter != edges.end()) {
     return iter->second;

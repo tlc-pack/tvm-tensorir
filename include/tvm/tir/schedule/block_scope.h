@@ -147,7 +147,7 @@ class DependencyNode : public runtime::Object {
 class Dependency : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
-  explicit Dependency(StmtSRef src, StmtSRef dst, DepKind type);
+  explicit Dependency(StmtSRef src, StmtSRef dst, DepKind kind);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Dependency, ObjectRef, DependencyNode);
 };
 
