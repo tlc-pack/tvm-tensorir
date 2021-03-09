@@ -404,7 +404,7 @@ class StatementInliner : public StmtExprMutator {
     block_node->alloc_buffers = alloc_buffers;
     Block block(block_node);
 
-    block_sref_map_->Set(block, origin_block);
+    block_sref_map_->Set(origin_block, block);
     return std::move(block);
   }
 
@@ -483,7 +483,7 @@ class ReverseStatementInliner : public StmtExprMutator {
     block_node->alloc_buffers = alloc_buffers;
     Block block(block_node);
 
-    if (is_producer) block_sref_map_->Set(block, origin_producer);
+    if (is_producer) block_sref_map_->Set(origin_producer, block);
     return std::move(Block(block));
   }
 
@@ -641,7 +641,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, root);
   Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(lca->stmt));
   if (const auto* replaced_block = replaced.as<BlockNode>()) {
-    self->Replace(lca, replaced, {{GetRef<Block>(replaced_block), GetRef<Block>(parent_block)}});
+    self->Replace(lca, replaced, {{GetRef<Block>(parent_block), GetRef<Block>(replaced_block)}});
   } else {
     self->Replace(lca, replaced, {});
   }
@@ -742,7 +742,7 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, root);
   Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(lca->stmt));
   if (const auto* replaced_block = replaced.as<BlockNode>()) {
-    self->Replace(lca, replaced, {{GetRef<Block>(replaced_block), GetRef<Block>(parent_block)}});
+    self->Replace(lca, replaced, {{GetRef<Block>(parent_block), GetRef<Block>(replaced_block)}});
   } else {
     self->Replace(lca, replaced, {});
   }

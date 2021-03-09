@@ -395,7 +395,7 @@ class CacheReadRewriter : public StmtExprMutator {
         stmt = Block(n);
       }
     }
-    info_->block_map[stmt] = old_stmt;
+    info_->block_map[old_stmt] = stmt;
     return std::move(stmt);
   }
 
@@ -479,7 +479,7 @@ class CacheWriteRewriter : public StmtExprMutator {
         stmt = Block(n);
       }
     }
-    info_->block_map[stmt] = old_stmt;
+    info_->block_map[old_stmt] = stmt;
     return std::move(stmt);
   }
 
@@ -608,14 +608,12 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
   Stmt new_scope = CacheWriteRewriter::Rewrite(/*scope_sref=*/scope_sref, /*info=*/&info);
   // Handling block remapping
   std::unordered_map<Block, Block, ObjectPtrHash, ObjectPtrEqual>& block_map = info.block_map;
-  for (const auto& mapping : block_map) {
-    const Block& new_block = mapping.first;
-    const Block& old_block = mapping.second;
+  for (auto& mapping : block_map) {
+    const Block& old_block = mapping.first;
+    Block& new_block = mapping.second;
     if (old_block.get() == block_sref->stmt) {
       // It is okay to mutate inside iteration, because it is going to break anyways
-      block_map[cache_write_stage] = old_block;
-      cache_write_stage = new_block;
-      block_map.erase(new_block);
+      std::swap(new_block, cache_write_stage);
       break;
     }
   }
