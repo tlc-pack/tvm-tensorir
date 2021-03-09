@@ -96,12 +96,12 @@ void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block
   std::unordered_map<const VarNode*, std::vector<Producer>> buffer_producers;
   // Collect all producers to a buffer by enumerating all RAW predecessors of the consumer
   for (const Dependency& edge :
-       self->scopes.at(parent_block_sref)->GetDepsBySrc(consumer_block_sref)) {
+       self->scopes.at(parent_block_sref)->GetDepsByDst(consumer_block_sref)) {
     if (edge->kind != DepKind::kRAW) {
       continue;
     }
     // i.e. the RAW predecessor is producer
-    const StmtSRef& producer_block_sref = edge->dst;
+    const StmtSRef& producer_block_sref = edge->src;
     for (const BufferRegion& output_region : producer_block_sref->GetStmt<BlockNode>()->writes) {
       const VarNode* buffer_var = output_region->buffer->data.get();
       buffer_producers[buffer_var].emplace_back(producer_block_sref, output_region);
@@ -342,12 +342,12 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
 Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref) {
   Array<Dependency> pred_edges = self->scopes
                                      .at(GetScopeRoot(block_sref))  //
-                                     ->GetDepsBySrc(block_sref);
+                                     ->GetDepsByDst(block_sref);
   Array<StmtSRef> results;
   results.reserve(pred_edges.size());
   for (const Dependency& edge : pred_edges) {
     if (edge->kind == DepKind::kRAW || edge->kind == DepKind::kWAW) {
-      results.push_back(edge->dst);
+      results.push_back(edge->src);
     }
   }
   return results;
@@ -356,7 +356,7 @@ Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sr
 Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref) {
   Array<Dependency> succ_edges = self->scopes
                                      .at(GetScopeRoot(block_sref))  //
-                                     ->GetDepsByDst(block_sref);
+                                     ->GetDepsBySrc(block_sref);
   Array<StmtSRef> results;
   results.reserve(succ_edges.size());
   for (const Dependency& edge : succ_edges) {
