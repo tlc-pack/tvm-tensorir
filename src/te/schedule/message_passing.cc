@@ -653,7 +653,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
             can_ignore_bound_check &= analyzer.CanProve(dyaxis_substituter(vmax < dom->extent));
           }
         }
-        LOG(INFO) << "Can ignore bound check? " << can_ignore_bound_check;
+        LOG(INFO) << "Can ignore bound check (" << value << "<" << dom->extent << ")?: "
+                  << std::boolalpha << can_ignore_bound_check
+                  << std::noboolalpha;
       }
 
 
@@ -724,7 +726,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
             can_ignore_bound_check &= analyzer.CanProve(dyaxis_substituter(vmax < iv->dom->extent));
           }
         }
-        LOG(INFO) << "Can ignore bound check? " << can_ignore_bound_check;
+        LOG(INFO) << "Can ignore bound check (" << value << "<" << iv->dom->extent << ")?: "
+                  << std::boolalpha << can_ignore_bound_check
+                  << std::noboolalpha;
       }
 
 
