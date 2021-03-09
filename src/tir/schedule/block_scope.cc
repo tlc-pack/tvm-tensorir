@@ -34,7 +34,7 @@ using TBufferReaderWriter =
  * \param to The destination of the dependecy
  * \param type Type of the dependency
  */
-void AddEdge(BlockScopeNode* self, const StmtSRef& from, const StmtSRef& to, DepType type) {
+void AddEdge(BlockScopeNode* self, const StmtSRef& from, const StmtSRef& to, DepKind type) {
   if (!from.same_as(to)) {
     self->forward_edges[from].push_back(DepEdge(to, type));
     self->backward_edges[to].push_back(DepEdge(from, type));
@@ -67,7 +67,7 @@ void AddChildBlock(BlockScopeNode* self, const StmtSRef& child_sref,
   for (const BufferRegion& region : block->reads) {
     if (buffer_writers.count(region->buffer)) {
       for (const StmtSRef& from : buffer_writers[region->buffer]) {
-        AddEdge(self, from, child_sref, DepType::kRAW);
+        AddEdge(self, from, child_sref, DepKind::kRAW);
       }
     }
   }
@@ -75,7 +75,7 @@ void AddChildBlock(BlockScopeNode* self, const StmtSRef& child_sref,
   for (const BufferRegion& region : block->writes) {
     if (buffer_writers.count(region->buffer)) {
       for (const StmtSRef& from : buffer_writers[region->buffer]) {
-        AddEdge(self, from, child_sref, DepType::kWAW);
+        AddEdge(self, from, child_sref, DepKind::kWAW);
       }
     }
   }
@@ -140,7 +140,7 @@ StmtSRef StmtSRef::RootMark() {
   return result;
 }
 
-DepEdge::DepEdge(StmtSRef dst, DepType type) {
+DepEdge::DepEdge(StmtSRef dst, DepKind type) {
   ObjectPtr<DepEdgeNode> node = make_object<DepEdgeNode>();
   node->dst = std::move(dst);
   node->type = type;

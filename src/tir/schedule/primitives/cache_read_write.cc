@@ -300,7 +300,7 @@ class CacheLocDetector : public StmtVisitor {
                      const StmtSRef& scope_sref, CacheStageInfo* info) {
     std::vector<StmtSRef> related_blocks;
     for (const DepEdge& x : self->scopes.at(scope_sref)->GetSuccessors(block_sref)) {
-      if (x->type == DepType::kRAW) {
+      if (x->type == DepKind::kRAW) {
         related_blocks.push_back(x->dst);
       }
     }
@@ -608,14 +608,10 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
   Stmt new_scope = CacheWriteRewriter::Rewrite(/*scope_sref=*/scope_sref, /*info=*/&info);
   // Handling block remapping
   std::unordered_map<Block, Block, ObjectPtrHash, ObjectPtrEqual>& block_map = info.block_map;
-  for (auto& mapping : block_map) {
-    const Block& old_block = mapping.first;
-    Block& new_block = mapping.second;
-    if (old_block.get() == block_sref->stmt) {
-      // It is okay to mutate inside iteration, because it is going to break anyways
-      std::swap(new_block, cache_write_stage);
-      break;
-    }
+  {
+    auto it = block_map.find(GetRef<Block>(block));
+    ICHECK(it != block_map.end());
+    std::swap(it->second, cache_write_stage);
   }
   self->Replace(scope_sref, new_scope, block_map);
   return self->stmt2ref.at(cache_write_stage.get());

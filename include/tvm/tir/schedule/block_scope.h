@@ -113,7 +113,7 @@ class StmtSRef : public runtime::ObjectRef {
 };
 
 /*! \brief Type of dependency */
-enum class DepType : int32_t {
+enum class DepKind : int32_t {
   kRAW = 0,
   kWAW = 1,
   kWAR = 2,
@@ -126,7 +126,7 @@ class DepEdgeNode : public runtime::Object {
   /*! \brief The destination block */
   StmtSRef dst;
   /*! \brief The dependency type */
-  DepType type;
+  DepKind type;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dst", &dst);
@@ -144,7 +144,7 @@ class DepEdgeNode : public runtime::Object {
 class DepEdge : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
-  explicit DepEdge(StmtSRef dst, DepType type);
+  explicit DepEdge(StmtSRef dst, DepKind type);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(DepEdge, ObjectRef, DepEdgeNode);
 };
 
