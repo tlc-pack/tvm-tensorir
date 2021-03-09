@@ -24,7 +24,6 @@
 #ifndef TVM_TIR_ANALYSIS_H_
 #define TVM_TIR_ANALYSIS_H_
 
-#include <tvm/arith/int_set.h>
 #include <tvm/ir/module.h>
 #include <tvm/ir/transform.h>
 #include <tvm/tir/expr.h>

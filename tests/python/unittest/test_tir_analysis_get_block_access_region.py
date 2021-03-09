@@ -27,15 +27,15 @@ def func() -> None:
     D = tir.alloc_buffer((128, 128), "float32")
     with tir.block([]):
         # Need add read/write region manually to avoid triggering block access region detector
-        tir.reads([B[0, 0], C[0:16, 0:16], A[0:8, 0:8]])
-        tir.writes([A[0:8, 0:8]])
+        tir.reads([B[0, 0], C[0:16, 0:16], A[4:12, 4:12]])
+        tir.writes([A[0:12, 0:12]])
         for i, j in tir.grid(8, 8):
             A[i, j] = B[0, 0] + C[0, 0]
-        with tir.block([]):
-            tir.reads([A[0:8, 0:8], C[8:16, 8:16]])
-            tir.writes([A[0:8, 0:8]])
-            for i, j in tir.grid(8, 8):
-                A[i, j] += C[i + 8, j + 8]
+        with tir.block([2, 2]) as [vi, vj]:
+            tir.reads([A[vi * 4 + 4 : vi * 4 + 8, vj * 4 + 4 : vj * 4 + 8], C[12:16, 12:16]])
+            tir.writes([A[vi * 4 + 4 : vi * 4 + 8, vj * 4 + 4 : vj * 4 + 8]])
+            for i, j in tir.grid(4, 4):
+                A[vi * 4 + 4 + i, vj * 4 + 4 + j] += C[i + 12, j + 12]
         tir.evaluate(D.data)
 
 

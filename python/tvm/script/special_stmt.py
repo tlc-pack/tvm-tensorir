@@ -26,6 +26,7 @@ import tvm.tir
 from tvm.runtime import Object
 from tvm import te
 from tvm.ir import Span
+from tvm.tir import IntImm
 from .utils import (
     get_param_list,
     tvm_span_from_synr,
@@ -35,6 +36,18 @@ from .utils import (
 from .registry import register
 from .context_maintainer import ContextMaintainer
 from .node import BufferSlice
+
+
+def convert_to_int(value, arg_name, report_error, span):
+    if isinstance(value, IntImm):
+        return value.value
+    elif isinstance(value, int):
+        return value
+    else:
+        report_error(
+            f"Expects int or IntImm for {arg_name}, but gets {str(type(value))}",
+            span,
+        )
 
 
 class SpecialStmt:
@@ -87,16 +100,20 @@ class MatchBuffer(SpecialStmt):
             buffer_type="default",
             span=None,
         ):
-            assert isinstance(self.node, ast.Assign)
+            if not isinstance(self.node, ast.Assign):
+                self.context.report_error(
+                    "Need assign the match_buffer to a buffer, e.g. A = match_buffer(...)",
+                    self.node.span,
+                )
             if param not in self.context.func_params:
                 self.context.report_error(
                     "Can not bind non-input param to buffer", self.node.rhs.params[0].span
                 )
             if strides is None:
                 strides = []
-            align = align.value if not isinstance(align, int) else align
-            offset_factor = (
-                offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+            align = convert_to_int(align, "align", self.context.report_error, self.node.span)
+            offset_factor = convert_to_int(
+                offset_factor, "offset_factor", self.context.report_error, self.node.span
             )
             buffer = tvm.tir.decl_buffer(
                 shape,
@@ -140,13 +157,17 @@ class BufferDeclare(SpecialStmt):
             buffer_type="default",
             span=None,
         ):
-            assert isinstance(self.node, ast.Assign)
+            if not isinstance(self.node, ast.Assign):
+                self.context.report_error(
+                    "Need assign the buffer_decl to a buffer, e.g. A = buffer_decl(...)",
+                    self.node.span,
+                )
 
             if strides is None:
                 strides = []
-            align = align.value if not isinstance(align, int) else align
-            offset_factor = (
-                offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+            align = convert_to_int(align, "align", self.context.report_error, self.node.span)
+            offset_factor = convert_to_int(
+                offset_factor, "offset_factor", self.context.report_error, self.node.span
             )
             buffer = tvm.tir.decl_buffer(
                 shape,
@@ -193,13 +214,17 @@ class AllocBuffer(SpecialStmt):
             buffer_type="default",
             span=None,
         ):
-            assert isinstance(self.node, ast.Assign)
+            if not isinstance(self.node, ast.Assign):
+                self.context.report_error(
+                    "Need assign the alloc_buffer to a buffer, e.g. A = alloc_buffer(...)",
+                    self.node.span,
+                )
 
             if strides is None:
                 strides = []
-            align = align.value if not isinstance(align, int) else align
-            offset_factor = (
-                offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+            align = convert_to_int(align, "align", self.context.report_error, self.node.span)
+            offset_factor = convert_to_int(
+                offset_factor, "offset_factor", self.context.report_error, self.node.span
             )
             buffer = tvm.tir.decl_buffer(
                 shape,
@@ -265,9 +290,17 @@ class BlockReads(SpecialStmt):
                     + str(", ".join(str(x) for x in block_scope.reads)),
                     span,
                 )
-            block_scope.reads = (
-                [read_regions] if not isinstance(read_regions, list) else read_regions
-            )
+            if isinstance(read_regions, list):
+                pass
+            elif isinstance(read_regions, BufferSlice):
+                read_regions = [read_regions]
+            else:
+                self.context.report_error(
+                    "Error input type. "
+                    + f"Expects BufferSlice or List[BufferSlice], but gets {type(read_regions)}",
+                    span,
+                )
+            block_scope.reads = read_regions
 
         super().__init__(reads, def_symbol=False)
 
@@ -295,9 +328,17 @@ class BlockWrites(SpecialStmt):
                     + str(", ".join(str(x) for x in block_scope.writes)),
                     span,
                 )
-            block_scope.writes = (
-                [write_region] if not isinstance(write_region, list) else write_region
-            )
+            if isinstance(write_region, list):
+                pass
+            elif isinstance(write_region, BufferSlice):
+                write_region = [write_region]
+            else:
+                self.context.report_error(
+                    "Error input type. "
+                    + f"Expects BufferSlice or List[BufferSlice], but gets {type(write_region)}",
+                    span,
+                )
+            block_scope.writes = write_region
 
         super().__init__(writes, def_symbol=False)
 
@@ -383,13 +424,18 @@ class BlockMatchBufferRegion(SpecialStmt):
             offset_factor=0,
             span=None,
         ):
-            assert isinstance(self.node, ast.Assign)
+            if not isinstance(self.node, ast.Assign):
+                self.context.report_error(
+                    "Need assign the match_buffer_region to a buffer, "
+                    + "e.g. A = match_buffer_region(...)",
+                    self.node.span,
+                )
 
             if strides is None:
                 strides = []
-            align = align.value if not isinstance(align, int) else align
-            offset_factor = (
-                offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+            align = convert_to_int(align, "align", self.context.report_error, self.node.span)
+            offset_factor = convert_to_int(
+                offset_factor, "offset_factor", self.context.report_error, self.node.span
             )
 
             if not isinstance(source, BufferSlice):
