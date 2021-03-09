@@ -123,12 +123,15 @@ enum class DepKind : int32_t {
 /*! \brief An edge representing certain types of dependency, e.g. read-after-write */
 class DependencyNode : public runtime::Object {
  public:
-  /*! \brief The destination block */
+  /*! \brief The source of the dependency relation */
+  StmtSRef src;
+  /*! \brief The destination of the dependency relation */
   StmtSRef dst;
   /*! \brief The dependency kind */
   DepKind kind;
 
   void VisitAttrs(AttrVisitor* v) {
+    v->Visit("src", &src);
     v->Visit("dst", &dst);
     v->Visit("kind", &kind);
   }
@@ -144,7 +147,7 @@ class DependencyNode : public runtime::Object {
 class Dependency : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
-  explicit Dependency(StmtSRef dst, DepKind type);
+  explicit Dependency(StmtSRef src, StmtSRef dst, DepKind type);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Dependency, ObjectRef, DependencyNode);
 };
 

@@ -94,7 +94,7 @@ struct SRefTranslator {
     Array<Dependency> result;
     result.reserve(list.size());
     for (const Dependency& elem : list) {
-      result.push_back(Dependency(Trans(elem->dst), elem->kind));
+      result.push_back(Dependency(Trans(elem->src), Trans(elem->dst), elem->kind));
     }
     return result;
   }

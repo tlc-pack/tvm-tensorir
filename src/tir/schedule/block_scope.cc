@@ -36,8 +36,8 @@ using TBufferReaderWriter =
  */
 void AddEdge(BlockScopeNode* self, const StmtSRef& from, const StmtSRef& to, DepKind type) {
   if (!from.same_as(to)) {
-    self->src2deps[from].push_back(Dependency(to, type));
-    self->dst2deps[to].push_back(Dependency(from, type));
+    self->src2deps[from].push_back(Dependency(from, to, type));
+    self->dst2deps[to].push_back(Dependency(to, from, type));
   }
 }
 
@@ -140,8 +140,9 @@ StmtSRef StmtSRef::RootMark() {
   return result;
 }
 
-Dependency::Dependency(StmtSRef dst, DepKind kind) {
+Dependency::Dependency(StmtSRef src, StmtSRef dst, DepKind kind) {
   ObjectPtr<DependencyNode> node = make_object<DependencyNode>();
+  node->src = std::move(src);
   node->dst = std::move(dst);
   node->kind = kind;
   data_ = std::move(node);

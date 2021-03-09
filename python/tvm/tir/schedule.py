@@ -56,6 +56,7 @@ class Dependency(Object):
     kWAR = 2
     kOpaque = 3
 
+    src: StmtSRef
     dst: StmtSRef
     kind: int
 
