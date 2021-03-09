@@ -121,7 +121,7 @@ enum class DepKind : int32_t {
 };
 
 /*! \brief An edge representing certain types of dependency, e.g. read-after-write */
-class DepEdgeNode : public runtime::Object {
+class DependencyNode : public runtime::Object {
  public:
   /*! \brief The destination block */
   StmtSRef dst;
@@ -134,18 +134,18 @@ class DepEdgeNode : public runtime::Object {
   }
 
   static constexpr const char* _type_key = "tir.DepEdge";
-  TVM_DECLARE_FINAL_OBJECT_INFO(DepEdgeNode, Object);
+  TVM_DECLARE_FINAL_OBJECT_INFO(DependencyNode, Object);
 };
 
 /*!
- * \brief Managed reference to DepEdgeNode
- * \sa DepEdgeNode
+ * \brief Managed reference to DependencyNode
+ * \sa DependencyNode
  */
 class DepEdge : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
   explicit DepEdge(StmtSRef dst, DepKind type);
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(DepEdge, ObjectRef, DepEdgeNode);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(DepEdge, ObjectRef, DependencyNode);
 };
 
 /*! \brief An object recording the producer-consumer dependency between child blocks of a scope */
@@ -164,7 +164,7 @@ class BlockScopeNode : public runtime::Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(BlockScopeNode, runtime::Object);
 
  public:
-  /******** Dependency ********/
+  /******** DependencyNode ********/
   /*!
    * \brief Get all blocks the block depends on
    * \param block_sref The queried block

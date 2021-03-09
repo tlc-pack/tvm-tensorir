@@ -57,7 +57,7 @@ class DepEdge(Object):
     kOpaque = 3
 
     dst: StmtSRef
-    type: int
+    kind: int
 
 
 @_register_object("tir.BlockScope")

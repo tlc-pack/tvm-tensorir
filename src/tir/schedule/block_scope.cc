@@ -141,7 +141,7 @@ StmtSRef StmtSRef::RootMark() {
 }
 
 DepEdge::DepEdge(StmtSRef dst, DepKind kind) {
-  ObjectPtr<DepEdgeNode> node = make_object<DepEdgeNode>();
+  ObjectPtr<DependencyNode> node = make_object<DependencyNode>();
   node->dst = std::move(dst);
   node->kind = kind;
   data_ = std::move(node);
@@ -336,7 +336,7 @@ bool BlockScopeNode::CanMergeReduction(const StmtSRef& init_sref,
 /******** FFI ********/
 
 TVM_REGISTER_NODE_TYPE(StmtSRefNode);
-TVM_REGISTER_NODE_TYPE(DepEdgeNode);
+TVM_REGISTER_NODE_TYPE(DependencyNode);
 TVM_REGISTER_NODE_TYPE(BlockScopeNode);
 
 TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefRootMark")  //

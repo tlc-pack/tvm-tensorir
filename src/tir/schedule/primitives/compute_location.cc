@@ -84,7 +84,7 @@ bool EachEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& 
 }
 
 /*!
- * \brief Extract StmtSRef from DepEdgeNode::dst
+ * \brief Extract StmtSRef from DependencyNode::dst
  * \param edges List of edges to be extracted
  * \return A list of StmtSRef as the result
  */
