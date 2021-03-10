@@ -269,7 +269,7 @@ inline void DelAnn(const tir::ScheduleState& sch, const tir::StmtSRef& sref,
     ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
     n->annotations = std::move(new_ann);
     tir::Block p(n);
-    sch->Replace(sref, p, {{p, GetRef<tir::Block>(block)}});
+    sch->Replace(sref, p, {{GetRef<tir::Block>(block), p}});
   } else {
     LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
     throw;
@@ -303,7 +303,7 @@ inline void AddAnn(const tir::ScheduleState& sch, const tir::StmtSRef& sref, con
     ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
     n->annotations = std::move(new_ann);
     tir::Block p(n);
-    sch->Replace(sref, p, {{p, GetRef<tir::Block>(block)}});
+    sch->Replace(sref, p, {{GetRef<tir::Block>(block), p}});
   } else {
     LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
     throw;
