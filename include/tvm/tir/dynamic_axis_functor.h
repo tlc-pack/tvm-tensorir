@@ -26,9 +26,9 @@ class DyAxisMinReplacer : public ExprMutator {
 
 
 class DyAxisSubstituter : public ExprMutator {
- public:
+ private:
   const DyAxisNode* op;
-  int v;
+  IntImm v;
  protected:
   PrimExpr VisitExpr_(const DyAxisNode* op) override {
     if (op == this->op) {
@@ -36,6 +36,9 @@ class DyAxisSubstituter : public ExprMutator {
     } else {
       return GetRef<DyAxis>(op);
     }
+  }
+ public:
+  DyAxisSubstituter(const DyAxisNode* const op, IntImm v) : op(op), v(v) {
   }
 };
 
@@ -48,6 +51,9 @@ class DyAxisFinder : public ExprVisitor {
     dy_axes.insert(op);
   }
 };
+
+
+bool canProveForAllDyAxes(arith::Analyzer& analyzer, PrimExpr predicate);
 
 
 }  // namespace tir

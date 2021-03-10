@@ -605,11 +605,11 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   // <bojian/TVM-SymbolicTuning>
   // #if defined(SYMTUNE_SCHED_OPT_NO_DUP_IF_CHECKS)
   PrimExpr prev_predicate;
-  ContainsBlockIdx blockidx_checker;
-  DyAxisMaxReplacer dyaxis_max_replacer;
-  DyAxisMinReplacer dyaxis_min_replacer;
-  DyAxisSubstituter dyaxis_substituter;
-  DyAxisFinder dyaxis_finder;
+  // ContainsBlockIdx blockidx_checker;
+  // DyAxisMaxReplacer dyaxis_max_replacer;
+  // DyAxisMinReplacer dyaxis_min_replacer;
+  // DyAxisSubstituter dyaxis_substituter;
+  // DyAxisFinder dyaxis_finder;
 
   // std::ostringstream strout;
   // for (const std::pair<IterVar, PrimExpr>& iv_expr_pair : value_map) {
@@ -630,38 +630,40 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
 
 
       // <bojian/TVM-SymbolicTuning>
-      dyaxis_finder.dy_axes.clear();
-      dyaxis_finder(vmax < dom->extent);
+      // dyaxis_finder.dy_axes.clear();
+      // dyaxis_finder(vmax < dom->extent);
       // for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
       //   LOG(INFO) << GetRef<DyAxis>(dy_axis);
       // }
-      bool can_ignore_bound_check = true;
+      // bool can_ignore_bound_check = true;
 
-      if (dyaxis_finder.dy_axes.empty()) {
-        can_ignore_bound_check = analyzer.CanProve(vmax < dom->extent);
-      } else {
-        for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
-          for (const IntImm& v : dy_axis->possible_values) {
-            dyaxis_substituter.op = dy_axis;
-            dyaxis_substituter.v = v->value;
-            // LOG(INFO) << value;
-            // IntSet s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
-            // recompute vmax
-            // vmax = s.max();
-            // PrimExpr new_cond = dyaxis_substituter(vmax < dom->extent);
-            // LOG(INFO) << "Checking condition " << new_cond;
-            LOG(INFO) << analyzer.Simplify(dyaxis_max_replacer(dyaxis_substituter(vmax))) << " vs. "
-                      << analyzer.Simplify(dyaxis_min_replacer(dyaxis_substituter(dom->extent)));
-            can_ignore_bound_check &= analyzer.CanProve(
-                dyaxis_max_replacer(dyaxis_substituter(vmax)) <
-                dyaxis_min_replacer(dyaxis_substituter(dom->extent))
-                );
-          }
-        }
-        LOG(INFO) << "Can ignore bound check (" << value << "<" << dom->extent << ")?: "
-                  << std::boolalpha << can_ignore_bound_check
-                  << std::noboolalpha;
-      }
+      // if (dyaxis_finder.dy_axes.empty()) {
+      //   can_ignore_bound_check = analyzer.CanProve(vmax < dom->extent);
+      // } else {
+        // for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
+        //   for (const IntImm& v : dy_axis->possible_values) {
+        //     dyaxis_substituter.op = dy_axis;
+        //     dyaxis_substituter.v = v->value;
+        //     // LOG(INFO) << value;
+        //     // IntSet s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
+        //     // recompute vmax
+        //     // vmax = s.max();
+        //     // PrimExpr new_cond = dyaxis_substituter(vmax < dom->extent);
+        //     // LOG(INFO) << "Checking condition " << new_cond;
+        //     LOG(INFO) << analyzer.Simplify(dyaxis_max_replacer(dyaxis_substituter(vmax))) << " vs. "
+        //               << analyzer.Simplify(dyaxis_min_replacer(dyaxis_substituter(dom->extent)));
+        //     can_ignore_bound_check &= analyzer.CanProve(
+        //         dyaxis_max_replacer(dyaxis_substituter(vmax)) <
+        //         dyaxis_min_replacer(dyaxis_substituter(dom->extent))
+        //         );
+        //   }
+        // }
+        // LOG(INFO) << "Can ignore bound check (" << value << "<" << dom->extent << ")?: "
+        //           << std::boolalpha << can_ignore_bound_check
+        //           << std::noboolalpha;
+        // can_ignore_bound_check = canProveForAllDyAxes(analyzer, vmax < dom->extent);
+      // }
+      bool can_ignore_bound_check = canProveForAllDyAxes(analyzer, vmax < dom->extent);
 
 
       if (vmax.dtype() != value.dtype() || !can_ignore_bound_check) {
@@ -700,49 +702,53 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr vmax = s.max();
       // The range of `value` resides in [vmin, vmax]
       // <bojian/TVM-SymbolicTuning>
-      if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
-        if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
-          preds.emplace_back(value >= 0);
-        }
-        LOG(INFO) << "Neglecting the bound check (" << value << ">=" << "0)";
+      // if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
+
+      bool can_ignore_lower_bound_check = canProveForAllDyAxes(analyzer, vmin >= 0);
+
+      if (vmin.dtype() != value.dtype() || !can_ignore_lower_bound_check) {
+        preds.emplace_back(value >= 0);
       }
+      //   LOG(INFO) << "Neglecting the bound check (" << value << ">=" << "0)";
+      // }
 
       // <bojian/TVM-SymbolicTuning>
-      dyaxis_finder.dy_axes.clear();
-      dyaxis_finder(vmax < iv->dom->extent);
+      // dyaxis_finder.dy_axes.clear();
+      // dyaxis_finder(vmax < iv->dom->extent);
       // for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
       //   LOG(INFO) << GetRef<DyAxis>(dy_axis);
       // }
-      bool can_ignore_bound_check = true;
+      // bool can_ignore_bound_check = true;
 
-      if (dyaxis_finder.dy_axes.empty()) {
-        can_ignore_bound_check = analyzer.CanProve(vmax < iv->dom->extent);
-      } else {
-        for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
-          for (const IntImm& v : dy_axis->possible_values) {
-            dyaxis_substituter.op = dy_axis;
-            dyaxis_substituter.v = v->value;
-            // LOG(INFO) << value;
-            // s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
-            // recompute vmax
-            // vmax = s.max();
-            // PrimExpr new_cond = dyaxis_substituter(vmax < iv->dom->extent);
-            // LOG(INFO) << "Checking condition " << new_cond;
-            LOG(INFO) << analyzer.Simplify(dyaxis_max_replacer(dyaxis_substituter(vmax))) << " vs. "
-                      << analyzer.Simplify(dyaxis_min_replacer(dyaxis_substituter(iv->dom->extent)));
-            can_ignore_bound_check &= analyzer.CanProve(
-                dyaxis_max_replacer(dyaxis_substituter(vmax)) <
-                dyaxis_min_replacer(dyaxis_substituter(iv->dom->extent))
-                );
-          }
-        }
-        LOG(INFO) << "Can ignore bound check (" << value << "<" << iv->dom->extent << ")?: "
-                  << std::boolalpha << can_ignore_bound_check
-                  << std::noboolalpha;
-      }
+      // if (dyaxis_finder.dy_axes.empty()) {
+      //   can_ignore_bound_check = analyzer.CanProve(vmax < iv->dom->extent);
+      // } else {
+        // for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
+        //   for (const IntImm& v : dy_axis->possible_values) {
+        //     dyaxis_substituter.op = dy_axis;
+        //     dyaxis_substituter.v = v->value;
+        //     // LOG(INFO) << value;
+        //     // s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
+        //     // recompute vmax
+        //     // vmax = s.max();
+        //     // PrimExpr new_cond = dyaxis_substituter(vmax < iv->dom->extent);
+        //     // LOG(INFO) << "Checking condition " << new_cond;
+        //     LOG(INFO) << analyzer.Simplify(dyaxis_max_replacer(dyaxis_substituter(vmax))) << " vs. "
+        //               << analyzer.Simplify(dyaxis_min_replacer(dyaxis_substituter(iv->dom->extent)));
+        //     can_ignore_bound_check &= analyzer.CanProve(
+        //         dyaxis_max_replacer(dyaxis_substituter(vmax)) <
+        //         dyaxis_min_replacer(dyaxis_substituter(iv->dom->extent))
+        //         );
+        //   }
+        // }
+        // LOG(INFO) << "Can ignore bound check (" << value << "<" << iv->dom->extent << ")?: "
+        //           << std::boolalpha << can_ignore_bound_check
+        //           << std::noboolalpha;
+        // can_ignore_bound_check = canProveForAllDyAxes(analyzer, vmax < iv->dom->extent);
+      // }
+      bool can_ignore_upper_bound_check = canProveForAllDyAxes(analyzer, vmax < iv->dom->extent);
 
-
-      if (vmax.dtype() != value.dtype() || !can_ignore_bound_check) {
+      if (vmax.dtype() != value.dtype() || !can_ignore_upper_bound_check) {
 
         // <bojian/TVM-SymbolicTuning>
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
