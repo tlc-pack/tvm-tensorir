@@ -42,7 +42,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 namespace {
 
-bool canProveForEachDyAxis(arith::Analyzer& analyzer, PrimExpr predicate, bool* const can_prove,
+void canProveForEachDyAxis(arith::Analyzer& analyzer, PrimExpr predicate, bool* const can_prove,
                            const std::unordered_set<const DyAxisNode*>::iterator& dyaxes_iter,
                            const std::unordered_set<const DyAxisNode*>::iterator& dyaxes_end) {
   if (dyaxes_iter == dyaxes_end) {
