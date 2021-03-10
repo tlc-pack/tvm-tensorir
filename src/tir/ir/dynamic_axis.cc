@@ -51,6 +51,7 @@ void canProveForEachDyAxis(arith::Analyzer& analyzer, PrimExpr predicate, bool* 
       LOG(WARNING) << "Unable to show that (" << predicate << ") is always true";
     }
     (*can_prove) &= analyzer_result;
+    return;
   }
   const DyAxisNode* const dy_axis = *dyaxes_iter;
   std::unordered_set<const DyAxisNode*>::iterator dyaxes_next_iter = dyaxes_iter;
