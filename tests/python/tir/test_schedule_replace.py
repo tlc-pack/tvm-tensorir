@@ -242,7 +242,13 @@ def test_replace_block_remap():
     # The target stmt
     target = util.matmul_stmt_original().body.block.body.body.body[0].block
     sref = s.get_sref(s.mod["main"].body.block.body[0].body.body.block)
-    s.state.replace(sref, target, {target: s.mod["main"].body.block.body[0].body.body.block})
+    s.state.replace(
+        sref,
+        target,
+        {
+            s.mod["main"].body.block.body[0].body.body.block: target,
+        },
+    )
     sref_new = s.get_sref(s.get_block("init"))
     # Check the original sref has been remapped
     assert sref.__hash__() == sref_new.__hash__()

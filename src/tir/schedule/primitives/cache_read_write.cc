@@ -299,8 +299,8 @@ class CacheLocDetector : public StmtVisitor {
   static void Detect(const ScheduleState self, const StmtSRef& block_sref,
                      const StmtSRef& scope_sref, CacheStageInfo* info) {
     std::vector<StmtSRef> related_blocks;
-    for (const DepEdge& x : self->scopes.at(scope_sref)->GetSuccessors(block_sref)) {
-      if (x->type == DepType::kRAW) {
+    for (const Dependency& x : self->scopes.at(scope_sref)->GetDepsBySrc(block_sref)) {
+      if (x->kind == DepKind::kRAW) {
         related_blocks.push_back(x->dst);
       }
     }
@@ -395,7 +395,7 @@ class CacheReadRewriter : public StmtExprMutator {
         stmt = Block(n);
       }
     }
-    info_->block_map[stmt] = old_stmt;
+    info_->block_map[old_stmt] = stmt;
     return std::move(stmt);
   }
 
@@ -479,7 +479,7 @@ class CacheWriteRewriter : public StmtExprMutator {
         stmt = Block(n);
       }
     }
-    info_->block_map[stmt] = old_stmt;
+    info_->block_map[old_stmt] = stmt;
     return std::move(stmt);
   }
 
@@ -608,16 +608,10 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
   Stmt new_scope = CacheWriteRewriter::Rewrite(/*scope_sref=*/scope_sref, /*info=*/&info);
   // Handling block remapping
   std::unordered_map<Block, Block, ObjectPtrHash, ObjectPtrEqual>& block_map = info.block_map;
-  for (const auto& mapping : block_map) {
-    const Block& new_block = mapping.first;
-    const Block& old_block = mapping.second;
-    if (old_block.get() == block_sref->stmt) {
-      // It is okay to mutate inside iteration, because it is going to break anyways
-      block_map[cache_write_stage] = old_block;
-      cache_write_stage = new_block;
-      block_map.erase(new_block);
-      break;
-    }
+  {
+    auto it = block_map.find(GetRef<Block>(block));
+    ICHECK(it != block_map.end());
+    std::swap(it->second, cache_write_stage);
   }
   self->Replace(scope_sref, new_scope, block_map);
   return self->stmt2ref.at(cache_write_stage.get());

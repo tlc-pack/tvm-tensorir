@@ -73,12 +73,10 @@ class ScheduleStateNode : public runtime::Object {
    *
    * \param src_sref The sref to the statement to be replaced
    * \param tgt_stmt The statement to be replaced to
-   * \param block_sref_reuse Maps an new block (replaced to) back to an old block (to be replaced),
+   * \param block_sref_reuse Maps an old block (to be replaced) to a new block (replaced to),
    * and enforces reuse of srefs between them (rather than create new srefs)
    * i.e. after being replaced, the sref that points to the old block will point to the new one
    * \note `loop_sref_reuse` will be automatically detected via loop vars
-   *
-   * TODO(@junrushao1994): change `block_sref_reuse` from "new -> old" to "old -> new"
    */
   TVM_DLL void Replace(const tir::StmtSRef& src_sref, const Stmt& tgt_stmt,
                        const Map<Block, Block>& block_sref_reuse);

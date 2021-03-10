@@ -217,7 +217,7 @@ void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref) {
       << "ValueError: 'double_buffer' expects 'block' with only one write buffer";
   Block new_block =
       WithAnnotation(block_ptr, tir::attr::double_buffer_scope, IntImm(DataType::Int(32), 1));
-  self->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block_ptr)}});
+  self->Replace(block_sref, new_block, {{GetRef<Block>(block_ptr), new_block}});
 }
 
 }  // namespace schedule

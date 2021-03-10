@@ -89,19 +89,19 @@ struct SRefTranslator {
     return result;
   }
 
-  /*! \brief Translate Array<DepEdge> */
-  Array<DepEdge> Trans(const Array<DepEdge>& list) {
-    Array<DepEdge> result;
+  /*! \brief Translate Array<Dependency> */
+  Array<Dependency> Trans(const Array<Dependency>& list) {
+    Array<Dependency> result;
     result.reserve(list.size());
-    for (const DepEdge& elem : list) {
-      result.push_back(DepEdge(Trans(elem->dst), elem->type));
+    for (const Dependency& elem : list) {
+      result.push_back(Dependency(Trans(elem->src), Trans(elem->dst), elem->kind));
     }
     return result;
   }
 
-  /*! \brief Translate SMap<StmtSRef, Array<DepEdge>> */
-  SMap<StmtSRef, Array<DepEdge>> Trans(const SMap<StmtSRef, Array<DepEdge>>& map) {
-    SMap<StmtSRef, Array<DepEdge>> result;
+  /*! \brief Translate SMap<StmtSRef, Array<Dependency>> */
+  SMap<StmtSRef, Array<Dependency>> Trans(const SMap<StmtSRef, Array<Dependency>>& map) {
+    SMap<StmtSRef, Array<Dependency>> result;
     result.reserve(map.size());
     for (const auto& kv : map) {
       result[Trans(kv.first)] = Trans(kv.second);
@@ -126,8 +126,8 @@ struct SRefTranslator {
       const StmtSRef& old_sref = kv.first;
       const BlockScope& old_scope = kv.second;
       ObjectPtr<BlockScopeNode> scope = make_object<BlockScopeNode>();
-      scope->forward_edges = Trans(old_scope->forward_edges);
-      scope->backward_edges = Trans(old_scope->backward_edges);
+      scope->src2deps = Trans(old_scope->src2deps);
+      scope->dst2deps = Trans(old_scope->dst2deps);
       scope->buffer_writers = Trans(old_scope->buffer_writers);
       result.Set(Trans(old_sref), BlockScope(std::move(scope)));
     }
