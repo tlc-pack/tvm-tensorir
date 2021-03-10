@@ -43,6 +43,83 @@ void AddDependency(BlockScopeNode* self, const StmtSRef& src, const StmtSRef& ds
   }
 }
 
+/*!
+ * \brief Add a new rightmost a new child block,
+ * update the `buffer_writes`, `buffer_readers` and the dependency graph
+ * \param block_sref The child block to be added
+ * \param buffer_readers An auxiliary data structure mapping existing buffers to a list of blocks
+ * that reads it
+ */
+void AddChildBlock(BlockScopeNode* self, const StmtSRef& child_sref,
+                   TBufferReaderWriter* _buffer_readers) {
+  const BlockNode* block = child_sref->GetStmt<BlockNode>();
+  ICHECK(block) << "InternalError: Scope::AddChildBlock only accepts a Block as child_sref";
+  TBufferReaderWriter& buffer_readers = *_buffer_readers;
+  TBufferReaderWriter& buffer_writers = self->buffer_writers;
+  // Step 1. Update `buffer_readers` and `buffer_writer` for each buffer
+  for (const BufferRegion& region : block->writes) {
+    buffer_writers[region->buffer].push_back(child_sref);
+  }
+  for (const BufferRegion& region : block->reads) {
+    buffer_readers[region->buffer].push_back(child_sref);
+  }
+  // Check and update block dependencies: RAW, WAW, WAR.
+  // Note: AddEdge is effectively NOP on self-loops
+  // Step 2. Update RAW dependency
+  for (const BufferRegion& region : block->reads) {
+    if (buffer_writers.count(region->buffer)) {
+      for (const StmtSRef& from : buffer_writers[region->buffer]) {
+        AddEdge(self, from, child_sref, DepKind::kRAW);
+      }
+    }
+  }
+  // Step 3. Update WAW dependency
+  for (const BufferRegion& region : block->writes) {
+    if (buffer_writers.count(region->buffer)) {
+      for (const StmtSRef& from : buffer_writers[region->buffer]) {
+        AddEdge(self, from, child_sref, DepKind::kWAW);
+      }
+    }
+  }
+  // Step 4. Check WAR dependency: not allowed in the IR
+  for (const BufferRegion& region : block->writes) {
+    if (buffer_readers.count(region->buffer)) {
+      for (const StmtSRef& from : buffer_readers[region->buffer]) {
+        CHECK(from.same_as(child_sref)) << "TypeError: WAR dependency is not allowed";
+      }
+    }
+  }
+}
+
+/*!
+ * \brief Check if each reduction instance is valid. Particularly, check:
+ * 1) Each iteration variable is either data parallel or reduction
+ * 2) Indices used to access the output buffer are not related to or affected by reduction iteration
+ * variables.
+ * \param iter_vars Iteration variables of the reduction
+ * \param output_buffer_indices Indices used to access the output buffer
+ * \return A boolean indicating if the reduction instance is valid
+ */
+bool CheckReductionInstance(const Array<IterVar>& iter_vars,
+                            const Array<PrimExpr>& output_buffer_indices) {
+  for (const IterVar& iter_var : iter_vars) {
+    IterVarType kind = iter_var->iter_type;
+    // Check 1. Each iter_var can only be data parallel or reduction
+    if (kind != kDataPar && kind != kCommReduce) {
+      return false;
+    }
+    // Check 2. Each reduction iter_var should not be used to index output buffer
+    if (kind == kCommReduce) {
+      for (const PrimExpr& idx : output_buffer_indices) {
+        if (ContainsVar(idx, iter_var->var)) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
 /******** Constructors ********/
 
 StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index) {

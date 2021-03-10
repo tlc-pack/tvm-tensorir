@@ -45,10 +45,10 @@ Array<Var> GatherVars(const ObjectRef& stmt_or_expr) {
  * \param blocks A list of candidate blocks
  * \return True if there is at least one edge that points to a block in the list
  */
-bool AnyEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& blocks) {
-  for (const DepEdge& edge : edges) {
+bool AnyEdgePointsToABlock(const Array<StmtSRef>& edges, const Array<StmtSRef>& blocks) {
+  for (const StmtSRef& edge : edges) {
     for (const StmtSRef& block : blocks) {
-      if (edge->dst.same_as(block)) {
+      if (edge.same_as(block)) {
         return true;
       }
     }
@@ -56,22 +56,40 @@ bool AnyEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& b
   return false;
 }
 
+Array<StmtSRef> GetProducersFromDependency(const Array<Dependency>& deps) {
+  Array<StmtSRef> result;
+  result.reserve(deps.size());
+  for (const Dependency& dep : deps) {
+    result.push_back(dep->src);
+  }
+  return result;
+}
+
+Array<StmtSRef> GetConsumersFromDependency(const Array<Dependency>& deps) {
+  Array<StmtSRef> result;
+  result.reserve(deps.size());
+  for (const Dependency& dep : deps) {
+    result.push_back(dep->dst);
+  }
+  return result;
+}
+
 /*!
  * \brief Helper function to check if every edge points to a block in the given set of blocks
  * \param edges A list of edges to be check
  * \param blocks A list of candidate blocks
- * \param raw_edge_only Only consider RAW-dependency edges
  * \return True if all edges that have a corresponding block
  */
-bool EachEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& blocks,
-                            bool raw_edge_only) {
-  for (const DepEdge& edge : edges) {
-    if (raw_edge_only && edge->type != DepType::kRAW) {
+bool EachEdgePointsToABlock(const Array<Dependency>& edges, const Array<StmtSRef>& blocks,
+                            bool use_dst) {
+  for (const Dependency& edge : edges) {
+    if (edge->kind != DepKind::kRAW) {
       continue;
     }
     bool found = false;
+    const StmtSRef& sref = use_dst ? edge->dst : edge->src;
     for (const StmtSRef& block : blocks) {
-      if (edge->dst.same_as(block)) {
+      if (sref.same_as(block)) {
         found = true;
         break;
       }
@@ -84,14 +102,14 @@ bool EachEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& 
 }
 
 /*!
- * \brief Extract StmtSRef from DepEdgeNode::dst
+ * \brief Extract StmtSRef from DependencyNode::dst
  * \param edges List of edges to be extracted
  * \return A list of StmtSRef as the result
  */
-std::vector<StmtSRef> EdgesToSRefs(const Array<DepEdge>& edges) {
+std::vector<StmtSRef> EdgesToSRefs(const Array<Dependency>& edges) {
   std::vector<StmtSRef> result;
   result.reserve(edges.size());
-  for (const DepEdge& edge : edges) {
+  for (const Dependency& edge : edges) {
     result.push_back(edge->dst);
   }
   return result;
@@ -404,7 +422,7 @@ class StatementInliner : public StmtExprMutator {
     block_node->alloc_buffers = alloc_buffers;
     Block block(block_node);
 
-    block_sref_map_->Set(block, origin_block);
+    block_sref_map_->Set(origin_block, block);
     return std::move(block);
   }
 
@@ -483,7 +501,7 @@ class ReverseStatementInliner : public StmtExprMutator {
     block_node->alloc_buffers = alloc_buffers;
     Block block(block_node);
 
-    if (is_producer) block_sref_map_->Set(block, origin_producer);
+    if (is_producer) block_sref_map_->Set(origin_producer, block);
     return std::move(Block(block));
   }
 
@@ -570,8 +588,10 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(parent_block_sref);
-  Array<DepEdge> edges_to_pred = scope->GetPredecessors(block_sref);
-  Array<DepEdge> edges_to_succ = scope->GetSuccessors(block_sref);
+  Array<Dependency> edges_to_pred = scope->GetDepsByDst(block_sref);
+  Array<Dependency> edges_to_succ = scope->GetDepsBySrc(block_sref);
+  Array<StmtSRef> producers = GetProducersFromDependency(edges_to_pred);
+  Array<StmtSRef> consumers = GetConsumersFromDependency(edges_to_succ);
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'compute_at' expects 'block' and 'loop' be in the same block";
@@ -580,7 +600,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
       << "ValueError: 'compute_at' expects 'block' to be a complete or reduction block";
   // Cond 2. Check all RAW successors are in the subtree rooted by loop_sref
   CHECK(EachEdgePointsToABlock(edges_to_succ, GetChildBlocks(self, loop_sref, true),
-                               /*raw_edge_only=*/true))
+                               /*use_dst=*/true))
       << "ValueError: 'compute_at' does not apply to a block that some other "
       << "blocks outside the scope depends on";
   // Cond 3. The subtree has compact data flow
@@ -602,8 +622,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
     int n_stmts = loop_body.size();
     for (insert_pos = n_stmts; insert_pos > 0; --insert_pos) {
       const StmtNode* stmt = loop_body[insert_pos - 1].get();
-      if (AnyEdgePointsToABlock(edges_to_pred,
-                                GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
+      if (AnyEdgePointsToABlock(producers, GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
         break;
       }
     }
@@ -611,8 +630,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
     int before_pos;
     for (before_pos = 0; before_pos < n_stmts; before_pos++) {
       const StmtNode* stmt = loop_body[before_pos].get();
-      if (AnyEdgePointsToABlock(edges_to_succ,
-                                GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
+      if (AnyEdgePointsToABlock(consumers, GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
         break;
       }
     }
@@ -625,7 +643,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
       SolveCover(block,
                  GatherRequirements(/*produced_regions=*/block->writes,
                                     /*lca_loop_sref=*/loop_sref,
-                                    /*consumer_blocks=*/EdgesToSRefs(edges_to_succ),
+                                    /*consumer_blocks=*/{consumers.begin(), consumers.end()},
                                     /*relax_vars=*/RelaxForExecScope(loop_sref, block_sref),
                                     /*gather_read=*/true),
                  true),
@@ -641,7 +659,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, root);
   Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(lca->stmt));
   if (const auto* replaced_block = replaced.as<BlockNode>()) {
-    self->Replace(lca, replaced, {{GetRef<Block>(replaced_block), GetRef<Block>(parent_block)}});
+    self->Replace(lca, replaced, {{GetRef<Block>(parent_block), GetRef<Block>(replaced_block)}});
   } else {
     self->Replace(lca, replaced, {});
   }
@@ -671,8 +689,10 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const BlockScope& scope = self->scopes.at(parent_block_sref);
-  Array<DepEdge> edges_to_pred = scope->GetPredecessors(block_sref);
-  Array<DepEdge> edges_to_succ = scope->GetSuccessors(block_sref);
+  Array<Dependency> edges_to_pred = scope->GetDepsByDst(block_sref);
+  Array<Dependency> edges_to_succ = scope->GetDepsBySrc(block_sref);
+  Array<StmtSRef> producers = GetProducersFromDependency(edges_to_pred);
+  Array<StmtSRef> consumers = GetConsumersFromDependency(edges_to_succ);
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'reverse_compute_at' expects 'block' and 'loop' be in the same block";
@@ -681,7 +701,7 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
       << "ValueError: 'reverse_compute_at' expects 'block' to be a complete or reduction block";
   // Cond 2. Check all RAW predecessors are in the subtree rooted by loop_sref
   CHECK(EachEdgePointsToABlock(edges_to_pred, GetChildBlocks(self, loop_sref, true),
-                               /*raw_edge_only=*/true))
+                               /*use_dst=*/false))
       << "ValueError: 'reverse_compute_at' does not apply to a block that some other "
       << "blocks outside the scope depends on";
   // Cond 3. The subtree has compact data flow
@@ -703,8 +723,7 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
     int n_stmts = loop_body.size();
     for (insert_pos = n_stmts; insert_pos > 0; --insert_pos) {
       const StmtNode* stmt = loop_body[insert_pos - 1].get();
-      if (AnyEdgePointsToABlock(edges_to_pred,
-                                GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
+      if (AnyEdgePointsToABlock(producers, GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
         break;
       }
     }
@@ -712,8 +731,7 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
     int before_pos;
     for (before_pos = 0; before_pos < n_stmts; before_pos++) {
       const StmtNode* stmt = loop_body[before_pos].get();
-      if (AnyEdgePointsToABlock(edges_to_succ,
-                                GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
+      if (AnyEdgePointsToABlock(consumers, GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
         break;
       }
     }
@@ -721,16 +739,16 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
                                        "point that satisfies dependency";
   }
   // Generate new LoopNode to substitute loop_sref->stmt
-  For new_loop =
-      RegenerateLoops(block_sref, loop_sref, insert_pos,
-                      SolveCover(block,
-                                 GatherRequirements(/*produced_regions=*/block->reads,
-                                                    /*lca_loop_sref=*/loop_sref,
-                                                    /*consumer_blocks=*/EdgesToSRefs(edges_to_pred),
-                                                    /*relax_vars=*/{},
-                                                    /*gather_read=*/false),
-                                 false),
-                      preserve_trivial_loop);
+  For new_loop = RegenerateLoops(
+      block_sref, loop_sref, insert_pos,
+      SolveCover(block,
+                 GatherRequirements(/*produced_regions=*/block->reads,
+                                    /*lca_loop_sref=*/loop_sref,
+                                    /*consumer_blocks=*/{producers.begin(), producers.end()},
+                                    /*relax_vars=*/{},
+                                    /*gather_read=*/false),
+                 false),
+      preserve_trivial_loop);
   // Remove leaf
   StmtSRef root = GetSRefTreeRoot(block_sref);
   std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, root);
@@ -742,7 +760,7 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, root);
   Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(lca->stmt));
   if (const auto* replaced_block = replaced.as<BlockNode>()) {
-    self->Replace(lca, replaced, {{GetRef<Block>(replaced_block), GetRef<Block>(parent_block)}});
+    self->Replace(lca, replaced, {{GetRef<Block>(parent_block), GetRef<Block>(replaced_block)}});
   } else {
     self->Replace(lca, replaced, {});
   }
@@ -800,12 +818,12 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
   CHECK(block->body.as<BufferStoreNode>())
       << "ValueError: 'reverse_compute_inline' expects the 'block' contains a single BufferStore";
   // Cond 3. block_sref has only one RAW producer
-  const auto& producers = scope->GetPredecessors(block_sref);
+  Array<Dependency> producers = scope->GetDepsByDst(block_sref);
   CHECK_EQ(producers.size(), 1)
       << "ValueError: 'reverse_compute_inline' expects the 'block' has only one producer";
-  CHECK(producers[0]->type == DepType::kRAW)
+  CHECK(producers[0]->kind == DepKind::kRAW)
       << "ValueError: 'reverse_compute_inline' expects the 'block' has only one producer";
-  const StmtSRef& producer_sref = producers[0]->dst;
+  const StmtSRef& producer_sref = producers[0]->src;
   // Cond 4. The producer is complete
   CHECK(scope->IsComplete(producer_sref))
       << "ValueError: 'reverse_compute_inline' expects the producer of 'block' to be complete";
@@ -815,7 +833,7 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
       << "ValueError: 'reverse_compute_inline' expects the producer of 'block' to contain a single "
          "BufferStore";
   // Cond 6. The producer has only one consumer(which is block_sref)
-  const auto& consumers = scope->GetSuccessors(producer_sref);
+  Array<Dependency> consumers = scope->GetDepsBySrc(producer_sref);
   CHECK_EQ(consumers.size(), 1) << "ValueError: 'reverse_compute_inline' expects 'block' is the "
                                    "only consumer of its producer";
   CHECK_EQ(consumers[0]->dst, block_sref) << "ValueError: 'reverse_compute_inline' expects 'block' "

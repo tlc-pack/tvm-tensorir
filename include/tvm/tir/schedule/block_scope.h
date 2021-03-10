@@ -236,7 +236,7 @@ class BlockScopeNode : public Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(BlockScopeNode, Object);
 
  public:
-  /******** Dependency ********/
+  /******** DependencyNode ********/
   /*!
    * \brief Get all dependencies whose `src` equals `src`
    * \param src The queried block

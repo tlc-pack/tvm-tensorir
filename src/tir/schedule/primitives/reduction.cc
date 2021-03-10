@@ -165,7 +165,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
       block_node->init = NullOpt;
       Block new_block = Block(block_node);
       self->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
-                    {{new_block, GetRef<Block>(parent)}});
+                    {{GetRef<Block>(parent), new_block}});
     } else {
       LOG(FATAL)
           << "TypeError: 'decompose_reduction' is applied to loop whose parent's type is not "
@@ -177,7 +177,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     update_block_node->name_hint = block->name_hint + "_update";
     update_block_node->init = NullOpt;
     Block update_block(update_block_node);
-    self->Replace(block_sref, update_block, {{update_block, GetRef<Block>(block)}});
+    self->Replace(block_sref, update_block, {{GetRef<Block>(block), update_block}});
     // Update scope information
     UpdateScope(self, block_sref);
     return self->stmt2ref.at(init_block.get());
@@ -204,7 +204,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     block_node->body = body;
     Block new_block(block_node);
 
-    self->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block)}});
+    self->Replace(block_sref, new_block, {{GetRef<Block>(block), new_block}});
     // Update scope information
     UpdateScope(self, block_sref);
     return self->stmt2ref.at(new_block.get());
@@ -301,7 +301,7 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
   auto merged_node = make_object<BlockNode>(*update);
   merged_node->init = new_init;
   Block merged(merged_node);
-  self->Replace(update_sref, merged, {{merged, GetRef<Block>(update)}});
+  self->Replace(update_sref, merged, {{GetRef<Block>(update), merged}});
   // Update scope information
   UpdateScope(self, update_sref);
 }
@@ -611,7 +611,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
     SeqStmt parent_body = insert(parent->body, top.value()->seq_index, {rf_body, wb_body});
     self->Replace(GetRef<StmtSRef>(top.value()->parent),
                   For(parent->loop_var, parent->min, parent->extent, ForKind::kSerial, parent_body),
-                  {{wb_block, block}});
+                  {{block, wb_block}});
   } else if (const auto* parent = top.value()->parent->GetStmt<BlockNode>()) {
     SeqStmt parent_body = insert(parent->body, top.value()->seq_index, {rf_body, wb_body});
     auto block_node = make_object<BlockNode>(*parent);
@@ -619,7 +619,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
     block_node->init = NullOpt;
     Block new_block = Block(block_node);
     self->Replace(GetRef<StmtSRef>(top.value()->parent), new_block,
-                  {{new_block, GetRef<Block>(parent)}, {wb_block, block}});
+                  {{GetRef<Block>(parent), new_block}, {block, wb_block}});
   }
 
   // Insert the rfactor buffer into the scope block's allocation.
@@ -627,7 +627,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   Block scope_block = GetRef<Block>(scope_sref->GetStmt<BlockNode>()),
         new_scope_block = scope_block;
   new_scope_block.CopyOnWrite()->alloc_buffers.push_back(rf_buf);
-  self->Replace(scope_sref, new_scope_block, {{new_scope_block, scope_block}});
+  self->Replace(scope_sref, new_scope_block, {{scope_block, new_scope_block}});
   // Update scope information.
   UpdateScope(self, scope_sref);
   return self->stmt2ref.at(rf_block.get());
