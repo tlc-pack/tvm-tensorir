@@ -293,7 +293,7 @@ class Block(WithScopeHandler):
                     values = [tvm.tir.const(float("nan"), dtype="float32")] * len(block_iters)
                 elif len(values) != len(block_iters):
                     self.context.report_error(
-                        "Autocomplete block iter var binding expect larger number of loops",
+                        "Autocomplete block iter var binding expects larger number of loops",
                         self.node.span,
                     )
             else:

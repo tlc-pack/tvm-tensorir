@@ -68,7 +68,7 @@ class BufferSlice(ObjectGeneric):
     buffer : Buffer
         The buffer.
 
-    indexes : List[Union[Slice, PrimExpr, int]]
+    indices : List[Union[Slice, PrimExpr, int]]
         The access indexes can be slice, PrimExpr or int.
 
     report_error: Callable[[str, Union[Span, synr.ast.Span]], None]
@@ -86,7 +86,7 @@ class BufferSlice(ObjectGeneric):
     def __init__(
         self,
         buffer: Buffer,
-        indexes: List[Union[Slice, PrimExpr, int]],
+        indices: List[Union[Slice, PrimExpr, int]],
         report_error: Callable[[str, Union[Span, synr.ast.Span]], None],
         span: Optional[Span] = None,
     ):
@@ -98,7 +98,7 @@ class BufferSlice(ObjectGeneric):
             elif isinstance(index, PrimExpr):
                 if index.dtype != "int32":
                     report_error(
-                        "index expects a integer type PrimExpr but gets type " + str(index.dtype),
+                        "index expects an int32 type PrimExpr but gets " + str(index.dtype),
                         index.span,
                     )
             else:
@@ -109,7 +109,7 @@ class BufferSlice(ObjectGeneric):
                 )
 
         slices: List[Slice] = []
-        for index in indexes:
+        for index in indices:
             if isinstance(index, Slice):
                 check_index(index.start)
                 check_index(index.stop)

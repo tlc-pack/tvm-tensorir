@@ -194,7 +194,7 @@ class TVMScriptParser(Transformer):
         ----------
         message : str
             Error message
-        span : synr.ast.Span or TVM.ir.Span
+        span : synr.ast.Span or tvm.ir.Span
             Location of the error
         """
         if isinstance(span, tvm.ir.Span):
@@ -775,7 +775,7 @@ class TVMScriptParser(Transformer):
         By now only 2 types of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
                Var[index] Buffer element access()
-            2. Buffer[start: stop, start: stop, ...], BufferRealize
+            2. Buffer[start: stop, start: stop, ...], BufferRealize(realize(buffer[...]))
         """
 
         symbol = self.transform(node.params[0])
