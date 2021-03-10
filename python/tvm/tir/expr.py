@@ -27,6 +27,7 @@ For example, you can use addexp.a to get the left operand of an Add node.
   assert(isinstance(y, tvm.tir.Add))
   assert(y.a == x)
 """
+
 import tvm._ffi
 
 from tvm.runtime import Object, ObjectGeneric, DataType, DataTypeCode, const
