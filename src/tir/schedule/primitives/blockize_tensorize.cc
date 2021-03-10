@@ -557,7 +557,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
                            "blockized_" + block->name_hint, body, new_init);
   auto outer_realize = BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
 
-  self->Replace(loop_sref, outer_realize, {{inner_block, block}});
+  self->Replace(loop_sref, outer_realize, {{block, inner_block}});
   UpdateScope(self, GetScopeRoot(self->stmt2ref.at(outer_block.get())));
   UpdateScope(self, self->stmt2ref.at(outer_block.get()));
   // Check loop binding
@@ -823,7 +823,7 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   new_block_ptr->body = new_body;
   Block new_block(new_block_ptr);
   self->Replace(self->stmt2ref.at(block_realize->block.get()), new_block,
-                {{new_block, block_realize->block}});
+                {{block_realize->block, new_block}});
 }
 
 }  // namespace schedule
