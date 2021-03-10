@@ -704,11 +704,12 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       // <bojian/TVM-SymbolicTuning>
       // if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
 
-      bool can_ignore_lower_bound_check = canProveForAllDyAxes(analyzer, vmin >= 0);
+      // <bojian/TVM-SymbolicTuning> Ignored the lower bound check.
+      // bool can_ignore_lower_bound_check = canProveForAllDyAxes(analyzer, vmin >= 0);
 
-      if (vmin.dtype() != value.dtype() || !can_ignore_lower_bound_check) {
-        preds.emplace_back(value >= 0);
-      }
+      // if (vmin.dtype() != value.dtype() || !can_ignore_lower_bound_check) {
+      //   preds.emplace_back(value >= 0);
+      // }
       //   LOG(INFO) << "Neglecting the bound check (" << value << ">=" << "0)";
       // }
 

@@ -47,9 +47,9 @@ void canProveForEachDyAxis(arith::Analyzer& analyzer, PrimExpr predicate, bool* 
                            const std::unordered_set<const DyAxisNode*>::iterator& dyaxes_end) {
   if (dyaxes_iter == dyaxes_end) {
     bool analyzer_result = analyzer.CanProve(predicate);
-    if (!analyzer_result) {
-      LOG(WARNING) << "Unable to show that (" << predicate << ") is always true";
-    }
+    // if (!analyzer_result) {
+    //   LOG(WARNING) << "Unable to show that (" << predicate << ") is always true";
+    // }
     (*can_prove) &= analyzer_result;
     return;
   }
