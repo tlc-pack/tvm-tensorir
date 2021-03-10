@@ -650,7 +650,12 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
             // vmax = s.max();
             // PrimExpr new_cond = dyaxis_substituter(vmax < dom->extent);
             // LOG(INFO) << "Checking condition " << new_cond;
-            can_ignore_bound_check &= analyzer.CanProve(dyaxis_substituter(vmax < dom->extent));
+            LOG(INFO) << dyaxis_max_replacer(dyaxis_substituter(vmax)) << " vs. "
+                      << dyaxis_min_replacer(dyaxis_substituter(dom->extent));
+            can_ignore_bound_check &= analyzer.CanProve(
+                dyaxis_max_replacer(dyaxis_substituter(vmax)) <
+                dyaxis_min_replacer(dyaxis_substituter(dom->extent))
+                );
           }
         }
         LOG(INFO) << "Can ignore bound check (" << value << "<" << dom->extent << ")?: "
@@ -723,7 +728,12 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
             // vmax = s.max();
             // PrimExpr new_cond = dyaxis_substituter(vmax < iv->dom->extent);
             // LOG(INFO) << "Checking condition " << new_cond;
-            can_ignore_bound_check &= analyzer.CanProve(dyaxis_substituter(vmax < iv->dom->extent));
+            LOG(INFO) << dyaxis_max_replacer(dyaxis_substituter(vmax)) << " vs. "
+                      << dyaxis_min_replacer(dyaxis_substituter(iv->dom->extent));
+            can_ignore_bound_check &= analyzer.CanProve(
+                dyaxis_max_replacer(dyaxis_substituter(vmax)) <
+                dyaxis_min_replacer(dyaxis_substituter(iv->dom->extent))
+                );
           }
         }
         LOG(INFO) << "Can ignore bound check (" << value << "<" << iv->dom->extent << ")?: "
