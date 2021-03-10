@@ -272,15 +272,15 @@ struct ReuseInfo {
 class ReuseCollector : public StmtVisitor {
  public:
   static ReuseInfo Collect(ScheduleStateNode* self, const Stmt& tgt_stmt,
-                           const Map<Block, Block>& block_sref_reverse_reuse) {
+                           const Map<Block, Block>& block_sref_reuse) {
     ReuseCollector collector(self);
     collector.VisitStmt(tgt_stmt);
     ReuseInfo result;
     result.intact = {collector.intact_.begin(), collector.intact_.end()};
     result.loop_sref_reuse = {collector.loop_vars_.begin(), collector.loop_vars_.end()};
-    for (const auto& kv : block_sref_reverse_reuse) {
-      const Block& new_block = kv.first;
-      const Block& old_block = kv.second;
+    for (const auto& kv : block_sref_reuse) {
+      const Block& old_block = kv.first;
+      const Block& new_block = kv.second;
       result.block_sref_reuse.emplace(old_block.get(), new_block.get());
     }
     return result;

@@ -113,7 +113,7 @@ class StmtSRef : public runtime::ObjectRef {
 };
 
 /*! \brief Type of dependency */
-enum class DepType : int32_t {
+enum class DepKind : int32_t {
   kRAW = 0,
   kWAW = 1,
   kWAR = 2,
@@ -121,40 +121,43 @@ enum class DepType : int32_t {
 };
 
 /*! \brief An edge representing certain types of dependency, e.g. read-after-write */
-class DepEdgeNode : public runtime::Object {
+class DependencyNode : public runtime::Object {
  public:
-  /*! \brief The destination block */
+  /*! \brief The source of the dependency relation */
+  StmtSRef src;
+  /*! \brief The destination of the dependency relation */
   StmtSRef dst;
-  /*! \brief The dependency type */
-  DepType type;
+  /*! \brief The dependency kind */
+  DepKind kind;
 
   void VisitAttrs(AttrVisitor* v) {
+    v->Visit("src", &src);
     v->Visit("dst", &dst);
-    v->Visit("type", &type);
+    v->Visit("kind", &kind);
   }
 
-  static constexpr const char* _type_key = "tir.DepEdge";
-  TVM_DECLARE_FINAL_OBJECT_INFO(DepEdgeNode, Object);
+  static constexpr const char* _type_key = "tir.Dependency";
+  TVM_DECLARE_FINAL_OBJECT_INFO(DependencyNode, Object);
 };
 
 /*!
- * \brief Managed reference to DepEdgeNode
- * \sa DepEdgeNode
+ * \brief Managed reference to DependencyNode
+ * \sa DependencyNode
  */
-class DepEdge : public runtime::ObjectRef {
+class Dependency : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
-  explicit DepEdge(StmtSRef dst, DepType type);
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(DepEdge, ObjectRef, DepEdgeNode);
+  explicit Dependency(StmtSRef src, StmtSRef dst, DepKind kind);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Dependency, ObjectRef, DependencyNode);
 };
 
 /*! \brief An object recording the producer-consumer dependency between child blocks of a scope */
 class BlockScopeNode : public runtime::Object {
  public:
   /*! \brief The forward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual> forward_edges;
+  std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual> src2deps;
   /*! \brief The backward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual> backward_edges;
+  std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual> dst2deps;
   /*! \brief The mapping from the buffer to the blocks who write it */
   std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_writers;
 
@@ -164,19 +167,19 @@ class BlockScopeNode : public runtime::Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(BlockScopeNode, runtime::Object);
 
  public:
-  /******** Dependency ********/
+  /******** DependencyNode ********/
   /*!
    * \brief Get all blocks the block depends on
    * \param block_sref The queried block
    * \return The predecessors edges
    */
-  TVM_DLL Array<DepEdge> GetPredecessors(const StmtSRef& block_sref) const;
+  TVM_DLL Array<Dependency> GetDepsBySrc(const StmtSRef& block_sref) const;
   /*!
    * \brief Get all blocks that depends on the block
    * \param block_sref The queried block
    * \return The successor edges
    */
-  TVM_DLL Array<DepEdge> GetSuccessors(const StmtSRef& block_sref) const;
+  TVM_DLL Array<Dependency> GetDepsByDst(const StmtSRef& block_sref) const;
 
   /******** Property of a block ********/
   /*!

@@ -30,14 +30,15 @@ using TBufferReaderWriter =
 
 /*!
  * \brief Add a dependency edge.
- * \param from The source of the dependency
- * \param to The destination of the dependecy
- * \param type Type of the dependency
+ * \param src The source of the dependency
+ * \param dst The destination of the dependecy
+ * \param kind Type of the dependency
  */
-void AddEdge(BlockScopeNode* self, const StmtSRef& from, const StmtSRef& to, DepType type) {
-  if (!from.same_as(to)) {
-    self->forward_edges[from].push_back(DepEdge(to, type));
-    self->backward_edges[to].push_back(DepEdge(from, type));
+void AddEdge(BlockScopeNode* self, const StmtSRef& src, const StmtSRef& dst, DepKind kind) {
+  if (!src.same_as(dst)) {
+    Dependency dep(src, dst, kind);
+    self->src2deps[src].push_back(dep);
+    self->dst2deps[dst].push_back(dep);
   }
 }
 
@@ -67,7 +68,7 @@ void AddChildBlock(BlockScopeNode* self, const StmtSRef& child_sref,
   for (const BufferRegion& region : block->reads) {
     if (buffer_writers.count(region->buffer)) {
       for (const StmtSRef& from : buffer_writers[region->buffer]) {
-        AddEdge(self, from, child_sref, DepType::kRAW);
+        AddEdge(self, from, child_sref, DepKind::kRAW);
       }
     }
   }
@@ -75,7 +76,7 @@ void AddChildBlock(BlockScopeNode* self, const StmtSRef& child_sref,
   for (const BufferRegion& region : block->writes) {
     if (buffer_writers.count(region->buffer)) {
       for (const StmtSRef& from : buffer_writers[region->buffer]) {
-        AddEdge(self, from, child_sref, DepType::kWAW);
+        AddEdge(self, from, child_sref, DepKind::kWAW);
       }
     }
   }
@@ -140,10 +141,11 @@ StmtSRef StmtSRef::RootMark() {
   return result;
 }
 
-DepEdge::DepEdge(StmtSRef dst, DepType type) {
-  ObjectPtr<DepEdgeNode> node = make_object<DepEdgeNode>();
+Dependency::Dependency(StmtSRef src, StmtSRef dst, DepKind kind) {
+  ObjectPtr<DependencyNode> node = make_object<DependencyNode>();
+  node->src = std::move(src);
   node->dst = std::move(dst);
-  node->type = type;
+  node->kind = kind;
   data_ = std::move(node);
 }
 
@@ -160,9 +162,9 @@ BlockScope::BlockScope(const Array<StmtSRef>& leaf_block_srefs) {
 
 /******** Dependency ********/
 
-Array<DepEdge> BlockScopeNode::GetPredecessors(const StmtSRef& block_sref) const {
-  const std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual>& edges =
-      this->backward_edges;
+Array<Dependency> BlockScopeNode::GetDepsBySrc(const StmtSRef& block_sref) const {
+  const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& edges =
+      this->src2deps;
   auto iter = edges.find(block_sref);
   if (iter != edges.end()) {
     return iter->second;
@@ -171,9 +173,9 @@ Array<DepEdge> BlockScopeNode::GetPredecessors(const StmtSRef& block_sref) const
   }
 }
 
-Array<DepEdge> BlockScopeNode::GetSuccessors(const StmtSRef& block_sref) const {
-  const std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual>& edges =
-      this->forward_edges;
+Array<Dependency> BlockScopeNode::GetDepsByDst(const StmtSRef& block_sref) const {
+  const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& edges =
+      this->dst2deps;
   auto iter = edges.find(block_sref);
   if (iter != edges.end()) {
     return iter->second;
@@ -336,17 +338,17 @@ bool BlockScopeNode::CanMergeReduction(const StmtSRef& init_sref,
 /******** FFI ********/
 
 TVM_REGISTER_NODE_TYPE(StmtSRefNode);
-TVM_REGISTER_NODE_TYPE(DepEdgeNode);
+TVM_REGISTER_NODE_TYPE(DependencyNode);
 TVM_REGISTER_NODE_TYPE(BlockScopeNode);
 
 TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefRootMark")  //
     .set_body_typed(StmtSRef::RootMark);
 TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefInlineMark")  //
     .set_body_typed(StmtSRef::InlineMark);
-TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetPredecessors")
-    .set_body_method<BlockScope>(&BlockScopeNode::GetPredecessors);
-TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetSuccessors")
-    .set_body_method<BlockScope>(&BlockScopeNode::GetSuccessors);
+TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetDepsBySrc")
+    .set_body_method<BlockScope>(&BlockScopeNode::GetDepsBySrc);
+TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetDepsByDst")
+    .set_body_method<BlockScope>(&BlockScopeNode::GetDepsByDst);
 TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefStmt")
     .set_body_typed([](StmtSRef sref) -> Optional<Stmt> {
       return sref->stmt != nullptr ? GetRef<Stmt>(sref->stmt) : Optional<Stmt>(NullOpt);
