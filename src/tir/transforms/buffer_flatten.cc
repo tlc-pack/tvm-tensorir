@@ -39,6 +39,10 @@ namespace tir {
 
 using NDIntSet = std::vector<arith::IntSet>;
 
+arith::IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent) {
+  return arith::IntSet::FromRange(Range::FromMinExtent(min, extent));
+}
+
 void UnionWith(NDIntSet* lhs, const NDIntSet& rhs) {
   ICHECK_EQ(lhs->size(), rhs.size());
   int ndim = rhs.size();
@@ -48,8 +52,12 @@ void UnionWith(NDIntSet* lhs, const NDIntSet& rhs) {
   }
 }
 
-arith::IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent) {
-  return arith::IntSet::FromRange(Range::FromMinExtent(min, extent));
+PrimExpr NDIntSetArea(const NDIntSet& nd_int_set) {
+  PrimExpr area = 1;
+  for (const arith::IntSet& int_set : nd_int_set) {
+    area = area * (int_set.max() - int_set.min() + 1);
+  }
+  return area;
 }
 
 NDIntSet NDIntSetFromShape(const Array<PrimExpr>& shape) {
@@ -73,6 +81,25 @@ bool IsThreadBinded(const ForNode* loop) {
     return true;
   }
   return false;
+}
+
+bool IsReduceTempBuffer(const Buffer& buffer) {
+  return StartsWith(buffer->name, "normal_reduce_temp") ||  //
+         StartsWith(buffer->name, "reduce_temp");
+}
+
+String NormalizeStorageScope(const String& s) {
+  if (s.empty()) {
+    return "global";
+  }
+  return s;
+}
+
+Stmt MakeAllocStmt(const Buffer& buffer, const PrimExpr& area, Stmt body) {
+  body = Allocate(buffer->data, buffer->dtype, {area}, const_true(), body);
+  body = AttrStmt(buffer->data, attr::storage_scope,
+                  StringImm(NormalizeStorageScope(buffer->scope)), body);
+  return body;
 }
 
 class ReductionTransformer : public StmtMutator {
@@ -182,6 +209,8 @@ class LCADetector : public StmtExprVisitor {
  * \brief Gather the used region of each buffers.
  */
 class RegionGatherer : public StmtVisitor {
+  using VarDomain = std::unordered_map<const VarNode*, arith::IntSet>;
+
  public:
   RegionGatherer(const Map<Buffer, Optional<For>>& buffers_lca, const Map<Var, Buffer>& func_args)
       : buffers_lca_(buffers_lca) {
@@ -212,12 +241,18 @@ class RegionGatherer : public StmtVisitor {
       block_var_[iter->var.get()] = ReplaceBlockVar(v);
     }
     for (const BufferRegion& read_region : block->reads) {
-      NDIntSet& alloc_region = buffers_region_.at(read_region->buffer);
-      UnionWith(&alloc_region, GatherRegion(read_region));
+      const Buffer& buffer = read_region->buffer;
+      VarDomain dom_map = LoopVarDomain(buffer);
+      NDIntSet region = AsRegion(read_region->region, dom_map);
+      NDIntSet& alloc_region = buffers_region_.at(buffer);
+      UnionWith(&alloc_region, region);
     }
     for (const BufferRegion& write_region : block->writes) {
-      NDIntSet& alloc_region = buffers_region_.at(write_region->buffer);
-      UnionWith(&alloc_region, GatherRegion(write_region));
+      const Buffer& buffer = write_region->buffer;
+      VarDomain dom_map = LoopVarDomain(buffer);
+      NDIntSet region = AsRegion(write_region->region, dom_map);
+      NDIntSet& alloc_region = buffers_region_.at(buffer);
+      UnionWith(&alloc_region, region);
     }
     for (const Buffer& alloc_buf : block->alloc_buffers) {
       // Initialize the buffer region with empty region.
@@ -239,26 +274,28 @@ class RegionGatherer : public StmtVisitor {
     return Substitute(Substitute(expr, block_var_), unit_loops_);
   }
 
-  /*!
-   * \brief Gather used buffer region
-   */
-  NDIntSet GatherRegion(const BufferRegion& buffer_region) const {
-    std::unordered_map<const VarNode*, arith::IntSet> dom_map;
-    const Optional<For>& lca = buffers_lca_.at(buffer_region->buffer);
+  VarDomain LoopVarDomain(const Buffer& buffer) const {
+    VarDomain dom_map;
+    const Optional<For>& lca = this->buffers_lca_.at(buffer);
     // Every loop will be relaxed if the lca is the root
     bool need_relax = !lca.defined();
-    for (const ForNode* loop : ancestor_loops_) {
+    for (const ForNode* loop : this->ancestor_loops_) {
       const VarNode* loop_var = loop->loop_var.get();
       // TODO
-      if (need_relax || (buffer_region->buffer->scope == "shared" && IsThreadBinded(loop))) {
+      if (need_relax || (buffer->scope == "shared" && IsThreadBinded(loop))) {
         dom_map[loop_var] = IntSetFromMinExtent(loop->min, loop->extent);
       }
       if (loop == lca.get()) {
         need_relax = true;
       }
     }
+    return dom_map;
+  }
+
+  NDIntSet AsRegion(const Array<Range>& buffer_region, const VarDomain& dom_map) const {
     NDIntSet region;
-    for (const Range& range : buffer_region->region) {
+    region.reserve(buffer_region.size());
+    for (const Range& range : buffer_region) {
       PrimExpr min = ReplaceBlockVar(range->min);
       PrimExpr extent = ReplaceBlockVar(range->extent);
       region.push_back(arith::EvalSet(Range::FromMinExtent(min, extent), dom_map));
@@ -277,7 +314,7 @@ class RegionGatherer : public StmtVisitor {
  */
 class BufferFlattener : public StmtExprMutator {
  public:
-  BufferFlattener(
+  explicit BufferFlattener(
       const std::unordered_map<const VarNode*, PrimExpr>& block_var,
       const std::unordered_map<const VarNode*, PrimExpr>& unit_loops,
       const std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual>& buffers_region,
@@ -315,33 +352,29 @@ class BufferFlattener : public StmtExprMutator {
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
     // Handle allocations
     const auto* block = realize->block.get();
-    Block old_block = realize->block;
-    int n_alloc_buffer = block->alloc_buffers.size();
-    int n_iter_var = block->iter_vars.size();
-    // Step 1. Figure out `pending_allocate_`
-    for (int i = n_alloc_buffer - 1; i >= 0; --i) {
-      // Why the order
-      const Buffer& buffer = block->alloc_buffers[i];
-      if (StartsWith(buffer->name, "normal_reduce_temp") ||
-          StartsWith(buffer->name, "reduce_temp")) {
+    // Step 1. Add non-root block allocations into `pending_allocate_`
+    for (const Buffer& buffer : block->alloc_buffers) {
+      if (IsReduceTempBuffer(buffer)) {
         continue;
       }
       if (buffers_lca_.at(buffer).defined()) {
-        pending_allocate_[buffer] = buffer;
+        pending_allocate_.insert(buffer.get());
       }
     }
-    for (int i = 0; i < n_iter_var; ++i) {
+    // Step 2. Add reduction loop vars
+    CHECK_EQ(block->iter_vars.size(), realize->binding_values.size());
+    int n_block_vars = block->iter_vars.size();
+    for (int i = 0; i < n_block_vars; ++i) {
       const IterVar& block_var = block->iter_vars[i];
       const PrimExpr& binding_value = realize->binding_values[i];
-      if (block_var->iter_type != kCommReduce) {
-        continue;
-      }
-      std::unordered_set<const VarNode*> vars = Vars(binding_value);
-      for (const VarNode* var : vars) {
-        this->reduction_relative_.insert(GetRef<Var>(var));
+      if (block_var->iter_type == kCommReduce) {
+        std::unordered_set<const VarNode*> vars = Vars(binding_value);
+        for (const VarNode* var : vars) {
+          this->reduction_relative_.insert(GetRef<Var>(var));
+        }
       }
     }
-    // Step 2. Visit the body
+    // Step 3. Visit the body
     Stmt parent_scope = realize->block;
     std::swap(parent_scope, parent_scope_);
     BlockRealize new_stmt = Downcast<BlockRealize>(StmtExprMutator::VisitStmt_(realize));
@@ -349,12 +382,12 @@ class BufferFlattener : public StmtExprMutator {
     // Reset `realize` and `block`
     realize = new_stmt.get();
     block = realize->block.get();
-    // Step 3. Transform the `predicate` to if-then-else
+    // Step 4. Transform the `predicate` to if-then-else
     Stmt body = block->body;
     if (!is_one(realize->predicate)) {
       body = IfThenElse(realize->predicate, body);
     }
-    // Step 4. Pick out blocks that writes with double buffering
+    // Step 5. Pick out blocks that writes with double buffering
     for (const auto& ann : block->annotations) {
       const String& ann_key = ann.first;
       const ObjectRef& ann_value = ann.second;
@@ -365,63 +398,44 @@ class BufferFlattener : public StmtExprMutator {
         }
       }
     }
-    // Step 5. Add allocation and storage scope
-    for (int i = n_alloc_buffer - 1; i >= 0; --i) {
-      const Buffer& alloc_buf = block->alloc_buffers[i];
-      if (StartsWith(alloc_buf->name, "normal_reduce_temp") ||
-          StartsWith(alloc_buf->name, "reduce_temp")) {
+    // Step 6. Add root block allocations
+    for (const Buffer& buffer : block->alloc_buffers) {
+      if (IsReduceTempBuffer(buffer)) {
         continue;
       }
-      if (!buffers_lca_.at(alloc_buf).defined() || buffers_lca_.at(alloc_buf).same_as(old_block)) {
-        PrimExpr extents = 1;
-        for (const arith::IntSet& extent : buffers_region_.at(alloc_buf)) {
-          extents *= extent.max() - extent.min() + 1;
-        }
-        body = Allocate(alloc_buf->data, alloc_buf->dtype, {extents}, const_true(), body);
-        // Change empty scope into global
-        String scope = alloc_buf->scope;
-        if (scope.empty()) {
-          scope = "global";
-        }
-        body = AttrStmt(alloc_buf->data, attr::storage_scope, StringImm(scope), body);
+      if (!buffers_lca_.at(buffer).defined()) {
+        const NDIntSet& region = buffers_region_.at(buffer);
+        body = MakeAllocStmt(buffer, NDIntSetArea(region), body);
       }
     }
-
     return body;
   }
 
   Stmt VisitStmt_(const ForNode* op) final {
-    Stmt old_stmt = GetRef<Stmt>(op);
-    std::swap(old_stmt, parent_scope_);
-    For stmt = Downcast<For>(StmtExprMutator::VisitStmt_(op));
-    std::swap(old_stmt, parent_scope_);
-    op = stmt.get();
-
-    std::vector<Buffer> removed_buffers;
-    // Add buffer allocation
-    Stmt body = op->body;
-    for (auto it = pending_allocate_.begin(); it != pending_allocate_.end();) {
-      const Buffer& alloc_buf = it->first;
-      if (old_stmt.same_as(buffers_lca_.at(alloc_buf))) {
-        PrimExpr extents = 1;
-        for (const arith::IntSet& extent : buffers_region_.at(alloc_buf)) {
-          extents *= extent.max() - extent.min() + 1;
-        }
-        body = Allocate(alloc_buf->data, alloc_buf->dtype, {extents}, const_true(), body);
-        // Change empty scope into global
-        String scope = alloc_buf->scope.empty() ? "global" : alloc_buf->scope;
-        body = AttrStmt(alloc_buf->data, attr::storage_scope, StringImm(scope), body);
-        removed_buffers.push_back(alloc_buf);
-        ++it;
-      } else {
-        ++it;
+    // Step 1. Find the buffer that can be allocated under the current loop
+    std::vector<const BufferNode*> alloc_buffers;
+    for (const BufferNode* buffer : pending_allocate_) {
+      const Optional<For> alloc_site = buffers_lca_.at(GetRef<Buffer>(buffer));
+      if (op == alloc_site.get()) {
+        alloc_buffers.push_back(buffer);
       }
     }
-    for (const Buffer& buffer : removed_buffers) {
+    // Step 2. Visit recursively
+    Stmt parent_scope = GetRef<For>(op);
+    std::swap(parent_scope, parent_scope_);
+    For stmt = Downcast<For>(StmtExprMutator::VisitStmt_(op));
+    std::swap(parent_scope, parent_scope_);
+    op = stmt.get();
+    // Step 3. Add buffer allocation
+    Stmt body = op->body;
+    for (const BufferNode* buffer : alloc_buffers) {
+      const NDIntSet& region = buffers_region_.at(GetRef<Buffer>(buffer));
+      body = MakeAllocStmt(GetRef<Buffer>(buffer), NDIntSetArea(region), body);
       pending_allocate_.erase(buffer);
     }
-
+    // Step 4. Add the for loop accordingly
     if (op->kind == ForKind::kThreadBinding) {
+      // Case 1. Thread binding
       ICHECK(op->thread_binding.defined());
       String thread_tag = op->thread_binding.value()->thread_tag;
       if (!reduction_relative_.count(op->loop_var)) {
@@ -433,10 +447,13 @@ class BufferFlattener : public StmtExprMutator {
         body = AttrStmt(iter_var, attr_key, op->extent, body);
       }
     } else if (is_one(op->extent) && op->annotations.empty()) {
+      // Case 2. Handle unit loop
       return body;
     } else {
+      // Case 3. An ordinary loop
       body = For(op->loop_var, op->min, op->extent, op->kind, body);
     }
+    // Step 5. Handle annotations
     for (const auto& annotation : op->annotations) {
       const String& ann_key = annotation.first;
       const ObjectRef& ann_value = annotation.second;
@@ -492,7 +509,7 @@ class BufferFlattener : public StmtExprMutator {
   const Map<Buffer, Optional<For>>& buffers_lca_;
   const std::unordered_set<const BufferNode*>& arg_buffers_;
 
-  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> pending_allocate_;
+  std::unordered_set<const BufferNode*> pending_allocate_;
   std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> reduction_relative_;
   std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> double_buffer_;
   Stmt parent_scope_;
