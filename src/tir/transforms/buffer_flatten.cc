@@ -208,7 +208,7 @@ class LCADetector : public StmtExprVisitor {
 /*!
  * \brief Gather the used region of each buffers.
  */
-class RegionGatherer : public StmtVisitor {
+class RegionGatherer : public StmtExprMutator {
   using VarDomain = std::unordered_map<const VarNode*, arith::IntSet>;
 
  public:
@@ -228,45 +228,81 @@ class RegionGatherer : public StmtVisitor {
   std::unordered_map<const VarNode*, PrimExpr> unit_loops_;
 
  private:
-  void VisitStmt_(const ForNode* op) final {
+  Stmt VisitStmt_(const ForNode* op) final {
     ancestor_loops_.push_back(op);
-    if (is_one(op->extent)) {
-      unit_loops_[op->loop_var.get()] = op->min;
+    PrimExpr min = this->VisitExpr(op->min);
+    PrimExpr extent = this->VisitExpr(op->extent);
+    if (is_one(extent)) {
+      unit_loops_[op->loop_var.get()] = min;
     }
-    StmtVisitor::VisitStmt_(op);
+    For result(/*loop_var=*/op->loop_var,              //
+               /*min=*/min,                            //
+               /*extent=*/extent,                      //
+               /*kind=*/op->kind,                      //
+               /*body=*/this->VisitStmt(op->body),     //
+               /*thread_binding=*/op->thread_binding,  //
+               /*annotations=*/op->annotations);
     ancestor_loops_.pop_back();
+    return result;
   }
 
-  void VisitStmt_(const BlockRealizeNode* realize) final {
+  Stmt VisitStmt_(const BlockRealizeNode* realize) final {
     const auto* block = realize->block.as<BlockNode>();
-    CHECK(!block->init.defined());
+    ICHECK(!block->init.defined());
     // Update the mapping from block vars to loop vars so that we can substitute them
-    CHECK_EQ(block->iter_vars.size(), realize->binding_values.size());
+    ICHECK_EQ(block->iter_vars.size(), realize->binding_values.size());
     int n_block_vars = block->iter_vars.size();
     for (int i = 0; i < n_block_vars; ++i) {
       const IterVar& iter = block->iter_vars[i];
       const PrimExpr& v = realize->binding_values[i];
-      block_var_[iter->var.get()] = ReplaceBlockVar(v);
+      block_var_[iter->var.get()] = this->VisitExpr(v);
     }
-    for (const BufferRegion& read_region : block->reads) {
-      const Buffer& buffer = read_region->buffer;
-      VarDomain dom_map = LoopVarDomain(buffer);
-      NDIntSet region = AsRegion(read_region->region, dom_map);
-      NDIntSet& alloc_region = buffers_region_.at(buffer);
-      UnionWith(&alloc_region, region);
+    for (const BufferRegion& buffer_region : block->reads) {
+      UpdateBufferRegion(buffer_region);
     }
-    for (const BufferRegion& write_region : block->writes) {
-      const Buffer& buffer = write_region->buffer;
-      VarDomain dom_map = LoopVarDomain(buffer);
-      NDIntSet region = AsRegion(write_region->region, dom_map);
-      NDIntSet& alloc_region = buffers_region_.at(buffer);
-      UnionWith(&alloc_region, region);
+    for (const BufferRegion& buffer_region : block->writes) {
+      UpdateBufferRegion(buffer_region);
     }
+    // Initialize the buffer region with empty region.
     for (const Buffer& buffer : block->alloc_buffers) {
-      // Initialize the buffer region with empty region.
       buffers_region_[buffer] = NDIntSet(buffer->shape.size(), arith::IntSet::Nothing());
     }
-    VisitStmt(block->body);
+    ObjectPtr<BlockNode> new_block = make_object<BlockNode>(*block);
+    new_block->iter_vars = {};
+    new_block->body = this->VisitStmt(new_block->body);
+    return BlockRealize(/*values=*/{},                                      //
+                        /*predicate=*/this->VisitExpr(realize->predicate),  //
+                        /*block=*/Block(std::move(new_block)));
+  }
+
+  PrimExpr VisitExpr_(const VarNode* var) final {
+    {
+      auto it = block_var_.find(var);
+      if (it != block_var_.end()) {
+        return it->second;
+      }
+    }
+    {
+      auto it = unit_loops_.find(var);
+      if (it != unit_loops_.end()) {
+        return it->second;
+      }
+    }
+    return GetRef<Var>(var);
+  }
+
+  void UpdateBufferRegion(const BufferRegion& buffer_region) {
+    const Buffer& buffer = buffer_region->buffer;
+    VarDomain dom_map = LoopVarDomain(buffer);
+    NDIntSet region;
+    region.reserve(buffer_region->region.size());
+    for (const Range& range : buffer_region->region) {
+      PrimExpr min = this->VisitExpr(range->min);
+      PrimExpr extent = this->VisitExpr(range->extent);
+      region.push_back(arith::EvalSet(Range::FromMinExtent(min, extent), dom_map));
+    }
+    NDIntSet& alloc_region = buffers_region_.at(buffer);
+    UnionWith(&alloc_region, region);
   }
 
   PrimExpr ReplaceBlockVar(const PrimExpr& expr) const {
@@ -291,17 +327,6 @@ class RegionGatherer : public StmtVisitor {
     return dom_map;
   }
 
-  NDIntSet AsRegion(const Array<Range>& buffer_region, const VarDomain& dom_map) const {
-    NDIntSet region;
-    region.reserve(buffer_region.size());
-    for (const Range& range : buffer_region) {
-      PrimExpr min = ReplaceBlockVar(range->min);
-      PrimExpr extent = ReplaceBlockVar(range->extent);
-      region.push_back(arith::EvalSet(Range::FromMinExtent(min, extent), dom_map));
-    }
-    return region;
-  }
-
   /*! \brief The map from Buffer to its LCA Stmt/Expr */
   const Map<Buffer, Optional<For>>& buffers_lca_;
   /*! \brief The loops from the current node up to the root */
@@ -314,15 +339,9 @@ class RegionGatherer : public StmtVisitor {
 class BufferFlattener : public StmtExprMutator {
  public:
   explicit BufferFlattener(
-      const std::unordered_map<const VarNode*, PrimExpr>& block_var,
-      const std::unordered_map<const VarNode*, PrimExpr>& unit_loops,
       const std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual>& buffers_region,
       const Map<Buffer, Optional<For>>& buffers_lca, const PrimFunc& func)
-      : buffers_region_(buffers_region),
-        block_var_(block_var),
-        unit_loops_(unit_loops),
-        buffers_lca_(buffers_lca),
-        arg_buffers_{} {
+      : buffers_region_(buffers_region), buffers_lca_(buffers_lca), arg_buffers_{} {
     arg_buffers_.reserve(func->buffer_map.size());
     for (const auto& kv : func->buffer_map) {
       const Buffer& buffer = kv.second;
@@ -480,16 +499,6 @@ class BufferFlattener : public StmtExprMutator {
     return new_buffer.vload(begins, op->dtype);
   }
 
-  PrimExpr VisitExpr_(const VarNode* op) final {
-    // Replace the block var with its value
-    auto it = block_var_.find(op);
-    if (it != block_var_.end()) {
-      return Substitute(it->second, unit_loops_);
-    } else {
-      return Substitute(GetRef<PrimExpr>(op), unit_loops_);
-    }
-  }
-
   PrimExpr VisitExpr_(const CallNode* op) final {
     if (op->op.same_as(builtin::get_elem_offset())) {
       // Handle `get_elem_offset`
@@ -546,8 +555,6 @@ class BufferFlattener : public StmtExprMutator {
   }
 
   const std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual>& buffers_region_;
-  const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
-  const std::unordered_map<const VarNode*, PrimExpr>& unit_loops_;
   const Map<Buffer, Optional<For>>& buffers_lca_;
   std::unordered_set<const BufferNode*> arg_buffers_;
   std::unordered_set<const BufferNode*> pending_allocate_;
@@ -566,10 +573,9 @@ PrimFunc BufferFlatten(PrimFunc f) {
   // Step 2. Recalculate the buffer region
   Map<Buffer, Optional<For>> buffer_lca = LCADetector::Detect(f);
   RegionGatherer region_gatherer(buffer_lca, f);
-  region_gatherer(fptr->body);
+  fptr->body = region_gatherer(fptr->body);
   // Step 3. Transform BufferLoad/BufferStore into Load/Store
-  BufferFlattener flattener(region_gatherer.block_var_, region_gatherer.unit_loops_,
-                            region_gatherer.buffers_region_, buffer_lca, f);
+  BufferFlattener flattener(region_gatherer.buffers_region_, buffer_lca, f);
   fptr->body = flattener(fptr->body);
   return f;
 }
