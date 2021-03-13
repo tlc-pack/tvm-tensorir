@@ -230,7 +230,7 @@ class RegionGatherer : public StmtVisitor {
  private:
   void VisitStmt_(const ForNode* op) final {
     ancestor_loops_.push_back(op);
-    if (!op->thread_binding.defined() && op->annotations.empty() && is_one(op->extent)) {
+    if (is_one(op->extent)) {
       unit_loops_[op->loop_var.get()] = op->min;
     }
     StmtVisitor::VisitStmt_(op);
