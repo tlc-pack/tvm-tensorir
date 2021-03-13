@@ -102,6 +102,17 @@ Stmt MakeAllocStmt(const Buffer& buffer, const PrimExpr& area, Stmt body) {
   return body;
 }
 
+Stmt MakeLaunchThread(const PrimExpr& min, const PrimExpr& extent, const Var& var,
+                      const String& thread_tag, Stmt body) {
+  IterVar iter_var(/*dom=*/Range::FromMinExtent(min, extent),
+                   /*var=*/var,
+                   /*iter_type=*/IterVarType::kThreadIndex,
+                   /*thread_tag=*/thread_tag);
+  String attr_key = thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent;
+  body = AttrStmt(iter_var, attr_key, extent, body);
+  return body;
+}
+
 class ReductionTransformer : public StmtMutator {
  public:
   Stmt VisitStmt_(const BlockNode* block) override {
@@ -223,9 +234,7 @@ class RegionGatherer : public StmtExprMutator {
   /*! \brief The used region of each Buffer */
   std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> buffers_region_;
   /*! \brief The map from block vars to the expr value */
-  std::unordered_map<const VarNode*, PrimExpr> block_var_;
-  /*! \brief The map from unit loop vars to the expr value */
-  std::unordered_map<const VarNode*, PrimExpr> unit_loops_;
+  std::unordered_map<const VarNode*, PrimExpr> var_substitutes_;
 
   std::unordered_map<const ForNode*, const ForNode*> loop_mapping;
 
@@ -235,7 +244,7 @@ class RegionGatherer : public StmtExprMutator {
     PrimExpr min = this->VisitExpr(op->min);
     PrimExpr extent = this->VisitExpr(op->extent);
     if (is_one(extent)) {
-      unit_loops_[op->loop_var.get()] = min;
+      var_substitutes_[op->loop_var.get()] = min;
     }
     For result(/*loop_var=*/op->loop_var,              //
                /*min=*/min,                            //
@@ -258,58 +267,53 @@ class RegionGatherer : public StmtExprMutator {
     for (int i = 0; i < n_block_vars; ++i) {
       const IterVar& iter = block->iter_vars[i];
       const PrimExpr& v = realize->binding_values[i];
-      block_var_[iter->var.get()] = this->VisitExpr(v);
+      var_substitutes_[iter->var.get()] = this->VisitExpr(v);
     }
-    for (const BufferRegion& buffer_region : block->reads) {
-      UpdateBufferRegion(buffer_region);
-    }
-    for (const BufferRegion& buffer_region : block->writes) {
-      UpdateBufferRegion(buffer_region);
-    }
+    Array<BufferRegion> reads = UpdateBufferRegions(block->reads);
+    Array<BufferRegion> writes = UpdateBufferRegions(block->writes);
     // Initialize the buffer region with empty region.
     for (const Buffer& buffer : block->alloc_buffers) {
       buffers_region_[buffer] = NDIntSet(buffer->shape.size(), arith::IntSet::Nothing());
     }
     ObjectPtr<BlockNode> new_block = make_object<BlockNode>(*block);
-    new_block->iter_vars = {};
+    new_block->reads = std::move(reads);
+    new_block->writes = std::move(writes);
     new_block->body = this->VisitStmt(new_block->body);
-    return BlockRealize(/*values=*/{},                                      //
+    return BlockRealize(/*values=*/realize->binding_values,                 //
                         /*predicate=*/this->VisitExpr(realize->predicate),  //
                         /*block=*/Block(std::move(new_block)));
   }
 
   PrimExpr VisitExpr_(const VarNode* var) final {
-    {
-      auto it = block_var_.find(var);
-      if (it != block_var_.end()) {
-        return it->second;
-      }
-    }
-    {
-      auto it = unit_loops_.find(var);
-      if (it != unit_loops_.end()) {
-        return it->second;
-      }
+    auto it = var_substitutes_.find(var);
+    if (it != var_substitutes_.end()) {
+      return it->second;
     }
     return GetRef<Var>(var);
   }
 
-  void UpdateBufferRegion(const BufferRegion& buffer_region) {
-    const Buffer& buffer = buffer_region->buffer;
-    VarDomain dom_map = LoopVarDomain(buffer);
-    NDIntSet region;
-    region.reserve(buffer_region->region.size());
-    for (const Range& range : buffer_region->region) {
-      PrimExpr min = this->VisitExpr(range->min);
-      PrimExpr extent = this->VisitExpr(range->extent);
-      region.push_back(arith::EvalSet(Range::FromMinExtent(min, extent), dom_map));
+  Array<BufferRegion> UpdateBufferRegions(const Array<BufferRegion>& buffer_regions) {
+    Array<BufferRegion> result;
+    result.reserve(buffer_regions.size());
+    for (const BufferRegion& buffer_region : buffer_regions) {
+      const Buffer& buffer = buffer_region->buffer;
+      VarDomain dom_map = LoopVarDomain(buffer);
+      int ndim = buffer_region->region.size();
+      Array<Range> region;
+      NDIntSet int_set;
+      region.reserve(ndim);
+      int_set.reserve(ndim);
+      for (const Range& range : buffer_region->region) {
+        Range new_range =
+            Range::FromMinExtent(this->VisitExpr(range->min), this->VisitExpr(range->extent));
+        region.push_back(new_range);
+        int_set.push_back(arith::EvalSet(new_range, dom_map));
+      }
+      NDIntSet& alloc_region = buffers_region_.at(buffer);
+      UnionWith(&alloc_region, int_set);
+      result.push_back(BufferRegion(buffer_region->buffer, region));
     }
-    NDIntSet& alloc_region = buffers_region_.at(buffer);
-    UnionWith(&alloc_region, region);
-  }
-
-  PrimExpr ReplaceBlockVar(const PrimExpr& expr) const {
-    return Substitute(Substitute(expr, block_var_), unit_loops_);
+    return result;
   }
 
   VarDomain LoopVarDomain(const Buffer& buffer) const {
@@ -457,15 +461,10 @@ class BufferFlattener : public StmtExprMutator {
     // Step 4. Add the for loop accordingly
     if (op->kind == ForKind::kThreadBinding) {
       // Case 1. Thread binding
-      ICHECK(op->thread_binding.defined());
-      String thread_tag = op->thread_binding.value()->thread_tag;
       if (!reduction_loop_vars_.count(op->loop_var.get())) {
-        IterVar iter_var(/*dom=*/Range(min, extent),
-                         /*var=*/op->loop_var,
-                         /*iter_type=*/IterVarType::kThreadIndex,
-                         /*thread_tag=*/thread_tag);
-        String attr_key = thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent;
-        body = AttrStmt(iter_var, attr_key, extent, body);
+        ICHECK(op->thread_binding.defined());
+        String thread_tag = op->thread_binding.value()->thread_tag;
+        body = MakeLaunchThread(min, extent, op->loop_var, thread_tag, body);
       }
     } else if (is_one(extent) && op->annotations.empty()) {
       // Case 2. Handle unit loop
@@ -570,7 +569,6 @@ PrimFunc BufferFlatten(PrimFunc f) {
   tvm::tir::PrimFuncNode* fptr = f.CopyOnWrite();
   // Step 0. Check memory and execution hierarchy
   VerifyExecScope(f);
-  LOG(INFO) << "\n" << Repr(f);
   // Step 1.Transform the reduction calls to BufferStore
   ReductionTransformer reduction_transformer;
   fptr->body = reduction_transformer(fptr->body);
@@ -585,11 +583,9 @@ PrimFunc BufferFlatten(PrimFunc f) {
       kv.second = GetRef<For>(region_gatherer.loop_mapping.at(loop));
     }
   }
-  LOG(INFO) << "\n" << Repr(f);
   // Step 3. Transform BufferLoad/BufferStore into Load/Store
   BufferFlattener flattener(region_gatherer.buffers_region_, buffer_lca, f);
   fptr->body = flattener(fptr->body);
-  LOG(INFO) << "\n" << Repr(f);
   return f;
 }
 
