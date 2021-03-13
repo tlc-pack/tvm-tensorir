@@ -227,6 +227,8 @@ class RegionGatherer : public StmtExprMutator {
   /*! \brief The map from unit loop vars to the expr value */
   std::unordered_map<const VarNode*, PrimExpr> unit_loops_;
 
+  std::unordered_map<const ForNode*, const ForNode*> loop_mapping;
+
  private:
   Stmt VisitStmt_(const ForNode* op) final {
     ancestor_loops_.push_back(op);
@@ -243,6 +245,7 @@ class RegionGatherer : public StmtExprMutator {
                /*thread_binding=*/op->thread_binding,  //
                /*annotations=*/op->annotations);
     ancestor_loops_.pop_back();
+    loop_mapping.emplace(op, result.get());
     return result;
   }
 
@@ -567,6 +570,7 @@ PrimFunc BufferFlatten(PrimFunc f) {
   tvm::tir::PrimFuncNode* fptr = f.CopyOnWrite();
   // Step 0. Check memory and execution hierarchy
   VerifyExecScope(f);
+  LOG(INFO) << "\n" << Repr(f);
   // Step 1.Transform the reduction calls to BufferStore
   ReductionTransformer reduction_transformer;
   fptr->body = reduction_transformer(fptr->body);
@@ -574,9 +578,18 @@ PrimFunc BufferFlatten(PrimFunc f) {
   Map<Buffer, Optional<For>> buffer_lca = LCADetector::Detect(f);
   RegionGatherer region_gatherer(buffer_lca, f);
   fptr->body = region_gatherer(fptr->body);
+  MapNode* buf = buffer_lca.CopyOnWrite();
+  for (auto& kv : *buf) {
+    const ForNode* loop = static_cast<const ForNode*>(kv.second.get());
+    if (loop != nullptr && region_gatherer.loop_mapping.count(loop)) {
+      kv.second = GetRef<For>(region_gatherer.loop_mapping.at(loop));
+    }
+  }
+  LOG(INFO) << "\n" << Repr(f);
   // Step 3. Transform BufferLoad/BufferStore into Load/Store
   BufferFlattener flattener(region_gatherer.buffers_region_, buffer_lca, f);
   fptr->body = flattener(fptr->body);
+  LOG(INFO) << "\n" << Repr(f);
   return f;
 }
 
