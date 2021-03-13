@@ -212,9 +212,9 @@ class RegionGatherer : public StmtVisitor {
   using VarDomain = std::unordered_map<const VarNode*, arith::IntSet>;
 
  public:
-  RegionGatherer(const Map<Buffer, Optional<For>>& buffers_lca, const Map<Var, Buffer>& func_args)
+  RegionGatherer(const Map<Buffer, Optional<For>>& buffers_lca, const PrimFunc& f)
       : buffers_lca_(buffers_lca) {
-    for (const auto& arg : func_args) {
+    for (const auto& arg : f->buffer_map) {
       const Buffer& buffer = arg.second;
       buffers_region_[buffer] = NDIntSetFromShape(buffer->shape);
     }
@@ -317,13 +317,18 @@ class BufferFlattener : public StmtExprMutator {
       const std::unordered_map<const VarNode*, PrimExpr>& block_var,
       const std::unordered_map<const VarNode*, PrimExpr>& unit_loops,
       const std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual>& buffers_region,
-      const Map<Buffer, Optional<For>>& buffers_lca,
-      const std::unordered_set<const BufferNode*>& arg_buffers)
+      const Map<Buffer, Optional<For>>& buffers_lca, const PrimFunc& func)
       : buffers_region_(buffers_region),
         block_var_(block_var),
         unit_loops_(unit_loops),
         buffers_lca_(buffers_lca),
-        arg_buffers_(arg_buffers) {}
+        arg_buffers_{} {
+    arg_buffers_.reserve(func->buffer_map.size());
+    for (const auto& kv : func->buffer_map) {
+      const Buffer& buffer = kv.second;
+      arg_buffers_.insert(buffer.get());
+    }
+  }
 
   Stmt VisitStmt_(const SeqStmtNode* op) final {
     Array<Stmt> seq;
@@ -503,8 +508,7 @@ class BufferFlattener : public StmtExprMutator {
   const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
   const std::unordered_map<const VarNode*, PrimExpr>& unit_loops_;
   const Map<Buffer, Optional<For>>& buffers_lca_;
-  const std::unordered_set<const BufferNode*>& arg_buffers_;
-
+  std::unordered_set<const BufferNode*> arg_buffers_;
   std::unordered_set<const BufferNode*> pending_allocate_;
   std::unordered_set<const VarNode*> reduction_loop_vars_;
   std::unordered_set<const BufferNode*> double_buffer_;
@@ -556,36 +560,18 @@ class BufferFlattener : public StmtExprMutator {
 
 PrimFunc BufferFlatten(PrimFunc f) {
   tvm::tir::PrimFuncNode* fptr = f.CopyOnWrite();
-
-  // Check memory and execution hierarchy
+  // Step 0. Check memory and execution hierarchy
   VerifyExecScope(f);
-
-  // Transform the reduction calls to BufferStore
+  // Step 1.Transform the reduction calls to BufferStore
   ReductionTransformer reduction_transformer;
   fptr->body = reduction_transformer(fptr->body);
-
-  std::unordered_set<const BufferNode*> arg_buffers;
-  for (const auto& kv : fptr->buffer_map) {
-    const Buffer& buffer = kv.second;
-    arg_buffers.insert(buffer.get());
-  }
-
-  // Find the LCA of each Buffer access
-  // LCADetector lca_detector(arg_buffers);
-  // lca_detector(fptr->body);
-
+  // Step 2. Recalculate the buffer region
   Map<Buffer, Optional<For>> buffer_lca = LCADetector::Detect(f);
-  // for (const auto& kv : lca_detector.buffers_lca_) {
-  //   buffer_lca.Set(GetRef<Buffer>(kv.first), GetRef<For>(kv.second));
-  // }
-
-  // Recalculate the buffer region
-  RegionGatherer region_gatherer(buffer_lca, fptr->buffer_map);
+  RegionGatherer region_gatherer(buffer_lca, f);
   region_gatherer(fptr->body);
-
-  // Transform BufferLoad/BufferStore into Load/Store
+  // Step 3. Transform BufferLoad/BufferStore into Load/Store
   BufferFlattener flattener(region_gatherer.block_var_, region_gatherer.unit_loops_,
-                            region_gatherer.buffers_region_, buffer_lca, arg_buffers);
+                            region_gatherer.buffers_region_, buffer_lca, f);
   fptr->body = flattener(fptr->body);
   return f;
 }
