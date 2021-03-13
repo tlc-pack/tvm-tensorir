@@ -233,8 +233,6 @@ class RegionGatherer : public StmtExprMutator {
 
   /*! \brief The used region of each Buffer */
   std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> buffers_region_;
-  /*! \brief The map from block vars to the expr value */
-  std::unordered_map<const VarNode*, PrimExpr> var_substitutes_;
 
   std::unordered_map<const ForNode*, const ForNode*> loop_mapping;
 
@@ -338,6 +336,8 @@ class RegionGatherer : public StmtExprMutator {
   const Map<Buffer, Optional<For>>& buffers_lca_;
   /*! \brief The loops from the current node up to the root */
   std::vector<const ForNode*> ancestor_loops_;
+  /*! \brief The map from block vars to the expr value */
+  std::unordered_map<const VarNode*, PrimExpr> var_substitutes_;
 };
 
 /*!
