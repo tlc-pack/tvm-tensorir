@@ -338,10 +338,10 @@ class BufferFlattener : public StmtExprMutator {
       std::swap(double_buffer, double_buffer_);
       Stmt body = VisitStmt(stmt);
       std::swap(double_buffer, double_buffer_);
-      const StmtNode* parent_scope = parent_scopes_.back();
+      const ForNode* loop = ancestor_loops_.back();
       for (const BufferNode* buffer : double_buffer) {
         const Object* lca = buffers_lca_.at(GetRef<Buffer>(buffer)).get();
-        if (lca != nullptr && lca == parent_scope) {
+        if (lca != nullptr && loop == lca) {
           body = AttrStmt(buffer->data, attr::double_buffer_scope, 1, body);
         } else {
           double_buffer_.insert(buffer);
@@ -378,10 +378,8 @@ class BufferFlattener : public StmtExprMutator {
       }
     }
     // Step 3. Visit the body
-    parent_scopes_.push_back(realize->block.get());
     Block new_block = Downcast<Block>(this->VisitStmt(realize->block));
     block = new_block.get();
-    parent_scopes_.pop_back();
     // Step 4. Transform the `predicate` to if-then-else
     Stmt body = block->body;
     if (!is_one(realize->predicate)) {
@@ -422,11 +420,11 @@ class BufferFlattener : public StmtExprMutator {
       }
     }
     // Step 2. Visit recursively
-    parent_scopes_.push_back(op);
+    ancestor_loops_.push_back(op);
     Stmt body = this->VisitStmt(op->body);
     PrimExpr min = this->VisitExpr(op->min);
     PrimExpr extent = this->VisitExpr(op->extent);
-    parent_scopes_.pop_back();
+    ancestor_loops_.pop_back();
     // Step 3. Add buffer allocation
     for (const BufferNode* buffer : alloc_buffers) {
       const NDIntSet& region = buffers_region_.at(GetRef<Buffer>(buffer));
@@ -512,7 +510,7 @@ class BufferFlattener : public StmtExprMutator {
   std::unordered_set<const BufferNode*> pending_allocate_;
   std::unordered_set<const VarNode*> reduction_loop_vars_;
   std::unordered_set<const BufferNode*> double_buffer_;
-  std::vector<const StmtNode*> parent_scopes_;
+  std::vector<const ForNode*> ancestor_loops_;
 
   /*!
    * \brief Create a buffer with alternative shape
