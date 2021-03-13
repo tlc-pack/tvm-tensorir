@@ -220,6 +220,14 @@ class RegionGatherer : public StmtVisitor {
     }
   }
 
+  /*! \brief The used region of each Buffer */
+  std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> buffers_region_;
+  /*! \brief The map from block vars to the expr value */
+  std::unordered_map<const VarNode*, PrimExpr> block_var_;
+  /*! \brief The map from unit loop vars to the expr value */
+  std::unordered_map<const VarNode*, PrimExpr> unit_loops_;
+
+ private:
   void VisitStmt_(const ForNode* op) final {
     ancestor_loops_.push_back(op);
     if (!op->thread_binding.defined() && op->annotations.empty() && is_one(op->extent)) {
@@ -261,14 +269,6 @@ class RegionGatherer : public StmtVisitor {
     VisitStmt(block->body);
   }
 
-  /*! \brief The used region of each Buffer */
-  std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> buffers_region_;
-  /*! \brief The map from block vars to the expr value */
-  std::unordered_map<const VarNode*, PrimExpr> block_var_;
-  /*! \brief The map from unit loop vars to the expr value */
-  std::unordered_map<const VarNode*, PrimExpr> unit_loops_;
-
- private:
   PrimExpr ReplaceBlockVar(const PrimExpr& expr) const {
     return Substitute(Substitute(expr, block_var_), unit_loops_);
   }
@@ -330,6 +330,7 @@ class BufferFlattener : public StmtExprMutator {
     }
   }
 
+ private:
   Stmt VisitStmt_(const SeqStmtNode* op) final {
     Array<Stmt> seq;
     seq.reserve(op->seq.size());
@@ -501,17 +502,6 @@ class BufferFlattener : public StmtExprMutator {
     return StmtExprMutator::VisitExpr_(op);
   }
 
- private:
-  const std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual>& buffers_region_;
-  const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
-  const std::unordered_map<const VarNode*, PrimExpr>& unit_loops_;
-  const Map<Buffer, Optional<For>>& buffers_lca_;
-  std::unordered_set<const BufferNode*> arg_buffers_;
-  std::unordered_set<const BufferNode*> pending_allocate_;
-  std::unordered_set<const VarNode*> reduction_loop_vars_;
-  std::unordered_set<const BufferNode*> double_buffer_;
-  std::vector<const ForNode*> ancestor_loops_;
-
   /*!
    * \brief Create a buffer with alternative shape
    */
@@ -554,6 +544,16 @@ class BufferFlattener : public StmtExprMutator {
     }
     return result;
   }
+
+  const std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual>& buffers_region_;
+  const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
+  const std::unordered_map<const VarNode*, PrimExpr>& unit_loops_;
+  const Map<Buffer, Optional<For>>& buffers_lca_;
+  std::unordered_set<const BufferNode*> arg_buffers_;
+  std::unordered_set<const BufferNode*> pending_allocate_;
+  std::unordered_set<const VarNode*> reduction_loop_vars_;
+  std::unordered_set<const BufferNode*> double_buffer_;
+  std::vector<const ForNode*> ancestor_loops_;
 };
 
 PrimFunc BufferFlatten(PrimFunc f) {
