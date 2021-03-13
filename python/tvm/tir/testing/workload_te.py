@@ -506,7 +506,7 @@ def conv2d_winograd_nhwc(
     HSTR, WSTR = (stride, stride) if isinstance(stride, int) else stride
     assert HSTR == 1 and WSTR == 1 and KH == KW
 
-    data_pad = topi.nn.pad(inputs, (0, HPAD, WPAD, 0), (0, HPAD, WPAD, 0), name="data_pad")
+
 
     r = KW
     m = tile_size
@@ -519,6 +519,11 @@ def conv2d_winograd_nhwc(
     P = N * nH * nW
     r_kh = te.reduce_axis((0, KH), name='r_kh')
     r_kw = te.reduce_axis((0, KW), name='r_kw')
+
+    pad_extra = (nW - 1) * m + alpha - (H + HPAD + HPAD)
+
+    data_pad = topi.nn.pad(inputs, (0, HPAD, WPAD, 0), (0, HPAD + pad_extra, WPAD + pad_extra, 0), name="data_pad")
+
     kshape = (alpha, alpha, CI, CO)
     kernel_pack = te.placeholder(kshape, inputs.dtype, name="weight")
 
@@ -526,25 +531,25 @@ def conv2d_winograd_nhwc(
     idxmod = te.indexmod
     # pack input tile
     input_tile = te.compute((alpha, alpha, P, CI), lambda eps, nu, p, ci:
-                             data_pad[idxdiv(p, (nH * nW))][idxmod(idxdiv(p, nW), nH) * m + eps]
-                                     [idxmod(p, nW) * m + nu][ci], name='input_tile')
+    data_pad[idxdiv(p, (nH * nW))][idxmod(idxdiv(p, nW), nH) * m + eps]
+    [idxmod(p, nW) * m + nu][ci], name='input_tile')
 
     # transform data
     r_a = te.reduce_axis((0, alpha), 'r_a')
     r_b = te.reduce_axis((0, alpha), 'r_b')
     data_pack = te.compute((alpha, alpha, P, CI), lambda eps, nu, p, ci:
-                            te.sum(input_tile[r_a][r_b][p][ci] * B[r_a][eps] * B[r_b][nu],
-                                    axis=[r_a, r_b]), name='data_pack',
-                            attrs={"auto_scheduler_simplify_const_tensor_indices": ["eps", "nu", 
-                                                                                    "r_a", "r_b"]})
-
-    # do batch gemm
+    te.sum(input_tile[r_a][r_b][p][ci] * B[r_a][eps] * B[r_b][nu],
+           axis=[r_a, r_b]), name='data_pack',
+                           attrs={"auto_scheduler_simplify_const_tensor_indices": ["eps", "nu",
+                                                                                   "r_a", "r_b"]})
+    #
+    # # do batch gemm
     ci = te.reduce_axis((0, CI), name='ci')
     bgemm = te.compute((alpha, alpha, P, CO), lambda eps, nu, p, co:
-                        te.sum(data_pack[eps][nu][p][ci] *
-                                kernel_pack[eps][nu][ci][co],
-                                axis=[ci]), name='bgemm')
-
+    te.sum(data_pack[eps][nu][p][ci] *
+           kernel_pack[eps][nu][co][ci],
+           axis=[ci]), name='bgemm')
+    #
     # inverse transform
     r_a = te.reduce_axis((0, alpha), 'r_a')
     r_b = te.reduce_axis((0, alpha), 'r_b')

@@ -217,6 +217,9 @@ struct Conv2DWinogradAttrs : public tvm::AttrsNode<Conv2DWinogradAttrs> {
   tvm::String kernel_layout;
   tvm::String out_layout;
   tvm::String auto_scheduler_rewritten_layout;  // The layout after auto-scheduler's layout rewrite
+  Array<Integer> meta_schedule_layout_rewrite_extents;
+  Array<Integer> meta_schedule_layout_rewrite_reorder;
+  Array<PrimExpr> meta_schedule_original_shape;
   DataType out_dtype;
 
   TVM_DECLARE_ATTRS(Conv2DWinogradAttrs, "relay.attrs.Conv2DWinogradAttrs") {
@@ -948,6 +951,9 @@ struct DenseAttrs : public tvm::AttrsNode<DenseAttrs> {
 /*! \brief Attributes for batch matmul operator */
 struct BatchMatmulAttrs : public tvm::AttrsNode<BatchMatmulAttrs> {
   tvm::String auto_scheduler_rewritten_layout;  // The layout after auto-scheduler's layout rewrite
+  Array<Integer> meta_schedule_layout_rewrite_extents;
+  Array<Integer> meta_schedule_layout_rewrite_reorder;
+  Array<PrimExpr> meta_schedule_original_shape;
 
   TVM_DECLARE_ATTRS(BatchMatmulAttrs, "relay.attrs.BatchMatmulAttrs") {}
 };

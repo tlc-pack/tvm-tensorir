@@ -21,7 +21,7 @@ from tvm import te, auto_scheduler
 from ..utils import get_const_tuple
 
 
-def batch_matmul(x, y, oshape=None, auto_scheduler_rewritten_layout=""):
+def batch_matmul(x, y, oshape=None, auto_scheduler_rewritten_layout="", original_shape=[]):
     """Computes batch matrix multiplication of `x` and `y` when `x` and `y` are
     data in batch. Supports broadcasting for batch dimension.
 
@@ -51,6 +51,10 @@ def batch_matmul(x, y, oshape=None, auto_scheduler_rewritten_layout=""):
         y_shape = auto_scheduler.get_shape_from_rewritten_layout(
             auto_scheduler_rewritten_layout, ["b", "j", "k"]
         )
+        auto_scheduler.remove_index_check(y)
+    elif len(original_shape) != 0:
+        y_shape = original_shape
+        y = te.placeholder(y_shape, name=y.name)
         auto_scheduler.remove_index_check(y)
     else:
         y_shape = get_const_tuple(y.shape)

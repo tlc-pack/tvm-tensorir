@@ -68,15 +68,13 @@ class MetaScheduleFuncMutator : public ExprMutator {
     auto new_n = ExprMutator::VisitExpr_(n);
 
     const auto* call = new_n.as<CallNode>();
-    if (call && call->op.as<OpNode>() && n->op.as<OpNode>()->name == "nn.dense") {
-      LOG(INFO) << "have dense";
-    }
+
     if (call && call->op.as<OpNode>() &&
         (std::find(target_ops_.begin(), target_ops_.end(), n->op.as<OpNode>()->name) !=
          target_ops_.end()) &&
         !layout_rewrite_queue_.empty()) {
       // Pop a new layout from the queue
-
+      LOG(INFO) << n->op.as<OpNode>()->name;
       const meta_schedule::LayoutRewriteHint hint = layout_rewrite_queue_.front();
       layout_rewrite_queue_.pop_front();
 
@@ -98,6 +96,10 @@ class MetaScheduleFuncMutator : public ExprMutator {
         updated_attrs = CopyAttrsWithNewLayout(pattr, extents, reorder, type->shape);
       } else if (auto pattr = call->attrs.as<DenseAttrs>()) {
         updated_attrs = CopyAttrsWithNewLayout(pattr, extents, reorder, type->shape);
+      } else if (auto pattr = call->attrs.as<BatchMatmulAttrs>()) {
+        updated_attrs = CopyAttrsWithNewLayout(pattr, extents, reorder, type->shape);
+      } else if (auto pattr = call->attrs.as<Conv2DWinogradAttrs>()) {
+        updated_attrs = CopyAttrsWithNewLayout(pattr, extents, reorder, type->shape);
       } else {
         LOG(FATAL) << "Unhandled attribute: " << call->attrs;
       }
@@ -109,7 +111,8 @@ class MetaScheduleFuncMutator : public ExprMutator {
  public:
   std::deque<meta_schedule::LayoutRewriteHint> layout_rewrite_queue_;
 
-  std::vector<std::string> target_ops_{"nn.conv2d", "nn.dense"};
+  std::vector<std::string> target_ops_{"nn.conv2d", "nn.dense", "nn.batch_matmul",
+                                       "nn.contrib_conv2d_winograd_without_weight_transform"};
 };
 
 Expr MetaSchedulerLayoutRewriter::VisitExpr_(const CallNode* n) {
@@ -172,6 +175,10 @@ TVM_REGISTER_GLOBAL("relay.attrs.get_meta_schedule_original_layout")
         return attrs.as<Conv2DAttrs>()->meta_schedule_original_shape;
       } else if (attrs->IsInstance<DenseAttrs>()) {
         return attrs.as<DenseAttrs>()->meta_schedule_original_shape;
+      } else if (attrs->IsInstance<BatchMatmulAttrs>()) {
+        return attrs.as<BatchMatmulAttrs>()->meta_schedule_original_shape;
+      } else if (attrs->IsInstance<Conv2DWinogradAttrs>()) {
+        return attrs.as<Conv2DWinogradAttrs>()->meta_schedule_original_shape;
       } else {
         LOG(FATAL) << "Unhandled attribute: " << attrs;
       }

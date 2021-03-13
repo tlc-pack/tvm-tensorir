@@ -152,10 +152,10 @@ class LocalBuilder(ProgramBuilder):
     build_func: str
 
     def __init__(
-        self,
-        timeout: int = 15,
-        n_parallel: Optional[int] = None,
-        build_func: str = "tar",
+            self,
+            timeout: int = 30,
+            n_parallel: Optional[int] = None,
+            build_func: str = "tar",
     ):
         if n_parallel is None:
             n_parallel = cpu_count()

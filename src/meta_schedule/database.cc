@@ -82,7 +82,7 @@ Optional<Array<ObjectRef>> LoadTuningRecords(const String& path) {
  */
 Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask& task) {
   const auto* record = record_obj.as<ArrayNode>();
-  ICHECK_EQ(record->size(), 7);
+  ICHECK_EQ(record->size(), 6);
   String task_name = Downcast<String>(record->at(0));
   Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record->at(1));
   Map<String, ObjectRef> target_host = Downcast<Map<String, ObjectRef>>(record->at(2));
@@ -91,16 +91,18 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask& task) {
   String log_version = Downcast<String>(record->at(5));
 
   tir::PrimFunc orig_func{nullptr};
-  {
-    std::string prim_func_b64 = Downcast<String>(record->at(6));
-    dmlc::MemoryStringStream m_stream(&prim_func_b64);
-    support::Base64InStream b64strm(&m_stream);
-    std::string parsed;
-    b64strm.InitPosition();
-    dmlc::Stream* strm = &b64strm;
-    strm->Read(&parsed);
-    orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
-  }
+  //  {
+  //    std::string prim_func_b64 = Downcast<String>(record->at(6));
+  //    dmlc::MemoryStringStream m_stream(&prim_func_b64);
+  //    support::Base64InStream b64strm(&m_stream);
+  //    std::string parsed;
+  //    b64strm.InitPosition();
+  //    dmlc::Stream* strm = &b64strm;
+  //    strm->Read(&parsed);
+  //    orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
+  //  }
+  auto fget_workload = runtime::Registry::Get("meta_schedule.relay_integration.get_workload");
+  orig_func = (*fget_workload)(task_name);
   //  if (!StructuralEqual()(orig_func, task->workload)) {
   //    return Database::Entry{NullOpt, String(""), {}};
   //  }

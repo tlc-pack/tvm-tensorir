@@ -261,9 +261,8 @@ def wrap_compute_conv2d(
         args.append(out_dtype)
         if need_auto_scheduler_layout:
             args.append(get_auto_scheduler_rewritten_layout(attrs))
-        else:
+        elif need_meta_schedule_layout:
             args.append("")
-        if need_meta_schedule_layout:
             args.append(get_meta_schedule_original_layout(attrs))
         return [topi_compute(*args)]
 
@@ -758,8 +757,6 @@ def wrap_compute_dense(topi_compute, need_auto_scheduler_layout=False, need_meta
             args.append(get_auto_scheduler_rewritten_layout(attrs))
         elif need_meta_schedule_layout:
             args.append("")
-
-        if need_meta_schedule_layout:
             args.append(get_meta_schedule_original_layout(attrs))
 
         return [topi_compute(*args)]
@@ -794,13 +791,16 @@ def dense_pack_strategy(attrs, inputs, out_type, target):
 
 
 # batch_matmul
-def wrap_compute_batch_matmul(topi_compute, need_auto_scheduler_layout=False):
+def wrap_compute_batch_matmul(topi_compute, need_auto_scheduler_layout=False, need_meta_schedule_layout=False):
     """wrap batch_matmul topi compute"""
 
     def _compute_batch_matmul(attrs, inputs, out_type):
         args = [inputs[0], inputs[1], out_type.shape]
         if need_auto_scheduler_layout:
             args.append(get_auto_scheduler_rewritten_layout(attrs))
+        elif need_meta_schedule_layout:
+            args.append("")
+            args.append(get_meta_schedule_original_layout(attrs))
         return [topi_compute(*args)]
 
     return _compute_batch_matmul

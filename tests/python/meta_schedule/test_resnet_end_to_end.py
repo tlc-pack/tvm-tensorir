@@ -107,6 +107,7 @@ TARGET_HOST = tvm.target.Target("raspberry-pi/4b-64")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=True),
+        ms.rule.simplify_compute_with_const_tensor(),
         ms.rule.multi_level_tiling(
             structure="SSRSRS",
             must_cache_read=False,
@@ -155,8 +156,8 @@ def test_end_to_end_resnet(log):
             ),
             space=SPACE,
             strategy=ms.strategy.Evolutionary(
-                total_measures=16,
-                num_measures_per_iter=16,
+                total_measures=1500,
+                num_measures_per_iter=64,
                 population=2048,
                 init_measured_ratio=0.2,
                 genetic_algo_iters=10,
@@ -174,8 +175,7 @@ def test_end_to_end_resnet(log):
                 measure_callbacks=[
                     ms.RecordToFile(),
                 ]
-            ),
-            seed=1023
+            )
         )
     with ms.ApplyHistoryBest(log, SPACE):
         with tvm.transform.PassContext(opt_level=3, config={"relay.with_tir_schedule": True,
@@ -202,25 +202,24 @@ def test_end_to_end_resnet(log):
             tmp = tempdir()
             filename = "net.tar"
             lib.export_library(tmp.relpath(filename))
+            for _ in range(3):
+                # Upload module to device
+                print("Upload...")
+                remote = auto_scheduler.utils.request_remote(RPC_KEY, "172.16.2.241", 4445, timeout=10000)
+                remote.upload(tmp.relpath(filename))
+                rlib = remote.load_module(filename)
 
-            # Upload module to device
-            print("Upload...")
-            remote = auto_scheduler.utils.request_remote(RPC_KEY, "172.16.2.241", 4445, timeout=10000)
-            remote.upload(tmp.relpath(filename))
-            rlib = remote.load_module(filename)
-
-            # Create graph runtime
-            ctx = remote.cpu()
-            module = runtime.GraphModule(rlib["default"](ctx))
-            data_tvm = tvm.nd.array((np.random.uniform(size=data.shape)).astype("float32"))
-            module.set_input("data", data_tvm)
-            # Evaluate
-            print("Evaluate inference time cost...")
-            ftimer = module.module.time_evaluator("run", ctx, repeat=3, min_repeat_ms=500)
-            prof_res = np.array(ftimer().results) * 1e3  # convert to millisecond
-            print(
-                "Mean inference time (std dev): %.2f ms (%.2f ms)" % (np.mean(prof_res), np.std(prof_res))
-            )
+                # Create graph runtime
+                ctx = remote.cpu()
+                module = runtime.GraphModule(rlib["default"](ctx))
+                module.set_input("data", data)
+                # Evaluate
+                print("Evaluate inference time cost...")
+                ftimer = module.module.time_evaluator("run", ctx, repeat=3, min_repeat_ms=500)
+                prof_res = np.array(ftimer().results) * 1e3  # convert to millisecond
+                print(
+                    "Mean inference time (std dev): %.2f ms (%.2f ms)" % (np.mean(prof_res), np.std(prof_res))
+                )
 
             module.run()
             return module.get_output(0)

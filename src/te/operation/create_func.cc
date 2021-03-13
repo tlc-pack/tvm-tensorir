@@ -161,6 +161,11 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
         allocations.push_back(buffer);
       }
       Map<String, ObjectRef> annotations = {};
+      for (const auto& kv : op->attrs) {
+        if (kv.first != "layout_free_placeholders") {
+          annotations.Set(kv.first, kv.second);
+        }
+      }
       annotations.Set("script_detect_access", IntImm(DataType::Int(32), 3));
       Block block(/*iter_vars=*/block_vars,
                   /*reads=*/{}, /*writes=*/{}, /*name_hint=*/GetUniqueName(op->name, &name_map),
