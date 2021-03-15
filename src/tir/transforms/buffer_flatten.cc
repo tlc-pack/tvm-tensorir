@@ -20,16 +20,7 @@
 /*!
  * \file buffer_flatten.cc
  */
-
-#include <tvm/arith/int_set.h>
-#include <tvm/ir/attrs.h>
-#include <tvm/runtime/registry.h>
-#include <tvm/tir/analysis.h>
 #include <tvm/tir/builtin.h>
-#include <tvm/tir/function.h>
-#include <tvm/tir/op.h>
-#include <tvm/tir/schedule/schedule.h>
-#include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
 #include "../schedule/utils.h"
@@ -37,11 +28,12 @@
 namespace tvm {
 namespace tir {
 
-using NDIntSet = std::vector<arith::IntSet>;
 template <class K, class V>
 using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
 template <class K>
 using SSet = std::unordered_set<K, ObjectPtrHash, ObjectPtrEqual>;
+
+using NDIntSet = std::vector<arith::IntSet>;
 
 arith::IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent) {
   return arith::IntSet::FromRange(Range::FromMinExtent(min, extent));
@@ -110,6 +102,9 @@ PrimExpr BufferArea(const Buffer& buffer) {
 
 class ReductionTransformer : public StmtMutator {
  public:
+  static Stmt Transform(const PrimFunc& f) { return ReductionTransformer().VisitStmt(f->body); }
+
+ private:
   Stmt VisitStmt_(const BlockNode* block) override {
     if (!block->init.defined()) {
       return StmtMutator::VisitStmt_(block);
@@ -230,7 +225,7 @@ class BufferAccessRewriter : public StmtExprMutator {
     Buffer new_buffer{nullptr};
     Array<PrimExpr> new_indices{nullptr};
     std::tie(new_buffer, new_indices) = f_rewrite_(op->buffer, op->indices);
-    return new_buffer.vstore(new_indices, op->value);
+    return BufferStore(new_buffer, op->value, new_indices);
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
@@ -239,7 +234,7 @@ class BufferAccessRewriter : public StmtExprMutator {
     Buffer new_buffer{nullptr};
     Array<PrimExpr> new_indices{nullptr};
     std::tie(new_buffer, new_indices) = f_rewrite_(op->buffer, op->indices);
-    return new_buffer.vload(new_indices, op->dtype);
+    return BufferLoad(new_buffer, new_indices);
   }
 
   const FRewriteBufferAccess& f_rewrite_;
@@ -249,19 +244,6 @@ class BufferAccessRewriter : public StmtExprMutator {
  * \brief Gather the used region of each buffers.
  */
 class RegionGatherer : public StmtExprMutator {
-  struct BufferInfo {
-    NDIntSet accessed_region;
-    Optional<For> alloc_site;
-    Array<Range> region;
-    Buffer new_buffer;
-
-    explicit BufferInfo(int ndim, Optional<For> alloc_site)
-        : accessed_region(NDIntSetEmpty(ndim)),  //
-          alloc_site(std::move(alloc_site)),
-          region{nullptr},
-          new_buffer{nullptr} {}
-  };
-
  public:
   static Stmt Gather(const PrimFunc& f) {
     Map<Buffer, Optional<For>> buffer_lca = LCADetector::Detect(f);
@@ -292,6 +274,19 @@ class RegionGatherer : public StmtExprMutator {
   }
 
  private:
+  struct BufferInfo {
+    NDIntSet accessed_region;
+    Optional<For> alloc_site;
+    Array<Range> region;
+    Buffer new_buffer;
+
+    explicit BufferInfo(int ndim, Optional<For> alloc_site)
+        : accessed_region(NDIntSetEmpty(ndim)),  //
+          alloc_site(std::move(alloc_site)),
+          region{nullptr},
+          new_buffer{nullptr} {}
+  };
+
   explicit RegionGatherer(SMap<Buffer, BufferInfo> buffer_info,
                           SMap<Optional<For>, Array<Buffer>> loop_allocs)
       : block_nest_depth_(0),
@@ -517,6 +512,9 @@ class RegionGatherer : public StmtExprMutator {
  * \brief Transform multi-dimension BufferLoad/BufferStore into one-dimension Load/Store
  */
 class BufferFlattener : public StmtExprMutator {
+ public:
+  static Stmt Flatten(const PrimFunc& f) { return BufferFlattener().VisitStmt(f->body); }
+
  private:
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
     ICHECK(realize->binding_values.empty());
@@ -571,6 +569,18 @@ class BufferFlattener : public StmtExprMutator {
     return body;
   }
 
+  Stmt VisitStmt_(const BufferStoreNode* op) final {
+    BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(op));
+    op = store.get();
+    return op->buffer.vstore(op->indices, op->value);
+  }
+
+  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
+    BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(op));
+    op = load.get();
+    return op->buffer.vload(op->indices, op->dtype);
+  }
+
   static Stmt MakeAllocStmt(const Buffer& buffer, Stmt body, bool is_double_buffer) {
     String storage_scope = buffer->scope;
     if (storage_scope.empty()) {
@@ -620,13 +630,11 @@ PrimFunc BufferFlatten(PrimFunc f) {
   // Step 0. Check memory and execution hierarchy
   VerifyExecScope(f);
   // Step 1.Transform the reduction calls to BufferStore
-  ReductionTransformer reduction_transformer;
-  fptr->body = reduction_transformer(fptr->body);
+  fptr->body = ReductionTransformer::Transform(f);
   // Step 2. Recalculate the buffer region
-  RegionGatherer::Gather(f);
+  fptr->body = RegionGatherer::Gather(f);
   // Step 3. Transform BufferLoad/BufferStore into Load/Store
-  BufferFlattener flattener;
-  fptr->body = flattener(fptr->body);
+  fptr->body = BufferFlattener::Flatten(f);
   return f;
 }
 

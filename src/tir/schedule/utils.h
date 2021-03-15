@@ -20,6 +20,7 @@
 #define TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/arith/int_set.h>
 #include <tvm/arith/iter_affine_map.h>
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/op.h>
