@@ -21,7 +21,8 @@ find_cuda(${USE_CUDA} ${USE_CUDNN})
 if(CUDA_FOUND)
   # always set the includedir when cuda is available
   # avoid global retrigger of cmake
-  include_directories(SYSTEM ${CUDA_INCLUDE_DIRS})
+	include_directories(SYSTEM ${CUDA_INCLUDE_DIRS}
+                             ${CMAKE_SOURCE_DIR}/../3rdparty/CUTLASS/include)
 endif(CUDA_FOUND)
 
 if(USE_CUDA)
@@ -50,7 +51,8 @@ if(USE_CUDA)
     message(STATUS "Build with cuBLAS support")
     file(GLOB CONTRIB_CUBLAS_SRCS src/runtime/contrib/cublas/*.cc)
     list(APPEND RUNTIME_SRCS ${CONTRIB_CUBLAS_SRCS})
-    list(APPEND TVM_RUNTIME_LINKER_LIBS ${CUDA_CUBLAS_LIBRARY})
+    list(APPEND TVM_RUNTIME_LINKER_LIBS ${CUDA_CUBLAS_LIBRARY}
+                                        ${CMAKE_SOURCE_DIR}/../3rdparty/CUTLASS/build/lib/libCUTLASS.so)
     if(NOT CUDA_CUBLASLT_LIBRARY STREQUAL "CUDA_CUBLASLT_LIBRARY-NOTFOUND")
       list(APPEND TVM_RUNTIME_LINKER_LIBS ${CUDA_CUBLASLT_LIBRARY})
     endif()

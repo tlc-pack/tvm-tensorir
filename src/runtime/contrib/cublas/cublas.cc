@@ -27,6 +27,21 @@
 #include "../cblas/gemm_common.h"
 #include "cublas_utils.h"
 
+// <bojian/TVM-SymbolicTuning>
+#include "cutlass/gemm/device/gemm.h"
+
+
+#define CHECK_CUTLASS_ERROR(status)                                                              \
+  {                                                                                              \
+    cutlass::Status error = status;                                                              \
+    if (error != cutlass::Status::kSuccess) {                                                    \
+      std::cerr << "Got cutlass error: " << cutlassGetStatusString(error) << " at: " << __LINE__ \
+                << std::endl;                                                                    \
+      exit(EXIT_FAILURE);                                                                        \
+    }                                                                                            \
+  }
+
+
 namespace tvm {
 namespace contrib {
 
@@ -68,6 +83,76 @@ struct CublasSgemmOp {
                                    &beta, C, ldc));
   }
 };
+
+// <bojian/TVM-SymbolicTuning> CUTLASS Sgemm Op
+struct CutlassSgemmOp {
+  typedef float TDataType;
+  
+  void operator()(const bool ta, const bool tb,
+                  const int M, const int N, const int K,
+                  const float alpha,
+                  float *const A, const int lda,
+                  float *const B, const int ldb,
+                  const float beta,
+                  float *const C, const int ldc) {
+    using ColumnMajor = cutlass::layout::ColumnMajor;
+
+    using CutlassGemm = cutlass::gemm::device::Gemm<float, ColumnMajor,
+                                                    float, ColumnMajor,
+                                                    float, ColumnMajor>;
+    CutlassGemm gemm_operator;
+    CutlassGemm::Arguments args({M , N, K},
+                                {A, lda},
+                                {B, ldb},
+                                {C, ldc},
+                                {C, ldc},
+                                {alpha, beta});
+    CHECK_CUTLASS_ERROR(gemm_operator(args));
+  }
+};
+
+
+// <bojian/TVM-SymbolicTuning>
+TVM_REGISTER_GLOBAL("tvm.contrib.cutlass.matmul")
+    .set_body([](TVMArgs args, TVMRetValue* ret) {
+      DLTensor* A = args[0];
+      DLTensor* B = args[1];
+      DLTensor* C = args[2];
+      bool transa = args[3];
+      bool transb = args[4];
+      int bit_depth = sizeof(typename TGemmOp::TDatatype) * 8;
+      ICHECK_EQ(A->ndim, 2);
+      ICHECK_EQ(B->ndim, 2);
+      ICHECK_EQ(C->ndim, 2);
+
+      ICHECK_EQ(ElementStride(A), 1);
+      ICHECK_EQ(ElementStride(B), 1);
+      ICHECK_EQ(ElementStride(C), 1);
+
+      // C can never be transposed.
+      ICHECK(!IsInPlaceTransposed(C));
+
+      // Reversed strides indicates an in-place transpose operation.
+      transa = IsInPlaceTransposed(A) ? !transa : transa;
+      transb = IsInPlaceTransposed(B) ? !transb : transb;
+
+      ICHECK(TypeMatch(B->dtype, kDLFloat, bit_depth));
+      ICHECK(TypeMatch(C->dtype, kDLFloat, bit_depth));
+      double alpha = args.size() > 5 ? args[5] : 1.0;
+      double beta = args.size() > 6 ? args[6] : 0.0;
+
+      CutlassSgemmOp op;
+
+      op(transb, transa, ColumnCount(B, transb), RowCount(A, transa), ColumnCount(A, transa),
+         static_cast<typename TGemmOp::TDatatype>(alpha),
+         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(B->data) + B->byte_offset),
+         ColumnStride(B),
+         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(A->data) + A->byte_offset),
+         ColumnStride(A), static_cast<typename TGemmOp::TDatatype>(beta),
+         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(C->data) + C->byte_offset),
+         ColumnStride(C));
+    })
+
 
 struct CublasDgemmOp {
   typedef double TDatatype;
