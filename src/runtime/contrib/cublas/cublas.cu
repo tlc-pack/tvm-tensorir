@@ -86,7 +86,7 @@ struct CublasSgemmOp {
 
 // <bojian/TVM-SymbolicTuning> CUTLASS Sgemm Op
 struct CutlassSgemmOp {
-  typedef float TDataType;
+  typedef float TDatatype;
   
   void operator()(const bool ta, const bool tb,
                   const int M, const int N, const int K,
