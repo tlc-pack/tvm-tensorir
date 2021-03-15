@@ -154,7 +154,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.cutlass.matmul")
          ColumnStride(A), static_cast<typename TGemmOp::TDatatype>(beta),
          reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(C->data) + C->byte_offset),
          ColumnStride(C));
-    })
+    });
 
 
 struct CublasDgemmOp {
