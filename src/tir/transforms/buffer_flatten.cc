@@ -38,6 +38,10 @@ namespace tvm {
 namespace tir {
 
 using NDIntSet = std::vector<arith::IntSet>;
+template <class K, class V>
+using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
+template <class K>
+using SSet = std::unordered_set<K, ObjectPtrHash, ObjectPtrEqual>;
 
 arith::IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent) {
   return arith::IntSet::FromRange(Range::FromMinExtent(min, extent));
@@ -94,31 +98,6 @@ bool IsThreadBound(const For& loop) {
 bool IsReduceTempBuffer(const Buffer& buffer) {
   return StartsWith(buffer->name, "normal_reduce_temp") ||  //
          StartsWith(buffer->name, "reduce_temp");
-}
-
-String NormalizeStorageScope(const String& s) {
-  if (s.empty()) {
-    return "global";
-  }
-  return s;
-}
-
-Stmt MakeAllocStmt(const Buffer& buffer, const PrimExpr& area, Stmt body) {
-  body = Allocate(buffer->data, buffer->dtype, {area}, const_true(), body);
-  body = AttrStmt(buffer->data, attr::storage_scope,
-                  StringImm(NormalizeStorageScope(buffer->scope)), body);
-  return body;
-}
-
-Stmt MakeLaunchThread(const PrimExpr& min, const PrimExpr& extent, const Var& var,
-                      const String& thread_tag, Stmt body) {
-  IterVar iter_var(/*dom=*/Range::FromMinExtent(min, extent),
-                   /*var=*/var,
-                   /*iter_type=*/IterVarType::kThreadIndex,
-                   /*thread_tag=*/thread_tag);
-  String attr_key = thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent;
-  body = AttrStmt(iter_var, attr_key, extent, body);
-  return body;
 }
 
 PrimExpr BufferArea(const Buffer& buffer) {
@@ -270,11 +249,6 @@ class BufferAccessRewriter : public StmtExprMutator {
  * \brief Gather the used region of each buffers.
  */
 class RegionGatherer : public StmtExprMutator {
-  template <class K, class V>
-  using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
-  template <class K>
-  using SSet = std::unordered_set<K, ObjectPtrHash, ObjectPtrEqual>;
-
   struct BufferInfo {
     NDIntSet accessed_region;
     Optional<For> alloc_site;
@@ -544,65 +518,36 @@ class RegionGatherer : public StmtExprMutator {
  */
 class BufferFlattener : public StmtExprMutator {
  private:
-  Stmt VisitStmt_(const SeqStmtNode* op) final {
-    Array<Stmt> seq;
-    seq.reserve(op->seq.size());
-    for (const Stmt& stmt : op->seq) {
-      std::unordered_set<const BufferNode*> double_buffer;
-      std::swap(double_buffer, double_buffer_);
-      Stmt body = VisitStmt(stmt);
-      std::swap(double_buffer, double_buffer_);
-      const ForNode* loop = ancestor_loops_.back();
-      for (const BufferNode* buffer : double_buffer) {
-        // TODO
-        // const Object* lca = buffer_lca_.at(GetRef<Buffer>(buffer)).get();
-        // if (lca != nullptr && loop == lca) {
-        //   body = AttrStmt(buffer->data, attr::double_buffer_scope, 1, body);
-        // } else {
-        //   double_buffer_.insert(buffer);
-        // }
-      }
-      seq.push_back(body);
-    }
-    return SeqStmt(seq);
-  }
-
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
-    // Step 3. Visit the body
+    ICHECK(realize->binding_values.empty());
+    // Step 1. Visit the body
     Block new_block = Downcast<Block>(this->VisitStmt(realize->block));
+    PrimExpr predicate = this->VisitExpr(realize->predicate);
     const BlockNode* block = new_block.get();
-    // Step 4. Transform the `predicate` to if-then-else
+    // Step 2. Transform the `predicate` to if-then-else
     Stmt body = block->body;
-    if (!is_one(realize->predicate)) {
-      body = IfThenElse(realize->predicate, body);
+    if (!is_one(predicate)) {
+      body = IfThenElse(predicate, body);
     }
-    // Step 5. Pick out blocks that writes with double buffering
-    for (const auto& ann : block->annotations) {
-      const String& ann_key = ann.first;
-      const ObjectRef& ann_value = ann.second;
-      if (ann_key == attr::double_buffer_scope) {
-        if (is_one(Downcast<PrimExpr>(ann_value))) {
-          ICHECK_EQ(block->writes.size(), 1);
-          const BufferRegion& write = block->writes[0];
-          double_buffer_.insert(write->buffer.get());
-        }
-      }
+    // Step 3. Pick out blocks that writes with double buffering
+    if (IsDoubleBufferScope(block->annotations)) {
+      ICHECK_EQ(block->writes.size(), 1);
+      const Buffer& write = block->writes[0]->buffer;
+      double_buffered_.insert(write);
     }
-    // Step 6. Handle allocations
+    // Step 4. Handle allocations
     for (const Buffer& buffer : block->alloc_buffers) {
-      body = MakeAllocStmt(buffer, BufferArea(buffer), body);
+      body = MakeAllocStmt(buffer, body, double_buffered_.count(buffer));
     }
     return body;
   }
 
   Stmt VisitStmt_(const ForNode* op) final {
-    // Step 2. Visit recursively
-    ancestor_loops_.push_back(op);
-    Stmt body = this->VisitStmt(op->body);
+    // Step 1. Visit recursively
     PrimExpr min = this->VisitExpr(op->min);
     PrimExpr extent = this->VisitExpr(op->extent);
-    ancestor_loops_.pop_back();
-    // Step 4. Add the for loop accordingly
+    Stmt body = this->VisitStmt(op->body);
+    // Step 2. Add the for loop accordingly
     if (op->kind == ForKind::kThreadBinding) {
       // Case 1. Thread binding
       ICHECK(op->thread_binding.defined());
@@ -615,7 +560,7 @@ class BufferFlattener : public StmtExprMutator {
       // Case 3. An ordinary loop
       body = For(op->loop_var, min, extent, op->kind, body);
     }
-    // Step 5. Handle annotations
+    // Step 3. Handle annotations
     for (const auto& annotation : op->annotations) {
       const String& ann_key = annotation.first;
       const ObjectRef& ann_value = annotation.second;
@@ -626,8 +571,48 @@ class BufferFlattener : public StmtExprMutator {
     return body;
   }
 
-  std::unordered_set<const BufferNode*> double_buffer_;
-  std::vector<const ForNode*> ancestor_loops_;
+  static Stmt MakeAllocStmt(const Buffer& buffer, Stmt body, bool is_double_buffer) {
+    String storage_scope = buffer->scope;
+    if (storage_scope.empty()) {
+      storage_scope = "global";
+    }
+    PrimExpr area = BufferArea(buffer);
+    body = Allocate(buffer->data, buffer->dtype, {area}, const_true(), body);
+    body = AttrStmt(buffer->data, attr::storage_scope, StringImm(storage_scope), body);
+    if (is_double_buffer) {
+      body = AttrStmt(buffer->data, attr::double_buffer_scope, Integer(1), body);
+    }
+    return body;
+  }
+
+  static Stmt MakeLaunchThread(const PrimExpr& min, const PrimExpr& extent, const Var& var,
+                               const String& thread_tag, Stmt body) {
+    IterVar iter_var(/*dom=*/Range::FromMinExtent(min, extent),
+                     /*var=*/var,
+                     /*iter_type=*/IterVarType::kThreadIndex,
+                     /*thread_tag=*/thread_tag);
+    String attr_key = thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent;
+    body = AttrStmt(iter_var, attr_key, extent, body);
+    return body;
+  }
+
+  static bool IsDoubleBufferScope(const Map<String, ObjectRef>& annotations) {
+    for (const auto& ann : annotations) {
+      const String& ann_key = ann.first;
+      const ObjectRef& ann_value = ann.second;
+      if (ann_key != attr::double_buffer_scope) {
+        continue;
+      }
+      const auto* value = TVM_TYPE_AS(value, ann_value, PrimExprNode);
+      if (!is_one(GetRef<PrimExpr>(value))) {
+        continue;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  SSet<Buffer> double_buffered_;
 };
 
 PrimFunc BufferFlatten(PrimFunc f) {
