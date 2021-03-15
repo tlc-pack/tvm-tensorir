@@ -48,11 +48,19 @@ if(USE_CUDA)
   endif(USE_CUDNN)
 
   if(USE_CUBLAS)
-    message(STATUS "Build with cuBLAS support")
-    file(GLOB CONTRIB_CUBLAS_SRCS src/runtime/contrib/cublas/*.cc)
+    message(STATUS "Build with cuBLAS/CUTLASS support")
+    
+    # <bojian/TVM-SymbolicTuning>
+    enable_language(CUDA)
+
+    file(GLOB CONTRIB_CUBLAS_SRCS src/runtime/contrib/cublas/*.cc
+                                  src/runtime/contrib/cublas/*.cu)
+
     list(APPEND RUNTIME_SRCS ${CONTRIB_CUBLAS_SRCS})
+
     list(APPEND TVM_RUNTIME_LINKER_LIBS ${CUDA_CUBLAS_LIBRARY}
-                                        ${CMAKE_SOURCE_DIR}/../3rdparty/CUTLASS/build/lib/libCUTLASS.so)
+                                        ${CMAKE_SOURCE_DIR}/../3rdparty/CUTLASS/build/tools/library/libcutlass.so)
+
     if(NOT CUDA_CUBLASLT_LIBRARY STREQUAL "CUDA_CUBLASLT_LIBRARY-NOTFOUND")
       list(APPEND TVM_RUNTIME_LINKER_LIBS ${CUDA_CUBLASLT_LIBRARY})
     endif()

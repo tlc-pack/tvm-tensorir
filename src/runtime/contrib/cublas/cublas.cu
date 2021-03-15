@@ -115,6 +115,9 @@ struct CutlassSgemmOp {
 // <bojian/TVM-SymbolicTuning>
 TVM_REGISTER_GLOBAL("tvm.contrib.cutlass.matmul")
     .set_body([](TVMArgs args, TVMRetValue* ret) {
+
+      using TGemmOp = CutlassSgemmOp;
+
       DLTensor* A = args[0];
       DLTensor* B = args[1];
       DLTensor* C = args[2];
