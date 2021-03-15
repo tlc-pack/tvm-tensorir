@@ -436,43 +436,49 @@ class RegionGatherer : public StmtExprMutator {
   }
 
   Array<BufferRegion> VisitBufferRegions(const Array<BufferRegion>& buffer_regions) {
-    Array<BufferRegion> result;
-    result.reserve(buffer_regions.size());
+    // Calculate `new_buffer_regions` by recursively visiting min/extent of each range
+    Array<BufferRegion> new_buffer_regions;
+    new_buffer_regions.reserve(buffer_regions.size());
     for (const BufferRegion& buffer_region : buffer_regions) {
+      const Buffer& buffer = buffer_region->buffer;
+      const Array<Range>& region = buffer_region->region;
+      Array<Range> new_region;
+      new_region.reserve(region.size());
+      for (const Range& range : region) {
+        new_region.push_back(Range::FromMinExtent(/*min=*/this->VisitExpr(range->min),
+                                                  /*extent=*/this->VisitExpr(range->extent)));
+      }
+      new_buffer_regions.push_back(BufferRegion(buffer, new_region));
+    }
+    // Calculate `info.accessed_region`
+    for (const BufferRegion& buffer_region : new_buffer_regions) {
       const Buffer& buffer = buffer_region->buffer;
       ICHECK(buffer_info_.count(buffer));
       BufferInfo& info = buffer_info_.at(buffer);
       std::unordered_map<const VarNode*, arith::IntSet> dom_map;
       {
-        const Object* lca = info.alloc_site.get();
+        const Object* alloc_site = info.alloc_site.get();
         // Every loop will be relaxed if the lca is the root
-        bool need_relax = (lca == nullptr);
+        bool need_relax = (alloc_site == nullptr);
         for (const For& loop : this->ancestor_loops_) {
           const VarNode* loop_var = loop->loop_var.get();
-          // TODO
           if (need_relax || (buffer->scope == "shared" && IsThreadBound(loop))) {
+            // TODO
             dom_map[loop_var] = IntSetFromMinExtent(loop->min, loop->extent);
           }
-          if (loop.get() == lca) {
+          if (loop.get() == alloc_site) {
             need_relax = true;
           }
         }
       }
-      int ndim = buffer_region->region.size();
-      Array<Range> region;
       NDIntSet int_set;
-      region.reserve(ndim);
-      int_set.reserve(ndim);
+      int_set.reserve(buffer_region->region.size());
       for (const Range& range : buffer_region->region) {
-        Range new_range =
-            Range::FromMinExtent(this->VisitExpr(range->min), this->VisitExpr(range->extent));
-        region.push_back(new_range);
-        int_set.push_back(arith::EvalSet(new_range, dom_map));
+        int_set.push_back(arith::EvalSet(range, dom_map));
       }
       NDIntSetUnionWith(&info.accessed_region, int_set);
-      result.push_back(BufferRegion(buffer_region->buffer, region));
     }
-    return result;
+    return new_buffer_regions;
   }
 
   Array<Buffer> AllocBufferUnderLoop(const Optional<For>& loop) {
