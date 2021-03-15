@@ -845,6 +845,169 @@ bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv, const int&
   return false;
 }
 
+bool NeedsCrossThreadReduction(const tir::ScheduleState& self, const tir::StmtSRef& block_sref,
+                               int64_t max_threads_per_block, int64_t warp_size) {
+  // Todo: extract and share the common condition checks
+
+  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
+
+  // Cond 1. The block is a reduction block and has trivial binding.
+  if (self->scopes.at(GetScopeRoot(block_sref))->IsReduction(block_sref)
+      && !IsTrivialBinding(self, block_sref)) {
+    return false;
+  }
+
+  // Cond 2. Every the loop axis must be either spatial axis or reduction axis.
+  for (const tir::StmtSRef& loop_sref : loops) {
+    const tir::IterVarType& type = GetLoopIterType(self, loop_sref);
+    if (type != tir::kDataPar && type != tir::kCommReduce) {
+      return false;
+    }
+  }
+
+  // Cond 3. Whether there is at least one reduction loop.
+  // Cond 4. The loops are continuous, and the body of the innermost loop is exactly the block.
+  bool has_reduction_loop = false;
+  for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
+    // Cond 3.
+    if (GetLoopIterType(self, loops[i]) == tir::kCommReduce) {
+      has_reduction_loop = true;
+    }
+
+    // Cond 4.
+    const auto* loop_i = TVM_SREF_TO_FOR(loop_i, loops[i]);
+    if (i < static_cast<int>(loops.size()) - 1) {
+      const auto* loop_i1 = TVM_SREF_TO_FOR(loop_i1, loops[i + 1]);
+      if (loop_i->body.get() != loop_i1) {
+        return false;
+      }
+    } else {
+      const auto* block_realize = loop_i->body.as<tir::BlockRealizeNode>();
+      if (!block_realize || block_realize->block.get() != block) {
+        return false;
+      }
+    }
+  }
+  if (!has_reduction_loop) {
+    return false;
+  }
+
+  // Cond 5. Can successfully calculating the cumulative loop length.
+  int64_t cum_space_len, cum_reduce_len;
+  std::tie(cum_space_len, cum_reduce_len) = GetCumulativeSpaceAndReductionLength(self, block_sref);
+  if (cum_space_len == -1 || cum_reduce_len == -1) {
+    return false;
+  }
+
+  // Cond 6. Todo: add detailed comments
+  if (NeedsMultiLevelTiling(self, block_sref)) {
+    // Avoid rfactor if we have enough parallelism on space iters
+    if (cum_space_len > max_threads_per_block) {
+      return false;
+    }
+    return cum_space_len < cum_reduce_len;
+  } else if (cum_reduce_len > 1) {
+    // Try rfactor for other reduction operators
+    return cum_reduce_len > warp_size;
+  }
+
+  return false;
+}
+
+bool IsConstShiftEqual(const tir::Var& var, const PrimExpr& expr) {
+  arith::PVar<PrimExpr> x;
+  arith::PVar<IntImm> c;
+
+  if (((x + c).Match(expr) || (x - c).Match(expr) || (c + x).Match(expr) || x.Match(expr)) &&
+      x.Eval().same_as(var)) {
+    return true;
+  }
+  return false;
+}
+
+int GetNumberOfCommonBlockVars(const tir::Block& producer, const tir::Block& consumer) {
+  // Todo: provide more detailed documents
+  if (producer->writes.size() != 1 || consumer->writes.size() != 1) {
+    return 0;
+  }
+
+  const tir::Buffer& buf_producer = producer->writes[0]->buffer;
+  const tir::Buffer& buf_consumer = consumer->writes[0]->buffer;
+  const Array<PrimExpr>& shape_buf_producer = buf_producer->shape;
+  const Array<PrimExpr>& shape_buf_consumer = buf_consumer->shape;
+
+  Array<tir::BufferLoad> buffer_loads;
+  Array<tir::BufferStore> buffer_stores;
+  tir::PreOrderVisit(consumer->body, [&buf_producer, &buf_consumer, &buffer_loads,
+                                      &buffer_stores](const ObjectRef& node) {
+    if (const auto* buffer_load = node.as<tir::BufferLoadNode>()) {
+      if (buffer_load->buffer.same_as(buf_producer)) {
+        buffer_loads.push_back(GetRef<tir::BufferLoad>(buffer_load));
+        return false;
+      }
+    }
+    if (const auto* buffer_store = node.as<tir::BufferStoreNode>()) {
+      if (buffer_store->buffer.same_as(buf_consumer)) {
+        buffer_stores.push_back(GetRef<tir::BufferStore>(buffer_store));
+        // Do not return, since there might be BufferLoads in a BufferStore.
+      }
+    }
+    return true;
+  });
+
+  std::unordered_set<const tir::VarNode*> consumer_iter_vars;
+  for (const tir::IterVar& iter_var : consumer->iter_vars) {
+    consumer_iter_vars.insert(iter_var->var.get());
+  }
+
+  arith::Analyzer analyzer;
+  int n_common;
+  for (n_common = 0; n_common < static_cast<int>(shape_buf_producer.size()) &&
+                     n_common < static_cast<int>(shape_buf_consumer.size()); ++n_common) {
+    if (!tir::is_zero(
+            analyzer.Simplify(shape_buf_producer[n_common] - shape_buf_consumer[n_common]))) {
+      break;
+    }
+
+    std::vector<tir::Var> vars;
+    // Collect BufferStore vars.
+    for (const tir::BufferStore& buffer_store : buffer_stores) {
+      tir::PreOrderVisit(buffer_store->indices[n_common], [&vars](const ObjectRef& node) {
+        if (const auto* var = node.as<tir::VarNode>()) {
+          vars.push_back(GetRef<tir::Var>(var));
+          return false;
+        }
+        return true;
+      });
+    }
+    if (vars.size() != 1 || !consumer_iter_vars.count(vars[0].get())) {
+      break;
+    }
+
+    bool injective = true;
+    for (const tir::BufferStore& buffer_store : buffer_stores) {
+      if (!IsConstShiftEqual(vars[0], buffer_store->indices[n_common])) {
+        injective = false;
+        break;
+      }
+    }
+    if (!injective) {
+      break;
+    }
+    for (const tir::BufferLoad& buffer_load : buffer_loads) {
+      if (!IsConstShiftEqual(vars[0], buffer_load->indices[n_common])) {
+        injective = false;
+        break;
+      }
+    }
+    if (!injective) {
+      break;
+    }
+  }
+  return n_common;
+}
+
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);

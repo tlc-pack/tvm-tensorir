@@ -306,3 +306,11 @@ def add_rfactor(
     return _ffi_api_search_rule.AddRFactor(
         max_jobs_per_core, max_innermost_factor
     )  # pylint: disable=no-member
+
+
+def cross_thread_reduction() -> SearchRule:
+    """
+    Todo
+    :return:
+    """
+    return _ffi_api_search_rule.CrossThreadReduction()  # pylint: disable=no-member

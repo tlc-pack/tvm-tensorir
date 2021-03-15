@@ -216,6 +216,30 @@ TVM_DLL bool NeedsRFactor(const tir::ScheduleState& self, const tir::StmtSRef& b
  */
 TVM_DLL bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv, const int& i);
 
+/*!
+ * \brief
+ * \param
+ * \return Todo
+ */
+TVM_DLL bool NeedsCrossThreadReduction(const tir::ScheduleState& self,
+                                       const tir::StmtSRef& block_sref,
+                                       int64_t max_threads_per_block, int64_t warp_size);
+
+/*!
+ * Todo
+ * \param var
+ * \param expr
+ * \return
+ */
+TVM_DLL bool IsConstShiftEqual(const tir::Var& var, const PrimExpr& expr);
+
+/*!
+ * \brief
+ * \param
+ * \return Todo
+ */
+TVM_DLL int GetNumberOfCommonBlockVars(const tir::Block& producer, const tir::Block& consumer);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 

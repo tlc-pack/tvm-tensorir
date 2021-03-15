@@ -922,6 +922,34 @@ void ReorderAndFuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
   }
 }
 
+/*!
+ * \brief Todo
+ * \param sch
+ * \param block
+ * \return
+ */
+Array<Instruction> GetSplitInstsOverBlock(const Schedule& sch, const BlockRV& block) {
+  Array<Instruction> insts = sch->trace->insts;
+  Array<Instruction> res;
+  res.reserve(sch->trace->insts.size());
+
+  for (const Instruction& inst : insts) {
+    if (inst->inst_attrs->IsInstance<SplitAttrs>()) {
+      ICHECK_GT(inst->inputs.size(), 1);
+      ICHECK(inst->inputs[0]->IsInstance<LoopRVNode>());
+      LoopRV loop = Downcast<LoopRV>(inst->inputs[0]);
+      Array<BlockRV> child_blocks = sch->GetChildBlocks(loop);
+      for (const BlockRV& child : child_blocks) {
+        if (sch->Get(child).same_as(sch->Get(block))) {
+          res.push_back(inst);
+          break;
+        }
+      }
+    }
+  }
+  return res;
+}
+
 /********** AddRFactor **********/
 
 class RuleAddRFactor {
@@ -1003,6 +1031,140 @@ SearchRule AddRFactor(int max_jobs_per_core, int max_innermost_factor) {
   return SearchRule("add_rfactor", f_apply);
 }
 
+/********** CrossThreadReduction **********/
+
+class RuleCrossThreadReduction {
+ public:
+  /*! \brief Rule application */
+  Array<Schedule> Apply(const SearchTask& task,
+                        const Schedule& sch, const BlockRV& block_rv) const {
+    // Check target. And extract `max_threads_per_block` and `warp_size` from target.
+    CHECK(task->target->kind->name == "cuda")
+      << "TargetError: Search rule \"CrossThreadReduction\" can only run on CUDA";
+    Optional<Integer> opt_max_threads_per_block = task->target->GetAttr<Integer>("max_num_threads");
+    Optional<Integer> opt_warp_size = task->target->GetAttr<Integer>("thread_warp_size");
+    CHECK(opt_max_threads_per_block.defined());
+    CHECK(opt_warp_size.defined());
+    int64_t max_threads_per_block = opt_max_threads_per_block.value()->value;
+    int64_t warp_size = opt_warp_size.value()->value;
+
+    // Check the conditions of the rule.
+    const tir::StmtSRef& block_sref = sch->GetSRef(block_rv);
+    const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+    if (HasAnyAnn(block_sref)) {
+      return {sch};
+    }
+    if (block->writes.size() != 1) {
+      return {sch};
+    }
+    if (!NeedsCrossThreadReduction(sch->state(), block_sref, max_threads_per_block, warp_size) ||
+        HasCacheWriteBlock(sch, block_rv, 0)) {
+      return {sch};
+    }
+
+    // Todo: provide more documents/comments
+    Schedule ori_sch = sch->Copy(sch->sampler.ForkSeed());
+    Schedule tmp_sch = sch->Copy(sch->sampler.ForkSeed());
+
+    // Reorder the loop axes if reduction loops are not innermost.
+    // After the reordering, fuse all the reduction loops.
+    int num_spatial_loops;
+    LoopRV fused_reduce_loop;
+    ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
+
+    // Check the opportunity for kernel fusion
+    bool fusible = false;
+    Array<BlockRV> consumers = tmp_sch->GetConsumers(block_rv);
+    Optional<BlockRV> target_block = NullOpt;
+    if (!consumers.empty()) {
+      std::vector<tir::StmtSRef> consumers_sref;
+      consumers_sref.reserve(consumers.size());
+      for (const BlockRV& consumer : consumers) {
+        consumers_sref.push_back(tmp_sch->GetSRef(consumer));
+      }
+      const tir::StmtSRef& root_sref = tir::GetSRefTreeRoot(block_sref);
+      const tir::StmtSRef& lca_sref = consumers.size() == 1
+                                          ? consumers_sref[0]
+                                          : tir::LowestCommonAncestor(consumers_sref, root_sref);
+
+      for (int i = 0; i < static_cast<int>(consumers.size()); ++i) {
+        if (consumers_sref[i]->stmt == lca_sref->stmt) {
+          ICHECK(!target_block.defined());
+          target_block = consumers[i];
+        }
+      }
+
+      // simple check
+      if (consumers.size() == 1) {
+        ICHECK(target_block.defined());
+      }
+    }
+
+    int num_common_axes = -1;
+    if (target_block.defined()) {
+      num_common_axes =
+          GetNumberOfCommonBlockVars(tmp_sch->Get(block_rv), tmp_sch->Get(target_block.value()));
+      if (num_common_axes > 0 &&
+          !NeedsMultiLevelTiling(tmp_sch->state(), tmp_sch->GetSRef(target_block.value()))) {
+        fusible = true;
+      }
+    }
+
+    if (fusible) {
+      ICHECK(target_block.defined());
+      const BlockRV& target_block_rv = target_block.value();
+      Array<Instruction> split_insts = GetSplitInstsOverBlock(tmp_sch, target_block_rv);
+
+      if (split_insts.empty()) {
+        // Todo: modify comments below
+        // If the target stage does not have split step,
+        // it must be a simple stage without reduce iters.
+        // We then should do a split for it.
+
+        const tir::StmtSRef& target_block_sref = tmp_sch->GetSRef(target_block_rv);
+        CHECK(!tmp_sch->state()
+                  ->scopes.at(GetScopeRoot(target_block_sref))
+                  ->IsReduction(target_block_sref));
+        const LoopRV& loop_to_split = tmp_sch->GetAxes(target_block_rv).back();
+        Array<LoopRV> split_res = tmp_sch->Split(loop_to_split, {NullOpt, Integer(warp_size)});
+        const Instruction& split_inst = tmp_sch->trace->insts.back();
+        ICHECK(split_inst->inst_attrs->IsInstance<SplitAttrs>());
+        split_insts.push_back(split_inst);
+        ICHECK_EQ(split_res.size(), 2);
+        tmp_sch->Bind(split_res[1], "threadIdx.x");
+      }
+
+      CHECK_EQ(split_insts.size(), 1); // Todo: CHECK or ICHECK?
+
+      Array<LoopRV> target_block_loops = tmp_sch->GetAxes(target_block_rv);
+      ICHECK_GE(target_block_loops.size(), num_common_axes);
+      const LoopRV& target_loop = target_block_loops[num_common_axes - 1];
+
+      Array<Optional<PrimExpr> > factor;
+      for (auto it = split_insts[0]->inputs.begin() + 1; it != split_insts[0]->inputs.end(); ++it) {
+        factor.push_back(Downcast<Optional<PrimExpr> >(*it));
+      }
+      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, factor);
+      ICHECK_EQ(split_res.size(), 2);
+      tmp_sch->Bind(split_res[1], "threadIdx.x");
+      tmp_sch->ComputeAt(block_rv, target_loop, true);
+    } else {
+      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, Integer(warp_size)});
+      tmp_sch->Bind(split_res[1], "threadIdx.x");
+    }
+
+    return {tmp_sch}; // Todo: need the original schedule?
+  }
+};
+
+SearchRule CrossThreadReduction() {
+  RuleCrossThreadReduction rule;
+  auto f_apply = [rule](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    return rule.Apply(task, sch, block);
+  };
+  return SearchRule("cross_thread_reduction", f_apply);
+};
+
 /********** FFI **********/
 
 struct Internal {
@@ -1054,6 +1216,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkTensorize").set_body_typed(Ma
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.SimplifyComputeWithConstTensor")
     .set_body_typed(SimplifyComputeWithConstTensor);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddRFactor").set_body_typed(AddRFactor);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.CrossThreadReduction")
+    .set_body_typed(CrossThreadReduction);
 
 }  // namespace meta_schedule
 }  // namespace tvm
