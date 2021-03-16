@@ -98,55 +98,17 @@ struct CutlassSgemmOp {
     using RowMajor = cutlass::layout::RowMajor;
     using ColumnMajor = cutlass::layout::ColumnMajor;
 
-    if (!ta && !tb) {
-      using CutlassGemm = cutlass::gemm::device::Gemm<float, RowMajor,
-                                                      float, RowMajor,
-                                                      float, RowMajor>;
-      CutlassGemm gemm_operator;
-      CutlassGemm::Arguments args({M, N, K},
-                                  {A, lda},
-                                  {B, ldb},
-                                  {C, ldc},
-                                  {C, ldc},
-                                  {alpha, beta});
-      CHECK_CUTLASS_ERROR(gemm_operator(args));
-    } else if (ta && !tb) {
-      using CutlassGemm = cutlass::gemm::device::Gemm<float, RowMajor,
-                                                      float, ColumnMajor,
-                                                      float, RowMajor>;
-      CutlassGemm gemm_operator;
-      CutlassGemm::Arguments args({M, N, K},
-                                  {A, lda},
-                                  {B, ldb},
-                                  {C, ldc},
-                                  {C, ldc},
-                                  {alpha, beta});
-      CHECK_CUTLASS_ERROR(gemm_operator(args));
-    } else if (!ta && tb) {
-      using CutlassGemm = cutlass::gemm::device::Gemm<float, ColumnMajor,
-                                                      float, RowMajor,
-                                                      float, RowMajor>;
-      CutlassGemm gemm_operator;
-      CutlassGemm::Arguments args({M, N, K},
-                                  {A, lda},
-                                  {B, ldb},
-                                  {C, ldc},
-                                  {C, ldc},
-                                  {alpha, beta});
-      CHECK_CUTLASS_ERROR(gemm_operator(args));
-    } else {
-      using CutlassGemm = cutlass::gemm::device::Gemm<float, ColumnMajor,
-                                                      float, ColumnMajor,
-                                                      float, RowMajor>;
-      CutlassGemm gemm_operator;
-      CutlassGemm::Arguments args({M, N, K},
-                                  {A, lda},
-                                  {B, ldb},
-                                  {C, ldc},
-                                  {C, ldc},
-                                  {alpha, beta});
-      CHECK_CUTLASS_ERROR(gemm_operator(args));
-    }
+    using CutlassGemm = cutlass::gemm::device::Gemm<float, ColumnMajor,
+                                                    float, ColumnMajor,
+                                                    float, ColumnMajor>;
+    CutlassGemm gemm_operator;
+    CutlassGemm::Arguments args({M, N, K},
+                                {A, lda},
+                                {B, ldb},
+                                {C, ldc},
+                                {C, ldc},
+                                {alpha, beta});
+    CHECK_CUTLASS_ERROR(gemm_operator(args));
   }
 };
 
@@ -185,13 +147,14 @@ TVM_REGISTER_GLOBAL("tvm.contrib.cutlass.matmul")
 
       CutlassSgemmOp op;
 
-      op(transa, transb,
-         RowCount(C, false), ColumnCount(C, false), ColumnCount(A, transa),
+      op(transb, transa, ColumnCount(B, transb), RowCount(A, transa), ColumnCount(A, transa),
          static_cast<typename TGemmOp::TDatatype>(alpha),
-         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(A->data) + A->byte_offset), transa ? ColumnCount(A, false) : RowCount(A, false),
-         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(B->data) + B->byte_offset), transb ? ColumnCount(B, false) : RowCount(B, false),
-         static_cast<typename TGemmOp::TDatatype>(beta),
-         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(C->data) + C->byte_offset), RowCount(C, false));
+         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(B->data) + B->byte_offset),
+         ColumnStride(B),
+         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(A->data) + A->byte_offset),
+         ColumnStride(A), static_cast<typename TGemmOp::TDatatype>(beta),
+         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(C->data) + C->byte_offset),
+         ColumnStride(C));
     });
 
 
