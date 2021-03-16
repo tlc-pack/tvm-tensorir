@@ -618,6 +618,9 @@ class BufferFlattener : public StmtExprMutator {
   }
 
   static Stmt MakeAllocStmt(const Buffer& buffer, Stmt body, bool is_double_buffer) {
+    if (IsReduceTempBuffer(buffer)) {
+      return body;
+    }
     String storage_scope = buffer->scope;
     if (storage_scope.empty()) {
       storage_scope = "global";
