@@ -30,6 +30,9 @@
 #include <dlpack/dlpack.h>
 #include <tvm/runtime/logging.h>
 
+// <bojian/TVM-SymbolicTuning>
+#include "cutlass/library/handle.h"
+
 #include <cstdint>
 #if CUDART_VERSION >= 10010
 #include <cublasLt.h>
@@ -76,6 +79,15 @@ struct CuBlasThreadEntry {
   cublasHandle_t handle{nullptr};
   static CuBlasThreadEntry* ThreadLocal();
 };  // CuBlasThreadEntry
+
+
+// <bojian/TVM-SymbolicTuning>
+struct CuTlassThreadEntry {
+  CuTlassThreadEntry() = default;
+  ::cutlass::library::Handle handle;
+  static CuTlassThreadEntry* ThreadLocal();
+};
+
 
 inline cudaDataType_t GetCudaDataType(DLDataType type) {
   if (type.code == kDLInt) {

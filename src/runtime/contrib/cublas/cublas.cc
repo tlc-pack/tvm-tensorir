@@ -28,7 +28,8 @@
 #include "cublas_utils.h"
 
 // <bojian/TVM-SymbolicTuning>
-#include "cutlass/gemm/device/gemm.h"
+// #include "cutlass/gemm/device/gemm.h"
+#include "cutlass/library/handle.h"
 
 
 #define CHECK_CUTLASS_ERROR(status)                                                              \
@@ -84,47 +85,80 @@ struct CublasSgemmOp {
   }
 };
 
-// <bojian/TVM-SymbolicTuning> CUTLASS Sgemm Op
+// <bojian/TVM-SymbolicTuning>
 struct CutlassSgemmOp {
-  typedef float TDatatype;
-  
-  void operator()(const bool ta, const bool tb,
-                  const int M, const int N, const int K,
-                  const float alpha,
-                  float *const A, const int lda,
-                  float *const B, const int ldb,
-                  const float beta,
-                  float *const C, const int ldc) {
-    using RowMajor = cutlass::layout::RowMajor;
-    using ColumnMajor = cutlass::layout::ColumnMajor;
+  ::cutlass::library::Handle* handle;
 
-    using CutlassGemm = cutlass::gemm::device::Gemm<float, ColumnMajor,
-                                                    float, ColumnMajor,
-                                                    float, ColumnMajor>;
-    CutlassGemm gemm_operator;
-    CutlassGemm::Arguments args({M, N, K},
-                                {A, lda},
-                                {B, ldb},
-                                {C, ldc},
-                                {C, ldc},
-                                {alpha, beta});
-    CHECK_CUTLASS_ERROR(gemm_operator(args));
-  }
+  explicit CutlassSgemmOp(::cutlass::library::Handle* const hdl) : handle(hdl) {}
+
+  void operator()(DLTensor* a, DLTensor* b, DLTensor* c, DLTensor* bias = nullptr,
+                  bool transpose_a = false, bool transpose_b = false);
 };
 
+using cutlass::library::GemmUniversalMode;
+using cutlass::library::NumericTypeID;
+using cutlass::library::ComplexTransform;
+using cutlass::library::EpilogueKind;
 
-// <bojian/TVM-SymbolicTuning>
+void CutlassSgemmOp::operator()(DLTensor* a, DLTensor* b, DLTensor* c, DLTensor* bias,
+                                bool transpose_a, bool transpose_b) {
+  int m = c->shape[1];
+  int n = c->shape[0];
+  int k = transpose_b ? b->shape[1] : b->shape[0];
+
+  int lda = a->shape[1];
+  int ldb = b->shape[1];
+  int ldc = c->shape[1];
+
+  const float* ptra = static_cast<float*>(a->data);
+  const float* ptrb = static_cast<float*>(b->data);
+  float* ptrc = static_cast<float*>(c->data);
+  const float* ptrbias = bias ? static_cast<float*>(bias->data) : ptrc;
+
+  const auto layouta = transpose_a ? ::cutlass::library::LayoutTypeID::kRowMajor : ::cutlass::library::LayoutTypeID::kColumnMajor;
+  const auto layoutb = transpose_b ? ::cutlass::library::LayoutTypeID::kRowMajor : ::cutlass::library::LayoutTypeID::kColumnMajor;
+
+  float alpha = 1.0;
+  float beta = bias ? 1.0 : 0.0;
+
+  // alpha * A*B + beta * C
+  CHECK_CUTLASS_ERROR(handle->gemm_universal(
+    GemmUniversalMode::kGemm,
+    m, n, k,
+    NumericTypeID::kF32,                            // data type of internal accumulation
+    NumericTypeID::kF32,                            // data type of alpha/beta scalars
+    &alpha,                                         // pointer to alpha scalar
+    ::cutlass::library::NumericTypeID::kF32,        // data type of B matrix
+    layoutb,                                        // layout of B matrix
+    ::cutlass::library::ComplexTransform::kNone,    // complex transform of A matrix
+    ptrb,                                           // pointer to B matrix in device memory
+    ldb,                                            // leading dimension of B matrix
+    ::cutlass::library::NumericTypeID::kF32,        // data type of A matrix
+    layouta,                                        // layout of A matrix
+    ::cutlass::library::ComplexTransform::kNone,    // complex transform of A matrix
+    ptra,                                           // pointer to A matrix in device memory
+    lda,                                            // leading dimension of A matrix
+    &beta,                                          // pointer to beta scalar
+    ::cutlass::library::NumericTypeID::kF32,        // data type of C and D matrix
+    ptrbias,                                        // pointer to C matrix in device memory
+    0,                                              // leading dimension fo C matrix
+    ptrc,                                           // pointer to D matrix in device memory
+    ldc,                                            // leading dimension of D matrix
+    1, 0, 0, 0, 0
+  ));
+}
+
 TVM_REGISTER_GLOBAL("tvm.contrib.cutlass.matmul")
     .set_body([](TVMArgs args, TVMRetValue* ret) {
 
-      using TGemmOp = CutlassSgemmOp;
+      // using TGemmOp = CutlassSgemmOp;
 
       DLTensor* A = args[0];
       DLTensor* B = args[1];
       DLTensor* C = args[2];
       bool transa = args[3];
       bool transb = args[4];
-      int bit_depth = sizeof(typename TGemmOp::TDatatype) * 8;
+      int bit_depth = sizeof(float) * 8;
       ICHECK_EQ(A->ndim, 2);
       ICHECK_EQ(B->ndim, 2);
       ICHECK_EQ(C->ndim, 2);
@@ -142,19 +176,13 @@ TVM_REGISTER_GLOBAL("tvm.contrib.cutlass.matmul")
 
       ICHECK(TypeMatch(B->dtype, kDLFloat, bit_depth));
       ICHECK(TypeMatch(C->dtype, kDLFloat, bit_depth));
-      double alpha = args.size() > 5 ? args[5] : 1.0;
-      double beta = args.size() > 6 ? args[6] : 0.0;
+      // <bojian/TVM-SymbolicTuning>
+      // double alpha = args.size() > 5 ? args[5] : 1.0;
+      // double beta = args.size() > 6 ? args[6] : 0.0;
 
-      CutlassSgemmOp op;
-
-      op(transb, transa, ColumnCount(B, transb), RowCount(A, transa), ColumnCount(A, transa),
-         static_cast<typename TGemmOp::TDatatype>(alpha),
-         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(B->data) + B->byte_offset),
-         B->shape[0],
-         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(A->data) + A->byte_offset),
-         A->shape[0], static_cast<typename TGemmOp::TDatatype>(beta),
-         reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(C->data) + C->byte_offset),
-         C->shape[0]);
+      CuTlassThreadEntry* entry_ptr = CuTlassThreadEntry::ThreadLocal();
+      CutlassSgemmOp op(&entry_ptr->handle);
+      op(A, B, C, nullptr, transa, transb);
     });
 
 
