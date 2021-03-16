@@ -208,8 +208,7 @@ class LCADetector : public StmtExprVisitor {
 
 class BufferAccessRewriter : public StmtExprMutator {
  public:
-  using FRewriteBufferAccess = std::function<std::pair<Buffer, Array<PrimExpr>>(
-      const Buffer& buffer, const Array<PrimExpr>& indices)>;
+  using FRewriteBufferAccess = std::function<void(Buffer* buffer, Array<PrimExpr>* indices)>;
 
   static Stmt Rewrite(Stmt stmt, const FRewriteBufferAccess& f_rewrite) {
     BufferAccessRewriter rewriter(f_rewrite);
@@ -219,33 +218,47 @@ class BufferAccessRewriter : public StmtExprMutator {
  private:
   explicit BufferAccessRewriter(const FRewriteBufferAccess& f_rewrite) : f_rewrite_(f_rewrite) {}
 
-  Stmt VisitStmt_(const BufferStoreNode* op) final {
-    BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(op));
-    op = store.get();
-    Buffer new_buffer{nullptr};
-    Array<PrimExpr> new_indices{nullptr};
-    std::tie(new_buffer, new_indices) = f_rewrite_(op->buffer, op->indices);
-    return BufferStore(new_buffer, op->value, new_indices);
+  Stmt VisitStmt_(const BufferStoreNode* _op) final {
+    BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(_op));
+    BufferStoreNode* op = store.CopyOnWrite();
+    f_rewrite_(&op->buffer, &op->indices);
+    return store;
   }
 
-  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
-    BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(op));
-    op = load.get();
-    Buffer new_buffer{nullptr};
-    Array<PrimExpr> new_indices{nullptr};
-    std::tie(new_buffer, new_indices) = f_rewrite_(op->buffer, op->indices);
-    return BufferLoad(new_buffer, new_indices);
+  PrimExpr VisitExpr_(const BufferLoadNode* _op) final {
+    BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_op));
+    BufferLoadNode* op = load.CopyOnWrite();
+    f_rewrite_(&op->buffer, &op->indices);
+    return load;
+  }
+
+  Stmt VisitStmt_(const BlockNode* _op) final {
+    Block block = Downcast<Block>(StmtExprMutator::VisitStmt_(_op));
+    BlockNode* op = block.CopyOnWrite();
+    ArrayNode* reads = op->reads.CopyOnWrite();
+    for (int i = 0, n = reads->size(); i < n; ++i) {
+      BufferRegion buffer_region = Downcast<BufferRegion>(reads->at(i));
+      BufferRegionNode* p = buffer_region.CopyOnWrite();
+      f_rewrite_(&p->buffer, nullptr);
+    }
+    ArrayNode* writes = op->writes.CopyOnWrite();
+    for (int i = 0, n = writes->size(); i < n; ++i) {
+      BufferRegion buffer_region = Downcast<BufferRegion>(writes->at(i));
+      BufferRegionNode* p = buffer_region.CopyOnWrite();
+      f_rewrite_(&p->buffer, nullptr);
+    }
+    return block;
   }
 
   const FRewriteBufferAccess& f_rewrite_;
 };
 
 /*!
- * \brief Gather the used region of each buffers.
+ * \brief Alloc the used region of each buffers.
  */
-class RegionGatherer : public StmtExprMutator {
+class BufferAllocator : public StmtExprMutator {
  public:
-  static Stmt Gather(const PrimFunc& f) {
+  static Stmt Alloc(const PrimFunc& f) {
     Map<Buffer, Optional<For>> buffer_lca = LCADetector::Detect(f);
     SMap<Buffer, BufferInfo> buffer_info;
     SMap<Optional<For>, Array<Buffer>> loop_allocs;
@@ -263,14 +276,20 @@ class RegionGatherer : public StmtExprMutator {
       ICHECK(buffer_info.count(buffer));
       BufferInfo& info = buffer_info.at(buffer);
       info.accessed_region = NDIntSetFromShape(buffer->shape);
+      info.alloc_site = NullOpt;
+      info.region = NDIntSet2Region(info.accessed_region);
+      info.new_buffer = buffer;
+      info.is_arg = true;
     }
-    RegionGatherer gatherer(std::move(buffer_info), std::move(loop_allocs));
-    return BufferAccessRewriter::Rewrite(
-        /*stmt=*/gatherer.VisitStmt(f->body),
-        /*f_rewrite=*/std::bind(&RegionGatherer::RewriteBufferAccess,  //
-                                &gatherer,                             //
-                                std::placeholders::_1,                 //
+    BufferAllocator alloc(std::move(buffer_info), std::move(loop_allocs));
+    Stmt stmt = alloc.VisitStmt(f->body);
+    stmt = BufferAccessRewriter::Rewrite(
+        /*stmt=*/std::move(stmt),
+        /*f_rewrite=*/std::bind(&BufferAllocator::RewriteBufferAccess,
+                                &alloc,                 //
+                                std::placeholders::_1,  //
                                 std::placeholders::_2));
+    return stmt;
   }
 
  private:
@@ -279,16 +298,18 @@ class RegionGatherer : public StmtExprMutator {
     Optional<For> alloc_site;
     Array<Range> region;
     Buffer new_buffer;
+    bool is_arg;
 
     explicit BufferInfo(int ndim, Optional<For> alloc_site)
-        : accessed_region(NDIntSetEmpty(ndim)),  //
+        : accessed_region(NDIntSetEmpty(ndim)),
           alloc_site(std::move(alloc_site)),
           region{nullptr},
-          new_buffer{nullptr} {}
+          new_buffer{nullptr},
+          is_arg(false) {}
   };
 
-  explicit RegionGatherer(SMap<Buffer, BufferInfo> buffer_info,
-                          SMap<Optional<For>, Array<Buffer>> loop_allocs)
+  explicit BufferAllocator(SMap<Buffer, BufferInfo> buffer_info,
+                           SMap<Optional<For>, Array<Buffer>> loop_allocs)
       : block_nest_depth_(0),
         buffer_info_(std::move(buffer_info)),
         loop_allocs_(std::move(loop_allocs)),
@@ -383,19 +404,6 @@ class RegionGatherer : public StmtExprMutator {
                               /*init=*/NullOpt));
   }
 
-  PrimExpr VisitExpr_(const CallNode* op) final {
-    if (op->op.same_as(builtin::get_elem_offset())) {
-      // Handle `get_elem_offset`
-      ICHECK_EQ(op->args.size(), 1);
-      PrimExpr arg = op->args[0];
-      ICHECK(arg->IsInstance<BufferLoadNode>());
-      arg = this->VisitExpr(arg);
-      const auto* load = TVM_TYPE_AS(load, arg, LoadNode);
-      return load->index;
-    }
-    return StmtExprMutator::VisitExpr_(op);
-  }
-
   PrimExpr VisitExpr_(const VarNode* var) final {
     auto it = var_substitutes_.find(GetRef<Var>(var));
     if (it != var_substitutes_.end()) {
@@ -424,6 +432,9 @@ class RegionGatherer : public StmtExprMutator {
       const Buffer& buffer = buffer_region->buffer;
       ICHECK(buffer_info_.count(buffer));
       BufferInfo& info = buffer_info_.at(buffer);
+      if (info.is_arg) {
+        continue;
+      }
       std::unordered_map<const VarNode*, arith::IntSet> dom_map;
       {
         const Object* alloc_site = info.alloc_site.get();
@@ -461,8 +472,14 @@ class RegionGatherer : public StmtExprMutator {
     for (const Buffer& buffer : buffers) {
       ICHECK(buffer_info_.count(buffer));
       BufferInfo& info = buffer_info_.at(buffer);
-      ICHECK(!info.region.defined());
-      ICHECK(!info.new_buffer.defined());
+      if (info.is_arg) {
+        ICHECK(info.region.defined());
+        ICHECK(info.new_buffer.defined());
+        continue;
+      } else {
+        ICHECK(!info.region.defined());
+        ICHECK(!info.new_buffer.defined());
+      }
       // Calculate `info.region`
       info.region = NDIntSet2Region(info.accessed_region);
       // Calculate `info.new_buffer`
@@ -474,24 +491,30 @@ class RegionGatherer : public StmtExprMutator {
       ObjectPtr<BufferNode> new_buffer = make_object<BufferNode>(*buffer.get());
       new_buffer->shape = std::move(shape);
       info.new_buffer = Buffer(std::move(new_buffer));
+      result.push_back(info.new_buffer);
     }
     return result;
   }
 
-  std::pair<Buffer, Array<PrimExpr>> RewriteBufferAccess(const Buffer& buffer,
-                                                         const Array<PrimExpr>& indices) const {
-    ICHECK(buffer_info_.count(buffer));
-    const BufferInfo& info = buffer_info_.at(buffer);
+  void RewriteBufferAccess(Buffer* buffer, Array<PrimExpr>* indices) const {
+    ICHECK(buffer_info_.count(*buffer));
+    const BufferInfo& info = buffer_info_.at(*buffer);
     ICHECK(info.new_buffer.defined());
+    if (indices == nullptr) {
+      *buffer = info.new_buffer;
+      return;
+    }
     ICHECK(info.region.defined());
-    ICHECK_EQ(indices.size(), info.region.size());
-    int ndim = indices.size();
+    // TODO: the ndim could be changed by tensorize, more investigation is needed
+    ICHECK_GE(indices->size(), info.region.size());
+    int ndim = info.region.size();
     Array<PrimExpr> new_indices;
     new_indices.reserve(ndim);
     for (int i = 0; i < ndim; ++i) {
-      new_indices.push_back(indices[i] - info.region[i]->min);
+      new_indices.push_back((*indices)[i] - info.region[i]->min);
     }
-    return std::make_pair(info.new_buffer, std::move(new_indices));
+    *buffer = info.new_buffer;
+    *indices = std::move(new_indices);
   }
 
   /*! \brief Number of blocks nested in the ancestor during visiting */
@@ -581,6 +604,19 @@ class BufferFlattener : public StmtExprMutator {
     return op->buffer.vload(op->indices, op->dtype);
   }
 
+  PrimExpr VisitExpr_(const CallNode* op) final {
+    if (op->op.same_as(builtin::get_elem_offset())) {
+      // Handle `get_elem_offset`
+      ICHECK_EQ(op->args.size(), 1);
+      PrimExpr arg = op->args[0];
+      ICHECK(arg->IsInstance<BufferLoadNode>());
+      arg = this->VisitExpr(arg);
+      const auto* load = TVM_TYPE_AS(load, arg, LoadNode);
+      return load->index;
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
   static Stmt MakeAllocStmt(const Buffer& buffer, Stmt body, bool is_double_buffer) {
     String storage_scope = buffer->scope;
     if (storage_scope.empty()) {
@@ -607,17 +643,15 @@ class BufferFlattener : public StmtExprMutator {
   }
 
   static bool IsDoubleBufferScope(const Map<String, ObjectRef>& annotations) {
-    for (const auto& ann : annotations) {
-      const String& ann_key = ann.first;
-      const ObjectRef& ann_value = ann.second;
+    for (const auto& kv : annotations) {
+      const String& ann_key = kv.first;
+      const ObjectRef& ann_value = kv.second;
       if (ann_key != attr::double_buffer_scope) {
-        continue;
+        const auto* value = TVM_TYPE_AS(value, ann_value, PrimExprNode);
+        if (is_one(GetRef<PrimExpr>(value))) {
+          return true;
+        }
       }
-      const auto* value = TVM_TYPE_AS(value, ann_value, PrimExprNode);
-      if (!is_one(GetRef<PrimExpr>(value))) {
-        continue;
-      }
-      return true;
     }
     return false;
   }
@@ -626,13 +660,13 @@ class BufferFlattener : public StmtExprMutator {
 };
 
 PrimFunc BufferFlatten(PrimFunc f) {
-  tvm::tir::PrimFuncNode* fptr = f.CopyOnWrite();
+  PrimFuncNode* fptr = f.CopyOnWrite();
   // Step 0. Check memory and execution hierarchy
   VerifyExecScope(f);
-  // Step 1.Transform the reduction calls to BufferStore
+  // Step 1. Transform the reduction calls to BufferStore
   fptr->body = ReductionTransformer::Transform(f);
   // Step 2. Recalculate the buffer region
-  fptr->body = RegionGatherer::Gather(f);
+  fptr->body = BufferAllocator::Alloc(f);
   // Step 3. Transform BufferLoad/BufferStore into Load/Store
   fptr->body = BufferFlattener::Flatten(f);
   return f;

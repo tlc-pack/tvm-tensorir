@@ -942,6 +942,7 @@ class BufferRegion : public ObjectRef {
   TVM_DLL explicit BufferRegion(Buffer buffer);
   TVM_DLL explicit BufferRegion(Buffer buffer, Array<Range> region);
   TVM_DEFINE_OBJECT_REF_METHODS(BufferRegion, ObjectRef, BufferRegionNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(BufferRegionNode);
 };
 
 /*!
@@ -1058,8 +1059,8 @@ class Block : public Stmt {
   TVM_DLL explicit Block(Array<IterVar> iter_vars, Array<BufferRegion> reads,
                          Array<BufferRegion> writes, Array<Buffer> alloc_buffers,
                          Map<String, ObjectRef> annotations, Array<MatchBufferRegion> match_buffers,
-                         String exec_scope, String name_hint,
-                         Stmt body, Optional<Stmt> init, Span = Span());
+                         String exec_scope, String name_hint, Stmt body, Optional<Stmt> init,
+                         Span = Span());
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockNode);
