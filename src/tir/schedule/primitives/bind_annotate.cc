@@ -41,7 +41,7 @@ bool IsLoopVarParallelizable(const ScheduleState self, const Var& loop_var,
       << block_realize->GetTypeKey();
   const BlockNode* block = realize->block.get();
   // Cond 1. Binding is validated
-  if (!self->stmt2ref.at(block)->binding_valid) {
+  if (!self->stmt2ref.at(block)->affine_block_binding) {
     return false;
   }
   CHECK_EQ(realize->binding_values.size(), block->iter_vars.size())
@@ -125,7 +125,7 @@ void ParallelCompute(ScheduleState self, const StmtSRef& loop_sref, const ForKin
   // Now only support:
   //   1. All the blocks are complete below
   //   2. A single block below the loop
-  const BlockScope& scope = self->scopes.at(GetScopeRoot(loop_sref));
+  const BlockScope& scope = self->block_scopes.at(GetScopeRoot(loop_sref));
   bool is_compact_dataflow =
       scope->IsCompactDataFlow(loop_sref, GetChildBlocks(self, loop_sref, false));
   if (!is_compact_dataflow) {
@@ -204,7 +204,7 @@ void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref) {
   CHECK(block_ptr) << "TypeError: double_buffer expects 'block' as its argument";
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->scopes.at(parent_block_sref);
+  const BlockScope& scope = self->block_scopes.at(parent_block_sref);
   CHECK(scope->IsComplete(block_sref))
       << "ValueError: 'double_buffer' expects 'block' to be a complete block";
   for (const BufferRegion& parent_write : parent_block->writes) {

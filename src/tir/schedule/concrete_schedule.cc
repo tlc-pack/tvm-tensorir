@@ -56,7 +56,7 @@ struct SRefTranslator {
                      StmtSRef(/*stmt=*/sref->stmt,            // the new StmtSRef
                               /*parent=*/nullptr,             // parent is not set yet
                               /*seq_index=*/sref->seq_index,  //
-                              /*binding_valid=*/sref->binding_valid));
+                              /*affine_block_binding=*/sref->affine_block_binding));
     }
     // Fill in the parent field
     // Find out the root along the way
@@ -169,7 +169,7 @@ void ConcreteScheduleNode::MakeCopy(ScheduleState* new_state,
   SRefTranslator trans(src_state);
   ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
   n->mod = src_state->mod;
-  n->scopes = trans.Trans(src_state->scopes);
+  n->block_scopes = trans.Trans(src_state->block_scopes);
   n->stmt2ref = trans.Trans(src_state->stmt2ref);
   n->debug_mode = src_state->debug_mode;
   *new_state = ScheduleState(std::move(n));

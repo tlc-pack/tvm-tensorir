@@ -559,7 +559,7 @@ class RuleRandomComputeLocation {
     if (!IsSubrootBlock(sch->state(), block_sref)) {
       return false;
     }
-    if (!sch->state()->scopes.at(tir::GetScopeRoot(block_sref))->IsComplete(block_sref)) {
+    if (!sch->state()->block_scopes.at(tir::GetScopeRoot(block_sref))->IsComplete(block_sref)) {
       return false;
     }
     Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
@@ -965,8 +965,8 @@ class RuleAddRFactor {
         warned_num_cores_missing(other.warned_num_cores_missing.load()) {}
 
   /*! \brief Rule application */
-  Array<Schedule> Apply(const SearchTask& task,
-                        const Schedule& sch, const BlockRV& block_rv) const {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
+                        const BlockRV& block_rv) const {
     // Check the conditions of the rule.
     tir::StmtSRef block_sref = sch->GetSRef(block_rv);
     const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
@@ -976,8 +976,9 @@ class RuleAddRFactor {
     if (block->writes.size() != 1) {
       return {sch};
     }
-    if (!NeedsRFactor(sch->state(), block_sref, task, max_jobs_per_core, &warned_num_cores_missing)
-        || HasCacheWriteBlock(sch, block_rv, 0)) {
+    if (!NeedsRFactor(sch->state(), block_sref, task, max_jobs_per_core,
+                      &warned_num_cores_missing) ||
+        HasCacheWriteBlock(sch, block_rv, 0)) {
       return {sch};
     }
 

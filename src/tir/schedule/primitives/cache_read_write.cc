@@ -195,7 +195,7 @@ Array<BufferRegion> ReplaceBuffer(const Array<BufferRegion>& regions, const Buff
  */
 StmtSRef GetInnermostWriterBlock(const ScheduleState self, const Buffer& buffer, StmtSRef sref) {
   for (;;) {
-    BlockScope scope = self->scopes.at(sref);
+    BlockScope scope = self->block_scopes.at(sref);
     auto it = scope->buffer_writers.find(buffer);
     if (it == scope->buffer_writers.end()) {
       break;
@@ -299,7 +299,7 @@ class CacheLocDetector : public StmtVisitor {
   static void Detect(const ScheduleState self, const StmtSRef& block_sref,
                      const StmtSRef& scope_sref, CacheStageInfo* info) {
     std::vector<StmtSRef> related_blocks;
-    for (const Dependency& x : self->scopes.at(scope_sref)->GetDepsBySrc(block_sref)) {
+    for (const Dependency& x : self->block_scopes.at(scope_sref)->GetDepsBySrc(block_sref)) {
       if (x->kind == DepKind::kRAW) {
         related_blocks.push_back(x->dst);
       }

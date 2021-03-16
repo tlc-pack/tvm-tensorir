@@ -26,6 +26,8 @@
 namespace tvm {
 namespace tir {
 
+class PrimFuncNode;
+
 /******** ContainsVar ********/
 /*!
  * \brief Checks if an Expr or Stmt contains a list of specific Vars

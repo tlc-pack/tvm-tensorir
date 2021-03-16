@@ -572,7 +572,8 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
           const auto* loop = static_cast<const ForNode*>(parent->stmt);
           loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
         }
-        sref->binding_valid = ValidateBlockBinding(GetRef<BlockRealize>(realize), loop_var_ranges);
+        sref->affine_block_binding =
+            ValidateBlockBinding(GetRef<BlockRealize>(realize), loop_var_ranges);
         VisitStmt(realize->block->body);
       }
       ScheduleState self;

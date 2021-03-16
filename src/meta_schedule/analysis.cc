@@ -16,9 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include "../tir/schedule/analysis.h"
+
 #include <numeric>
 
-#include "../tir/schedule/analysis.h"
 #include "../tir/schedule/primitives/primitives.h"
 #include "./utils.h"
 #include "analysis.h"
@@ -766,8 +767,8 @@ bool NeedsRFactor(const tir::ScheduleState& self, const tir::StmtSRef& block_sre
   Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
 
   // Cond 1. The block is a reduction block and has trivial binding.
-  if (self->scopes.at(GetScopeRoot(block_sref))->IsReduction(block_sref)
-      && !IsTrivialBinding(self, block_sref)) {
+  if (self->block_scopes.at(GetScopeRoot(block_sref))->IsReduction(block_sref) &&
+      !IsTrivialBinding(self, block_sref)) {
     return false;
   }
 
