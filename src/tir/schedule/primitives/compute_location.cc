@@ -359,7 +359,7 @@ bool CheckCompactDataFlow(const ScheduleState& self, const BlockScope& scope,
                           const StmtSRef& block_sref) {
   StmtSRef subtree_sref = GetSubTreeOfParent(block_sref);
   Array<StmtSRef> children = GetChildBlocks(self, subtree_sref, true);
-  return scope->IsCompactDataFlow(subtree_sref, children);
+  return IsCompactDataFlow(scope, subtree_sref, children);
 }
 
 class StatementInliner : public StmtExprMutator {

@@ -305,6 +305,16 @@ Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name) {
   return result;
 }
 
+bool IsCompactDataFlow(const BlockScope& self, const StmtSRef& subtree_sref,
+                       const Array<StmtSRef>& child_blocks) {
+  for (const StmtSRef& block : child_blocks) {
+    if (!self->IsComplete(block) && !self->IsReduction(block)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 Array<StmtSRef> GetAxes(const ScheduleState& self, const StmtSRef& block_sref) {
   std::vector<StmtSRef> result;
   for (StmtSRefNode* parent = block_sref->parent; parent && parent->stmt->IsInstance<ForNode>();

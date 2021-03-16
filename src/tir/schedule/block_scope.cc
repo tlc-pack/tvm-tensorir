@@ -279,16 +279,6 @@ bool BlockScopeNode::IsReduction(const StmtSRef& block_sref) const {
 
 /******** Inter-block properties ********/
 
-bool BlockScopeNode::IsCompactDataFlow(const StmtSRef& subtree_sref,
-                                       const Array<StmtSRef>& child_blocks) const {
-  for (const StmtSRef& block : child_blocks) {
-    if (!IsComplete(block) && !IsReduction(block)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool BlockScopeNode::CanMergeReduction(const StmtSRef& init_sref,
                                        const StmtSRef& update_sref) const {
   const auto* init = init_sref->GetStmt<BlockNode>();
