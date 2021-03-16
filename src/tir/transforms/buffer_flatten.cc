@@ -646,14 +646,10 @@ class BufferFlattener : public StmtExprMutator {
   }
 
   static bool IsDoubleBufferScope(const Map<String, ObjectRef>& annotations) {
-    for (const auto& kv : annotations) {
-      const String& ann_key = kv.first;
-      const ObjectRef& ann_value = kv.second;
-      if (ann_key != attr::double_buffer_scope) {
-        const auto* value = TVM_TYPE_AS(value, ann_value, PrimExprNode);
-        if (is_one(GetRef<PrimExpr>(value))) {
-          return true;
-        }
+    if (Optional<ObjectRef> ann_value = annotations.Get(attr::double_buffer_scope)) {
+      const auto* value = TVM_TYPE_AS(value, ann_value, PrimExprNode);
+      if (is_one(GetRef<PrimExpr>(value))) {
+        return true;
       }
     }
     return false;
