@@ -125,7 +125,7 @@ void ParallelCompute(ScheduleState self, const StmtSRef& loop_sref, const ForKin
   // Now only support:
   //   1. All the blocks are complete below
   //   2. A single block below the loop
-  const BlockScope& scope = self->block_scopes.at(GetScopeRoot(loop_sref));
+  const BlockScope& scope = self->GetBlockScope(GetScopeRoot(loop_sref));
   bool is_compact_dataflow =
       IsCompactDataFlow(scope, loop_sref, GetChildBlocks(self, loop_sref, false));
   if (!is_compact_dataflow) {
@@ -204,7 +204,7 @@ void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref) {
   CHECK(block_ptr) << "TypeError: double_buffer expects 'block' as its argument";
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->block_scopes.at(parent_block_sref);
+  const BlockScope& scope = self->GetBlockScope(parent_block_sref);
   CHECK(scope->IsComplete(block_sref))
       << "ValueError: 'double_buffer' expects 'block' to be a complete block";
   for (const BufferRegion& parent_write : parent_block->writes) {

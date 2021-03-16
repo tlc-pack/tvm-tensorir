@@ -587,7 +587,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
                          << loop_sref->stmt->GetTypeKey();
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->block_scopes.at(parent_block_sref);
+  const BlockScope& scope = self->GetBlockScope(parent_block_sref);
   Array<Dependency> edges_to_pred = scope->GetDepsByDst(block_sref);
   Array<Dependency> edges_to_succ = scope->GetDepsBySrc(block_sref);
   Array<StmtSRef> producers = GetProducersFromDependency(edges_to_pred);
@@ -688,7 +688,7 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
       << loop_sref->stmt->GetTypeKey();
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->block_scopes.at(parent_block_sref);
+  const BlockScope& scope = self->GetBlockScope(parent_block_sref);
   Array<Dependency> edges_to_pred = scope->GetDepsByDst(block_sref);
   Array<Dependency> edges_to_succ = scope->GetDepsBySrc(block_sref);
   Array<StmtSRef> producers = GetProducersFromDependency(edges_to_pred);
@@ -775,7 +775,7 @@ void ComputeInline(ScheduleState self, const StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<BlockNode>();
   const StmtSRef& scope_block_sref = GetScopeRoot(block_sref);
   const auto* scope_block = scope_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->block_scopes.at(scope_block_sref);
+  const BlockScope& scope = self->GetBlockScope(scope_block_sref);
   CHECK(block->body.as<BufferStoreNode>())
       << "ValueError: 'compute_inline' can only inline single assignment statement";
   CHECK_EQ(block->writes.size(), 1)
@@ -810,7 +810,7 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
       << block_sref->stmt->GetTypeKey();
   const StmtSRef& scope_block_sref = GetScopeRoot(block_sref);
   const auto* scope_block = scope_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->block_scopes.at(scope_block_sref);
+  const BlockScope& scope = self->GetBlockScope(scope_block_sref);
   // Cond 1. Check block_sref is complete
   CHECK(scope->IsComplete(block_sref))
       << "ValueError: 'reverse_compute_inline' expects the 'block' to be a complete block";

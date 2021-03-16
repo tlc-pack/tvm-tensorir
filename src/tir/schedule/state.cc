@@ -103,6 +103,14 @@ const PrimFuncNode* GetRootPrimFunc(const IRModule& mod, const StmtNode* root_bl
   throw;
 }
 
+BlockScope ScheduleStateNode::GetBlockScope(const StmtSRef& block_sref) const {
+  auto it = this->block_info.find(block_sref);
+  CHECK(it != this->block_info.end())
+      << "IndexError: Cannot find the corresponding BlockScope to the block sref:\n"
+      << GetRef<Stmt>(block_sref->stmt);
+  return it->second;
+}
+
 /**************** Creation ****************/
 
 /*! \brief A helper class to create a new ScheduleStateNode */
@@ -172,7 +180,7 @@ class StateCreator : private StmtVisitor {
     // Set up `affine_block_binding`
     sref->affine_block_binding = true;
     // Collect `block_scopes` info
-    self_->block_scopes.Set(sref, BlockScope(std::move(block_frames_.back().leaf_blocks)));
+    self_->block_info[sref] = BlockScope(std::move(block_frames_.back().leaf_blocks));
     block_frames_.pop_back();
     // Update parent scope if exists
     if (!block_frames_.empty()) {
@@ -380,7 +388,7 @@ class SRefTreePruner : public StmtVisitor {
       reused_srefs_.emplace(reuse_it->second, std::move(sref));
     } else {
       sref->Reset(/*stmt=*/nullptr, /*parent=*/nullptr, /*seq_index=*/-1);
-      self_->block_scopes.erase(sref);
+      self_->block_info.erase(sref);
     }
     // erase the statement
     self_->stmt2ref.erase(it);
@@ -469,7 +477,7 @@ class SRefUpdater : public StmtVisitor {
     VisitStmt(op->body);
     parents_.pop_back();
     // Additionally, need to update the scope because the block is changed
-    self_->block_scopes.Set(sref, BlockScope(tir::GetChildBlocks(self_, sref)));
+    self_->block_info[sref] = BlockScope(tir::GetChildBlocks(self_, sref));
   }
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
@@ -764,6 +772,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleState")
       LOG(FATAL) << "TypeError: Expects `IRModule` or `PrimFunc`, but gets: " << obj->GetTypeKey();
       throw;
     });
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetBlockScope")
+    .set_body_method<ScheduleState>(&ScheduleStateNode::GetBlockScope);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateReplace")
     .set_body_method<ScheduleState>(&ScheduleStateNode::Replace);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetSRef")

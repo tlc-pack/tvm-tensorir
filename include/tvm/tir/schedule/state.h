@@ -41,7 +41,7 @@ class PrimFunc;
  * 1) The AST being scheduled (mod)
  * 2) The sref tree of schedulable statements
  * 3) A reverse mapping from the AST nodes to that in the sref tree (stmt2ref)
- * 4) The dependency information of each block scope (block_scopes)
+ * 4) The dependency information of each block scope (block_info)
  * 5) A debug flag, if set, extra checking is enabled (debug_mode)
  */
 class ScheduleStateNode : public Object {
@@ -52,7 +52,7 @@ class ScheduleStateNode : public Object {
    * \brief Mapping from a block sref to the block scope at it,
    * tracking the dependency inside the block scope
    */
-  Map<StmtSRef, BlockScope> block_scopes;
+  std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> block_info;
   /*! \brief The reverse mapping from block/for-loop to their corresponding srefs */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief In debug mode, we do extra correctness checking after each replacement */
@@ -60,11 +60,17 @@ class ScheduleStateNode : public Object {
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("mod", &mod);
-    v->Visit("block_scopes", &block_scopes);
+    // `block_info` is not visited
     // `stmt2ref` is not visited
     v->Visit("debug_mode", &debug_mode);
   }
 
+  /*!
+   * \brief Get the BlockScope correpsonding to the block sref
+   * \param block_sref The block sref to be retrieved
+   * \return The corresponding BlockScope
+   */
+  TVM_DLL BlockScope GetBlockScope(const StmtSRef& block_sref) const;
   /*!
    * \brief Replace the part of the AST, as being pointed to by `src_sref`,
    * with a specific statement `tgt_stmt`, and maintain the sref tree accordingly.

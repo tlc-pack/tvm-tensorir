@@ -120,8 +120,8 @@ struct SRefTranslator {
   }
 
   /*! \brief Translate SMap<StmtSRef, Scope> */
-  Map<StmtSRef, BlockScope> Trans(const Map<StmtSRef, BlockScope>& scopes) {
-    Map<StmtSRef, BlockScope> result;
+  SMap<StmtSRef, BlockScope> Trans(const SMap<StmtSRef, BlockScope>& scopes) {
+    SMap<StmtSRef, BlockScope> result;
     for (const auto& kv : scopes) {
       const StmtSRef& old_sref = kv.first;
       const BlockScope& old_scope = kv.second;
@@ -129,7 +129,7 @@ struct SRefTranslator {
       scope->src2deps = Trans(old_scope->src2deps);
       scope->dst2deps = Trans(old_scope->dst2deps);
       scope->buffer_writers = Trans(old_scope->buffer_writers);
-      result.Set(Trans(old_sref), BlockScope(std::move(scope)));
+      result[Trans(old_sref)] = BlockScope(std::move(scope));
     }
     return result;
   }
@@ -169,7 +169,7 @@ void ConcreteScheduleNode::MakeCopy(ScheduleState* new_state,
   SRefTranslator trans(src_state);
   ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
   n->mod = src_state->mod;
-  n->block_scopes = trans.Trans(src_state->block_scopes);
+  n->block_info = trans.Trans(src_state->block_info);
   n->stmt2ref = trans.Trans(src_state->stmt2ref);
   n->debug_mode = src_state->debug_mode;
   *new_state = ScheduleState(std::move(n));

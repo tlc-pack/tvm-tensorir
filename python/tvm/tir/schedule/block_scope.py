@@ -30,6 +30,7 @@ from . import _ffi_api_schedule
 @register_object("tir.StmtSRef")
 class StmtSRef(Object):
     """An object that refers to schedulable elements in the TensorIR, aka "sref".
+
     Glossary
     - Block sref: An StmtSref that points to a TensorIR block.
     - Loop sref: An StmtSRef that points to a TensorIR for loop.
@@ -69,6 +70,7 @@ class StmtSRef(Object):
 
 class DepKind(IntEnum):
     """Type of dependency.
+
     Attributes
     ----------
     RAW : int = 0
@@ -90,6 +92,7 @@ class DepKind(IntEnum):
 @register_object("tir.Dependency")
 class Dependency(Object):
     """An edge representing certain types of dependency, e.g. read-after-write
+
     Parameters
     ----------
     src : StmtSRef
@@ -109,6 +112,7 @@ class Dependency(Object):
 class BlockScope(Object):
     """An object corresponds to each block sref in the sref tree,
        which tracks the producer-consumer dependency between blocks.
+
     Glossary:
     - Block scope: A contiguous subtree of the sref tree, rooted at each block sref,
     whose components are:
@@ -134,10 +138,12 @@ class BlockScope(Object):
 
     def get_deps_by_src(self, block: StmtSRef) -> List[Dependency]:
         """Get all dependencies whose `src` equals `src`
+
         Parameters
         ----------
         block: StmtSRef
             The queried block
+
         Returns
         -------
         blocks: List[Dependency]
@@ -147,10 +153,12 @@ class BlockScope(Object):
 
     def get_deps_by_dst(self, block: StmtSRef) -> List[Dependency]:
         """Get all dependencies whose `dst` equals `dst`
+
         Parameters
         ----------
         block: StmtSRef
             The queried block
+
         Returns
         -------
         blocks: List[Dependency]

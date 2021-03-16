@@ -559,7 +559,7 @@ class RuleRandomComputeLocation {
     if (!IsSubrootBlock(sch->state(), block_sref)) {
       return false;
     }
-    if (!sch->state()->block_scopes.at(tir::GetScopeRoot(block_sref))->IsComplete(block_sref)) {
+    if (!sch->state()->GetBlockScope(tir::GetScopeRoot(block_sref))->IsComplete(block_sref)) {
       return false;
     }
     Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);

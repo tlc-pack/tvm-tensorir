@@ -38,23 +38,21 @@ class ScheduleState(Object):
     3) A reverse mapping from the AST nodes to that in the sref tree (get_sref)
     4) The dependency information of each block scope (block_scopes)
     5) A debug flag, if set, extra checking is enabled (debug_mode)
+
     Parameters
     ----------
     mod : IRModule
         The AST of the module being scheduled
-    block_scopes : Dict[StmtSRef, BlockScope]
-        Mapping from a block sref to the block scope at it,
-        tracking the dependency inside the block scope
     debug_mode : bool
         In debug mode, we do extra correctness checking after each replacement
     """
 
     mod: IRModule
-    block_scopes: Dict[StmtSRef, BlockScope]
     debug_mode: bool
 
     def __init__(self, func_or_mod: Union[PrimFunc, IRModule], debug_mode: bool = False):
         """Construct a schedule state from an IRModule or a PrimFunc
+
         Parameters
         ----------
         func_or_mod : Union[PrimFunc, IRModule]
@@ -70,16 +68,35 @@ class ScheduleState(Object):
 
     def get_sref(self, stmt: Union[Block, For]) -> Optional[StmtSRef]:
         """Return the corresponding sref that points to the stmt
+
         Parameters
         ----------
         stmt : Union[Block, For]
             The schedulable statement in the TensorIR to be retrieved for its sref
+
         Returns
         -------
         sref : StmtSRef
             The corresponding sref
         """
         return _ffi_api_schedule.ScheduleStateGetSRef(self, stmt)  # pylint: disable=no-member
+
+    def get_block_scope(self, block_sref: StmtSRef) -> BlockScope:
+        """Get the BlockScope correpsonding to the block sref
+
+        Parameters
+        ----------
+        block_sref : StmtSRef
+            The block sref to be retrieved
+
+        Returns
+        -------
+        sref : StmtSRef
+            The corresponding sref
+        """
+        return _ffi_api_schedule.ScheduleStateGetBlockScope(  # pylint: disable=no-member
+            self, block_sref
+        )
 
     def replace(
         self,
@@ -96,6 +113,7 @@ class ScheduleState(Object):
         1) Block -> Block
         2) Loop -> Loop
         3) Loop -> BlockRealize
+
         Parameters
         ----------
         src_sref : StmtSRef
@@ -107,6 +125,7 @@ class ScheduleState(Object):
             to a new block (replaced to, in the subtree under `tgt_stmt`), and enforces
             reuse of srefs between them (rather than create new srefs) i.e. after being replaced,
             the sref that points to the old block will point to the new one
+
         Note
         ----------
         The reuse of loop srefs are detected automatically according to the reuse of loop vars.

@@ -96,7 +96,7 @@ void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block
   std::unordered_map<const VarNode*, std::vector<Producer>> buffer_producers;
   // Collect all producers to a buffer by enumerating all RAW predecessors of the consumer
   for (const Dependency& edge :
-       self->block_scopes.at(parent_block_sref)->GetDepsByDst(consumer_block_sref)) {
+       self->GetBlockScope(parent_block_sref)->GetDepsByDst(consumer_block_sref)) {
     if (edge->kind != DepKind::kRAW) {
       continue;
     }
@@ -178,14 +178,14 @@ void VerifySRefTree(const ScheduleState& self) {
         }
       }
       ICHECK_EQ(n_sref_visited_, static_cast<int>(self_->stmt2ref.size()));
-      for (const auto& kv : self_->block_scopes) {
+      for (const auto& kv : self_->block_info) {
         const StmtSRef& sref = kv.first;
         ICHECK(sref->stmt != nullptr);
         ICHECK(self_->stmt2ref.count(sref->stmt));
         const StmtSRef& sref2 = self_->stmt2ref.at(sref->stmt);
         ICHECK(sref.same_as(sref2));
       }
-      ICHECK_EQ(n_block_sref_visited_, static_cast<int>(self_->block_scopes.size()));
+      ICHECK_EQ(n_block_sref_visited_, static_cast<int>(self_->block_info.size()));
     }
 
     // Valida each block
@@ -201,7 +201,7 @@ void VerifySRefTree(const ScheduleState& self) {
       ++n_sref_visited_;
       ++n_block_sref_visited_;
       const StmtSRef& sref = self_->stmt2ref.at(block);
-      ICHECK(self_->block_scopes.count(sref))
+      ICHECK(self_->block_info.count(sref))
           << "InternalError: Cannot find scope information of the BlockNode:\n"
           << GetRef<Stmt>(block);
       ICHECK(sref->parent == ancestors_.back())
@@ -295,7 +295,7 @@ StmtSRef GetScopeRoot(const StmtSRef& sref) {
 
 Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name) {
   Array<StmtSRef> result;
-  for (const auto& kv : self->block_scopes) {
+  for (const auto& kv : self->block_info) {
     const StmtSRef& block_sref = kv.first;
     const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
     if (block->name_hint == name) {
@@ -350,8 +350,7 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
 }
 
 Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<Dependency> pred_edges = self->block_scopes
-                                     .at(GetScopeRoot(block_sref))  //
+  Array<Dependency> pred_edges = self->GetBlockScope(GetScopeRoot(block_sref))  //
                                      ->GetDepsByDst(block_sref);
   Array<StmtSRef> results;
   results.reserve(pred_edges.size());
@@ -364,8 +363,7 @@ Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sr
 }
 
 Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<Dependency> succ_edges = self->block_scopes
-                                     .at(GetScopeRoot(block_sref))  //
+  Array<Dependency> succ_edges = self->GetBlockScope(GetScopeRoot(block_sref))  //
                                      ->GetDepsBySrc(block_sref);
   Array<StmtSRef> results;
   results.reserve(succ_edges.size());
