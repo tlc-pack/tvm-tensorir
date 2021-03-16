@@ -150,11 +150,11 @@ TVM_REGISTER_GLOBAL("tvm.contrib.cutlass.matmul")
       op(transb, transa, ColumnCount(B, transb), RowCount(A, transa), ColumnCount(A, transa),
          static_cast<typename TGemmOp::TDatatype>(alpha),
          reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(B->data) + B->byte_offset),
-         ColumnStride(B),
+         B->shape[0],
          reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(A->data) + A->byte_offset),
-         ColumnStride(A), static_cast<typename TGemmOp::TDatatype>(beta),
+         A->shape[0], static_cast<typename TGemmOp::TDatatype>(beta),
          reinterpret_cast<typename TGemmOp::TDatatype*>(static_cast<char*>(C->data) + C->byte_offset),
-         ColumnStride(C));
+         C->shape[0]);
     });
 
 
