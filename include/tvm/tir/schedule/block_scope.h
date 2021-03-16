@@ -59,14 +59,11 @@ class StmtSRefNode : public Object {
    * -1 if the parent does not contain multiple children.
    */
   int64_t seq_index;
-  /*! \brief If true, the block bindings are quasi-affine maps. */
-  bool affine_block_binding;
 
   void VisitAttrs(AttrVisitor* v) {
     // `stmt` is not visited
     // `parent` is not visited
     v->Visit("seq_index", &seq_index);
-    v->Visit("affine_block_binding", &affine_block_binding);
   }
 
   static constexpr const char* _type_key = "tir.StmtSRef";
@@ -113,10 +110,8 @@ class StmtSRef : public ObjectRef {
    * \param parent The parent sref.
    * \param seq_index The location in an array if the parent of the stmt contains multiple children.
    * -1 if the parent does not contain multiple children.
-   * \param affine_block_binding If true, the block bindings are quasi-affine maps.
    */
-  TVM_DLL explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index,
-                            bool affine_block_binding);
+  TVM_DLL explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index);
   /*! \return The mutable pointer to the StmtSRefNode */
   StmtSRefNode* get() const { return static_cast<StmtSRefNode*>(data_.get()); }
 

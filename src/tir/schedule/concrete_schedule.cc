@@ -52,11 +52,10 @@ struct SRefTranslator {
     // Create SRef tree without parents
     for (const auto& kv : state->stmt2ref) {
       const StmtSRefNode* sref = kv.second.operator->();
-      trans_.emplace(sref,                                    // the old StmtSRef
-                     StmtSRef(/*stmt=*/sref->stmt,            // the new StmtSRef
-                              /*parent=*/nullptr,             // parent is not set yet
-                              /*seq_index=*/sref->seq_index,  //
-                              /*affine_block_binding=*/sref->affine_block_binding));
+      trans_.emplace(sref,                          // the old StmtSRef
+                     StmtSRef(/*stmt=*/sref->stmt,  // the new StmtSRef
+                              /*parent=*/nullptr,   // parent is not set yet
+                              /*seq_index=*/sref->seq_index));
     }
     // Fill in the parent field
     // Find out the root along the way
@@ -76,7 +75,7 @@ struct SRefTranslator {
       return trans_.at(sref);
     }
     // Handle expired sref
-    return trans_[sref] = StmtSRef(nullptr, nullptr, -1, false);
+    return trans_[sref] = StmtSRef(nullptr, nullptr, -1);
   }
 
   /*! \brief Translate Array<StmtSRef> */

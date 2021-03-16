@@ -43,7 +43,6 @@ class StmtSRef(Object):
     """
 
     seq_index: int
-    affine_block_binding: bool
 
     @property
     def stmt(self) -> Optional[Union[Block, For]]:

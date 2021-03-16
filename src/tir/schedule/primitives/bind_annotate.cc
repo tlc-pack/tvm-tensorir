@@ -41,9 +41,10 @@ bool IsLoopVarParallelizable(const ScheduleState self, const Var& loop_var,
       << block_realize->GetTypeKey();
   const BlockNode* block = realize->block.get();
   // Cond 1. Binding is validated
-  if (!self->stmt2ref.at(block)->affine_block_binding) {
-    return false;
-  }
+  // TODO: affine
+  // if (!self->stmt2ref.at(block)->affine) {
+  //   return false;
+  // }
   CHECK_EQ(realize->binding_values.size(), block->iter_vars.size())
       << "InternalError: BlockRealize is inconsistent with its Block";
   int n = realize->binding_values.size();

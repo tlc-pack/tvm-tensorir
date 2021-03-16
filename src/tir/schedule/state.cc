@@ -149,16 +149,14 @@ class StateCreator : private StmtVisitor {
   StmtSRef PushSRef(const StmtNode* stmt) {
     if (srefs_.empty()) {
       srefs_.push_back(
-          StmtSRef(stmt,                //
-                   /*parent=*/nullptr,  //
-                   /*seq_index=*/-1,    // `seq_index` will be set properly in SetSeqIndex
-                   /*affine_block_binding=*/false));
+          StmtSRef(stmt,
+                   /*parent=*/nullptr,
+                   /*seq_index=*/-1));  // `seq_index` will be set properly in SetSeqIndex
     } else {
       StmtSRefNode* parent = srefs_.back().get();
       srefs_.push_back(
           StmtSRef(stmt, parent,
-                   /*seq_index=*/-1,  // `seq_index` will be set properly in SetSeqIndex
-                   /*affine_block_binding=*/false));
+                   /*seq_index=*/-1));  // `seq_index` will be set properly in SetSeqIndex
     }
     return srefs_.back();
   }
@@ -177,9 +175,8 @@ class StateCreator : private StmtVisitor {
     // `stmt->init` is not visited
     VisitStmt(block->body);
     StmtSRef sref = PopSRef();
-    // Set up `affine_block_binding`
-    sref->affine_block_binding = true;
     // Collect `block_scopes` info
+    // TODO: affine
     self_->block_info[sref] = BlockScope(std::move(block_frames_.back().leaf_blocks));
     block_frames_.pop_back();
     // Update parent scope if exists
@@ -444,7 +441,8 @@ class SRefUpdater : public StmtVisitor {
       sref->Reset(op, parents_.back(),
                   /*seq_index=*/-1);  // `seq_index` will be set properly in SetSeqIndex
     } else {
-      sref = StmtSRef(op, parents_.back(), /*seq_index=*/-1, /*affine_block_binding=*/true);
+      sref = StmtSRef(op, parents_.back(),
+                      /*seq_index=*/-1);  // `seq_index` will be set properly in SetSeqIndex
     }
     // Recursive visit
     parents_.push_back(sref.get());
@@ -469,14 +467,14 @@ class SRefUpdater : public StmtVisitor {
                   /*seq_index=*/-1);  // `seq_index` will be set properly in SetSeqIndex
     } else {
       sref = StmtSRef(op, parents_.back(),
-                      /*seq_index=*/-1,  // `seq_index` will be set properly in SetSeqIndex
-                      /*affine_block_binding=*/true);
+                      /*seq_index=*/-1);  // `seq_index` will be set properly in SetSeqIndex
     }
     // Recursive visit
     parents_.push_back(sref.get());
     VisitStmt(op->body);
     parents_.pop_back();
     // Additionally, need to update the scope because the block is changed
+    // TODO: affine
     self_->block_info[sref] = BlockScope(tir::GetChildBlocks(self_, sref));
   }
 
@@ -609,8 +607,7 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     return;
   }
   // Reset sref as a new sref so that its content won't be affected by subsequent changes
-  StmtSRef src_sref(_src_sref->stmt, _src_sref->parent, _src_sref->seq_index,
-                    /*affine_block_binding=*/false);
+  StmtSRef src_sref(_src_sref->stmt, _src_sref->parent, _src_sref->seq_index);
   Stmt src_stmt = GetRef<Stmt>(src_sref->stmt);
   // Step 1. Create all the nodes needed for the new sref tree.
   //   The `SRefCreator` visits the AST `tgt_stmt`, creating new nodes along the way.

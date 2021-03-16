@@ -122,23 +122,21 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
 
 /******** Constructors ********/
 
-StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index,
-                   bool affine_block_binding) {
+StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index) {
   ObjectPtr<StmtSRefNode> n = make_object<StmtSRefNode>();
   n->stmt = stmt;
   n->parent = parent;
   n->seq_index = seq_index;
-  n->affine_block_binding = affine_block_binding;
   data_ = std::move(n);
 }
 
 StmtSRef StmtSRef::InlineMark() {
-  static StmtSRef result(nullptr, nullptr, -1, false);
+  static StmtSRef result(nullptr, nullptr, -1);
   return result;
 }
 
 StmtSRef StmtSRef::RootMark() {
-  static StmtSRef result(nullptr, nullptr, -1, false);
+  static StmtSRef result(nullptr, nullptr, -1);
   return result;
 }
 
@@ -230,9 +228,10 @@ bool BlockScopeNode::IsComplete(const StmtSRef& block_sref) const {
 
 bool BlockScopeNode::IsReduction(const StmtSRef& block_sref) const {
   // Cond 3. Block binding is valid iter affine map
-  if (!block_sref->affine_block_binding) {
-    return false;
-  }
+  // TODO
+  // if (!block_sref->affine) {
+  //   return false;
+  // }
   // Cond 4. Check whether the block body has the init statement.
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   if (!block->init.defined()) {
@@ -290,9 +289,10 @@ bool BlockScopeNode::CanMergeReduction(const StmtSRef& init_sref,
                                "update_block, but get type:"
                             << update_sref->stmt->GetTypeKey();
   // Cond 1. Check the binding of update block is valid
-  if (!update_sref->affine_block_binding) {
-    return false;
-  }
+  // TODO:
+  // if (!update_sref->affine) {
+  //   return false;
+  // }
   // Cond 2. Check init_block and update_block are the only two producers for their output buffer
   for (const BufferRegion& write_region : update->writes) {
     const Array<StmtSRef>& writers = this->buffer_writers.at(write_region->buffer);
