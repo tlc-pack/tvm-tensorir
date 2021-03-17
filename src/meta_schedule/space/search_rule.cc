@@ -1041,7 +1041,8 @@ class RuleCrossThreadReduction {
     // Check target. And extract `max_threads_per_block` and `warp_size` from target.
     CHECK(task->target->kind->name == "cuda")
       << "TargetError: Search rule \"CrossThreadReduction\" can only run on CUDA";
-    Optional<Integer> opt_max_threads_per_block = task->target->GetAttr<Integer>("max_num_threads");
+    Optional<Integer> opt_max_threads_per_block =
+        task->target->GetAttr<Integer>("max_threads_per_block");
     Optional<Integer> opt_warp_size = task->target->GetAttr<Integer>("thread_warp_size");
     CHECK(opt_max_threads_per_block.defined());
     CHECK(opt_warp_size.defined());
@@ -1063,14 +1064,13 @@ class RuleCrossThreadReduction {
     }
 
     // Todo: provide more documents/comments
-    Schedule ori_sch = sch->Copy(sch->sampler.ForkSeed());
     Schedule tmp_sch = sch->Copy(sch->sampler.ForkSeed());
 
-    // Reorder the loop axes if reduction loops are not innermost.
-    // After the reordering, fuse all the reduction loops.
-    int num_spatial_loops;
-    LoopRV fused_reduce_loop;
-    ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
+//    // Reorder the loop axes if reduction loops are not innermost.
+//    // After the reordering, fuse all the reduction loops.
+//    int num_spatial_loops;
+//    LoopRV fused_reduce_loop;
+//    ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
 
     // Check the opportunity for kernel fusion
     bool fusible = false;
@@ -1140,6 +1140,14 @@ class RuleCrossThreadReduction {
       ICHECK_GE(target_block_loops.size(), num_common_axes);
       const LoopRV& target_loop = target_block_loops[num_common_axes - 1];
 
+      tmp_sch->ComputeAt(block_rv, target_loop, true);
+
+      // Reorder the loop axes if reduction loops are not innermost.
+      // After the reordering, fuse all the reduction loops.
+      int num_spatial_loops;
+      LoopRV fused_reduce_loop;
+      ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
+
       Array<Optional<PrimExpr> > factor;
       for (auto it = split_insts[0]->inputs.begin() + 1; it != split_insts[0]->inputs.end(); ++it) {
         factor.push_back(Downcast<Optional<PrimExpr> >(*it));
@@ -1147,13 +1155,19 @@ class RuleCrossThreadReduction {
       Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, factor);
       ICHECK_EQ(split_res.size(), 2);
       tmp_sch->Bind(split_res[1], "threadIdx.x");
-      tmp_sch->ComputeAt(block_rv, target_loop, true);
     } else {
+      // Reorder the loop axes if reduction loops are not innermost.
+      // After the reordering, fuse all the reduction loops.
+      int num_spatial_loops;
+      LoopRV fused_reduce_loop;
+      ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
+
       Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, Integer(warp_size)});
       tmp_sch->Bind(split_res[1], "threadIdx.x");
     }
 
-    return {tmp_sch}; // Todo: need the original schedule?
+//    return {tmp_sch, sch}; // Todo: return the original schedule
+    return {tmp_sch};
   }
 };
 
