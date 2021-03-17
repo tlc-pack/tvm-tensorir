@@ -172,12 +172,12 @@ class StateCreator : private StmtVisitor {
     StmtSRef sref = PopSRef();
     // Collect `block_scopes` info
     // TODO: affine
-    BlockScope scope(std::move(block_frames_.back().leaf_blocks));
-    self_->block_info[sref] = BlockInfo(BlockScope(std::move(scope)));
+    BlockScope scope(std::move(block_frames_.back()));
+    self_->block_info[sref] = BlockInfo(std::move(scope));
     block_frames_.pop_back();
     // Update parent scope if exists
     if (!block_frames_.empty()) {
-      block_frames_.back().leaf_blocks.push_back(sref);
+      block_frames_.back().push_back(sref);
     }
   }
 
@@ -199,12 +199,6 @@ class StateCreator : private StmtVisitor {
     SetSeqIndex(self_, seq_stmt);
   }
 
-  /*! \brief A stack frame gathering the block scope information */
-  struct BlockFrame {
-    /*! \brief The leaf blocks of the current scope. */
-    Array<StmtSRef> leaf_blocks;
-  };
-
   /*! \brief The result stmt2ref */
   ScheduleStateNode* self_;
   /*! \brief The stack frame used to indicate the current scope */
@@ -212,7 +206,7 @@ class StateCreator : private StmtVisitor {
   /*! \brief The BlockRealize in the ancestors */
   std::vector<const BlockRealizeNode*> realizes_;
   /*! \brief The stack frames of blocks in the DFS visit. */
-  std::vector<BlockFrame> block_frames_;
+  std::vector<Array<StmtSRef>> block_frames_;
 };
 
 /**************** Constructor ****************/
@@ -250,8 +244,7 @@ struct ReuseInfo {
 };
 
 /*!
- * \brief A helper visitor used in `SRefUpdater`,
- * which collects two cases of reusing srefs:
+ * \brief A helper visitor which collects two cases of sref reuses in the `tgt_stmt`:
  *
  * 1) Intact: the subtree represented by `intact` appears on both old and new IR.
  * Given the immutability of the IR, we can quickly decide that the entire subtree is unchanged,
@@ -261,8 +254,6 @@ struct ReuseInfo {
  * which are both loops or both blocks,
  * and there is correspondence between them,
  * which makes us to reuse the sref pointing to `src`, and changes it to point to `tgt`,
- *
- * \sa SRefUpdater
  */
 class ReuseCollector : public StmtVisitor {
  public:
@@ -308,13 +299,12 @@ class ReuseCollector : public StmtVisitor {
 };
 
 /*!
- * \brief A helper visitor used in `SRefUpdater`,
- * which removes the stale srefs that are useless after the replacement.
+ * \brief A helper visitor which removes the stale srefs in the `src_stmt`
+ * that are useless after the replacement.
  *
  * It uses the reuse information previously collected to
  * 1) delete those srefs that are not reused.
  * 2) return the sref objects that are loop/block sref reuses, but not intact reuses
- * \sa SRefUpdater
  */
 class SRefTreePruner : public StmtVisitor {
  public:
@@ -803,6 +793,7 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
 }
 
 BlockScope ScheduleStateNode::GetBlockScope(const StmtSRef& block_sref) const {
+  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   auto it = this->block_info.find(block_sref);
   CHECK(it != this->block_info.end())
       << "IndexError: Cannot find the corresponding BlockScope to the block sref:\n"
