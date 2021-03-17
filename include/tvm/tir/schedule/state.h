@@ -27,11 +27,25 @@
 #include <tvm/tir/schedule/block_scope.h>
 
 #include <unordered_map>
+#include <utility>
 
 namespace tvm {
 namespace tir {
 
 class PrimFunc;
+
+struct BlockInfo {
+  /*! \brief Dependency in the scope rooted by the block */
+  BlockScope scope;
+  /*! \brief Indicates if the block binding is quasi-affine */
+  bool affine_binding;
+
+  BlockInfo() : scope{nullptr}, affine_binding(false) {}
+
+  explicit BlockInfo(BlockScope scope, bool affine_binding = false)
+      : scope(std::move(scope)),  //
+        affine_binding(affine_binding) {}
+};
 
 /*!
  * \brief The state of scheduling, which exposes a `Replace` method as
@@ -52,7 +66,7 @@ class ScheduleStateNode : public Object {
    * \brief Mapping from a block sref to the block scope at it,
    * tracking the dependency inside the block scope
    */
-  std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> block_info;
+  std::unordered_map<StmtSRef, BlockInfo, ObjectPtrHash, ObjectPtrEqual> block_info;
   /*! \brief The reverse mapping from block/for-loop to their corresponding srefs */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief In debug mode, we do extra correctness checking after each replacement */
@@ -89,7 +103,7 @@ class ScheduleStateNode : public Object {
   static constexpr const char* _type_key = "tir.ScheduleState";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleStateNode, Object);
 
-  /******** Property of a block ********/
+  /******** Property of blocks ********/
   /*!
    * \brief Get the BlockScope correpsonding to the block sref
    * \param block_sref The block sref to be retrieved

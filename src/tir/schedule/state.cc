@@ -172,7 +172,8 @@ class StateCreator : private StmtVisitor {
     StmtSRef sref = PopSRef();
     // Collect `block_scopes` info
     // TODO: affine
-    self_->block_info[sref] = BlockScope(std::move(block_frames_.back().leaf_blocks));
+    BlockScope scope(std::move(block_frames_.back().leaf_blocks));
+    self_->block_info[sref] = BlockInfo(BlockScope(std::move(scope)));
     block_frames_.pop_back();
     // Update parent scope if exists
     if (!block_frames_.empty()) {
@@ -470,7 +471,7 @@ class SRefUpdater : public StmtVisitor {
     parents_.pop_back();
     // Additionally, need to update the scope because the block is changed
     // TODO: affine
-    self_->block_info[sref] = BlockScope(tir::GetChildBlocks(self_, sref));
+    self_->block_info[sref] = BlockInfo(BlockScope(tir::GetChildBlocks(self_, sref)));
   }
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
@@ -806,7 +807,7 @@ BlockScope ScheduleStateNode::GetBlockScope(const StmtSRef& block_sref) const {
   CHECK(it != this->block_info.end())
       << "IndexError: Cannot find the corresponding BlockScope to the block sref:\n"
       << GetRef<Stmt>(block_sref->stmt);
-  return it->second;
+  return it->second.scope;
 }
 
 bool ScheduleStateNode::IsComplete(const StmtSRef& block_sref, const StmtSRef& scope_root) const {

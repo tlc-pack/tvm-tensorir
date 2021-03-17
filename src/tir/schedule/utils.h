@@ -237,9 +237,7 @@ bool StmtExprContainsVar(const ObjectRef& obj, const std::vector<Var>& vars);
  */
 bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*>& vars);
 
-inline void UpdateScope(ScheduleState self, const StmtSRef& sref) {
-  self->block_info[sref] = BlockScope(tir::GetChildBlocks(self, sref));
-}
+void UpdateScope(ScheduleState self, const StmtSRef& sref);
 
 class StmtReplacer : public StmtMutator {
  public:

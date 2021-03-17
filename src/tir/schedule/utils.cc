@@ -431,6 +431,11 @@ bool StmtExprContainsVar(const ObjectRef& obj, const PrimExpr& vars) {
   return StmtExprContainsVar(obj, var_set);
 }
 
+void UpdateScope(ScheduleState self, const StmtSRef& sref) {
+  BlockScope scope(tir::GetChildBlocks(self, sref));
+  self->block_info[sref] = BlockInfo(std::move(scope));
+}
+
 void PatternMatcher::VisitExpr_(const VarNode* op) {
   auto it = filled_map_.find(op);
   if (it == filled_map_.end()) {

@@ -119,16 +119,18 @@ struct SRefTranslator {
   }
 
   /*! \brief Translate SMap<StmtSRef, Scope> */
-  SMap<StmtSRef, BlockScope> Trans(const SMap<StmtSRef, BlockScope>& scopes) {
-    SMap<StmtSRef, BlockScope> result;
+  SMap<StmtSRef, BlockInfo> Trans(const SMap<StmtSRef, BlockInfo>& scopes) {
+    SMap<StmtSRef, BlockInfo> result;
     for (const auto& kv : scopes) {
       const StmtSRef& old_sref = kv.first;
-      const BlockScope& old_scope = kv.second;
+      const BlockInfo& old_info = kv.second;
+      BlockInfo new_info = old_info;
       ObjectPtr<BlockScopeNode> scope = make_object<BlockScopeNode>();
-      scope->src2deps = Trans(old_scope->src2deps);
-      scope->dst2deps = Trans(old_scope->dst2deps);
-      scope->buffer_writers = Trans(old_scope->buffer_writers);
-      result[Trans(old_sref)] = BlockScope(std::move(scope));
+      scope->src2deps = Trans(old_info.scope->src2deps);
+      scope->dst2deps = Trans(old_info.scope->dst2deps);
+      scope->buffer_writers = Trans(old_info.scope->buffer_writers);
+      new_info.scope = BlockScope(std::move(scope));
+      result[Trans(old_sref)] = std::move(new_info);
     }
     return result;
   }
