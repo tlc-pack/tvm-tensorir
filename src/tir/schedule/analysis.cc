@@ -305,10 +305,10 @@ Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name) {
   return result;
 }
 
-bool IsCompactDataFlow(const BlockScope& self, const StmtSRef& subtree_sref,
+bool IsCompactDataFlow(const ScheduleState& self, const StmtSRef& scope_root,
                        const Array<StmtSRef>& child_blocks) {
   for (const StmtSRef& block : child_blocks) {
-    if (!self->IsComplete(block) && !self->IsReduction(block)) {
+    if (!self->IsComplete(block, scope_root) && !self->IsReduction(block, scope_root)) {
       return false;
     }
   }

@@ -23,8 +23,8 @@ namespace tir {
 
 /******** Utility functions ********/
 
-using TBufferReaderWriter =
-    std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>;
+template <class K, class V>
+using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
 
 /*!
  * \brief Add a dependency edge.
@@ -49,10 +49,10 @@ void AddEdge(BlockScopeNode* self, const StmtSRef& src, const StmtSRef& dst, Dep
  * that reads it
  */
 void AddLastChildBlock(BlockScopeNode* self, const StmtSRef& child_block_sref,
-                       TBufferReaderWriter* _buffer_readers) {
+                       SMap<Buffer, Array<StmtSRef>>* _buffer_readers) {
   const BlockNode* child_block = TVM_SREF_TO_BLOCK(child_block, child_block_sref);
-  TBufferReaderWriter& buffer_readers = *_buffer_readers;
-  TBufferReaderWriter& buffer_writers = self->buffer_writers;
+  SMap<Buffer, Array<StmtSRef>>& buffer_readers = *_buffer_readers;
+  SMap<Buffer, Array<StmtSRef>>& buffer_writers = self->buffer_writers;
   // Step 1. Update `buffer_readers` and `buffer_writer` for each buffer
   for (const BufferRegion& region : child_block->writes) {
     buffer_writers[region->buffer].push_back(child_block_sref);
@@ -88,38 +88,6 @@ void AddLastChildBlock(BlockScopeNode* self, const StmtSRef& child_block_sref,
   }
 }
 
-/*!
- * \brief Check if each reduction instance is valid. Particularly, check:
- * 1) Each iteration variable is either data parallel or reduction
- * 2) Indices used to access the output buffer are not related to or affected by reduction iteration
- * variables.
- * \param iter_vars Iteration variables of the reduction
- * \param output_buffer_indices Indices used to access the output buffer
- * \return A boolean indicating if the reduction instance is valid
- */
-bool CheckReductionInstance(const Array<IterVar>& iter_vars,
-                            const Array<PrimExpr>& output_buffer_indices) {
-  std::unordered_set<const VarNode*> reduction_block_vars;
-  reduction_block_vars.reserve(iter_vars.size());
-  // Check 1. Each iter_var can only be data parallel or reduction
-  for (const IterVar& iter_var : iter_vars) {
-    IterVarType kind = iter_var->iter_type;
-    if (kind != kDataPar && kind != kCommReduce) {
-      return false;
-    }
-    if (kind == kCommReduce) {
-      reduction_block_vars.insert(iter_var->var.get());
-    }
-  }
-  // Check 2. Each reduction iter_var should not be used to index output buffer
-  for (const PrimExpr& idx : output_buffer_indices) {
-    if (ContainsVar(idx, reduction_block_vars)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /******** Constructors ********/
 
 StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index) {
@@ -152,7 +120,7 @@ BlockScope::BlockScope() { data_ = make_object<BlockScopeNode>(); }
 
 BlockScope::BlockScope(const Array<StmtSRef>& child_block_srefs) {
   ObjectPtr<BlockScopeNode> n = make_object<BlockScopeNode>();
-  TBufferReaderWriter buffer_readers;
+  SMap<Buffer, Array<StmtSRef>> buffer_readers;
   for (const StmtSRef& block_sref : child_block_srefs) {
     AddLastChildBlock(n.get(), block_sref, &buffer_readers);
   }
@@ -183,149 +151,6 @@ Array<Dependency> BlockScopeNode::GetDepsByDst(const StmtSRef& block_sref) const
   }
 }
 
-/******** Property of a block ********/
-
-bool IsDominant(const BlockScopeNode* self, const StmtSRef& block_sref) {
-  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  // Cond 1. Block is the only writer to its outputs
-  const TBufferReaderWriter& buffer_writers = self->buffer_writers;
-  for (const BufferRegion& write_region : block->writes) {
-    ICHECK(buffer_writers.count(write_region->buffer))
-        << "InternalError: buffer \"" << write_region->buffer->name
-        << "\" does not exist in the current scope, when querying block:\n"
-        << GetRef<Block>(block);
-    // Check if the buffer is only written once (by the given block)
-    if (buffer_writers.at(write_region->buffer).size() != 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool BlockScopeNode::IsComplete(const StmtSRef& block_sref) const {
-  // Cond 2. Check if all the block vars are data parallel
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  for (const IterVar& iter_var : block->iter_vars) {
-    if (iter_var->iter_type != kDataPar) {
-      return false;
-    }
-  }
-  // Cond 1. A complete block must be dominate
-  if (!IsDominant(this, block_sref)) {
-    return false;
-  }
-  // Cond 3. Check if there is no overlap between buffers read and buffers written
-  for (const BufferRegion& write : block->writes) {
-    const Buffer& buffer = write->buffer;
-    for (const BufferRegion& read : block->reads) {
-      if (buffer.same_as(read->buffer)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-bool BlockScopeNode::IsReduction(const StmtSRef& block_sref) const {
-  // Cond 3. Block binding is valid iter affine map
-  // TODO
-  // if (!block_sref->affine) {
-  //   return false;
-  // }
-  // Cond 4. Check whether the block body has the init statement.
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  if (!block->init.defined()) {
-    return false;
-  }
-  // Cond 2. All block vars are either data parallel or reduction
-  const Array<IterVar>& iter_vars = block->iter_vars;
-  for (const IterVar& iter_var : iter_vars) {
-    if (iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
-      return false;
-    }
-  }
-  // Cond 1. Dominate block
-  if (!IsDominant(this, block_sref)) {
-    return false;
-  }
-  // Cond 5. All reduction vars should not affect indexing the output buffer
-  std::unordered_set<const BufferNode*> buffer_written;
-  buffer_written.reserve(block->writes.size());
-  for (const BufferRegion& write_region : block->writes) {
-    buffer_written.insert(write_region->buffer.get());
-  }
-  bool not_affected = true;
-  PreOrderVisit(block->body, [&not_affected, &iter_vars, &buffer_written](const ObjectRef& obj) {
-    if (!not_affected) {
-      return false;
-    }
-    if (const auto* store = obj.as<BufferStoreNode>()) {
-      // Only consider buffers written by the block
-      if (buffer_written.count(store->buffer.get())) {
-        if (!CheckReductionInstance(iter_vars, store->indices)) {
-          not_affected = false;
-        }
-      } else {
-        LOG(FATAL) << "InternalError: A write buffer is not in the block signature: "
-                   << store->buffer;
-      }
-      return false;
-    }
-    return true;
-  });
-  return not_affected;
-}
-
-/******** Inter-block properties ********/
-
-bool BlockScopeNode::CanMergeReduction(const StmtSRef& init_sref,
-                                       const StmtSRef& update_sref) const {
-  const auto* init = init_sref->GetStmt<BlockNode>();
-  const auto* update = update_sref->GetStmt<BlockNode>();
-  ICHECK(init != nullptr) << "InternalError: Scope::CanMergeReduction only accepts tir::Block as "
-                             "init_block, but get type:"
-                          << init_sref->stmt->GetTypeKey();
-  ICHECK(update != nullptr) << "InternalError: Scope::CanMergeReduction only accepts tir::Block as "
-                               "update_block, but get type:"
-                            << update_sref->stmt->GetTypeKey();
-  // Cond 1. Check the binding of update block is valid
-  // TODO:
-  // if (!update_sref->affine) {
-  //   return false;
-  // }
-  // Cond 2. Check init_block and update_block are the only two producers for their output buffer
-  for (const BufferRegion& write_region : update->writes) {
-    const Array<StmtSRef>& writers = this->buffer_writers.at(write_region->buffer);
-    if (writers.size() != 2) {
-      return false;
-    }
-    if (!writers[0].same_as(init_sref) && !writers[0].same_as(update_sref)) {
-      return false;
-    }
-    if (!writers[1].same_as(init_sref) && !writers[1].same_as(update_sref)) {
-      return false;
-    }
-  }
-  // Cond 3. init and update share the same buffer
-  const auto* init_body = init->body.as<BufferStoreNode>();
-  const auto* update_body = update->body.as<BufferStoreNode>();
-  ICHECK(init_body != nullptr)
-      << "InternalError: init_block should contain only a BufferStore as its lhs, but get type: "
-      << init->body->GetTypeKey();
-  ICHECK(update_body != nullptr)
-      << "InternalError: update_block should contain only a BufferStore as its lhs, but get type:"
-      << update->body->GetTypeKey();
-  if (!init_body->buffer.same_as(update_body->buffer)) {
-    return false;
-  }
-  // Access must be the same dimensional
-  ICHECK_EQ(init_body->indices.size(), update_body->indices.size())
-      << "InternalError: indexing to the same buffer with different dimensions";
-  // Cond 4. All block vars of update_block are either data parallel or reduction,
-  // and reduction vars of update_block should not affect indexing the output buffer
-  return CheckReductionInstance(update->iter_vars, update_body->indices);
-}
-
 /******** FFI ********/
 
 TVM_REGISTER_NODE_TYPE(StmtSRefNode);
@@ -334,11 +159,11 @@ TVM_REGISTER_NODE_TYPE(BlockScopeNode);
 
 TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefStmt")
     .set_body_typed([](StmtSRef sref) -> Optional<Stmt> {
-      return sref->stmt != nullptr ? GetRef<Stmt>(sref->stmt) : Optional<Stmt>(NullOpt);
+      return GetRef<Optional<Stmt>>(sref->stmt);
     });
 TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefParent")
     .set_body_typed([](StmtSRef sref) -> Optional<StmtSRef> {
-      return sref->parent != nullptr ? GetRef<StmtSRef>(sref->parent) : Optional<StmtSRef>(NullOpt);
+      return GetRef<Optional<StmtSRef>>(sref->parent);
     });
 TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefRootMark")  //
     .set_body_typed(StmtSRef::RootMark);

@@ -64,13 +64,6 @@ class ScheduleStateNode : public Object {
     // `stmt2ref` is not visited
     v->Visit("debug_mode", &debug_mode);
   }
-
-  /*!
-   * \brief Get the BlockScope correpsonding to the block sref
-   * \param block_sref The block sref to be retrieved
-   * \return The corresponding BlockScope
-   */
-  TVM_DLL BlockScope GetBlockScope(const StmtSRef& block_sref) const;
   /*!
    * \brief Replace the part of the AST, as being pointed to by `src_sref`,
    * with a specific statement `tgt_stmt`, and maintain the sref tree accordingly.
@@ -95,6 +88,49 @@ class ScheduleStateNode : public Object {
 
   static constexpr const char* _type_key = "tir.ScheduleState";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleStateNode, Object);
+
+  /******** Property of a block ********/
+  /*!
+   * \brief Get the BlockScope correpsonding to the block sref
+   * \param block_sref The block sref to be retrieved
+   * \return The corresponding BlockScope
+   */
+  TVM_DLL BlockScope GetBlockScope(const StmtSRef& block_sref) const;
+  /*!
+   * \brief Check whether the block is a complete block under the scope
+   * \param block_sref The block to be checked
+   * \param scope_root The sref to the root block of the scope that `block_sref` is in
+   * \return A boolean indicating if the block is a complete block
+   * \note Definition of a complete block:
+   * 1) dominant: the block is the only writer of its output, which dominates the reader of
+   * its output buffers
+   * 2) all block vars are data parallel
+   * 3) no overlap between the buffers it reads and writes
+   */
+  TVM_DLL bool IsComplete(const StmtSRef& block_sref, const StmtSRef& scope_root) const;
+  /*!
+   * \brief Check whether the block is a reduction block under the scope
+   * \param block_sref The block to be checked
+   * \param scope_root The sref to the root block of the scope that `block_sref` is in
+   * \return A boolean indicating if the block is a reduction block
+   * \note Definition of a reduction block:
+   * 1) dominant: the block is the only writer of its output, which dominates the reader of
+   * its output buffers
+   * 2) all block vars are data parallel or reduction
+   * 3) block bindings are quasi-affine expressions
+   * 4) has the init statement
+   * 5) reduction block vars are not used to index output buffers
+   */
+  TVM_DLL bool IsReduction(const StmtSRef& block_sref, const StmtSRef& scope_root) const;
+  /*!
+   * \brief Check the merged block of init_block and update_block is a reduction block
+   * \param init_block_sref the query init block
+   * \param update_block_sref the query update block
+   * \param scope_root The sref to the scope root where `init_sref` and `update_sref` are in
+   * \return Whether the merged block of init_block and update_block is a reduction block
+   */
+  TVM_DLL bool CanMergeReduction(const StmtSRef& init_block_sref, const StmtSRef& update_block_sref,
+                                 const StmtSRef& scope_root) const;
 };
 
 /*!

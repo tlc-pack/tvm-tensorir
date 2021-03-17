@@ -84,13 +84,12 @@ StmtSRef GetScopeRoot(const StmtSRef& sref);
  * - Bi doesn't read the buffers that Bi+1, Bi+2, ... Bn will write
  * - Suppose Bi reads Bj's output buffer(j < i) and Loop k is the LCA of Bi and
  * Bj, Bj's output region covers Bi's input under Loop k
- * \param subtree_sref The subtree to be checked
  * \param child_blocks The schedule that the scope is in
  * \return A boolean indicating if the subtree satisfies the one-way fine-grained data flow check
  * \note Condition 2 and 3 are global condition of a schedulable IR,
  * so it is omitted in the check.
  */
-bool IsCompactDataFlow(const BlockScope& self, const StmtSRef& subtree_sref,
+bool IsCompactDataFlow(const ScheduleState& self, const StmtSRef& scope_root,
                        const Array<StmtSRef>& child_blocks);
 
 /******** Block-loop relation ********/

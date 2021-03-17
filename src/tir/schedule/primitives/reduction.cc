@@ -68,7 +68,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     CHECK(ListContainsElement(loops, loop_sref))
         << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
     // Cond 1. Check block is reduction
-    CHECK(self->GetBlockScope(GetScopeRoot(block_sref))->IsReduction(block_sref))
+    CHECK(self->IsReduction(block_sref, GetScopeRoot(block_sref)))
         << "decompose_reduction expect the block to be a reduction block";
     // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
@@ -270,7 +270,7 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
     }
   }
   // Cond 4. Check the merged block is decomposable
-  CHECK(self->GetBlockScope(scope)->CanMergeReduction(init_sref, update_sref));
+  CHECK(self->CanMergeReduction(init_sref, update_sref, scope));
   // Cond 2. Check LCA is higher than all the loops related to update_block's reduce block var
   if (!scope.same_as(lca)) {
     for (const StmtSRef& higher_loop : GetAxes(self, update_sref)) {
@@ -334,8 +334,9 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   StmtSRef block_sref = child_blocks[0];
   BlockRealize block_realize = GetBlockRealize(block_sref);
   Block block = block_realize->block;
-  BlockScope scope = self->GetBlockScope(GetScopeRoot(block_sref));
-  CHECK(scope->IsReduction(block_sref)) << "ValueError: can only rfactor a reduction block";
+  StmtSRef scope_root = GetScopeRoot(block_sref);
+  CHECK(self->IsReduction(block_sref, scope_root))
+      << "ValueError: can only rfactor a reduction block";
 
   // Collect the information of loops and blocks.
   /*! \brief The data parallel vars and reduction vars contained in the block bindings. */
