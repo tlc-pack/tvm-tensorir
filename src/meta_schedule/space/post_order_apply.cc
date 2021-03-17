@@ -170,7 +170,7 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
       tir::StmtSRef block_sref = unvisited.back();
       unvisited.pop_back();
       if (block_sref->stmt != nullptr) {
-        const auto* block = block_sref->GetStmt<tir::BlockNode>();
+        const auto* block = block_sref->StmtAs<tir::BlockNode>();
         ICHECK(block) << "TypeError: Expects BlockNode, but gets: "
                       << block_sref->stmt->GetTypeKey();
         // TODO(@junrushao1994): replace this quick hack

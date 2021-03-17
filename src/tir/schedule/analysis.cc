@@ -80,7 +80,7 @@ void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block
   if (consumer_block_sref->parent == nullptr) {
     return;
   }
-  const auto* consumer_block = consumer_block_sref->GetStmt<BlockNode>();
+  const auto* consumer_block = consumer_block_sref->StmtAs<BlockNode>();
   const StmtSRef& parent_block_sref = GetScopeRoot(consumer_block_sref);
   // Gather all the producers
   struct Producer {
@@ -102,7 +102,7 @@ void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block
     }
     // i.e. the RAW predecessor is producer
     const StmtSRef& producer_block_sref = edge->src;
-    for (const BufferRegion& output_region : producer_block_sref->GetStmt<BlockNode>()->writes) {
+    for (const BufferRegion& output_region : producer_block_sref->StmtAs<BlockNode>()->writes) {
       const VarNode* buffer_var = output_region->buffer->data.get();
       buffer_producers[buffer_var].emplace_back(producer_block_sref, output_region);
     }
@@ -377,9 +377,9 @@ Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sr
 
 bool HasSingleChild(const StmtSRef& loop_or_block_sref) {
   const StmtNode* body = nullptr;
-  if (const auto* loop = loop_or_block_sref->GetStmt<ForNode>()) {
+  if (const auto* loop = loop_or_block_sref->StmtAs<ForNode>()) {
     body = loop->body.get();
-  } else if (const auto* block = loop_or_block_sref->GetStmt<BlockNode>()) {
+  } else if (const auto* block = loop_or_block_sref->StmtAs<BlockNode>()) {
     body = block->body.get();
   } else {
     LOG(FATAL) << "TypeError: Unable to recognize the type of `loop_or_block_sref`: "

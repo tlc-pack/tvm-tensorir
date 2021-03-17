@@ -41,7 +41,7 @@ namespace tvm {
 namespace tir {
 
 #define TVM_SREF_TO_E(Result, SRef, Type) \
-  SRef->GetStmt<Type>();                  \
+  SRef->StmtAs<Type>();                   \
   ICHECK(Result)
 
 #define TVM_SREF_TO_BLOCK(Result, SRef)              \

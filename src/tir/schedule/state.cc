@@ -135,7 +135,9 @@ class StateCreator : private StmtVisitor {
 
  private:
   explicit StateCreator(ScheduleStateNode* self)
-      : self_(self), srefs_{}, realizes_{}, block_frames_{} {}
+      : self_(self), srefs_{}, realizes_{}, block_frames_{} {
+    block_frames_.emplace({});
+  }
 
   /*!
    * \brief Add a new statement to the stack, which becomes the current scope
@@ -164,21 +166,24 @@ class StateCreator : private StmtVisitor {
     return sref;
   }
 
-  void VisitStmt_(const BlockNode* block) final {
-    PushSRef(block);
-    block_frames_.emplace_back();
-    // `stmt->init` is not visited
-    VisitStmt(block->body);
-    StmtSRef sref = PopSRef();
-    // Collect `block_scopes` info
-    // TODO: affine
+  BlockInfo MakeBlockInfo() {
+    // Calculate `BlockInfo::scope`
     BlockScope scope(std::move(block_frames_.back()));
-    self_->block_info[sref] = BlockInfo(std::move(scope));
-    block_frames_.pop_back();
-    // Update parent scope if exists
-    if (!block_frames_.empty()) {
-      block_frames_.back().push_back(sref);
+    // Calculate `BlockInfo::affine_binding`
+    int n = static_cast<int>(srefs_.size());
+    Map<Var, Range> loop_var_ranges;
+    for (int i = n - 1; i >= 0; --i) {
+      const StmtSRef& sref = srefs_[i];
+      if (const auto* loop = sref->StmtAs<ForNode>()) {
+        loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      } else {
+        break;
+      }
     }
+    // TODO: affine
+    bool affine_binding =
+        ValidateBlockBinding(GetRef<BlockRealize>(realizes_.back()), loop_var_ranges);
+    return BlockInfo(std::move(scope), affine_binding);
   }
 
   void VisitStmt_(const ForNode* loop) final {
@@ -189,7 +194,17 @@ class StateCreator : private StmtVisitor {
 
   void VisitStmt_(const BlockRealizeNode* realize) final {
     realizes_.push_back(realize);
-    VisitStmt(realize->block);
+    block_frames_.emplace_back();
+    const BlockNode* block = realize->block.get();
+    // Recursive visit
+    PushSRef(block);
+    VisitStmt(block->body);  // `stmt->init` is not visited
+    StmtSRef sref = PopSRef();
+    // Create BlockInfo for the block
+    self_->block_info[sref] = MakeBlockInfo();
+    // Update parent scope
+    block_frames_.pop_back();
+    block_frames_.back().push_back(sref);
     realizes_.pop_back();
   }
 

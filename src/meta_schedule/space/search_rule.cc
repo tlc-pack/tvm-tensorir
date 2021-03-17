@@ -190,7 +190,7 @@ class RuleMultiLevelTiling {
    * \return A vector of integers, the indices of the read buffers
    */
   static std::vector<int> GetReadBufferIndices(const tir::StmtSRef& block_sref) {
-    const auto* block = block_sref->GetStmt<tir::BlockNode>();
+    const auto* block = block_sref->StmtAs<tir::BlockNode>();
     ICHECK(block) << "TypeError: Expects 'Block', but gets: " << block_sref->stmt->GetTypeKey();
     std::vector<int> result;
     int n_reads = block->reads.size();
@@ -392,7 +392,7 @@ class RuleMultiLevelTiling {
     std::vector<int> read_buffer_indices = GetReadBufferIndices(block_sref);
     // Enumerate all buffers that are read but not written
     for (int i : read_buffer_indices) {
-      tir::Buffer buffer = block_sref->GetStmt<tir::BlockNode>()->reads[i]->buffer;
+      tir::Buffer buffer = block_sref->StmtAs<tir::BlockNode>()->reads[i]->buffer;
       int buffer_ndim = buffer->shape.size();
       // Do cache_read
       BlockRV cache_read_block = sch->CacheRead(block_rv, i, cache_read_scope);
@@ -649,7 +649,7 @@ class RuleParallelizeVectorizeUnroll {
     tir::StmtSRefNode* child_sref = block_sref.operator->();
     for (tir::StmtSRefNode* parent_sref = child_sref->parent;;
          child_sref = parent_sref, parent_sref = child_sref->parent) {
-      const auto* parent_loop = parent_sref->GetStmt<tir::ForNode>();
+      const auto* parent_loop = parent_sref->StmtAs<tir::ForNode>();
       if (parent_loop == nullptr) {
         return true;
       }
@@ -737,7 +737,7 @@ class RuleMarkTensorize {
     for (const auto& kv : info->loop_map) {
       // Extract mapping (block_loop => desc_loop)
       const tir::StmtSRef& block_loop_sref = kv.first;
-      const tir::ForNode* block_loop = block_loop_sref->GetStmt<tir::ForNode>();
+      const tir::ForNode* block_loop = block_loop_sref->StmtAs<tir::ForNode>();
       const tir::ForNode* desc_loop = kv.second.get();
       ICHECK(block_loop != nullptr && desc_loop != nullptr);
       // Extract the loop extent
@@ -852,7 +852,7 @@ class RuleSimplifyComputeWithConstTensor {
     // unroll the loops of the const tensor indices
     for (const LoopRV& ax : axes) {
       tir::StmtSRef loop_sref = sch->GetSRef(ax);
-      const auto* for_node = loop_sref->GetStmt<tir::ForNode>();
+      const auto* for_node = loop_sref->StmtAs<tir::ForNode>();
       if (unrolled_loop_vars.count(for_node->loop_var.get())) {
         sch->Unroll(ax);
         unrolled_inner_iters.push_back(ax);

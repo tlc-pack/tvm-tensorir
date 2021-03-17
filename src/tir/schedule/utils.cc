@@ -265,7 +265,7 @@ std::function<BufferRegion(const BufferRegion)> RelaxGenerator(
     const StmtSRef& block_sref, const StmtSRef& root,
     std::unordered_map<const VarNode*, PrimExpr>* vmap,
     std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
   const auto* block_realize = GetBlockRealize(block_sref).operator->();
   ICHECK(block != nullptr);
 
@@ -277,7 +277,7 @@ std::function<BufferRegion(const BufferRegion)> RelaxGenerator(
   // Gather iteration domain
   auto sref = GetRef<StmtSRef>(block_sref->parent);
   while (sref.defined() && !sref.same_as(root)) {
-    const auto* loop = sref->GetStmt<ForNode>();
+    const auto* loop = sref->StmtAs<ForNode>();
     // The root may not be a loop
     if (loop == nullptr) break;
     Range range = Range::FromMinExtent(loop->min, loop->extent);
@@ -310,7 +310,7 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<B
   for (const auto& pair : relax_vars) {
     dom_map[pair.first] = arith::IntSet::FromRange(pair.second);
   }
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
   if (reads != nullptr) {
     for (const auto& buffer_region : block->reads) {
       reads->push_back(relax(buffer_region));

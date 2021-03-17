@@ -393,7 +393,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
    *   - extra block var from the only block
    *   - Update block binding
    */
-  const auto* loop = loop_sref->GetStmt<ForNode>();
+  const auto* loop = loop_sref->StmtAs<ForNode>();
   CHECK(loop) << "TypeError: Only support blockize a loop for now, but get type: "
               << loop_sref->stmt->GetTypeKey();
   // check there exists no SeqStmt under loop
@@ -412,7 +412,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
   for (StmtSRef current_sref = block_sref;;) {
     current_sref = GetRef<StmtSRef>(current_sref->parent);
     if (!current_sref.defined()) break;
-    const auto* current_loop = current_sref->GetStmt<ForNode>();
+    const auto* current_loop = current_sref->StmtAs<ForNode>();
     if (!current_loop) break;
     if (inner) {
       inner_loops.push_back(current_loop);
@@ -738,7 +738,7 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
    *   - Mutate implement function with buffer binding
    *   - Replace the sub tree with the mutated function.
    */
-  const auto* loop = loop_sref->GetStmt<ForNode>();
+  const auto* loop = loop_sref->StmtAs<ForNode>();
   CHECK(loop) << "Only support tensorize a loop for now";
 
   const auto* desc_block_realize = intrinsic->description->body.as<BlockRealizeNode>();

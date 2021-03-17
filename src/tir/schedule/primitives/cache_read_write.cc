@@ -114,7 +114,7 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
  * \return The only region the block writes
  */
 BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
   ICHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
                            << block_sref->stmt->GetTypeKey();
   CHECK_EQ(block->writes.size(), 1) << "ValueError: Only one write buffer is allowed in the block";
@@ -128,10 +128,10 @@ BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
  * \return A boolean indicating if the block is an output block
  */
 bool IsOutputBlock(const StmtSRef& block_sref, const StmtSRef& scope_sref) {
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
   ICHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
                            << block_sref->stmt->GetTypeKey();
-  const auto* scope = scope_sref->GetStmt<BlockNode>();
+  const auto* scope = scope_sref->StmtAs<BlockNode>();
   ICHECK(scope != nullptr) << "TypeError: Expect a block, but gets: "
                            << scope_sref->stmt->GetTypeKey();
   for (const BufferRegion& x : block->writes) {
@@ -311,7 +311,7 @@ class CacheLocDetector : public StmtVisitor {
       info->loc_pos = detector.loc_pos_;
     } else {
       info->loc_sref = scope_sref;
-      const auto* body = scope_sref->GetStmt<BlockNode>()->body.as<SeqStmtNode>();
+      const auto* body = scope_sref->StmtAs<BlockNode>()->body.as<SeqStmtNode>();
       info->loc_pos = body == nullptr ? 1 : body->size();
     }
   }
@@ -535,7 +535,7 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& _block_sref, int i,
    */
   Buffer read_buffer{nullptr};
   {
-    const auto* block = _block_sref->GetStmt<BlockNode>();
+    const auto* block = _block_sref->StmtAs<BlockNode>();
     CHECK(block) << "ValueError: `cache_read` expects a block as the first argument";
     CHECK_LT(i, block->reads.size()) << "ValueError: index out of range";
     read_buffer = block->reads[i]->buffer;
@@ -586,7 +586,7 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
    *   - find the lowest ancestor of the block and ANY ONE of the producer blocks.
    *   - Copy the buffer with the necessary region.
    */
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
   CHECK(block) << "ValueError: `cache_write` expects a block as the first argument";
   CHECK_LT(i, block->writes.size()) << "ValueError: index out of range";
   Buffer write_buffer = block->writes[i]->buffer;

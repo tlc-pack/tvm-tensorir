@@ -36,7 +36,7 @@ namespace tir {
  * \brief An object that refers to schedulable elements (block/for-loop) in TensorIR, aka "sref".
  *
  * Glossary
- * - Block sref: An StmtSref that points to a TensorIR block.
+ * - Block sref: An StmtSRef that points to a TensorIR block.
  * - Loop sref: An StmtSRef that points to a TensorIR for loop.
  * - Parent sref: The parent sref of an sref is the block/loop sref that points to its closest
  * schedulable statement.
@@ -89,7 +89,7 @@ class StmtSRefNode : public Object {
    * \return nullptr if type check fails, otherwise the casted result for `this->stmt`
    */
   template <typename StmtType>
-  const StmtType* GetStmt() const {  // TODO
+  const StmtType* StmtAs() const {
     if (stmt != nullptr && stmt->IsInstance<StmtType>()) {
       return static_cast<const StmtType*>(stmt);
     } else {

@@ -78,7 +78,7 @@ class BlockRealizeRewriter : public StmtExprMutator {
 Stmt RewriteBindings(const Stmt& stmt, const Array<StmtSRef>& loops) {
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map;
   for (const auto& sref : loops) {
-    const auto* loop = sref->GetStmt<ForNode>();
+    const auto* loop = sref->StmtAs<ForNode>();
     loop_map[loop->loop_var] = Range::FromMinExtent(loop->min, loop->extent);
   }
   BlockRealizeRewriter rewriter(loop_map);
@@ -89,7 +89,7 @@ std::vector<const StmtSRefNode*> GetLoopsPostOrder(const ScheduleState self,
                                                    const StmtSRef& root_sref) {
   std::vector<const StmtSRefNode*> loops;
   // Gather all the loops under parent_block
-  PreOrderVisit(root_sref->GetStmt<BlockNode>()->body, [&loops, self](const ObjectRef& node) {
+  PreOrderVisit(root_sref->StmtAs<BlockNode>()->body, [&loops, self](const ObjectRef& node) {
     // Stops at a new BlockNode
     if (node->IsInstance<BlockNode>()) {
       return false;
@@ -111,7 +111,7 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimE
   // - The total repeat number has not changed for each direct child block with updating predicate.
   // - The execution order has not changed. (The block executes with the same args and the same
   // order with before.
-  const auto* loop = loop_sref->GetStmt<ForNode>();
+  const auto* loop = loop_sref->StmtAs<ForNode>();
   CHECK(loop != nullptr) << "TypeError: 'split' expects a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
   // Currently, can not split Loops with annotations
@@ -160,8 +160,8 @@ StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef& in
   // Can only fuse neighbor loop without any extra branches.
   // Future enhancement: this condition can be eliminated by lifting all siblings of inner
   // as the children of the father of outer
-  const auto* outer = outer_sref->GetStmt<ForNode>();
-  const auto* inner = inner_sref->GetStmt<ForNode>();
+  const auto* outer = outer_sref->StmtAs<ForNode>();
+  const auto* inner = inner_sref->StmtAs<ForNode>();
   CHECK(outer != nullptr) << "TypeError: 'fuse' expects 'outer' as a loop, but get type: "
                           << outer_sref->stmt->GetTypeKey();
   CHECK(inner != nullptr) << "TypeError: 'fuse' expects 'inner' as a loop, but get type: "
@@ -218,7 +218,7 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& order) {
   std::unordered_set<const StmtSRefNode*> loops;
   for (const StmtSRef& loop_sref : order) {
     // type check
-    const auto* loop = loop_sref->GetStmt<ForNode>();
+    const auto* loop = loop_sref->StmtAs<ForNode>();
     CHECK(loop) << "TypeError: 'reorder' expects an array of loops, but get type: "
                 << loop_sref->stmt->GetTypeKey();
     // uniqueness check
@@ -269,7 +269,7 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& order) {
       << "ValueError: 'reorder' expects loops to be under the same block scope";
   // Check 4. Loops are single-branch
   const BlockNode* block = nullptr;
-  for (const StmtSRefNode* loop = top; !(block = loop->GetStmt<BlockNode>());) {
+  for (const StmtSRefNode* loop = top; !(block = loop->StmtAs<BlockNode>());) {
     Array<Stmt> children = GetChildren(GetRef<Stmt>(loop->stmt));
     CHECK_EQ(children.size(), 1) << "ValueError: 'reorder' expects the loops to be single-branch";
     loop = self->stmt2ref.at(children[0].get()).operator->();
@@ -286,11 +286,11 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& order) {
                                                         int index) -> Stmt {
     // The order list maybe incomplete, so we may copy the old_loop rather than order
     const ForNode* copy =
-        loops.count(loop) ? order[index++]->GetStmt<ForNode>() : loop->GetStmt<ForNode>();
+        loops.count(loop) ? order[index++]->StmtAs<ForNode>() : loop->StmtAs<ForNode>();
     ObjectPtr<ForNode> n = make_object<ForNode>(*copy);
     if (loop == bottom) {
       // bottom loop
-      n->body = loop->GetStmt<ForNode>()->body;
+      n->body = loop->StmtAs<ForNode>()->body;
     } else {
       // reorder recursively
       n->body = f_reorder(successor.at(loop), index);

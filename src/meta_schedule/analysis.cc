@@ -447,7 +447,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
   std::unordered_set<const tir::VarNode*> block_loop_vars;
   {
     for (const tir::StmtSRefNode* loop_sref = block_sref->parent;; loop_sref = loop_sref->parent) {
-      const auto* loop = loop_sref->GetStmt<tir::ForNode>();
+      const auto* loop = loop_sref->StmtAs<tir::ForNode>();
       if (loop == nullptr || loop->body->IsInstance<tir::SeqStmtNode>()) {
         break;
       }
