@@ -778,7 +778,6 @@ void ComputeInline(ScheduleState self, const StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<BlockNode>();
   const StmtSRef& scope_block_sref = GetScopeRoot(block_sref);
   const auto* scope_block = scope_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->GetBlockScope(scope_block_sref);
   CHECK(block->body.as<BufferStoreNode>())
       << "ValueError: 'compute_inline' can only inline single assignment statement";
   CHECK_EQ(block->writes.size(), 1)
