@@ -40,6 +40,7 @@
 #include "./primitive.h"
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/arith/int_set.h>
 #include <tvm/arith/iter_affine_map.h>
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/op.h>
@@ -55,6 +56,7 @@
 #include <vector>
 
 #include "./analysis.h"
+#include "./transform.h"
 
 namespace tvm {
 namespace tir {
@@ -597,6 +599,46 @@ static DefaultReducer default_reducers[4] = {
     DefaultReducer([](const Var& x, const Var& y) { return max(x, y); }, min_value)};
 
 }  // namespace default_reducer
+
+/**************** String ****************/
+
+/*!
+ * \brief Find all positions that the specific char occurs in the string
+ * \param str The string to be examined
+ * \param c The specific char
+ * \return A list of integers indicating the occurrence position
+ */
+inline std::vector<int> FindCharPos(const String& str, char c) {
+  std::vector<int> result;
+  const char* data = str.data();
+  int n = str.length();
+  for (int i = 0; i < n; ++i) {
+    if (data[i] == c) {
+      result.push_back(i);
+    }
+  }
+  return result;
+}
+
+inline bool StartsWith(const String& str, const String& prefix) {
+  int n = prefix.size();
+  if (static_cast<int>(str.size()) < n) {
+    return false;
+  }
+  const char* data = str.data();
+  return std::equal(data, data + n, prefix.data());
+}
+
+inline bool StartsWith(const String& str, const char* prefix) {
+  int n = strlen(prefix);
+  if (static_cast<int>(str.size()) < n) {
+    return false;
+  }
+  const char* data = str.data();
+  return std::equal(data, data + n, prefix);
+}
+
+/**************** Loop extents ****************/
 
 inline int64_t GetLoopIntExtent(const ForNode* loop) {
   const auto* int_extent = loop->extent.as<IntImmNode>();
