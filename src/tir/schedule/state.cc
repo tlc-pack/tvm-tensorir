@@ -180,7 +180,6 @@ class StateCreator : private StmtVisitor {
         break;
       }
     }
-    // TODO: affine
     bool affine_binding =
         ValidateBlockBinding(GetRef<BlockRealize>(realizes_.back()), loop_var_ranges);
     return BlockInfo(std::move(scope), affine_binding);
@@ -476,7 +475,9 @@ class SRefUpdater : public StmtVisitor {
     parents_.pop_back();
     // Additionally, need to update the scope because the block is changed
     // TODO: affine
-    self_->block_info[sref] = BlockInfo(BlockScope(tir::GetChildBlocks(self_, sref)));
+    BlockScope scope = BlockScope(tir::GetChildBlocks(self_, sref));
+    bool affine_binding = true;
+    self_->block_info[sref] = BlockInfo(std::move(scope), affine_binding);
   }
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
@@ -807,13 +808,21 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
   return true;
 }
 
-BlockScope ScheduleStateNode::GetBlockScope(const StmtSRef& block_sref) const {
+BlockInfo ScheduleStateNode::GetBlockInfo(const StmtSRef& block_sref) const {
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   auto it = this->block_info.find(block_sref);
   CHECK(it != this->block_info.end())
       << "IndexError: Cannot find the corresponding BlockScope to the block sref:\n"
       << GetRef<Stmt>(block_sref->stmt);
-  return it->second.scope;
+  return it->second;
+}
+
+BlockScope ScheduleStateNode::GetBlockScope(const StmtSRef& block_sref) const {
+  return GetBlockInfo(block_sref).scope;
+}
+
+bool ScheduleStateNode::IsAffineBlockBinding(const StmtSRef& block_sref) const {
+  return GetBlockInfo(block_sref).affine_binding;
 }
 
 bool ScheduleStateNode::IsComplete(const StmtSRef& block_sref, const StmtSRef& scope_root) const {
@@ -844,10 +853,9 @@ bool ScheduleStateNode::IsComplete(const StmtSRef& block_sref, const StmtSRef& s
 bool ScheduleStateNode::IsReduction(const StmtSRef& block_sref, const StmtSRef& scope_root) const {
   BlockScope scope = GetBlockScope(scope_root);
   // Cond 3. Block binding is valid iter affine map
-  // TODO
-  // if (!block_sref->affine) {
-  //   return false;
-  // }
+  if (!this->IsAffineBlockBinding(block_sref)) {
+    return false;
+  }
   // Cond 4. Check whether the block body has the init statement.
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   if (!block->init.defined()) {
@@ -899,10 +907,9 @@ bool ScheduleStateNode::CanMergeReduction(const StmtSRef& init_block_sref,
   const auto* init = TVM_SREF_TO_BLOCK(init, init_block_sref);
   const auto* update = TVM_SREF_TO_BLOCK(update, update_block_sref);
   // Cond 1. Check the binding of update block is valid
-  // TODO:
-  // if (!update_block_sref->affine) {
-  //   return false;
-  // }
+  if (!this->IsAffineBlockBinding(update_block_sref)) {
+    return false;
+  }
   // Cond 2. Check init_block and update_block are the only two producers for their output buffer
   for (const BufferRegion& write_region : update->writes) {
     const Array<StmtSRef>& writers = scope->buffer_writers.at(write_region->buffer);

@@ -42,7 +42,7 @@ struct BlockInfo {
 
   BlockInfo() : scope{nullptr}, affine_binding(false) {}
 
-  explicit BlockInfo(BlockScope scope, bool affine_binding = false)
+  explicit BlockInfo(BlockScope scope, bool affine_binding)
       : scope(std::move(scope)),  //
         affine_binding(affine_binding) {}
 };
@@ -104,12 +104,20 @@ class ScheduleStateNode : public Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleStateNode, Object);
 
   /******** Property of blocks ********/
+  /*! \brief Returns the BlockInfo correpsonding to the block sref */
+  TVM_DLL BlockInfo GetBlockInfo(const StmtSRef& block_sref) const;
   /*!
    * \brief Get the BlockScope correpsonding to the block sref
    * \param block_sref The block sref to be retrieved
    * \return The corresponding BlockScope
    */
   TVM_DLL BlockScope GetBlockScope(const StmtSRef& block_sref) const;
+  /*!
+   * \brief Check a cached flag indicating if the correpsonding block has quasi-affine bindings
+   * \param block_sref The block sref to be checked
+   * \return A boolean flag indicating if the block has quasi-affine bindings
+   */
+  TVM_DLL bool IsAffineBlockBinding(const StmtSRef& block_sref) const;
   /*!
    * \brief Check whether the block is a complete block under the scope
    * \param block_sref The block to be checked

@@ -433,7 +433,8 @@ bool StmtExprContainsVar(const ObjectRef& obj, const PrimExpr& vars) {
 
 void UpdateScope(ScheduleState self, const StmtSRef& sref) {
   BlockScope scope(tir::GetChildBlocks(self, sref));
-  self->block_info[sref] = BlockInfo(std::move(scope));
+  bool affine_binding = true;
+  self->block_info[sref] = BlockInfo(std::move(scope), affine_binding);
 }
 
 void PatternMatcher::VisitExpr_(const VarNode* op) {
