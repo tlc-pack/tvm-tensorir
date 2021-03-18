@@ -25,11 +25,11 @@
 namespace tvm {
 namespace tir {
 
-Schedule Schedule::Concrete(PrimFunc func, int64_t seed, bool debug_mode) {
+Schedule Schedule::Concrete(PrimFunc func, int64_t seed, int debug_mode) {
   return Schedule::Concrete(IRModule({{GlobalVar("main"), func}}), seed, debug_mode);
 }
 
-Schedule Schedule::Concrete(IRModule mod, int64_t seed, bool debug_mode) {
+Schedule Schedule::Concrete(IRModule mod, int64_t seed, int debug_mode) {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
   n->symbol_table_ = {};
@@ -534,7 +534,7 @@ void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin
 
 TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);
 TVM_REGISTER_GLOBAL("tir.schedule.Schedule")
-    .set_body_typed([](ObjectRef obj, int64_t seed, bool debug_mode) -> Schedule {
+    .set_body_typed([](ObjectRef obj, int64_t seed, int debug_mode) -> Schedule {
       if (const auto* func = obj.as<PrimFuncNode>()) {
         return Schedule::Concrete(GetRef<PrimFunc>(func), seed, debug_mode);
       }

@@ -180,32 +180,6 @@ class SRefTreeVerifier : public StmtVisitor {
     ICHECK_EQ(n_block_sref_visited_, static_cast<int>(self_->block_info.size()));
   }
 
-  void CheckAffineBinding(const BlockRealizeNode* realize) const {
-    const auto* block = realize->block.get();
-    StmtSRef block_sref = self_->stmt2ref.at(block);
-    Map<Var, Range> loop_var_ranges;
-    for (StmtSRefNode* loop_sref = block_sref->parent; loop_sref != nullptr;
-         loop_sref = loop_sref->parent) {
-      if (const auto* loop = loop_sref->StmtAs<ForNode>()) {
-        loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
-      } else {
-        break;
-      }
-    }
-    bool affine_binding = ValidateBlockBinding(GetRef<BlockRealize>(realize), loop_var_ranges);
-    ICHECK_EQ(affine_binding, self_->IsAffineBlockBinding(block_sref))
-        << "Block: " << realize->block->name_hint << "\n"
-        << Repr(self_->mod) << "\n"
-        << loop_var_ranges;
-  }
-
-  void VisitStmt_(const BlockRealizeNode* realize) override {
-    StmtVisitor::VisitStmt_(realize);
-    if (init_block_depth_ == 0) {
-      CheckAffineBinding(realize);
-    }
-  }
-
   void VisitStmt_(const BlockNode* block) override {
     if (init_block_depth_) {
       ICHECK(!self_->stmt2ref.count(block)) << "InternalError: A block inside init block has its "
@@ -300,6 +274,47 @@ class SRefTreeVerifier : public StmtVisitor {
 };
 
 void VerifySRefTree(const ScheduleState& self) { SRefTreeVerifier::Verify(self.get()); }
+
+class BlockInfoVerifier : public StmtVisitor {
+ public:
+  static void Verify(const ScheduleStateNode* self) { BlockInfoVerifier(self).Verify(); }
+
+ private:
+  /*! \brief Constructor */
+  explicit BlockInfoVerifier(const ScheduleStateNode* self) : self_(self) {}
+
+  void Verify() {
+    VisitPrimFuncs(self_->mod, [this](const PrimFuncNode* func) { this->VisitStmt(func->body); });
+  }
+
+  void CheckAffineBinding(const BlockRealizeNode* realize) const {
+    const auto* block = realize->block.get();
+    StmtSRef block_sref = self_->stmt2ref.at(block);
+    Map<Var, Range> loop_var_ranges;
+    for (StmtSRefNode* loop_sref = block_sref->parent; loop_sref != nullptr;
+         loop_sref = loop_sref->parent) {
+      if (const auto* loop = loop_sref->StmtAs<ForNode>()) {
+        loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      } else {
+        break;
+      }
+    }
+    bool affine_binding = ValidateBlockBinding(GetRef<BlockRealize>(realize), loop_var_ranges);
+    ICHECK_EQ(affine_binding, self_->IsAffineBlockBinding(block_sref))
+        << "Block: " << realize->block->name_hint << "\n"
+        << Repr(self_->mod) << "\n"
+        << loop_var_ranges;
+  }
+
+  void VisitStmt_(const BlockRealizeNode* realize) override {
+    this->VisitStmt(realize->block->body);
+    CheckAffineBinding(realize);
+  }
+  /*! \brief The schedule it belongs to */
+  const ScheduleStateNode* self_;
+};
+
+void VerifyBlockInfo(const ScheduleState& self) { BlockInfoVerifier::Verify(self.get()); }
 
 StmtSRef GetScopeRoot(const StmtSRef& sref) {
   for (const StmtSRefNode* p = sref->parent; p != nullptr; p = p->parent) {

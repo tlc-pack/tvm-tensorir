@@ -115,7 +115,7 @@ class StateCreator : private StmtVisitor {
    * \brief The entry function
    * \param self The schedule state to be completed
    */
-  static ObjectPtr<ScheduleStateNode> Create(IRModule mod, bool debug_mode) {
+  static ObjectPtr<ScheduleStateNode> Create(IRModule mod, int debug_mode) {
     ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
     ScheduleStateNode* self = n.get();
     // Set `n->mod`
@@ -225,11 +225,11 @@ class StateCreator : private StmtVisitor {
 
 /**************** Constructor ****************/
 
-ScheduleState::ScheduleState(IRModule mod, bool debug_mode) {
+ScheduleState::ScheduleState(IRModule mod, int debug_mode) {
   data_ = StateCreator::Create(mod, debug_mode);
 }
 
-ScheduleState::ScheduleState(PrimFunc func, bool debug_mode)
+ScheduleState::ScheduleState(PrimFunc func, int debug_mode)
     : ScheduleState(IRModule({{GlobalVar("main"), func}}), debug_mode) {}
 
 /**************** Replace ****************/
@@ -466,6 +466,7 @@ class SRefUpdater : public StmtVisitor {
       sref->Reset(op, parents_.back(),
                   /*seq_index=*/-1);  // `seq_index` will be set properly in SetSeqIndex
     } else {
+      // A new block without reuse
       sref = StmtSRef(op, parents_.back(),
                       /*seq_index=*/-1);  // `seq_index` will be set properly in SetSeqIndex
     }
@@ -474,10 +475,10 @@ class SRefUpdater : public StmtVisitor {
     VisitStmt(op->body);
     parents_.pop_back();
     // Additionally, need to update the scope because the block is changed
-    // TODO: affine
-    BlockScope scope = BlockScope(tir::GetChildBlocks(self_, sref));
-    bool affine_binding = true;
-    self_->block_info[sref] = BlockInfo(std::move(scope), affine_binding);
+    self_->block_info[sref] = BlockInfo(/*scope=*/BlockScope(tir::GetChildBlocks(self_, sref)),
+                                        // We assume the binding is not affine - if it is, the
+                                        // caller needs to explicitly modify the flag
+                                        /*affine_binding=*/true);  // TODO
   }
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
@@ -752,8 +753,11 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     new_map->at(g_var) = std::move(ref_new_func);
     this->mod = GetRef<IRModule>(new_mod);
   }
-  if (this->debug_mode) {
+  if (this->debug_mode & 1) {
     VerifySRefTree(GetRef<ScheduleState>(this));
+  }
+  if (this->debug_mode & 2) {
+    // VerifyBlockInfo(GetRef<ScheduleState>(this));
   }
 }
 
@@ -940,17 +944,16 @@ bool ScheduleStateNode::CanMergeReduction(const StmtSRef& init_block_sref,
 /**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(ScheduleStateNode);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleState")
-    .set_body_typed([](ObjectRef obj, bool debug_mode) {
-      if (const auto* func = obj.as<PrimFuncNode>()) {
-        return ScheduleState(GetRef<PrimFunc>(func), debug_mode);
-      }
-      if (const auto* mod = obj.as<IRModuleNode>()) {
-        return ScheduleState(GetRef<IRModule>(mod), debug_mode);
-      }
-      LOG(FATAL) << "TypeError: Expects `IRModule` or `PrimFunc`, but gets: " << obj->GetTypeKey();
-      throw;
-    });
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleState").set_body_typed([](ObjectRef obj, int debug_mode) {
+  if (const auto* func = obj.as<PrimFuncNode>()) {
+    return ScheduleState(GetRef<PrimFunc>(func), debug_mode);
+  }
+  if (const auto* mod = obj.as<IRModuleNode>()) {
+    return ScheduleState(GetRef<IRModule>(mod), debug_mode);
+  }
+  LOG(FATAL) << "TypeError: Expects `IRModule` or `PrimFunc`, but gets: " << obj->GetTypeKey();
+  throw;
+});
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetBlockScope")
     .set_body_method<ScheduleState>(&ScheduleStateNode::GetBlockScope);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateReplace")

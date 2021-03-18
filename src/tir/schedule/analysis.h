@@ -56,6 +56,12 @@ bool ContainsVar(const ObjectRef& stmt_or_expr, const std::unordered_set<const V
  */
 void VerifySRefTree(const ScheduleState& self);
 /*!
+ * \brief Verify the correctness of the flags cached in BlockInfo
+ * \param self The schedule state to be verified
+ * \note An exception will be thrown out if the info is not valid
+ */
+void VerifyBlockInfo(const ScheduleState& self);
+/*!
  * \brief Check the region cover for the single consumer block
  */
 void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block_sref);

@@ -43,23 +43,33 @@ class ScheduleState(Object):
     ----------
     mod : IRModule
         The AST of the module being scheduled
-    debug_mode : bool
+    debug_mode : int
         In debug mode, we do extra correctness checking after each replacement
     """
 
     mod: IRModule
-    debug_mode: bool
+    debug_mode: int
 
-    def __init__(self, func_or_mod: Union[PrimFunc, IRModule], debug_mode: bool = False):
+    def __init__(
+        self,
+        func_or_mod: Union[PrimFunc, IRModule],
+        debug_mode: Union[bool, int] = False,
+    ):
         """Construct a schedule state from an IRModule or a PrimFunc
 
         Parameters
         ----------
         func_or_mod : Union[PrimFunc, IRModule]
             The IRModule or PrimFunc to be scheduled
-        debug_mode : bool
+        debug_mode : Union[bool, int]
             When turned on, additional checks will be performed after each mutation
         """
+        if isinstance(debug_mode, bool):
+            if debug_mode:
+                debug_mode = 3
+            else:
+                debug_mode = 0
+        assert isinstance(debug_mode, int)
         self.__init_handle_by_constructor__(
             _ffi_api_schedule.ScheduleState,  # pylint: disable=no-member
             func_or_mod,

@@ -51,7 +51,17 @@ RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
 class Schedule(Object):
     """The schedule node for TIR"""
 
-    def __init__(self, func_or_mod: Union[PrimFunc, IRModule], debug_mode: bool = False):
+    def __init__(
+        self,
+        func_or_mod: Union[PrimFunc, IRModule],
+        debug_mode: Union[bool, int] = False,
+    ):
+        if isinstance(debug_mode, bool):
+            if debug_mode:
+                debug_mode = 3
+            else:
+                debug_mode = 0
+        assert isinstance(debug_mode, int)
         self.__init_handle_by_constructor__(
             _ffi_api_schedule.Schedule,  # pylint: disable=no-member
             func_or_mod,

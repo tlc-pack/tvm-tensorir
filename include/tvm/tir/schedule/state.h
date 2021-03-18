@@ -69,8 +69,12 @@ class ScheduleStateNode : public Object {
   std::unordered_map<StmtSRef, BlockInfo, ObjectPtrHash, ObjectPtrEqual> block_info;
   /*! \brief The reverse mapping from block/for-loop to their corresponding srefs */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
-  /*! \brief In debug mode, we do extra correctness checking after each replacement */
-  bool debug_mode;
+  /*!
+   * \brief In debug mode, we do extra correctness checking after each replacement.
+   * 1) If `debug_mode & 1`: verify the sref tree
+   * 2) If `debug_mode & 2`: verify the affine_binding in block info
+   */
+  int debug_mode;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("mod", &mod);
@@ -166,14 +170,14 @@ class ScheduleState : public ObjectRef {
    * \param mod The IRModule to be scheduled
    * \param debug_mode When turned on, additional checks will be performed after each mutation
    */
-  TVM_DLL explicit ScheduleState(IRModule mod, bool debug_mode = false);
+  TVM_DLL explicit ScheduleState(IRModule mod, int debug_mode = 0);
   /*!
    * \brief Construct a schedule state from a PrimFunc
    * \param func The PrimFunc to be scheduled. A new IRModule will be created with
    * this specific PrimFunc as "main" as the module to be scheduled
    * \param debug_mode When turned on, additional checks will be performed after each mutation
    */
-  TVM_DLL explicit ScheduleState(PrimFunc func, bool debug_mode = false);
+  TVM_DLL explicit ScheduleState(PrimFunc func, int debug_mode = 0);
 
   ScheduleStateNode* get() { return static_cast<ScheduleStateNode*>(data_.get()); }
 
