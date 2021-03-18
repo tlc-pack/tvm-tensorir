@@ -55,6 +55,9 @@ bool ContainsVar(const ObjectRef& stmt_or_expr, const std::unordered_set<const V
 }
 
 bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& loop_var_ranges) {
+  if (loop_var_ranges.empty()) {
+    return true;
+  }
   arith::Analyzer analyzer;
   Array<arith::IterSumExpr> results = arith::DetectIterMap(
       /*leaf_iters=*/realize->block->iter_vars,
@@ -175,6 +178,32 @@ class SRefTreeVerifier : public StmtVisitor {
              "is not the same object as itself";
     }
     ICHECK_EQ(n_block_sref_visited_, static_cast<int>(self_->block_info.size()));
+  }
+
+  void CheckAffineBinding(const BlockRealizeNode* realize) const {
+    const auto* block = realize->block.get();
+    StmtSRef block_sref = self_->stmt2ref.at(block);
+    Map<Var, Range> loop_var_ranges;
+    for (StmtSRefNode* loop_sref = block_sref->parent; loop_sref != nullptr;
+         loop_sref = loop_sref->parent) {
+      if (const auto* loop = loop_sref->StmtAs<ForNode>()) {
+        loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      } else {
+        break;
+      }
+    }
+    bool affine_binding = ValidateBlockBinding(GetRef<BlockRealize>(realize), loop_var_ranges);
+    ICHECK_EQ(affine_binding, self_->IsAffineBlockBinding(block_sref))
+        << "Block: " << realize->block->name_hint << "\n"
+        << Repr(self_->mod) << "\n"
+        << loop_var_ranges;
+  }
+
+  void VisitStmt_(const BlockRealizeNode* realize) override {
+    StmtVisitor::VisitStmt_(realize);
+    if (init_block_depth_ == 0) {
+      CheckAffineBinding(realize);
+    }
   }
 
   void VisitStmt_(const BlockNode* block) override {

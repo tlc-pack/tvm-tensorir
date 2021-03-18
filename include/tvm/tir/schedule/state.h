@@ -36,11 +36,11 @@ class PrimFunc;
 
 struct BlockInfo {
   /*! \brief Dependency in the scope rooted by the block */
-  BlockScope scope;
+  BlockScope scope{nullptr};
   /*! \brief Indicates if the block binding is quasi-affine */
-  bool affine_binding;
+  bool affine_binding{false};
 
-  BlockInfo() : scope{nullptr}, affine_binding(false) {}
+  BlockInfo() = default;
 
   explicit BlockInfo(BlockScope scope, bool affine_binding)
       : scope(std::move(scope)),  //
