@@ -136,6 +136,7 @@ class IterMark : public ObjectRef {
   TVM_DLL IterMark(PrimExpr source, PrimExpr extent);
 
   TVM_DEFINE_OBJECT_REF_METHODS(IterMark, ObjectRef, IterMarkNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(IterMarkNode);
 };
 
 /*!
@@ -272,13 +273,41 @@ class IterSumExpr : public IterMapExpr {
  *
  * \param indices The indices to detect pattern for.
  * \param input_iters Map from variable to iterator's range.
+ * \param input_pred The boolean predicate that input_iters must satisfy
+ * \param is_bijective A boolean flag that indicates whether the indices are bijective
  * \param analyzer Analyzer used to get context information.
  *
  * \return The detected pattern if a match exists,
  *         otherwise return an empty array.
  */
 Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
+                                 const PrimExpr& input_pred, bool is_bijective,
                                  arith::Analyzer* analyzer);
+
+/*!
+ * \brief Detect if bindings can be written as
+ *
+ * [a_0*e_0 + b_0 + c_0, a_1*e_1 + b_1, ..., a_n*e_n + b_n]
+ *
+ * where a = some-quasi-affine-iter-map(root_iters set_minus sub_iters)
+ *       b = some-quasi-affine-iter-map(sub_iters)
+ *       c is constant symbols
+ *       e is the extent of b
+ *
+ * \param bindings The bindings to detect pattern for.
+ * \param root_iters Map from variable to iterator's range.
+ * \param sub_iters Iterators of subspace
+ * \param predicate The predicate for input_inters
+ * \param is_bijective A boolean flag that indicates whether the bindings are bijective
+ * \param analyzer Analyzer used to get context information.
+ *
+ * \return The detected a and b if a match exists,
+ *         otherwise return an empty array.
+ */
+Array<Array<IterMark>> SubspaceDivision(const Array<PrimExpr>& bindings,
+                                        const Map<Var, Range>& root_iters,
+                                        const Array<Var>& sub_iters, const PrimExpr& predicate,
+                                        bool is_bijective, arith::Analyzer* analyzer);
 
 }  // namespace arith
 }  // namespace tvm

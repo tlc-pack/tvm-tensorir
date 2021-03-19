@@ -546,7 +546,7 @@ class ArrayNode : public Object, public InplaceArrayBase<ArrayNode, ObjectRef> {
 };
 
 /*!
- * \brief Array, container representing a contigious sequence of ObjectRefs.
+ * \brief Array, container representing a contagious sequence of ObjectRefs.
  *
  *  Array implements in-place copy-on-write semantics.
  *
