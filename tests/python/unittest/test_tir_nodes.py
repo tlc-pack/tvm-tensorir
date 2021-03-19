@@ -452,7 +452,7 @@ def test_block_blockrealize():
     assert output.find("writes") != -1
     assert output.find("alloc_buffer") != -1
     assert output.find("match_buffer_region") != -1
-    assert output.find("annotations") != -1
+    assert output.find("attr") != -1
     assert output.find("with init()") != -1
 
 

@@ -521,8 +521,48 @@ Doc TIRTextPrinter::VisitStmt_(const BlockRealizeNode* op) {
   const auto* block_op = op->block.as<BlockNode>();
   // print block name and block vars
   Doc doc;
-  doc << "block " << block_op->name_hint;
-  doc << " (" << Print(block_op->iter_vars) << ") {";
+  doc << "block([";
+  std::vector<Doc> block_var_docs;
+  for (const auto& iter_var : block_op->iter_vars) {
+    Doc block_var_doc;
+    if (is_zero(iter_var->dom->min) && iter_var->iter_type == kDataPar) {
+      block_var_doc << Print(iter_var->dom->extent);
+    } else {
+      block_var_doc << "tir.";
+      switch (iter_var->iter_type) {
+        case kDataPar:
+          block_var_doc << "range";
+          break;
+        case kCommReduce:
+          block_var_doc << "reduce_axis";
+          break;
+        case kOrdered:
+          block_var_doc << "scan_axis";
+          break;
+        case kOpaque:
+          block_var_doc << "opaque_axis";
+          break;
+        default:
+          LOG(FATAL) << "Unknown block var iter type";
+          break;
+      }
+      block_var_doc << "(" << Print(iter_var->dom->min) << ", "
+                    << Print(iter_var->dom->min + iter_var->dom->extent) << ")";
+    }
+    block_var_docs.push_back(block_var_doc);
+  }
+  doc << PrintSep(block_var_docs, Doc::Text(", ")) << "], ";
+  doc << Doc::StrLiteral(block_op->name_hint) << ")";
+  std::vector<Doc> block_var_names;
+  for (const auto& iter_var : block_op->iter_vars) {
+    Doc block_var_name;
+    AllocVar(iter_var->var);
+    block_var_names.push_back(Print(iter_var->var));
+  }
+  if (!block_var_names.empty()) {
+    doc << " as [" << PrintSep(block_var_names, Doc::Text(", ")) << "]";
+  }
+  doc << " {";
   Doc block_attr_doc;
   // print predicate, binding, read/write tensor region, annotations
   if (!is_one(op->predicate)) {
@@ -531,26 +571,26 @@ Doc TIRTextPrinter::VisitStmt_(const BlockRealizeNode* op) {
   for (size_t i = 0; i < block_op->iter_vars.size(); ++i)
     block_attr_doc << Doc::NewLine() << "bind(" << Print(block_op->iter_vars[i]->var) << ", "
                    << Print(op->iter_values[i]) << ")";
-  block_attr_doc << Doc::NewLine() << "reads(" << Print(block_op->reads) << ")";
-  block_attr_doc << Doc::NewLine() << "writes(" << Print(block_op->writes) << ")";
+  block_attr_doc << Doc::NewLine() << "tir.reads(" << Print(block_op->reads) << ")";
+  block_attr_doc << Doc::NewLine() << "tir.writes(" << Print(block_op->writes) << ")";
   if (!block_op->annotations.empty()) {
     std::vector<Doc> attr_docs;
     for (const auto& it : block_op->annotations) {
       attr_docs.push_back(Doc::StrLiteral(it.first) << ": " << Print(it.second));
     }
-    block_attr_doc << Doc::NewLine() << "annotations({" << PrintSep(attr_docs, Doc::Text(", "))
+    block_attr_doc << Doc::NewLine() << "tir.attrs({" << PrintSep(attr_docs, Doc::Text(", "))
                    << "})";
   }
   // print body
   Doc body;
   body << Doc::NewLine();
   for (const auto& alloc_buf : block_op->alloc_buffers) {
-    body << Print(alloc_buf) << " = alloc_buffer(" << PrintDType(alloc_buf->dtype) << "["
-         << Print(alloc_buf->shape) << "])" << Doc::NewLine();
+    body << AllocBuf(alloc_buf) << " = alloc_buffer(" << PrintDType(alloc_buf->dtype)
+         << Print(alloc_buf->shape) << ")" << Doc::NewLine();
   }
   for (const auto& match_buf : block_op->match_buffers) {
-    body << Print(match_buf->buffer) << " = match_buffer_region(" << Print(match_buf->source) << ")"
-         << Doc::NewLine();
+    body << AllocBuf(match_buf->buffer) << " = match_buffer_region(" << Print(match_buf->source)
+         << ")" << Doc::NewLine();
   }
   if (block_op->init.defined()) {
     Doc init_block;
