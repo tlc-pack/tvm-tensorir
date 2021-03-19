@@ -104,6 +104,9 @@ class ScheduleStateNode : public Object {
   TVM_DLL void Replace(const tir::StmtSRef& src_sref, const Stmt& tgt_stmt,
                        const Map<Block, Block>& block_sref_reuse);
 
+  /*! \brief Trigger the verification depending on `debug_mode` */
+  TVM_DLL void Verify() const;
+
   static constexpr const char* _type_key = "tir.ScheduleState";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleStateNode, Object);
 

@@ -28,7 +28,7 @@ import util
 def replace_ir_builder(deep_copy=False, realize=False):
     func = util.element_wise_stmt()
     new_func = tvm.script.from_source(tvm.script.asscript(func))
-    s = tir.ScheduleState(new_func, debug_mode=True)
+    s = tir.ScheduleState(new_func, debug_mode=1)
     # The target stmt
     target = tvm.tir.Block([], [], [], [], {}, [], "", "target", s.mod["main"].body.block.body[1])
     if realize:
@@ -47,7 +47,7 @@ def replace_ir_builder_module(deep_copy=False, realize=False):
     new_func = tvm.script.from_source(tvm.script.asscript(func))
     other_func = tvm.script.from_source(tvm.script.asscript(func))
     mod = IRModule(functions={"main": new_func, "other": other_func})
-    s = tir.ScheduleState(mod, debug_mode=True)
+    s = tir.ScheduleState(mod, debug_mode=1)
     # The target stmt
     target = tvm.tir.Block([], [], [], [], {}, [], "", "target", s.mod["main"].body.block.body[1])
     if realize:
@@ -64,7 +64,7 @@ def replace_ir_builder_module(deep_copy=False, realize=False):
 def replace_ir_builder_with_opaque():
     pass  # TODO
     # func = tvm.script.from_source(tvm.script.asscript(util.block_in_opaque_block))
-    # s = tir.Schedule(func, debug_mode=True)
+    # s = tir.Schedule(func, debug_mode=1)
     # gc.collect()
     # return s
 
@@ -238,7 +238,7 @@ def test_replace_root_copy3():
 
 def test_replace_block_remap():
     func = util.element_wise_stmt()
-    s = tir.Schedule(func, debug_mode=True)
+    s = tir.Schedule(func, debug_mode=1)
     # The target stmt
     target = util.matmul_stmt_original().body.block.body.body.body[0].block
     sref = s.get_sref(s.mod["main"].body.block.body[0].body.body.block)

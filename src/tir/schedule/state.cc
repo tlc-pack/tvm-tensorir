@@ -478,7 +478,7 @@ class SRefUpdater : public StmtVisitor {
     self_->block_info[sref] = BlockInfo(/*scope=*/BlockScope(tir::GetChildBlocks(self_, sref)),
                                         // We assume the binding is not affine - if it is, the
                                         // caller needs to explicitly modify the flag
-                                        /*affine_binding=*/true);  // TODO
+                                        /*affine_binding=*/false);
   }
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
@@ -756,8 +756,14 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   if (this->debug_mode & 1) {
     VerifySRefTree(GetRef<ScheduleState>(this));
   }
+}
+
+void ScheduleStateNode::Verify() const {
+  if (this->debug_mode & 1) {
+    VerifySRefTree(GetRef<ScheduleState>(this));
+  }
   if (this->debug_mode & 2) {
-    // VerifyBlockInfo(GetRef<ScheduleState>(this));
+    VerifyBlockInfo(GetRef<ScheduleState>(this));
   }
 }
 
