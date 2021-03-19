@@ -369,7 +369,7 @@ class BufferAllocator : public StmtExprMutator {
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
       IterVar block_var = block->iter_vars[i];
       PrimExpr v = this->VisitExpr(realize->iter_values[i]);
-      var_substitutes_.emplace(block_var->var, v);
+      var_substitutes_[block_var->var] = v;
       if (block_var->iter_type == kCommReduce) {
         for (const Var& var : UndefinedVars(v)) {
           this->reduction_loop_vars_.insert(var);
@@ -585,7 +585,7 @@ class Flattener : public StmtExprMutator {
     for (const auto& annotation : op->annotations) {
       const String& ann_key = annotation.first;
       const ObjectRef& ann_value = annotation.second;
-      if (attr::IsPragmaKey(ann_key)) {
+      if (attr::IsPragmaKey(ann_key) || ann_key == attr::pipeline_scope) {
         body = AttrStmt(op->loop_var, ann_key, Downcast<PrimExpr>(ann_value), body);
       }
     }
@@ -617,7 +617,7 @@ class Flattener : public StmtExprMutator {
     return StmtExprMutator::VisitExpr_(op);
   }
 
-  static Stmt MakeAllocStmt(const Buffer& buffer, Stmt body, bool is_double_buffer) {
+  Stmt MakeAllocStmt(const Buffer& buffer, Stmt body, bool is_double_buffer) {
     if (IsReduceTempBuffer(buffer)) {
       return body;
     }
@@ -625,7 +625,7 @@ class Flattener : public StmtExprMutator {
     if (storage_scope.empty()) {
       storage_scope = "global";
     }
-    PrimExpr area = BufferArea(buffer);
+    PrimExpr area = analyzer_.Simplify(BufferArea(buffer));
     body = Allocate(buffer->data, buffer->dtype, {area}, const_true(), body);
     body = AttrStmt(buffer->data, attr::storage_scope, StringImm(storage_scope), body);
     if (is_double_buffer) {
@@ -656,6 +656,7 @@ class Flattener : public StmtExprMutator {
   }
 
   SSet<Buffer> double_buffered_;
+  arith::Analyzer analyzer_;
 };
 
 PrimFunc BufferFlatten(PrimFunc f) {

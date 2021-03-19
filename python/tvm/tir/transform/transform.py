@@ -755,3 +755,14 @@ def FlattenBuffer():
         The result pass
     """
     return _ffi_api.FlattenBuffer()
+
+
+def InjectSoftwarePipeline():
+    """Transform annotated loops into pipelined one that parallelize producers and consumers
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.InjectSoftwarePipeline()

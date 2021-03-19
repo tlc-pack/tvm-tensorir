@@ -91,6 +91,10 @@ std::string CodeGenCUDA::Finish() {
     decl_stream << "#include <mma.h>\n";
   }
 
+  if (need_pipeline_h_) {
+    decl_stream << "#include <cuda/pipeline>\n";
+  }
+
   decl_stream << "\n#ifdef _WIN32\n";
   decl_stream << "  using uint = unsigned int;\n";
   decl_stream << "  using uchar = unsigned char;\n";
@@ -680,6 +684,33 @@ void CodeGenCUDA::VisitExpr_(const CallNode* op, std::ostream& os) {
       this->PrintExpr(op->args[i * 2 + 1], os);
       os << "]" << ((i < 3) ? ", " : ")");
     }
+  } else if (op->op.same_as(builtin::tvm_memcpy_async())) {
+    os << "cuda::memcpy_async(";
+    ICHECK_EQ(op->args.size(), 4U);
+    this->PrintExpr(op->args[0], os);
+    os << ", ";
+    this->PrintExpr(op->args[1], os);
+    os << ", ";
+    this->PrintExpr(op->args[2], os);
+    os << ", ";
+    this->PrintExpr(op->args[3], os);
+    os << ")";
+  } else if (op->op.same_as(builtin::tvm_pipeline_producer_acquire())) {
+    ICHECK_EQ(op->args.size(), 1U);
+    this->PrintExpr(op->args[0], os);
+    os << ".producer_acquire()";
+  } else if (op->op.same_as(builtin::tvm_pipeline_producer_commit())) {
+    ICHECK_EQ(op->args.size(), 1U);
+    this->PrintExpr(op->args[0], os);
+    os << ".producer_commit()";
+  } else if (op->op.same_as(builtin::tvm_pipeline_consumer_wait())) {
+    ICHECK_EQ(op->args.size(), 1U);
+    this->PrintExpr(op->args[0], os);
+    os << ".consumer_wait()";
+  } else if (op->op.same_as(builtin::tvm_pipeline_consumer_release())) {
+    ICHECK_EQ(op->args.size(), 1U);
+    this->PrintExpr(op->args[0], os);
+    os << ".consumer_release()";
   } else {
     CodeGenC::VisitExpr_(op, os);
   }
@@ -753,6 +784,20 @@ void CodeGenCUDA::VisitStmt_(const EvaluateNode* op) {
     stream << "  " << vid_global_barrier_expect_ << " = 0;\n";
     PrintIndent();
     stream << "}\n";
+  } else {
+    CodeGenC::VisitStmt_(op);
+  }
+}
+
+void CodeGenCUDA::VisitStmt_(const LetStmtNode* op) {
+  const CallNode* call = op->value.as<CallNode>();
+  if (call && call->op.same_as(builtin::tvm_create_pipeline())) {
+    need_pipeline_h_ = true;
+    PrintIndent();
+    stream << "cuda::pipeline<cuda::thread_scope_thread> ";
+    stream << AllocVarID(op->var.get());
+    stream << " = cuda::software_pipeline();\n";
+    VisitStmt(op->body);
   } else {
     CodeGenC::VisitStmt_(op);
   }
