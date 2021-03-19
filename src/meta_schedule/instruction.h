@@ -174,6 +174,34 @@ struct SamplePerfectTileAttrs : public InstAttrsNode {
                                       "SamplePerfectTile", true);
 };
 
+/*! \brief Attrs of the instruction to sample perfect tile factors */
+struct SampleTileFactorAttrs : public InstAttrsNode {
+  /*! \brief The number of loops after tiling */
+  int n;
+  /*! \brief The maximum factor in the innermost loop */
+  Array<Integer> where;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("n", &n);
+    v->Visit("where", &where);
+  }
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param n The number of loops after tiling
+   * \param loop The loop to be tiled
+   * \param max_innermost_factor The maximum factor in the innermost loop
+   * \param outputs Outputs of the instruction
+   * \return The instruction created
+   */
+  static Instruction Make(const LoopRV& loop, int n, Array<Integer> where,
+                          const Array<tir::Var>& outputs);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleTileFactorAttrs,
+                                      "meta_schedule.attrs.SampleTileFactorAttrs",
+                                      "SampleTileFactor", true);
+};
+
 /*! \brief Attrs of the instruction to sample from a categorical distribution */
 struct SampleCategoricalAttrs : public InstAttrsNode {
   /*! \brief The candidates */

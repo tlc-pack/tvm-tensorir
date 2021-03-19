@@ -34,6 +34,12 @@ TVM_DLL std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler*
                                                int max_innermost_factor,        //
                                                Optional<Array<Integer>>* decision);
 
+TVM_DLL std::vector<int64_t> SampleTileFactor(tir::ScheduleState self, Sampler* sampler,
+                                              const tir::StmtSRef& loop_sref,  //
+                                              int n,                    //
+                                              const Array<Integer>& where,     //
+                                              Optional<Array<Integer>>* decision);
+
 TVM_DLL int64_t SampleCategorical(tir::ScheduleState self, Sampler* sampler,  //
                                   const Array<Integer>& candidates,           //
                                   const Array<FloatImm>& probs,               //

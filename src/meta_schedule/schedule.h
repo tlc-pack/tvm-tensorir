@@ -85,6 +85,17 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
                                     int n,                     //
                                     int max_innermost_factor,  //
                                     Optional<Array<Integer>> decision = NullOpt) final;
+   /*!
+   * \brief Apply the instruction SampleTileFactor
+   * \param loop The loop to be tiled
+   * \param n The number of loops after tiling
+   * \param where The distribution of tile size to be sampled
+   * \return An array of random variables, the result of sampling
+   */
+  Array<tir::Var> SampleTileFactor(const LoopRV& loop,
+                                   int n,
+                                   const Array<Integer>& where,
+                                   Optional<Array<Integer>> decision = NullOpt) final;
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates

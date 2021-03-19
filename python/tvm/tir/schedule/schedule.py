@@ -121,6 +121,21 @@ class Schedule(Object):
             decision,
         )
 
+    def sample_tile_factor(
+        self,
+        loop: LoopRV,
+        n: int,
+        where: List[int],
+        decision: Optional[int] = None,
+    ) -> List[VarRV]:
+        return _ffi_api_schedule.ScheduleSampleTileFactor(  # pylint: disable=no-member
+            self,
+            loop,
+            n,
+            where,
+            decision,
+        )
+
     def sample_categorical(
         self,
         candidates: List[int],

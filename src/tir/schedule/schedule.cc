@@ -91,6 +91,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetSRef")
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSamplePerfectTile")
     .set_body_method<Schedule>(&ScheduleNode::SamplePerfectTile);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSampleTileFactor")
+    .set_body_method<Schedule>(&ScheduleNode::SampleTileFactor);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSampleCategorical")
     .set_body_method<Schedule>(&ScheduleNode::SampleCategorical);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSampleComputeLocation")

@@ -82,6 +82,19 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n,
   return result_rvs;
 }
 
+Array<tir::Var> ScheduleNode::SampleTileFactor(const LoopRV& loop_rv,
+                                               int n,
+                                               const Array<Integer>& where,
+                                               Optional<Array<Integer>> decision) {
+  std::vector<int64_t> result = meta_schedule::SampleTileFactor(
+      state_, &this->sampler, this->GetSRef(loop_rv), n, where, &decision);
+  Array<tir::Var> result_rvs = SetRV(AsArray<int64_t, Integer>(result));
+  // Record the instruction
+  this->trace->Append(SampleTileFactorAttrs::Make(loop_rv, n, where, result_rvs),
+                      decision);
+  return result_rvs;
+}
+
 tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,  //
                                          const Array<FloatImm>& probs,      //
                                          Optional<Integer> decision) {

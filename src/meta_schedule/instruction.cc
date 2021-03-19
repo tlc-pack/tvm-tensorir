@@ -104,6 +104,7 @@ Array<ObjectRef> InstructionNode::Deserialize(const Array<ObjectRef>& record,
       String, std::function<InstAttrs(const Array<ObjectRef>&, Optional<ObjectRef>*)>>
       vtable = {
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleTileFactorAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleCategoricalAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleComputeLocationAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetProducersAttrs),
@@ -213,6 +214,16 @@ Instruction SamplePerfectTileAttrs::Make(const LoopRV& loop, int n, int max_inne
   ObjectPtr<SamplePerfectTileAttrs> n_ = make_object<SamplePerfectTileAttrs>();
   n_->n = n;
   n_->max_innermost_factor = max_innermost_factor;
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{outputs.begin(), outputs.end()},
+                     /*attrs=*/InstAttrs(std::move(n_)));
+}
+
+Instruction SampleTileFactorAttrs::Make(const LoopRV& loop, int n, Array<Integer> where,
+                                        const Array<tir::Var>& outputs) {
+  ObjectPtr<SampleTileFactorAttrs> n_ = make_object<SampleTileFactorAttrs>();
+  n_->n = n;
+  n_->where = where;
   return Instruction(/*inputs=*/{loop},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n_)));
@@ -475,6 +486,24 @@ Array<ObjectRef> SamplePerfectTileAttrs::Apply(const Schedule& sch,
     casted_decision = std::move(result);
   }
   return AdaptOutputs(sch->SamplePerfectTile(loop, n, max_innermost_factor, casted_decision));
+}
+
+Array<ObjectRef> SampleTileFactorAttrs::Apply(const Schedule& sch,
+                                              const Array<Optional<ObjectRef>>& inputs,
+                                              const Optional<ObjectRef>& decision) const {
+  ICHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  Optional<Array<Integer>> casted_decision = NullOpt;
+  if (decision.defined()) {
+    const auto* array = decision.as<ArrayNode>();
+    Array<Integer> result;
+    result.reserve(array->size());
+    for (const ObjectRef& obj : *array) {
+      result.push_back(Downcast<Integer>(obj));
+    }
+    casted_decision = std::move(result);
+  }
+  return AdaptOutputs(sch->SampleTileFactor(loop, n, where, casted_decision));
 }
 
 Array<ObjectRef> SampleCategoricalAttrs::Apply(const Schedule& sch,
@@ -872,6 +901,18 @@ void SamplePerfectTileAttrs::AsPython(std::ostream& os, const Array<String>& inp
   py.Print(os);
 }
 
+void SampleTileFactorAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                     const Array<String>& outputs,
+                                     const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("sample_tile_factor");
+  py.AddArgAttr("n", this->n);
+  py.AddArgInput("loop", inputs[0]);
+  py.AddArgAttr("where", this->where);
+  py.AddDecision(decision);
+  py.AddOutputs(outputs);
+  py.Print(os);
+}
+
 void SampleCategoricalAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                       const Array<String>& outputs,
                                       const Optional<ObjectRef>& decision) const {
@@ -1140,6 +1181,15 @@ void SamplePerfectTileAttrs::Serialize(Array<ObjectRef>* record,
   }
 }
 
+void SampleTileFactorAttrs::Serialize(Array<ObjectRef>* record,
+                                      const Optional<ObjectRef>& decision) const {
+  record->push_back(Integer(n));
+  record->push_back(where);
+  if (decision.defined()) {
+    record->push_back(decision.value());
+  }
+}
+
 void SampleCategoricalAttrs::Serialize(Array<ObjectRef>* record,
                                        const Optional<ObjectRef>& decision) const {
   record->push_back(candidates);
@@ -1235,6 +1285,17 @@ InstAttrs SamplePerfectTileAttrs::Deserialize(const Array<ObjectRef>& record,
   ObjectPtr<SamplePerfectTileAttrs> n = make_object<SamplePerfectTileAttrs>();
   n->n = Downcast<Integer>(record[3]);
   n->max_innermost_factor = Downcast<Integer>(record[4]);
+  if (record.size() > 5) {
+    *decision = Downcast<Array<Integer>>(record[5]);
+  }
+  return InstAttrs(std::move(n));
+}
+
+InstAttrs SampleTileFactorAttrs::Deserialize(const Array<ObjectRef>& record,
+                                             Optional<ObjectRef>* decision) {
+  ObjectPtr<SampleTileFactorAttrs> n = make_object<SampleTileFactorAttrs>();
+  n->n = Downcast<Integer>(record[3]);
+  n->where = Downcast<Array<Integer>>(record[4]);
   if (record.size() > 5) {
     *decision = Downcast<Array<Integer>>(record[5]);
   }
@@ -1381,6 +1442,7 @@ TVM_META_SCHEDULE_INST_IO_EMPTY(UnrollAttrs);
 TVM_REGISTER_OBJECT_TYPE(InstAttrsNode);
 TVM_REGISTER_NODE_TYPE(InstructionNode);
 TVM_REGISTER_NODE_TYPE(SamplePerfectTileAttrs);
+TVM_REGISTER_NODE_TYPE(SampleTileFactorAttrs);
 TVM_REGISTER_NODE_TYPE(SampleCategoricalAttrs);
 TVM_REGISTER_NODE_TYPE(SampleComputeLocationAttrs);
 TVM_REGISTER_NODE_TYPE(GetProducersAttrs);

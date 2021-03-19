@@ -64,6 +64,57 @@ std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler
   return result;
 }
 
+static std::vector<int> SampleWithExtent(int n,
+                                         int extent,
+                                         std::vector<int> candidates) {
+  constexpr int kMaxTrials = 100;
+  std::uniform_int_distribution<> dist(0, static_cast<int>(candidates.size()) - 1);
+  std::vector<int> sample(n, -1);
+  for (int trial = 0; trial < kMaxTrials; ++trial) {
+    int64_t product = 1;
+    for (int i = 1; i < n; ++i) {
+      int value = candidates[dist(rand)];
+      product *= value;
+      if (product > extent) {
+        break;
+      }
+      sample[i] = value;
+    }
+    if (product <= extent) {
+      sample[0] = (extent + product - 1) / product;
+      return sample;
+    }
+  }
+  sample[0] = extent;
+  for (int i = 1; i < n; ++i) {
+    sample[i] = 1;
+  }
+  return sample;
+}
+
+std::vector<int64_t> SampleTileFactor(tir::ScheduleState self, Sampler* sampler,
+                                      const tir::StmtSRef& loop_sref,  
+                                      int n,                    
+                                      const Array<Integer>& where,     
+                                      Optional<Array<Integer>>* decision) {
+  const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  int64_t extent = GetLoopIntExtent(loop);
+  std::vector<int64_t> result;
+  if (extent == -1) {
+    std::vector<int> candidates = AsVector<Integer, int>(where);
+    std::vector<int> sampled = sampler->SampleInts(n - 1, candidates);
+    result = std::vector<int64_t>(sampled.begin(), sampled.end());
+    result.insert(result.begin(), -1);
+  } else {
+    std::vector<int> candidates = AsVector<Integer, int>(where);
+    std::vector<int> sampled = SampleWithExtent(n, extent, candidates);
+    result = std::vector<int64_t>(sampled.begin(), sampled.end());
+  }
+  *decision = AsArray<int64_t, Integer>(result);
+  return result;
+}
+
+
 int64_t SampleCategorical(tir::ScheduleState self, Sampler* sampler,
                           const Array<Integer>& candidates, const Array<FloatImm>& probs,
                           Optional<Integer>* decision) {

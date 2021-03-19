@@ -40,7 +40,8 @@ SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, 
   n->target = std::move(target);
   n->target_host = std::move(target_host);
   n->log_file = std::move(log_file);
-  n->flop_ct = CountFlop(n->workload);
+  // n->flop_ct = CountFlop(n->workload);
+  n->flop_ct = -1;
   data_ = std::move(n);
 }
 

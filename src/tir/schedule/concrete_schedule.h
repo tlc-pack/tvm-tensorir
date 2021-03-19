@@ -101,6 +101,14 @@ class ConcreteScheduleNode : public ScheduleNode {
     throw;
   }
 
+  Array<tir::Var> SampleTileFactor(const LoopRV& loop,
+                                   int n,
+                                   const Array<Integer>& where,
+                                   Optional<Array<Integer>> decision = NullOpt) override {
+    LOG(FATAL) << "NotImplemented";
+    throw;
+  }
+
   Var SampleCategorical(const Array<Integer>& candidates,  //
                         const Array<FloatImm>& probs,      //
                         Optional<Integer> decision = NullOpt) override {

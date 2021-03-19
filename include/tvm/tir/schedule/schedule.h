@@ -193,6 +193,11 @@ class ScheduleNode : public runtime::Object {
                                          int n,                     //
                                          int max_innermost_factor,  //
                                          Optional<Array<Integer>> decision = NullOpt) = 0;
+
+  virtual Array<VarRV> SampleTileFactor(const LoopRV& loop,
+                                        int n,
+                                        const Array<Integer>& where,
+                                        Optional<Array<Integer>> decision = NullOpt) = 0;
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates

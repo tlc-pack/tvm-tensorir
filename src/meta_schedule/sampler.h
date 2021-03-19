@@ -48,6 +48,8 @@ class Sampler {
    * \return The list of integers sampled
    */
   std::vector<int> SampleInts(int n, int min_inclusive, int max_exclusive);
+
+  std::vector<int> SampleInts(int n, const std::vector<int>& candidates);
   /*!
    * \brief Sample n tiling factors of the specific extent
    * \param n The number of parts the loop is split

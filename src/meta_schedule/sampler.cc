@@ -151,6 +151,15 @@ std::vector<int> Sampler::SampleInts(int n, int min_inclusive, int max_exclusive
   return result;
 }
 
+std::vector<int> Sampler::SampleInts(int n, const std::vector<int>& candidates) {
+  std::uniform_int_distribution<> dist(0, static_cast<int>(candidates.size()) - 1);
+  std::vector<int> result(n, -1);
+  for (int i = 0; i < n; ++i) {
+    result[i] = candidates[dist(rand_)];
+  }
+  return result;
+}
+
 std::vector<double> Sampler::SampleUniform(int n, double min, double max) {
   std::uniform_real_distribution<double> dist(min, max);
   std::vector<double> result;
