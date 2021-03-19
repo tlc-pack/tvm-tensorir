@@ -22,18 +22,14 @@ def micro_kernel(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV):
     # iter_types = ms.analysis.get_block_var_types(sch.sch, sch.evaluate(block))
     # assert len(axes) == len(iter_types)
     # print('num of axes')
-    print(len(axes))
-    mk_shape = []
     outer, inner = [], []
     for i, axis in enumerate(axes):
-        print(type(sch))
         tiles = sch.sample_tile_factor(loop=axis, n=2, where=[16, 32, 64, 128])
-        # tiles = sch.sample_perfect_tile(loop=axis, n=2)
         oaxis, iaxis = sch.split(loop=axis, factors=tiles)
-        mk_shape.append(tiles[1])
         outer.append(oaxis)
         inner.append(iaxis)
-    sch.reorder(after_axes=(outer + inner))
+    new_axes = outer + inner
+    sch.reorder(*new_axes)
     return sch
 
 
@@ -55,7 +51,7 @@ def test_dynamic_matmul_schedule():
     task=ms.SearchTask(workload=dyn_mm)
     space = ms.space.PostOrderApply(stages=[micro_kernel])
     sch = space.sample_schedule(task)
-    print(tvm.script.asscript(sch.func))
+    print(tvm.script.asscript(sch.mod))
 
 
 
@@ -91,8 +87,8 @@ def test_dynamic_matmul_autotune():
         space=space,
         strategy="replay",
         measurer=create_measurer(),
-        # ref_inputs=ref_inputs
     )
     raise ValueError
 
-test_dynamic_matmul_schedule()
+# test_dynamic_matmul_schedule()
+test_dynamic_matmul_autotune()

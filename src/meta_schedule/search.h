@@ -46,6 +46,8 @@ class SearchTaskNode : public Object {
   /*! \brief The file to load/store search logs */
   Optional<String> log_file;
   /*! \brief The number of floating point operations in the task */
+
+  // Optional<Array<>> ref_input;
   double flop_ct;
 
   void VisitAttrs(tvm::AttrVisitor* v) {

@@ -125,6 +125,7 @@ class RPCRunnerNode : public ProgramRunnerNode {
 
   Array<MeasureResult> Run(const Array<MeasureInput>& inputs,
                            const Array<BuildResult>& build_results, int verbose) const override {
+    LOG(INFO) << "RPCRunner::Run";
     if (const auto* f = runtime::Registry::Get("meta_schedule.rpc_runner.run")) {
       Array<MeasureResult> results = (*f)(
           inputs, build_results, key, host, port, priority, n_parallel, timeout, number, repeat,

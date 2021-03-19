@@ -64,16 +64,17 @@ std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler
   return result;
 }
 
-static std::vector<int> SampleWithExtent(int n,
+static std::vector<int> SampleWithExtent(Sampler* sampler,
+                                         int n,
                                          int extent,
-                                         std::vector<int> candidates) {
+                                         const std::vector<int>& candidates) {
   constexpr int kMaxTrials = 100;
-  std::uniform_int_distribution<> dist(0, static_cast<int>(candidates.size()) - 1);
   std::vector<int> sample(n, -1);
   for (int trial = 0; trial < kMaxTrials; ++trial) {
     int64_t product = 1;
     for (int i = 1; i < n; ++i) {
-      int value = candidates[dist(rand)];
+      int idx = sampler->SampleInt(0, candidates.size());
+      int value = candidates[idx];
       product *= value;
       if (product > extent) {
         break;
@@ -107,7 +108,7 @@ std::vector<int64_t> SampleTileFactor(tir::ScheduleState self, Sampler* sampler,
     result.insert(result.begin(), -1);
   } else {
     std::vector<int> candidates = AsVector<Integer, int>(where);
-    std::vector<int> sampled = SampleWithExtent(n, extent, candidates);
+    std::vector<int> sampled = SampleWithExtent(sampler, n, extent, candidates);
     result = std::vector<int64_t>(sampled.begin(), sampled.end());
   }
   *decision = AsArray<int64_t, Integer>(result);
