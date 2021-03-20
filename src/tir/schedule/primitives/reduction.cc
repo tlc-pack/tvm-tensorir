@@ -634,8 +634,10 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   new_scope_block.CopyOnWrite()->alloc_buffers.push_back(rf_buf);
   self->Replace(scope_sref, new_scope_block, {{scope_block, new_scope_block}});
   // Update scope information.
+  StmtSRef result_rf_block_sref = self->stmt2ref.at(rf_block.get());
   UpdateScope(self, scope_sref);
-  return self->stmt2ref.at(rf_block.get());
+  UpdateAffineFlag(self, result_rf_block_sref);
+  return result_rf_block_sref;
 }
 
 }  // namespace schedule
