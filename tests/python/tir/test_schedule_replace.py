@@ -160,8 +160,6 @@ def test_replace_partial_copy1():
     assert other_part_hash == s.mod["main"].body.block.body[1].__hash__()
     # Check the replaced part is equal to the target
     tvm.ir.assert_structural_equal(s.mod["main"].body.block.body[0].body.body.block, target)
-    # The replaced AST node will be deleted, so the ref will be None
-    assert sref.stmt is None
 
 
 def test_replace_root_write():

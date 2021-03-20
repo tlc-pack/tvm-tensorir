@@ -200,6 +200,7 @@ BlockRealize GetBlockRealize(const StmtSRef& block_sref) {
   Stmt s = GetRef<Stmt>(block_sref->stmt);
   ICHECK(GetRef<Stmt>(block_sref->stmt).as<BlockNode>());
   const auto* parent = block_sref->parent;
+  ICHECK(parent != nullptr);
   Stmt parent_stmt = GetRef<Stmt>(parent->stmt);
 
   auto f_equal = [](const Stmt& s, const Stmt& target) {
@@ -438,6 +439,11 @@ void UpdateScope(ScheduleState self, const StmtSRef& block_sref) {
 }
 
 void UpdateAffineFlag(ScheduleState self, const StmtSRef& block_sref) {
+  if (block_sref->parent == nullptr) {
+    ICHECK(self->block_info.count(block_sref));
+    self->block_info[block_sref].affine_binding = true;
+    return;
+  }
   BlockRealize realize = GetBlockRealize(block_sref);
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   Map<Var, Range> loop_var_ranges;

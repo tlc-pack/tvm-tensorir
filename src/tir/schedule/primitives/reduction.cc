@@ -166,6 +166,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
       Block new_block = Block(block_node);
       self->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
                     {{GetRef<Block>(parent), new_block}});
+      UpdateAffineFlag(self, GetRef<StmtSRef>(loop_sref->parent));
     } else {
       LOG(FATAL)
           << "TypeError: 'decompose_reduction' is applied to loop whose parent's type is not "
@@ -180,7 +181,10 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     self->Replace(block_sref, update_block, {{GetRef<Block>(block), update_block}});
     // Update scope information
     UpdateScope(self, block_sref);
-    return self->stmt2ref.at(init_block.get());
+    UpdateAffineFlag(self, block_sref);
+    StmtSRef init_block_sref = self->stmt2ref.at(init_block.get());
+    UpdateAffineFlag(self, init_block_sref);
+    return init_block_sref;
   } else {
     // 'loop' is 'None'. Convert `tir.init()` to a conjunction of conditions.
     CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
@@ -207,6 +211,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     self->Replace(block_sref, new_block, {{GetRef<Block>(block), new_block}});
     // Update scope information
     UpdateScope(self, block_sref);
+    UpdateAffineFlag(self, block_sref);
     return self->stmt2ref.at(new_block.get());
   }
 }
