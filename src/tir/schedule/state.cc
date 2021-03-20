@@ -475,15 +475,29 @@ class SRefUpdater : public StmtVisitor {
     VisitStmt(op->body);
     parents_.pop_back();
     // Additionally, need to update the scope because the block is changed
-    self_->block_info[sref] = BlockInfo(/*scope=*/BlockScope(tir::GetChildBlocks(self_, sref)),
-                                        // We assume the binding is not affine - if it is, the
-                                        // caller needs to explicitly modify the flag
-                                        /*affine_binding=*/false);
+    UpdateBlockInfo(sref);
   }
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
     StmtVisitor::VisitStmt_(seq_stmt);
     SetSeqIndex(self_.get(), seq_stmt);
+  }
+
+  void UpdateBlockInfo(const StmtSRef& block_sref) {
+    using TIter = std::unordered_map<StmtSRef, BlockInfo, ObjectPtrHash, ObjectPtrEqual>::iterator;
+    BlockInfo new_info(
+        /*scope=*/BlockScope(tir::GetChildBlocks(self_, block_sref)),
+        // Assume not affine - if it is, the caller is responsible for modifying the flag
+        /*affine_binding=*/false);
+    std::pair<TIter, bool> insert_result = self_->block_info.emplace(block_sref, new_info);
+    if (!insert_result.second) {
+      // Insertion didn't take place, because the entry has been there before
+      BlockInfo& info = insert_result.first->second;
+      info.scope = std::move(new_info.scope);
+      // Other flags are not changed
+    } else {
+      // Insertion has happened, so no further action is needed
+    }
   }
 
   ScheduleState self_;
