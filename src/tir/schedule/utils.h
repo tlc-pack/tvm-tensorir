@@ -237,7 +237,9 @@ bool StmtExprContainsVar(const ObjectRef& obj, const std::vector<Var>& vars);
  */
 bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*>& vars);
 
-void UpdateScope(ScheduleState self, const StmtSRef& sref);
+void UpdateScope(ScheduleState self, const StmtSRef& block_sref);
+
+void UpdateAffineFlag(ScheduleState self, const StmtSRef& block_sref);
 
 class StmtReplacer : public StmtMutator {
  public:

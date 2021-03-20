@@ -571,7 +571,9 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& _block_sref, int i,
                                           /*storage_scope=*/storage_scope);
   Stmt new_scope = CacheReadRewriter::Rewrite(/*scope_sref=*/scope_sref, /*info=*/&info);
   self->Replace(scope_sref, new_scope, info.block_map);
-  return self->stmt2ref.at(cache_read_stage.get());
+  StmtSRef result_block_sref = self->stmt2ref.at(cache_read_stage.get());
+  UpdateAffineFlag(self, result_block_sref);
+  return result_block_sref;
 }
 
 StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
@@ -614,7 +616,9 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
     std::swap(it->second, cache_write_stage);
   }
   self->Replace(scope_sref, new_scope, block_map);
-  return self->stmt2ref.at(cache_write_stage.get());
+  StmtSRef result_block_sref = self->stmt2ref.at(cache_write_stage.get());
+  UpdateAffineFlag(self, result_block_sref);
+  return result_block_sref;
 }
 
 }  // namespace schedule

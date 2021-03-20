@@ -431,10 +431,26 @@ bool StmtExprContainsVar(const ObjectRef& obj, const PrimExpr& vars) {
   return StmtExprContainsVar(obj, var_set);
 }
 
-void UpdateScope(ScheduleState self, const StmtSRef& sref) {
-  BlockScope scope(tir::GetChildBlocks(self, sref));
+void UpdateScope(ScheduleState self, const StmtSRef& block_sref) {
+  BlockScope scope(tir::GetChildBlocks(self, block_sref));
   bool affine_binding = true;
-  self->block_info[sref] = BlockInfo(std::move(scope), affine_binding);
+  self->block_info[block_sref] = BlockInfo(std::move(scope), affine_binding);
+}
+
+void UpdateAffineFlag(ScheduleState self, const StmtSRef& block_sref) {
+  BlockRealize realize = GetBlockRealize(block_sref);
+  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  Map<Var, Range> loop_var_ranges;
+  for (StmtSRefNode* loop_sref = block_sref->parent; loop_sref != nullptr;
+       loop_sref = loop_sref->parent) {
+    if (const auto* loop = loop_sref->StmtAs<ForNode>()) {
+      loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+    } else {
+      break;
+    }
+  }
+  ICHECK(self->block_info.count(block_sref));
+  self->block_info[block_sref].affine_binding = ValidateBlockBinding(realize, loop_var_ranges);
 }
 
 void PatternMatcher::VisitExpr_(const VarNode* op) {
