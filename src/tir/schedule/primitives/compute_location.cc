@@ -850,6 +850,12 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
   Map<Block, Block> block_sref_map;
   ReverseStatementInliner inliner(block, producer, &block_sref_map);
   Stmt inlined_stmt = inliner(replaced);
+  if (const auto* inlined_block = inlined_stmt.as<BlockNode>()) {
+    const auto* src_stmt = TVM_SREF_TO_BLOCK(src_stmt, scope_block_sref);
+    block_sref_map.Set(GetRef<Block>(src_stmt), GetRef<Block>(inlined_block));
+  }
+  ICHECK(replaced->IsInstance<BlockNode>());
+  ICHECK(inlined_stmt->IsInstance<BlockNode>());
   self->Replace(scope_block_sref, inlined_stmt, block_sref_map);
 }
 
