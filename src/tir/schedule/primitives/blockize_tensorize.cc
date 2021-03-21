@@ -558,22 +558,29 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
   auto outer_realize = BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
 
   self->Replace(loop_sref, outer_realize, {{block, inner_block}});
-  UpdateScope(self, GetScopeRoot(self->stmt2ref.at(outer_block.get())));
-  UpdateScope(self, self->stmt2ref.at(outer_block.get()));
+  {
+    StmtSRef block_sref = self->stmt2ref.at(inner_block.get());
+    UpdateAffineFlag(self, block_sref);
+  }
+  {
+    StmtSRef block_sref = self->stmt2ref.at(outer_block.get());
+    StmtSRef scope_sref = GetScopeRoot(block_sref);
+    UpdateScope(self, scope_sref);
+    UpdateAffineFlag(self, scope_sref);
+  }
+  {
+    StmtSRef block_sref = self->stmt2ref.at(outer_block.get());
+    UpdateScope(self, block_sref);
+    UpdateAffineFlag(self, block_sref);
+  }
+
   // Check loop binding
 
   {
     struct BindingValidator : public StmtVisitor {
       void VisitStmt_(const BlockRealizeNode* realize) final {
         StmtSRef& sref = self->stmt2ref.at(realize->block.get());
-        Map<Var, Range> loop_var_ranges;
-        for (StmtSRefNode* parent = sref->parent; parent && parent->stmt->IsInstance<ForNode>();
-             parent = parent->parent) {
-          const auto* loop = static_cast<const ForNode*>(parent->stmt);
-          loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
-        }
-        // TODO: affine
-        // sref->affine = ValidateBlockBinding(GetRef<BlockRealize>(realize), loop_var_ranges);
+        UpdateAffineFlag(self, sref);
         VisitStmt(realize->block->body);
       }
       ScheduleState self;
@@ -825,6 +832,21 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   Block new_block(new_block_ptr);
   self->Replace(self->stmt2ref.at(block_realize->block.get()), new_block,
                 {{block_realize->block, new_block}});
+  {
+    struct BindingValidator : public StmtVisitor {
+      void VisitStmt_(const BlockRealizeNode* realize) final {
+        StmtSRef& sref = self->stmt2ref.at(realize->block.get());
+        UpdateAffineFlag(self, sref);
+        VisitStmt(realize->block->body);
+      }
+      ScheduleState self;
+    };
+    BindingValidator validator;
+    StmtSRef block_sref = self->stmt2ref.at(new_block.get());
+    const PrimFuncNode* func = GetRootPrimFunc(self, block_sref);
+    validator.self = self;
+    validator(func->body);
+  }
 }
 
 }  // namespace schedule

@@ -227,6 +227,7 @@ class StateCreator : private StmtVisitor {
 
 ScheduleState::ScheduleState(IRModule mod, int debug_mode) {
   data_ = StateCreator::Create(mod, debug_mode);
+  (*this)->DebugVerify();
 }
 
 ScheduleState::ScheduleState(PrimFunc func, int debug_mode)
@@ -271,18 +272,12 @@ struct ReuseInfo {
  */
 class ReuseCollector : public StmtVisitor {
  public:
-  static ReuseInfo Collect(ScheduleStateNode* self, const Stmt& tgt_stmt,
-                           const Map<Block, Block>& block_sref_reuse) {
+  static ReuseInfo Collect(ScheduleStateNode* self, const Stmt& tgt_stmt) {
     ReuseCollector collector(self);
     collector.VisitStmt(tgt_stmt);
     ReuseInfo result;
     result.intact = {collector.intact_.begin(), collector.intact_.end()};
     result.loop_sref_possible_reuse = {collector.loop_vars_.begin(), collector.loop_vars_.end()};
-    for (const auto& kv : block_sref_reuse) {
-      const Block& old_block = kv.first;
-      const Block& new_block = kv.second;
-      result.block_sref_reuse.emplace(old_block.get(), new_block.get());
-    }
     return result;
   }
 
@@ -605,7 +600,12 @@ class ChildReplacer : private StmtMutator {
 };
 
 void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_stmt,
-                                const Map<Block, Block>& block_sref_reuse) {
+                                const Map<Block, Block>& _block_sref_reuse) {
+  std::unordered_map<const BlockNode*, const BlockNode*> block_sref_reuse;
+  block_sref_reuse.reserve(_block_sref_reuse.size() + 1);
+  for (const auto& kv : _block_sref_reuse) {
+    block_sref_reuse.emplace(kv.first.get(), kv.second.get());
+  }
   {
     const StmtNode* src_stmt = _src_sref->stmt;
     bool input_correct =
@@ -618,6 +618,11 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
                  << GetRef<Stmt>(src_stmt) << "\ntgt_stmt:\n"
                  << tgt_stmt;
     }
+    if (src_stmt->IsInstance<BlockNode>() && tgt_stmt->IsInstance<BlockNode>()) {
+      const auto* src_block = static_cast<const BlockNode*>(src_stmt);
+      const auto* tgt_block = static_cast<const BlockNode*>(tgt_stmt.get());
+      block_sref_reuse.emplace(src_block, tgt_block);
+    }
   }
   // Rule out the case that no replacement happens
   if (_src_sref->stmt == tgt_stmt.get()) {
@@ -627,6 +632,7 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   StmtSRef src_sref(_src_sref->stmt, _src_sref->parent, _src_sref->seq_index);
   Stmt src_stmt = GetRef<Stmt>(src_sref->stmt);
   // Step 1. Create all the nodes needed for the new sref tree.
+  // TODO: fix the doc here
   //   The `SRefCreator` visits the AST `tgt_stmt`, creating new nodes along the way.
   //   It deals with 3 cases:
   //
@@ -649,7 +655,8 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     // Step 1.1. Collect info for different kinds of reuses
     // 1) intact
     // 2) loop/block reuse
-    ReuseInfo reuse_info = ReuseCollector::Collect(this, tgt_stmt, block_sref_reuse);
+    ReuseInfo reuse_info = ReuseCollector::Collect(this, tgt_stmt);
+    reuse_info.block_sref_reuse = std::move(block_sref_reuse);
     // Step 1.2. Collect loop/block reuse to their corresponding srefs
     // and remove those srefs in the `src_stmt` that are no longer used after replacement
     std::unordered_map<const Object*, StmtSRef> reused_srefs =
@@ -772,7 +779,7 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   }
 }
 
-void ScheduleStateNode::Verify() const {
+void ScheduleStateNode::DebugVerify() const {
   if (this->debug_mode & 1) {
     VerifySRefTree(GetRef<ScheduleState>(this));
   }
@@ -877,9 +884,11 @@ bool ScheduleStateNode::IsComplete(const StmtSRef& block_sref, const StmtSRef& s
 bool ScheduleStateNode::IsReduction(const StmtSRef& block_sref, const StmtSRef& scope_root) const {
   BlockScope scope = GetBlockScope(scope_root);
   // Cond 3. Block binding is valid iter affine map
-  if (!this->IsAffineBlockBinding(block_sref)) {
-    return false;
-  }
+  // TODO
+  // if (!this->IsAffineBlockBinding(block_sref)) {
+  //   LOG(INFO) << "IsReduction[1]";
+  //   return false;
+  // }
   // Cond 4. Check whether the block body has the init statement.
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   if (!block->init.defined()) {
