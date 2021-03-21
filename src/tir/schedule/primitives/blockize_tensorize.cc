@@ -292,7 +292,7 @@ bool TensorizeComparator::CompareBufferRegion(const BufferRegion& lhs, const Buf
   size_t offset = lhs_region.size() - rhs->region.size();
   // initialize buffer indices
   bool need_update = false;
-  if (auto it = buffer_indices_.find(lhs->buffer) == buffer_indices_.end()) {
+  if (!buffer_indices_.count(lhs->buffer)) {
     need_update = true;
     buffer_indices_[lhs->buffer] = std::vector<PrimExpr>();
   } else {

@@ -90,6 +90,7 @@ StmtSRef GetScopeRoot(const StmtSRef& sref);
  * - Bi doesn't read the buffers that Bi+1, Bi+2, ... Bn will write
  * - Suppose Bi reads Bj's output buffer(j < i) and Loop k is the LCA of Bi and
  * Bj, Bj's output region covers Bi's input under Loop k
+ * \param self The schedule state
  * \param child_blocks The schedule that the scope is in
  * \return A boolean indicating if the subtree satisfies the one-way fine-grained data flow check
  * \note Condition 2 and 3 are global condition of a schedulable IR,
@@ -97,6 +98,47 @@ StmtSRef GetScopeRoot(const StmtSRef& sref);
  */
 bool IsCompactDataFlow(const ScheduleState& self, const StmtSRef& scope_root,
                        const Array<StmtSRef>& child_blocks);
+
+/*!
+ * \brief Check whether the block is a complete block under the scope
+ * \param self The schedule state
+ * \param block_sref The block to be checked
+ * \param scope_root The sref to the root block of the scope that `block_sref` is in
+ * \return A boolean indicating if the block is a complete block
+ * \note Definition of a complete block:
+ * 1) dominant: the block is the only writer of its output, which dominates the reader of
+ * its output buffers
+ * 2) all block vars are data parallel
+ * 3) no overlap between the buffers it reads and writes
+ */
+bool IsComplete(const ScheduleState& self, const StmtSRef& block_sref, const StmtSRef& scope_root);
+
+/*!
+ * \brief Check whether the block is a reduction block under the scope
+ * \param self The schedule state
+ * \param block_sref The block to be checked
+ * \param scope_root The sref to the root block of the scope that `block_sref` is in
+ * \return A boolean indicating if the block is a reduction block
+ * \note Definition of a reduction block:
+ * 1) dominant: the block is the only writer of its output, which dominates the reader of
+ * its output buffers
+ * 2) all block vars are data parallel or reduction
+ * 3) block bindings are quasi-affine expressions
+ * 4) has the init statement
+ * 5) reduction block vars are not used to index output buffers
+ */
+bool IsReduction(const ScheduleState& self, const StmtSRef& block_sref, const StmtSRef& scope_root);
+
+/*!
+ * \brief Check the merged block of init_block and update_block is a reduction block
+ * \param self The schedule state
+ * \param init_block_sref the query init block
+ * \param update_block_sref the query update block
+ * \param scope_root The sref to the scope root where `init_sref` and `update_sref` are in
+ * \return Whether the merged block of init_block and update_block is a reduction block
+ */
+bool CanMergeReduction(const ScheduleState& self, const StmtSRef& init_block_sref,
+                       const StmtSRef& update_block_sref, const StmtSRef& scope_root);
 
 /******** Block-loop relation ********/
 /*!

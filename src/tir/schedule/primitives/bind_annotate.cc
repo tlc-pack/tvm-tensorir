@@ -205,7 +205,7 @@ void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref) {
   CHECK(block_ptr) << "TypeError: double_buffer expects 'block' as its argument";
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
   const auto* parent_block = parent_block_sref->StmtAs<BlockNode>();
-  CHECK(self->IsComplete(block_sref, parent_block_sref))
+  CHECK(IsComplete(self, block_sref, parent_block_sref))
       << "ValueError: 'double_buffer' expects 'block' to be a complete block";
   for (const BufferRegion& parent_write : parent_block->writes) {
     for (const BufferRegion& write : block_ptr->writes) {
