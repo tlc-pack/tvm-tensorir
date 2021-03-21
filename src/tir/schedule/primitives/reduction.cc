@@ -68,7 +68,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     CHECK(ListContainsElement(loops, loop_sref))
         << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
     // Cond 1. Check block is reduction
-    CHECK(IsReduction(self, block_sref, GetScopeRoot(block_sref)))
+    CHECK(ReductionBlock(self, block_sref, GetScopeRoot(block_sref)))
         << "decompose_reduction expect the block to be a reduction block";
     // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
@@ -340,7 +340,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   BlockRealize block_realize = GetBlockRealize(block_sref);
   Block block = block_realize->block;
   StmtSRef scope_root = GetScopeRoot(block_sref);
-  CHECK(IsReduction(self, block_sref, scope_root))
+  CHECK(ReductionBlock(self, block_sref, scope_root))
       << "ValueError: can only rfactor a reduction block";
 
   // Collect the information of loops and blocks.

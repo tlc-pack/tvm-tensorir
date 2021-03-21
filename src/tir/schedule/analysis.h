@@ -111,7 +111,8 @@ bool IsCompactDataFlow(const ScheduleState& self, const StmtSRef& scope_root,
  * 2) all block vars are data parallel
  * 3) no overlap between the buffers it reads and writes
  */
-bool IsComplete(const ScheduleState& self, const StmtSRef& block_sref, const StmtSRef& scope_root);
+bool CompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
+                   const StmtSRef& scope_root);
 
 /*!
  * \brief Check whether the block is a reduction block under the scope
@@ -127,7 +128,8 @@ bool IsComplete(const ScheduleState& self, const StmtSRef& block_sref, const Stm
  * 4) has the init statement
  * 5) reduction block vars are not used to index output buffers
  */
-bool IsReduction(const ScheduleState& self, const StmtSRef& block_sref, const StmtSRef& scope_root);
+bool ReductionBlock(const ScheduleState& self, const StmtSRef& block_sref,
+                    const StmtSRef& scope_root);
 
 /*!
  * \brief Check the merged block of init_block and update_block is a reduction block

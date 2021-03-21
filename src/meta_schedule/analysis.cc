@@ -767,7 +767,7 @@ bool NeedsRFactor(const tir::ScheduleState& self, const tir::StmtSRef& block_sre
   Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
 
   // Cond 1. The block is a reduction block and has trivial binding.
-  if (IsReduction(self, block_sref, GetScopeRoot(block_sref)) &&
+  if (ReductionBlock(self, block_sref, GetScopeRoot(block_sref)) &&
       !IsTrivialBinding(self, block_sref)) {
     return false;
   }

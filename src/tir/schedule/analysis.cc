@@ -341,7 +341,7 @@ Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name) {
 bool IsCompactDataFlow(const ScheduleState& self, const StmtSRef& scope_root,
                        const Array<StmtSRef>& child_blocks) {
   for (const StmtSRef& block : child_blocks) {
-    if (!IsComplete(self, block, scope_root) && !IsReduction(self, block, scope_root)) {
+    if (!CompleteBlock(self, block, scope_root) && !ReductionBlock(self, block, scope_root)) {
       return false;
     }
   }
@@ -397,7 +397,8 @@ bool IsDominant(const BlockScope& self, const StmtSRef& block_sref) {
   return true;
 }
 
-bool IsComplete(const ScheduleState& self, const StmtSRef& block_sref, const StmtSRef& scope_root) {
+bool CompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
+                   const StmtSRef& scope_root) {
   BlockScope scope = self->GetBlockScope(scope_root);
   // Cond 2. Check if all the block vars are data parallel
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
@@ -422,13 +423,12 @@ bool IsComplete(const ScheduleState& self, const StmtSRef& block_sref, const Stm
   return true;
 }
 
-bool IsReduction(const ScheduleState& self, const StmtSRef& block_sref,
-                 const StmtSRef& scope_root) {
+bool ReductionBlock(const ScheduleState& self, const StmtSRef& block_sref,
+                    const StmtSRef& scope_root) {
   BlockScope scope = self->GetBlockScope(scope_root);
   // Cond 3. Block binding is valid iter affine map
   // TODO
   // if (!this->IsAffineBlockBinding(block_sref)) {
-  //   LOG(INFO) << "IsReduction[1]";
   //   return false;
   // }
   // Cond 4. Check whether the block body has the init statement.
