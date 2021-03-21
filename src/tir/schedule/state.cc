@@ -788,24 +788,7 @@ void ScheduleStateNode::DebugVerify() const {
   }
 }
 
-/**************** Scope-related Property ****************/
-
-static bool IsDominant(const BlockScope& self, const StmtSRef& block_sref) {
-  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  // Cond 1. Block is the only writer to its outputs
-  const SMap<Buffer, Array<StmtSRef>>& buffer_writers = self->buffer_writers;
-  for (const BufferRegion& write_region : block->writes) {
-    ICHECK(buffer_writers.count(write_region->buffer))
-        << "InternalError: buffer \"" << write_region->buffer->name
-        << "\" does not exist in the current scope, when querying block:\n"
-        << GetRef<Block>(block);
-    // Check if the buffer is only written once (by the given block)
-    if (buffer_writers.at(write_region->buffer).size() != 1) {
-      return false;
-    }
-  }
-  return true;
-}
+/**************** BlockInfo-related ****************/
 
 BlockInfo ScheduleStateNode::GetBlockInfo(const StmtSRef& block_sref) const {
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
