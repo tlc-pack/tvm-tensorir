@@ -48,7 +48,9 @@ class PredicateUpdater : public StmtMutator {
 class BlockRealizeRewriter : public StmtExprMutator {
  public:
   explicit BlockRealizeRewriter(
-      const std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual>& loop_map) {
+      const std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual>& loop_map,
+      std::unordered_set<const BlockNode*>* block_updates)
+      : block_updates_(block_updates) {
     loop_map_.insert(loop_map.begin(), loop_map.end());
   }
 
@@ -67,21 +69,24 @@ class BlockRealizeRewriter : public StmtExprMutator {
     } else {
       auto n = CopyOnWrite(op);
       n->binding_values = std::move(v);
+      block_updates_->insert(n->block.get());
       return Stmt(n);
     }
   }
 
  private:
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map_;
+  std::unordered_set<const BlockNode*>* block_updates_;
 };
 
-Stmt RewriteBindings(const Stmt& stmt, const Array<StmtSRef>& loops) {
+Stmt RewriteBindings(const Stmt& stmt, const Array<StmtSRef>& loops,
+                     std::unordered_set<const BlockNode*>* block_updates) {
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map;
   for (const auto& sref : loops) {
     const auto* loop = sref->StmtAs<ForNode>();
     loop_map[loop->loop_var] = Range::FromMinExtent(loop->min, loop->extent);
   }
-  BlockRealizeRewriter rewriter(loop_map);
+  BlockRealizeRewriter rewriter(loop_map, block_updates);
   return rewriter(stmt);
 }
 
@@ -146,8 +151,13 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimE
   // Step 3. Generate two nested loops to replace the original loop
   For inner_loop(inner_var, inner_min, inner_extent, loop->kind, new_loop_body);
   For outer_loop(outer_var, outer_min, outer_extent, loop->kind, inner_loop);
-  outer_loop = Downcast<For>(RewriteBindings(outer_loop, GetAxes(self, loop_sref)));
+  std::unordered_set<const BlockNode*> block_updates;
+  outer_loop = Downcast<For>(RewriteBindings(outer_loop, GetAxes(self, loop_sref), &block_updates));
   self->Replace(loop_sref, outer_loop, {});
+  for (const BlockNode* block : block_updates) {
+    const StmtSRef& block_sref = self->stmt2ref.at(block);
+    UpdateAffineFlag(self, block_sref);
+  }
   return {self->stmt2ref.at(outer_loop.get()), self->stmt2ref.at(outer_loop->body.get())};
 }
 
@@ -200,8 +210,14 @@ StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef& in
   PrimExpr fused_min = 0;
   PrimExpr fused_extent = analyzer.Simplify(outer->extent * inner->extent);
   For fused_loop = For(fused_var, fused_min, fused_extent, outer->kind, new_loop_body);
-  fused_loop = Downcast<For>(RewriteBindings(fused_loop, GetAxes(self, outer_sref)));
+  std::unordered_set<const BlockNode*> block_updates;
+  fused_loop =
+      Downcast<For>(RewriteBindings(fused_loop, GetAxes(self, outer_sref), &block_updates));
   self->Replace(outer_sref, fused_loop, {});
+  for (const BlockNode* block : block_updates) {
+    const StmtSRef& block_sref = self->stmt2ref.at(block);
+    UpdateAffineFlag(self, block_sref);
+  }
   return self->stmt2ref.at(fused_loop.get());
 }
 
