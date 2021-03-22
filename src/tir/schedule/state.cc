@@ -189,7 +189,13 @@ class StateCreator : private StmtVisitor {
         ValidateBlockBinding(GetRef<BlockRealize>(realizes_.back()), loop_var_ranges);
     // Set `BlockInfo::region_cover`
     bool region_cover = realizes_.size() == 1;
-    self_->block_info[scope_root] = BlockInfo(std::move(scope), affine_binding, region_cover);
+    // Set `BlockInfo::stage_pipeline` temporarily to false
+    BlockInfo& info = self_->block_info
+                          .emplace(scope_root, BlockInfo(/*scope=*/std::move(scope),
+                                                         /*affine_binding=*/affine_binding,
+                                                         /*region_cover=*/region_cover,
+                                                         /*stage_pipeline=*/false))
+                          .first->second;
     // Update `BlockInfo::region_cover` for child blocks
     ScheduleState self = GetRef<ScheduleState>(self_);
     for (const StmtSRef& block_sref : child_block_srefs) {
@@ -198,6 +204,8 @@ class StateCreator : private StmtVisitor {
       BlockInfo& info = it->second;
       info.region_cover = RegionCoveredConsumer(self, block_sref, scope_root);
     }
+    // Update `BlockInfo::stage_pipeline`
+    bool stage_pipeline = true;
   }
 
   void VisitStmt_(const ForNode* loop) final {
@@ -495,12 +503,14 @@ class SRefUpdater : public StmtVisitor {
 
   void UpdateBlockInfo(const StmtSRef& block_sref) {
     using TIter = std::unordered_map<StmtSRef, BlockInfo, ObjectPtrHash, ObjectPtrEqual>::iterator;
-    BlockInfo new_info(
-        /*scope=*/BlockScope(tir::GetChildBlocks(self_, block_sref)),
-        // Assume not affine - if it is, the caller is responsible for modifying the flag
-        /*affine_binding=*/false,
-        // Assume not covered - if it is, the caller is responsible for modifying the flag
-        /*region_cover=*/false);
+    // The caller is responsible for correcting the flags
+    bool affine_binding = false;
+    bool region_cover = false;
+    bool stage_pipeline = false;
+    BlockInfo new_info(BlockScope(tir::GetChildBlocks(self_, block_sref)),  //
+                       affine_binding,                                      //
+                       region_cover,                                        //
+                       stage_pipeline);
     std::pair<TIter, bool> insert_result = self_->block_info.emplace(block_sref, new_info);
     if (!insert_result.second) {
       // Insertion didn't take place, because the entry has been there before

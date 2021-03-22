@@ -46,18 +46,19 @@ struct BlockInfo {
   bool region_cover{false};
   /*!
    * \brief Property of a block scope root at the block, indicaiting if the scope is an equivalence
-   * of staged pipeline. Conditions:
+   * of a stage pipeline. Conditions:
    * 1) No write-after-read dependency
    * 2) The region cover property holds for every of it child blocks
    */
-  bool staged_pipeline{false};
+  bool stage_pipeline{false};
 
   BlockInfo() = default;
 
-  explicit BlockInfo(BlockScope scope, bool affine_binding, bool region_cover)
+  explicit BlockInfo(BlockScope scope, bool affine_binding, bool region_cover, bool stage_pipeline)
       : scope(std::move(scope)),         //
         affine_binding(affine_binding),  //
-        region_cover(region_cover) {}
+        region_cover(region_cover),      //
+        stage_pipeline(stage_pipeline) {}
 };
 
 /*!
