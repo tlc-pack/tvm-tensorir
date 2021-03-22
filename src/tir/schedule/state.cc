@@ -116,6 +116,9 @@ class StateCreator : private StmtVisitor {
    * \param self The schedule state to be completed
    */
   static ObjectPtr<ScheduleStateNode> Create(IRModule mod, int debug_mode) {
+    if (debug_mode == -1) {
+      debug_mode = 3;
+    }
     ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
     ScheduleStateNode* self = n.get();
     // Set `n->mod`
@@ -794,6 +797,7 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
 }
 
 void ScheduleStateNode::DebugVerify() const {
+  ICHECK_GE(this->debug_mode, 0);
   if (this->debug_mode & 1) {
     VerifySRefTree(GetRef<ScheduleState>(this));
   }

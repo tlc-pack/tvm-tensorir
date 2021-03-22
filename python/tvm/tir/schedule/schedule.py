@@ -58,7 +58,7 @@ class Schedule(Object):
     ):
         if isinstance(debug_mode, bool):
             if debug_mode:
-                debug_mode = 3
+                debug_mode = -1
             else:
                 debug_mode = 0
         assert isinstance(debug_mode, int)
