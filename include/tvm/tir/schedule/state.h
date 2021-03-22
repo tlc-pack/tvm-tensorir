@@ -35,7 +35,7 @@ namespace tir {
 class PrimFunc;
 
 struct BlockInfo {
-  /*! \brief Dependency in the scope rooted by the block */
+  /*! \brief Property of a block scope rooted at the block, storing dependencies in the scope */
   BlockScope scope{nullptr};
   /*! \brief Property of a block, indicating if the block binding is quasi-affine */
   bool affine_binding{false};
@@ -44,6 +44,13 @@ struct BlockInfo {
    * produced by its producers
    */
   bool region_cover{false};
+  /*!
+   * \brief Property of a block scope root at the block, indicaiting if the scope is an equivalence
+   * of staged pipeline. Conditions:
+   * 1) No write-after-read dependency
+   * 2) The region cover property holds for every of it child blocks
+   */
+  bool staged_pipeline{false};
 
   BlockInfo() = default;
 

@@ -86,9 +86,16 @@ def test_matmul_dependency():
 def test_WAR_dependency():
     mod = tvm.script.create_module({"test_WAR": test_WAR})
     func = mod["test_WAR"]
-    with pytest.raises(ValueError) as excinfo:
-        tir.Schedule(func, debug_mode=True)
-    assert "WAR dependency is not allowed" in str(excinfo.value)
+    s = tir.Schedule(func, debug_mode=True)
+    root = s.get_sref(s.get_block("root"))
+    b0 = s.get_sref(s.get_block("C"))
+    b1 = s.get_sref(s.get_block("B"))
+    (e,) = s.state.get_block_scope(root).get_deps_by_src(b0)
+    assert e.kind == tir.schedule.DepKind.WAR
+    assert e.dst.same_as(b1)
+    (e,) = s.state.get_block_scope(root).get_deps_by_dst(b1)
+    assert e.kind == tir.schedule.DepKind.WAR
+    assert e.src.same_as(b0)
 
 
 if __name__ == "__main__":

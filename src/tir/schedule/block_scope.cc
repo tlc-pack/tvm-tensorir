@@ -64,25 +64,28 @@ void AddLastChildBlock(BlockScopeNode* self, const StmtSRef& child_block_sref,
   // Note: AddEdge is effectively NOP on self-loops
   // Step 2. Update RAW dependency
   for (const BufferRegion& region : child_block->reads) {
-    if (buffer_writers.count(region->buffer)) {
-      for (const StmtSRef& from : buffer_writers[region->buffer]) {
+    auto it = buffer_writers.find(region->buffer);
+    if (it != buffer_writers.end()) {
+      for (const StmtSRef& from : it->second) {
         AddEdge(self, from, child_block_sref, DepKind::kRAW);
       }
     }
   }
   // Step 3. Update WAW dependency
   for (const BufferRegion& region : child_block->writes) {
-    if (buffer_writers.count(region->buffer)) {
-      for (const StmtSRef& from : buffer_writers[region->buffer]) {
+    auto it = buffer_writers.find(region->buffer);
+    if (it != buffer_writers.end()) {
+      for (const StmtSRef& from : it->second) {
         AddEdge(self, from, child_block_sref, DepKind::kWAW);
       }
     }
   }
-  // Step 4. Check WAR dependency: not allowed in the IR
+  // Step 4. Update WAR dependency
   for (const BufferRegion& region : child_block->writes) {
-    if (buffer_readers.count(region->buffer)) {
-      for (const StmtSRef& from : buffer_readers[region->buffer]) {
-        CHECK(from.same_as(child_block_sref)) << "ValueError: WAR dependency is not allowed";
+    auto it = buffer_readers.find(region->buffer);
+    if (it != buffer_readers.end()) {
+      for (const StmtSRef& from : it->second) {
+        AddEdge(self, from, child_block_sref, DepKind::kWAR);
       }
     }
   }
