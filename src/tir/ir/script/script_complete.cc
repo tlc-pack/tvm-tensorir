@@ -71,7 +71,8 @@ class ScriptCompleter : public StmtMutator {
     for (const auto& alloc_buffer : op->alloc_buffers) {
       buffer_var_map_->erase(alloc_buffer->data);
     }
-    if (block->reads.empty() || block->writes.empty()) {
+    // ignore opaque and root block
+    if (!block->iter_vars.empty() && (block->reads.empty() || block->writes.empty())) {
       auto access_region = GetBlockAccessRegion(block, *buffer_var_map_);
       const Array<BufferRegion>& reads = access_region[0];
       const Array<BufferRegion>& writes = access_region[1];
@@ -80,8 +81,8 @@ class ScriptCompleter : public StmtMutator {
           << "ValueError: Can not auto detect buffer access region from tir.Load, tir.Store or "
              "direct access by buffer data. Please annotation the access region manually";
       auto n = CopyOnWrite(block.operator->());
-      if (!n->reads.defined()) n->reads = reads;
-      if (!n->writes.defined()) n->writes = writes;
+      if (n->reads.empty()) n->reads = reads;
+      if (n->writes.empty()) n->writes = writes;
       return Block(n);
     } else {
       return std::move(block);
