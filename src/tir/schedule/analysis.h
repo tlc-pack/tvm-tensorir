@@ -61,10 +61,6 @@ void VerifySRefTree(const ScheduleState& self);
  * \note An exception will be thrown out if the info is not valid
  */
 void VerifyBlockInfo(const ScheduleState& self);
-/*!
- * \brief Check the region cover for the single consumer block
- */
-void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block_sref);
 
 /******** Binding ********/
 
@@ -141,6 +137,18 @@ bool ReductionBlock(const ScheduleState& self, const StmtSRef& block_sref,
  */
 bool CanMergeReduction(const ScheduleState& self, const StmtSRef& init_block_sref,
                        const StmtSRef& update_block_sref, const StmtSRef& scope_root);
+
+/*!
+ * \brief Check the region cover for a consumer block if each region it reads are fully covered by
+ * its producers.
+ * \param self The schedule state
+ * \param consumer_block_sref The consumer block to be checked
+ * \param scope_root The sref to the scope root where `consumer_block_sref` is in
+ * \return A boolean flag indicating if the read regions of the specifc
+ * consumer are fully covered by its predecessors
+ */
+bool RegionCoveredConsumer(const ScheduleState& self, const StmtSRef& consumer_block_sref,
+                           const StmtSRef& scope_root);
 
 /******** Block-loop relation ********/
 /*!

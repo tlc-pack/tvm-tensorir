@@ -40,6 +40,8 @@ struct BlockInfo {
   /*! \brief Indicates if the block binding is quasi-affine */
   bool affine_binding{false};
 
+  bool region_cover{false};
+
   BlockInfo() = default;
 
   explicit BlockInfo(BlockScope scope, bool affine_binding)

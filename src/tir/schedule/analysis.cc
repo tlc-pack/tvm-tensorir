@@ -79,62 +79,65 @@ bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& lo
   return true;
 }
 
-void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block_sref) {
+bool RegionCoveredConsumer(const ScheduleState& self, const StmtSRef& consumer_block_sref,
+                           const StmtSRef& scope_root) {
   if (consumer_block_sref->parent == nullptr) {
-    return;
+    return true;
   }
-  const auto* consumer_block = consumer_block_sref->StmtAs<BlockNode>();
-  const StmtSRef& parent_block_sref = GetScopeRoot(consumer_block_sref);
-  // Gather all the producers
+  const auto* consumer_block = TVM_SREF_TO_BLOCK(consumer_block, consumer_block_sref);
+  BlockScope scope = self->GetBlockScope(scope_root);
+  // Step 1. Gather all the producers
   struct Producer {
     /*! \brief The block that writes the buffer */
     StmtSRef block_sref;
     /*! \brief The region the buffer is written */
     BufferRegion region;
     /*! \brief Constructor */
-    Producer(const StmtSRef& block_sref, const BufferRegion& region)
-        : block_sref(block_sref), region(region) {}
+    explicit Producer(StmtSRef block_sref, BufferRegion region)
+        : block_sref(std::move(block_sref)), region(std::move(region)) {}
   };
   // Maps a buffer var to its producers
   std::unordered_map<const VarNode*, std::vector<Producer>> buffer_producers;
   // Collect all producers to a buffer by enumerating all RAW predecessors of the consumer
-  for (const Dependency& edge :
-       self->GetBlockScope(parent_block_sref)->GetDepsByDst(consumer_block_sref)) {
-    if (edge->kind != DepKind::kRAW) {
-      continue;
-    }
+  for (const Dependency& edge : scope->GetDepsByDst(consumer_block_sref)) {
     // i.e. the RAW predecessor is producer
-    const StmtSRef& producer_block_sref = edge->src;
-    for (const BufferRegion& output_region : producer_block_sref->StmtAs<BlockNode>()->writes) {
-      const VarNode* buffer_var = output_region->buffer->data.get();
-      buffer_producers[buffer_var].emplace_back(producer_block_sref, output_region);
+    if (edge->kind == DepKind::kRAW) {
+      const StmtSRef& producer_block_sref = edge->src;
+      const auto* producer_block = TVM_SREF_TO_BLOCK(producer_block, producer_block_sref);
+      for (const BufferRegion& output_region : producer_block->writes) {
+        const VarNode* buffer_var = output_region->buffer->data.get();
+        buffer_producers[buffer_var].emplace_back(producer_block_sref, output_region);
+      }
     }
   }
-  // Check the region cover property for each buffer that the consumer reads
+  // Step 2. For each buffer that the consumer reads, check the region cover property
+  arith::Analyzer analyzer;
   for (const BufferRegion& consumer_region : consumer_block->reads) {
+    // Step 2.1. Find the producers of the buffer
     const VarNode* buffer_var = consumer_region->buffer->data.get();
-    if (!buffer_producers.count(buffer_var)) {
+    auto it = buffer_producers.find(buffer_var);
+    if (it == buffer_producers.end()) {
       continue;
     }
-    // Producers of the current buffer
-    const std::vector<Producer>& producers = buffer_producers.at(buffer_var);
-    // Figure out LCA of consumer and all producers
-    StmtSRef lca = [&producers, &consumer_block_sref, &parent_block_sref]() {
-      // inputs include consumer and all producers
-      std::vector<StmtSRef> inputs = {consumer_block_sref};
+    const std::vector<Producer>& producers = it->second;
+    // Step 2.2. Figure out LCA of consumer and all producers
+    StmtSRef lca{nullptr};
+    {
+      std::vector<StmtSRef> inputs;
+      inputs.reserve(producers.size() + 1);
+      inputs.emplace_back(consumer_block_sref);
       for (const Producer& producer : producers) {
-        inputs.push_back(producer.block_sref);
+        inputs.emplace_back(producer.block_sref);
       }
-      return LowestCommonAncestor(inputs, parent_block_sref);
-    }();
-    arith::Analyzer analyzer;
-    // Relax the read region with the loops under LCA
+      lca = LowestCommonAncestor(inputs, scope_root);
+    }
+    // Step 2.3. Relax the read region with the loops under LCA
     BufferRegion read = RelaxRegion(consumer_block_sref, lca, consumer_region);
     int ndim = read->region.size();
     for (const Producer& producer : producers) {
       // Relax the write region with the loops under LCA
       BufferRegion write = RelaxRegion(producer.block_sref, lca, producer.region);
-      CHECK_EQ(read->region.size(), write->region.size())
+      ICHECK_EQ(read->region.size(), write->region.size())
           << "ValueError: Inconsistent rank of the same buffer between reads and writes";
       // Check if the write domain covers the read domain
       for (int i = 0; i < ndim; ++i) {
@@ -142,17 +145,14 @@ void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block
         PrimExpr read_max = read_min + read->region[i]->extent;
         PrimExpr write_min = write->region[i]->min;
         PrimExpr write_max = write_min + write->region[i]->extent;
-        if (!analyzer.CanProve(write_min <= read_min) ||
-            !analyzer.CanProve(read_max <= write_max)) {
-          LOG(FATAL) << "ValueError: Cannot prove the region cover property on dimension " << i
-                     << "\nThe producer is:\n  " << write << ", write range: [" << write_min << ", "
-                     << write_max << ")"
-                     << "\nThe consumer is:\n  " << read << ", read range: [" << read_min << ","
-                     << read_max << ")";
+        PrimExpr cond = (write_min <= read_min) && (read_max <= write_max);
+        if (!analyzer.CanProve(cond)) {
+          return false;
         }
       }
     }
   }
+  return true;
 }
 
 class SRefTreeVerifier : public StmtVisitor {
