@@ -41,9 +41,10 @@ bool IsLoopVarParallelizable(const ScheduleState self, const Var& loop_var,
       << block_realize->GetTypeKey();
   const BlockNode* block = realize->block.get();
   // Cond 1. Binding is validated
-  if (!self->stmt2ref.at(block)->binding_valid) {
-    return false;
-  }
+  // TODO: affine
+  // if (!self->stmt2ref.at(block)->affine) {
+  //   return false;
+  // }
   CHECK_EQ(realize->binding_values.size(), block->iter_vars.size())
       << "InternalError: BlockRealize is inconsistent with its Block";
   int n = realize->binding_values.size();
@@ -119,15 +120,15 @@ void ParallelCompute(ScheduleState self, const StmtSRef& loop_sref, const ForKin
    * - If the producer is reduction. Producer instances under `input_loop=j` will never write the
    * positions that new instances under `input_loop=j` may read. Hence no data flow.
    */
-  const auto* loop = loop_sref->GetStmt<ForNode>();
+  const auto* loop = loop_sref->StmtAs<ForNode>();
   CHECK(loop != nullptr) << "TypeError: Parallel compute applies only to a loop, but get: "
                          << loop_sref->stmt->GetTypeKey();
   // Now only support:
   //   1. All the blocks are complete below
   //   2. A single block below the loop
-  const BlockScope& scope = self->scopes.at(GetScopeRoot(loop_sref));
+  StmtSRef scope_root = GetScopeRoot(loop_sref);
   bool is_compact_dataflow =
-      scope->IsCompactDataFlow(loop_sref, GetChildBlocks(self, loop_sref, false));
+      IsCompactDataFlow(self, scope_root, GetChildBlocks(self, loop_sref, false));
   if (!is_compact_dataflow) {
     Array<Stmt> single_child = GetChildren(GetRef<Stmt>(loop), true);
     // TODO(@junrushao1994): I am not super convinced by the checks here, revisit later
@@ -163,7 +164,7 @@ void ParallelCompute(ScheduleState self, const StmtSRef& loop_sref, const ForKin
 }
 
 void Vectorize(ScheduleState self, const StmtSRef& loop_sref) {
-  if (is_one(loop_sref->GetStmt<ForNode>()->extent)) {
+  if (is_one(loop_sref->StmtAs<ForNode>()->extent)) {
     return;
   }
   ParallelCompute(self, loop_sref, ForKind::kVectorized, NullOpt);
@@ -174,7 +175,7 @@ void Parallel(ScheduleState self, const StmtSRef& loop_sref) {
 }
 
 void Unroll(ScheduleState self, const StmtSRef& loop_sref) {
-  const auto* loop = loop_sref->GetStmt<ForNode>();
+  const auto* loop = loop_sref->StmtAs<ForNode>();
   CHECK(loop != nullptr) << "TypeError: Unroll expects a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
   ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop);
@@ -183,7 +184,7 @@ void Unroll(ScheduleState self, const StmtSRef& loop_sref) {
 }
 
 void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread) {
-  const auto* loop = loop_sref->GetStmt<ForNode>();
+  const auto* loop = loop_sref->StmtAs<ForNode>();
   CHECK(loop != nullptr) << "Parallel-like compute expect a loop";
   if (thread->dom.defined()) {
     CHECK(ExprDeepEqual()(loop->extent, thread->dom->extent))
@@ -194,18 +195,17 @@ void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread) 
 
 void Pragma(ScheduleState self, const StmtSRef& loop_sref, const String& pragma_type,
             const PrimExpr& pragma_value) {
-  const auto* loop_ptr = loop_sref->GetStmt<ForNode>();
+  const auto* loop_ptr = loop_sref->StmtAs<ForNode>();
   CHECK(loop_ptr) << "TypeError: pragma expects a Loop as its first argument";
   self->Replace(loop_sref, WithAnnotation(loop_ptr, "pragma_" + pragma_type, pragma_value), {});
 }
 
 void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref) {
-  const auto* block_ptr = block_sref->GetStmt<BlockNode>();
+  const auto* block_ptr = block_sref->StmtAs<BlockNode>();
   CHECK(block_ptr) << "TypeError: double_buffer expects 'block' as its argument";
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
-  const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->scopes.at(parent_block_sref);
-  CHECK(scope->IsComplete(block_sref))
+  const auto* parent_block = parent_block_sref->StmtAs<BlockNode>();
+  CHECK(CompleteBlock(self, block_sref, parent_block_sref))
       << "ValueError: 'double_buffer' expects 'block' to be a complete block";
   for (const BufferRegion& parent_write : parent_block->writes) {
     for (const BufferRegion& write : block_ptr->writes) {

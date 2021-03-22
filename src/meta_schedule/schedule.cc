@@ -30,20 +30,20 @@
 namespace tvm {
 
 namespace tir {
-tir::Schedule tir::Schedule::Meta(tir::PrimFunc func, int64_t seed, bool debug_mode) {
+tir::Schedule tir::Schedule::Meta(tir::PrimFunc func, int64_t seed, int debug_mode) {
   return meta_schedule::Schedule(func, seed, debug_mode);
 }
-tir::Schedule tir::Schedule::Meta(IRModule mod, int64_t seed, bool debug_mode) {
+tir::Schedule tir::Schedule::Meta(IRModule mod, int64_t seed, int debug_mode) {
   return meta_schedule::Schedule(mod, seed, debug_mode);
 }
 }  // namespace tir
 
 namespace meta_schedule {
 
-Schedule::Schedule(tir::PrimFunc func, int64_t seed, bool debug_mode)
+Schedule::Schedule(tir::PrimFunc func, int64_t seed, int debug_mode)
     : Schedule(IRModule({{GlobalVar("main"), func}}), seed, debug_mode) {}
 
-Schedule::Schedule(IRModule mod, int64_t seed, bool debug_mode) {
+Schedule::Schedule(IRModule mod, int64_t seed, int debug_mode) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->state_ = tir::ScheduleState(mod, debug_mode);
   n->symbol_table_ = {};
@@ -296,7 +296,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkLoop")
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkBlock")
     .set_body_method<Schedule>(&ScheduleNode::MarkBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule")
-    .set_body_typed([](ObjectRef obj, int64_t seed, bool debug_mode) -> Schedule {
+    .set_body_typed([](ObjectRef obj, int64_t seed, int debug_mode) -> Schedule {
       if (const auto* func = obj.as<tir::PrimFuncNode>()) {
         return Schedule(GetRef<tir::PrimFunc>(func), seed, debug_mode);
       }

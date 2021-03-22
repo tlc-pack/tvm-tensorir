@@ -14,120 +14,20 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Schedule nodes and APIs in TIR schedule"""
+# pylint: disable=unused-import
+"""The schedule class"""
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from tvm._ffi import register_object as _register_object
-from tvm.ir import PrimExpr, IRModule
+from tvm.ir import IRModule, PrimExpr
 from tvm.runtime import Object, String
+from tvm.tir import Block, For, IntImm, IterVar, PrimFunc, Stmt, TensorIntrin, Var
 
 from . import _ffi_api_schedule
-from .expr import IntImm, Var
-
-if TYPE_CHECKING:
-    from tvm.tir import Block, For, IterVar, PrimFunc, Stmt, TensorIntrin
-
-
-@_register_object("tir.StmtSRef")
-class StmtSRef(Object):
-    """The schedulable reference node for TIR"""
-
-    @property
-    def stmt(self) -> Optional[Union[Block, For]]:
-        return _ffi_api_schedule.StmtSRefStmt(self)  # pylint: disable=no-member
-
-    @staticmethod
-    def root_mark() -> StmtSRef:
-        return _ffi_api_schedule.StmtSRefRootMark()  # pylint: disable=no-member
-
-    @staticmethod
-    def inline_mark() -> StmtSRef:
-        return _ffi_api_schedule.StmtSRefInlineMark()  # pylint: disable=no-member
-
-
-@_register_object("tir.Dependency")
-class Dependency(Object):
-    """An edge in the dependency graph"""
-
-    kRAW = 0
-    kWAW = 1
-    kWAR = 2
-    kOpaque = 3
-
-    src: StmtSRef
-    dst: StmtSRef
-    kind: int
-
-
-@_register_object("tir.BlockScope")
-class BlockScope(Object):
-    """Dependency Graph that stores read/write dependency between Blocks"""
-
-    def get_deps_by_src(self, block: StmtSRef) -> List[Dependency]:
-        """Get the dependency predecessors of the block
-
-        Parameters
-        ----------
-        block: StmtSRef
-            The queried block
-
-        Returns
-        -------
-        blocks: List of Dependency
-            The predecessors of the block
-        """
-        return _ffi_api_schedule.BlockScopeGetDepsBySrc(self, block)  # pylint: disable=no-member
-
-    def get_deps_by_dst(self, block: StmtSRef) -> List[Dependency]:
-        """Get the dependency successor of the block
-
-        Parameters
-        ----------
-        block: StmtSRef
-            The queried block
-
-        Returns
-        -------
-        blocks: List of Dependency
-            The predecessors of the block
-        """
-        return _ffi_api_schedule.BlockScopeGetDepsByDst(self, block)  # pylint: disable=no-member
-
-
-@_register_object("tir.ScheduleState")
-class ScheduleState(Object):
-    """The state of scheduling"""
-
-    mod: IRModule
-    scopes: Dict[StmtSRef, BlockScope]
-    debug_mode: bool
-
-    def __init__(self, func_or_mod: Union[PrimFunc, IRModule], debug_mode: bool):
-        self.__init_handle_by_constructor__(
-            _ffi_api_schedule.ScheduleState,  # pylint: disable=no-member
-            func_or_mod,
-            debug_mode,
-        )
-
-    def get_sref(self, stmt: Stmt) -> Optional[StmtSRef]:
-        return _ffi_api_schedule.ScheduleStateGetSRef(self, stmt)  # pylint: disable=no-member
-
-    def replace(
-        self,
-        src_sref: StmtSRef,
-        tgt_stmt: Stmt,
-        block_sref_reuse: Optional[Dict[Block, Block]] = None,
-    ) -> None:
-        if block_sref_reuse is None:
-            block_sref_reuse = {}
-        _ffi_api_schedule.ScheduleStateReplace(  # pylint: disable=no-member
-            self,
-            src_sref,
-            tgt_stmt,
-            block_sref_reuse,
-        )
+from .state import ScheduleState, StmtSRef
 
 
 @_register_object("tir.LoopRV")
@@ -151,7 +51,17 @@ RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
 class Schedule(Object):
     """The schedule node for TIR"""
 
-    def __init__(self, func_or_mod: Union[PrimFunc, IRModule], debug_mode: bool = False):
+    def __init__(
+        self,
+        func_or_mod: Union[PrimFunc, IRModule],
+        debug_mode: Union[bool, int] = False,
+    ):
+        if isinstance(debug_mode, bool):
+            if debug_mode:
+                debug_mode = -1
+            else:
+                debug_mode = 0
+        assert isinstance(debug_mode, int)
         self.__init_handle_by_constructor__(
             _ffi_api_schedule.Schedule,  # pylint: disable=no-member
             func_or_mod,
@@ -167,7 +77,7 @@ class Schedule(Object):
     def state(self) -> ScheduleState:
         return _ffi_api_schedule.ScheduleGetState(self)  # pylint: disable=no-member
 
-    def show(self, rand_var: Union[LoopRV, BlockRV, ExprRV]) -> str:
+    def show(self, rand_var: RAND_VAR_TYPE) -> str:
         # TODO(@junrushao1994): complete it
         return str(self.get(rand_var))
 
@@ -181,7 +91,7 @@ class Schedule(Object):
 
     ########## Lookup ##########
 
-    def get(self, rand_var: Union[LoopRV, BlockRV, ExprRV]) -> Optional[Union[int, Block, For]]:
+    def get(self, rand_var: RAND_VAR_TYPE) -> Optional[Union[int, Block, For]]:
         if isinstance(rand_var, StmtSRef):
             return rand_var.stmt
         result = _ffi_api_schedule.ScheduleGet(self, rand_var)  # pylint: disable=no-member
@@ -189,7 +99,7 @@ class Schedule(Object):
             result = result.value
         return result
 
-    def get_sref(self, rand_var_or_stmt: Union[BlockRV, LoopRV, Stmt]) -> Optional[StmtSRef]:
+    def get_sref(self, rand_var_or_stmt: Union[RAND_VAR_TYPE, Stmt]) -> Optional[StmtSRef]:
         return _ffi_api_schedule.ScheduleGetSRef(  # pylint: disable=no-member
             self, rand_var_or_stmt
         )

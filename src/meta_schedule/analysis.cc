@@ -16,9 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include "../tir/schedule/analysis.h"
+
 #include <numeric>
 
-#include "../tir/schedule/analysis.h"
 #include "../tir/schedule/primitives/primitives.h"
 #include "./utils.h"
 #include "analysis.h"
@@ -446,7 +447,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
   std::unordered_set<const tir::VarNode*> block_loop_vars;
   {
     for (const tir::StmtSRefNode* loop_sref = block_sref->parent;; loop_sref = loop_sref->parent) {
-      const auto* loop = loop_sref->GetStmt<tir::ForNode>();
+      const auto* loop = loop_sref->StmtAs<tir::ForNode>();
       if (loop == nullptr || loop->body->IsInstance<tir::SeqStmtNode>()) {
         break;
       }
@@ -766,8 +767,8 @@ bool NeedsRFactor(const tir::ScheduleState& self, const tir::StmtSRef& block_sre
   Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
 
   // Cond 1. The block is a reduction block and has trivial binding.
-  if (self->scopes.at(GetScopeRoot(block_sref))->IsReduction(block_sref)
-      && !IsTrivialBinding(self, block_sref)) {
+  if (ReductionBlock(self, block_sref, GetScopeRoot(block_sref)) &&
+      !IsTrivialBinding(self, block_sref)) {
     return false;
   }
 

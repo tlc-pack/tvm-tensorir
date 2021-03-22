@@ -19,6 +19,7 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_H_
 
+#include <tvm/tir/function.h>
 #include <tvm/tir/schedule/state.h>
 
 namespace tvm {
@@ -406,10 +407,10 @@ class ScheduleNode : public runtime::Object {
 
 class Schedule : public runtime::ObjectRef {
  public:
-  TVM_DLL static Schedule Concrete(PrimFunc func, int64_t seed, bool debug_mode);
-  TVM_DLL static Schedule Concrete(IRModule func, int64_t seed, bool debug_mode);
-  TVM_DLL static Schedule Meta(PrimFunc func, int64_t seed, bool debug_mode);
-  TVM_DLL static Schedule Meta(IRModule func, int64_t seed, bool debug_mode);
+  TVM_DLL static Schedule Concrete(PrimFunc func, int64_t seed, int debug_mode);
+  TVM_DLL static Schedule Concrete(IRModule func, int64_t seed, int debug_mode);
+  TVM_DLL static Schedule Meta(PrimFunc func, int64_t seed, int debug_mode);
+  TVM_DLL static Schedule Meta(IRModule func, int64_t seed, int debug_mode);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };
 
