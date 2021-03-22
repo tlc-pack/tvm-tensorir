@@ -166,9 +166,10 @@ class StateCreator : private StmtVisitor {
     return sref;
   }
 
-  BlockInfo MakeBlockInfo() {
+  void MakeBlockInfo(const StmtSRef& scope_root) {
     // Calculate `BlockInfo::scope`
-    BlockScope scope(std::move(block_frames_.back()));
+    Array<StmtSRef> child_block_srefs = std::move(block_frames_.back());
+    BlockScope scope(child_block_srefs);
     // Calculate `BlockInfo::affine_binding`
     int n = static_cast<int>(srefs_.size());
     Map<Var, Range> loop_var_ranges;
@@ -180,9 +181,20 @@ class StateCreator : private StmtVisitor {
         break;
       }
     }
+    // Calculate `BlockInfo::affine_binding`
     bool affine_binding =
         ValidateBlockBinding(GetRef<BlockRealize>(realizes_.back()), loop_var_ranges);
-    return BlockInfo(std::move(scope), affine_binding);
+    // Set `BlockInfo::region_cover`
+    bool region_cover = realizes_.size() == 1;
+    self_->block_info[scope_root] = BlockInfo(std::move(scope), affine_binding, region_cover);
+    // Update `BlockInfo::region_cover` for child blocks
+    ScheduleState self = GetRef<ScheduleState>(self_);
+    for (const StmtSRef& block_sref : child_block_srefs) {
+      auto it = self_->block_info.find(block_sref);
+      ICHECK(it != self_->block_info.end());
+      BlockInfo& info = it->second;
+      info.region_cover = RegionCoveredConsumer(self, block_sref, scope_root);
+    }
   }
 
   void VisitStmt_(const ForNode* loop) final {
@@ -200,7 +212,7 @@ class StateCreator : private StmtVisitor {
     VisitStmt(block->body);  // `stmt->init` is not visited
     StmtSRef sref = PopSRef();
     // Create BlockInfo for the block
-    self_->block_info[sref] = MakeBlockInfo();
+    MakeBlockInfo(sref);
     // Update parent scope
     block_frames_.pop_back();
     block_frames_.back().push_back(sref);
@@ -483,7 +495,9 @@ class SRefUpdater : public StmtVisitor {
     BlockInfo new_info(
         /*scope=*/BlockScope(tir::GetChildBlocks(self_, block_sref)),
         // Assume not affine - if it is, the caller is responsible for modifying the flag
-        /*affine_binding=*/false);
+        /*affine_binding=*/false,
+        // Assume not covered - if it is, the caller is responsible for modifying the flag
+        /*region_cover=*/false);
     std::pair<TIter, bool> insert_result = self_->block_info.emplace(block_sref, new_info);
     if (!insert_result.second) {
       // Insertion didn't take place, because the entry has been there before

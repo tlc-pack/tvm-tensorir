@@ -37,16 +37,20 @@ class PrimFunc;
 struct BlockInfo {
   /*! \brief Dependency in the scope rooted by the block */
   BlockScope scope{nullptr};
-  /*! \brief Indicates if the block binding is quasi-affine */
+  /*! \brief Property of a block, indicating if the block binding is quasi-affine */
   bool affine_binding{false};
-
+  /*!
+   * \brief Property of a block, indicating if each of the block's read regions is
+   * produced by its producers
+   */
   bool region_cover{false};
 
   BlockInfo() = default;
 
-  explicit BlockInfo(BlockScope scope, bool affine_binding)
-      : scope(std::move(scope)),  //
-        affine_binding(affine_binding) {}
+  explicit BlockInfo(BlockScope scope, bool affine_binding, bool region_cover)
+      : scope(std::move(scope)),         //
+        affine_binding(affine_binding),  //
+        region_cover(region_cover) {}
 };
 
 /*!
