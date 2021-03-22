@@ -172,6 +172,14 @@ TVM_DLL bool VerifyGPUCode(const PrimFunc& func, Map<String, PrimExpr> constrain
 Array<Array<BufferRegion>> GetBlockAccessRegion(const Block& block,
                                                 const Map<Var, Buffer>& buffer_var_map);
 
+/*!
+ * \brief Detect the LCA of buffer access, including both high-level access(BufferLoad, BufferStore)
+ *        and low-level access(Load, Store and opaque access). The LCA may be a For loop or a Block.
+ * \param func The PrimFunc to be detected.
+ * \return The Map from buffer to its LCA stmt.
+ */
+Map<Buffer, Stmt> DetectBufferAccessLCA(const PrimFunc& func);
+
 // Pass variants of verification analysis
 // directly throws RuntimeError when verification fails.
 namespace transform {

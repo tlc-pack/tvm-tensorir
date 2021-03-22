@@ -17,11 +17,12 @@
 """Wrapping existing analysis utils."""
 # pylint: disable=invalid-name
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Mapping
 from . import _ffi_api
 
 if TYPE_CHECKING:
     from ..function import PrimFunc
+    from .. import Buffer, Stmt
 
 
 def expr_deep_equal(lhs, rhs):
@@ -133,3 +134,20 @@ def get_block_access_region(block, buffer_var_map):
             - third: opaque regions
     """
     return _ffi_api.get_block_access_region(block, buffer_var_map)
+
+
+def detect_buffer_access_lca(func: PrimFunc) -> Mapping[Buffer, Stmt]:
+    """Detect the LCA of buffer access, including both high-level access(BufferLoad, BufferStore)
+    and low-level access(Load, Store and opaque access). The LCA may be a For loop or a Block.
+
+    Parameters
+    ----------
+    func: tvm.tir.PrimFunc
+        The function to be detected.
+
+    Returns
+    -------
+    result : Mapping[List[BufferRegion]]
+        Map from buffer to its LCA stmt.
+    """
+    return _ffi_api.detect_buffer_access_lca(func)  # pylint: disable=no-member
