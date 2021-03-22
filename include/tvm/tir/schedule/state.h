@@ -124,13 +124,27 @@ class ScheduleStateNode : public Object {
    * \param block_sref The block sref to be retrieved
    * \return The corresponding BlockScope
    */
-  TVM_DLL BlockScope GetBlockScope(const StmtSRef& block_sref) const;
+  TVM_DLL BlockScope GetBlockScope(const StmtSRef& block_sref) const {
+    return GetBlockInfo(block_sref).scope;
+  }
   /*!
-   * \brief Check a cached flag indicating if the correpsonding block has quasi-affine bindings
+   * \brief Check a cached flag indicating if the specific block has quasi-affine bindings
    * \param block_sref The block sref to be checked
    * \return A boolean flag indicating if the block has quasi-affine bindings
    */
-  TVM_DLL bool IsAffineBlockBinding(const StmtSRef& block_sref) const;
+  TVM_DLL bool IsAffineBlockBinding(const StmtSRef& block_sref) const {
+    return GetBlockInfo(block_sref).affine_binding;
+  }
+  /*!
+   * \brief Check a cached flag indicating if each of the specific consumer block's read region
+   * is fully produced by its producers
+   * \param block_sref The block sref to be checked
+   * \param consumer_block_sref The specific consumer block
+   * \return A boolean flag indicating if the block has quasi-affine bindings
+   */
+  TVM_DLL bool IsRegionCoveredConsumer(const StmtSRef& consumer_block_sref) const {
+    return GetBlockInfo(consumer_block_sref).region_cover;
+  }
 };
 
 /*!

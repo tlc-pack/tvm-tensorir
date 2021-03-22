@@ -817,14 +817,6 @@ BlockInfo ScheduleStateNode::GetBlockInfo(const StmtSRef& block_sref) const {
   return it->second;
 }
 
-BlockScope ScheduleStateNode::GetBlockScope(const StmtSRef& block_sref) const {
-  return GetBlockInfo(block_sref).scope;
-}
-
-bool ScheduleStateNode::IsAffineBlockBinding(const StmtSRef& block_sref) const {
-  return GetBlockInfo(block_sref).affine_binding;
-}
-
 /**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(ScheduleStateNode);
