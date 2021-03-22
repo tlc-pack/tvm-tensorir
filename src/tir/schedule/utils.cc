@@ -58,9 +58,9 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
   }
 }
 
-class IRSubstitueInScope : public StmtExprMutator {
+class IRSubstituteInScope : public StmtExprMutator {
  public:
-  explicit IRSubstitueInScope(std::function<PrimExpr(const VarNode*)> fmap)
+  explicit IRSubstituteInScope(std::function<PrimExpr(const VarNode*)> fmap)
       : fmap_(std::move(fmap)) {}
 
   PrimExpr VisitExpr_(const VarNode* op) final {
@@ -94,7 +94,7 @@ class IRSubstitueInScope : public StmtExprMutator {
 
 Stmt SubstituteInScope(const Stmt& stmt,
                        const std::function<PrimExpr(const VarNode*)>& value_func) {
-  return IRSubstitueInScope(value_func)(stmt);
+  return IRSubstituteInScope(value_func)(stmt);
 }
 
 Stmt SubstituteInScope(const Stmt& stmt,
@@ -107,7 +107,7 @@ Stmt SubstituteInScope(const Stmt& stmt,
       return NullValue<PrimExpr>();
     }
   };
-  return IRSubstitueInScope(vmap)(stmt);
+  return IRSubstituteInScope(vmap)(stmt);
 }
 
 PrimExpr SubstituteInScope(const PrimExpr& expr,
@@ -120,7 +120,7 @@ PrimExpr SubstituteInScope(const PrimExpr& expr,
       return NullValue<PrimExpr>();
     }
   };
-  return IRSubstitueInScope(vmap)(expr);
+  return IRSubstituteInScope(vmap)(expr);
 }
 
 Stmt SubstituteInScope(const Stmt& stmt,
@@ -133,7 +133,7 @@ Stmt SubstituteInScope(const Stmt& stmt,
       return NullValue<PrimExpr>();
     }
   };
-  return IRSubstitueInScope(vmap)(stmt);
+  return IRSubstituteInScope(vmap)(stmt);
 }
 
 PrimExpr SubstituteInScope(const PrimExpr& expr,
@@ -146,7 +146,7 @@ PrimExpr SubstituteInScope(const PrimExpr& expr,
       return NullValue<PrimExpr>();
     }
   };
-  return IRSubstitueInScope(vmap)(expr);
+  return IRSubstituteInScope(vmap)(expr);
 }
 
 BufferRegion SubstituteBufferRegion(
@@ -200,6 +200,7 @@ BlockRealize GetBlockRealize(const StmtSRef& block_sref) {
   Stmt s = GetRef<Stmt>(block_sref->stmt);
   ICHECK(GetRef<Stmt>(block_sref->stmt).as<BlockNode>());
   const auto* parent = block_sref->parent;
+  ICHECK(parent != nullptr);
   Stmt parent_stmt = GetRef<Stmt>(parent->stmt);
 
   auto f_equal = [](const Stmt& s, const Stmt& target) {
@@ -265,7 +266,7 @@ std::function<BufferRegion(const BufferRegion)> RelaxGenerator(
     const StmtSRef& block_sref, const StmtSRef& root,
     std::unordered_map<const VarNode*, PrimExpr>* vmap,
     std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
   const auto* block_realize = GetBlockRealize(block_sref).operator->();
   ICHECK(block != nullptr);
 
@@ -277,7 +278,7 @@ std::function<BufferRegion(const BufferRegion)> RelaxGenerator(
   // Gather iteration domain
   auto sref = GetRef<StmtSRef>(block_sref->parent);
   while (sref.defined() && !sref.same_as(root)) {
-    const auto* loop = sref->GetStmt<ForNode>();
+    const auto* loop = sref->StmtAs<ForNode>();
     // The root may not be a loop
     if (loop == nullptr) break;
     Range range = Range::FromMinExtent(loop->min, loop->extent);
@@ -310,7 +311,7 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<B
   for (const auto& pair : relax_vars) {
     dom_map[pair.first] = arith::IntSet::FromRange(pair.second);
   }
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
   if (reads != nullptr) {
     for (const auto& buffer_region : block->reads) {
       reads->push_back(relax(buffer_region));
@@ -429,6 +430,37 @@ bool StmtExprContainsVar(const ObjectRef& obj, const PrimExpr& vars) {
     return true;
   }
   return StmtExprContainsVar(obj, var_set);
+}
+
+void UpdateScope(ScheduleState self, const StmtSRef& block_sref) {
+  BlockScope scope(tir::GetChildBlocks(self, block_sref));
+  // The caller is responsible for correcting the flags
+  bool affine_binding = false;
+  bool region_cover = false;
+  bool stage_pipeline = false;
+  self->block_info[block_sref] =
+      BlockInfo(std::move(scope), affine_binding, region_cover, stage_pipeline);
+}
+
+void UpdateAffineFlag(ScheduleState self, const StmtSRef& block_sref) {
+  if (block_sref->parent == nullptr) {
+    ICHECK(self->block_info.count(block_sref));
+    self->block_info[block_sref].affine_binding = true;
+    return;
+  }
+  BlockRealize realize = GetBlockRealize(block_sref);
+  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  Map<Var, Range> loop_var_ranges;
+  for (StmtSRefNode* loop_sref = block_sref->parent; loop_sref != nullptr;
+       loop_sref = loop_sref->parent) {
+    if (const auto* loop = loop_sref->StmtAs<ForNode>()) {
+      loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+    } else {
+      break;
+    }
+  }
+  ICHECK(self->block_info.count(block_sref));
+  self->block_info[block_sref].affine_binding = ValidateBlockBinding(realize, loop_var_ranges);
 }
 
 void PatternMatcher::VisitExpr_(const VarNode* op) {

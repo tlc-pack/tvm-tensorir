@@ -276,6 +276,7 @@ def dot_product_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 def test_tensorize_gemm():
     func = util.matmul_stmt()
+    tensor_intrin = tvm.tir.TensorIntrin(desc_func, intrin_func)
     # schedule
     s = tir.Schedule(func, debug_mode=True)
     update = s.get_block("update")
@@ -285,13 +286,9 @@ def test_tensorize_gemm():
     ko, ki = s.split(k, factor=16)
     s.reorder(io, jo, ko, ii, ji, ki)
     s.decompose_reduction(update, ko)
-
-    tensor_intrin = tvm.tir.TensorIntrin(desc_func, intrin_func)
-
     s.tensorize(ii, tensor_intrin)
 
     func = tvm.build(s.mod["main"])
-
     a_np = np.random.uniform(size=(128, 128)).astype("float32")
     b_np = np.random.uniform(size=(128, 128)).astype("float32")
     a = tvm.nd.array(a_np)

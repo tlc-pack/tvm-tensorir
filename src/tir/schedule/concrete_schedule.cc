@@ -25,11 +25,11 @@
 namespace tvm {
 namespace tir {
 
-Schedule Schedule::Concrete(PrimFunc func, int64_t seed, bool debug_mode) {
+Schedule Schedule::Concrete(PrimFunc func, int64_t seed, int debug_mode) {
   return Schedule::Concrete(IRModule({{GlobalVar("main"), func}}), seed, debug_mode);
 }
 
-Schedule Schedule::Concrete(IRModule mod, int64_t seed, bool debug_mode) {
+Schedule Schedule::Concrete(IRModule mod, int64_t seed, int debug_mode) {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
   n->symbol_table_ = {};
@@ -52,11 +52,10 @@ struct SRefTranslator {
     // Create SRef tree without parents
     for (const auto& kv : state->stmt2ref) {
       const StmtSRefNode* sref = kv.second.operator->();
-      trans_.emplace(sref,                                    // the old StmtSRef
-                     StmtSRef(/*stmt=*/sref->stmt,            // the new StmtSRef
-                              /*parent=*/nullptr,             // parent is not set yet
-                              /*seq_index=*/sref->seq_index,  //
-                              /*binding_valid=*/sref->binding_valid));
+      trans_.emplace(sref,                          // the old StmtSRef
+                     StmtSRef(/*stmt=*/sref->stmt,  // the new StmtSRef
+                              /*parent=*/nullptr,   // parent is not set yet
+                              /*seq_index=*/sref->seq_index));
     }
     // Fill in the parent field
     // Find out the root along the way
@@ -76,7 +75,7 @@ struct SRefTranslator {
       return trans_.at(sref);
     }
     // Handle expired sref
-    return trans_[sref] = StmtSRef(nullptr, nullptr, -1, false);
+    return trans_[sref] = StmtSRef(nullptr, nullptr, -1);
   }
 
   /*! \brief Translate Array<StmtSRef> */
@@ -120,16 +119,18 @@ struct SRefTranslator {
   }
 
   /*! \brief Translate SMap<StmtSRef, Scope> */
-  Map<StmtSRef, BlockScope> Trans(const Map<StmtSRef, BlockScope>& scopes) {
-    Map<StmtSRef, BlockScope> result;
+  SMap<StmtSRef, BlockInfo> Trans(const SMap<StmtSRef, BlockInfo>& scopes) {
+    SMap<StmtSRef, BlockInfo> result;
     for (const auto& kv : scopes) {
       const StmtSRef& old_sref = kv.first;
-      const BlockScope& old_scope = kv.second;
+      const BlockInfo& old_info = kv.second;
+      BlockInfo new_info = old_info;
       ObjectPtr<BlockScopeNode> scope = make_object<BlockScopeNode>();
-      scope->src2deps = Trans(old_scope->src2deps);
-      scope->dst2deps = Trans(old_scope->dst2deps);
-      scope->buffer_writers = Trans(old_scope->buffer_writers);
-      result.Set(Trans(old_sref), BlockScope(std::move(scope)));
+      scope->src2deps = Trans(old_info.scope->src2deps);
+      scope->dst2deps = Trans(old_info.scope->dst2deps);
+      scope->buffer_writers = Trans(old_info.scope->buffer_writers);
+      new_info.scope = BlockScope(std::move(scope));
+      result[Trans(old_sref)] = std::move(new_info);
     }
     return result;
   }
@@ -169,7 +170,7 @@ void ConcreteScheduleNode::MakeCopy(ScheduleState* new_state,
   SRefTranslator trans(src_state);
   ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
   n->mod = src_state->mod;
-  n->scopes = trans.Trans(src_state->scopes);
+  n->block_info = trans.Trans(src_state->block_info);
   n->stmt2ref = trans.Trans(src_state->stmt2ref);
   n->debug_mode = src_state->debug_mode;
   *new_state = ScheduleState(std::move(n));
@@ -319,6 +320,7 @@ LoopRV ConcreteScheduleNode::Fuse(const Array<LoopRV>& loop_rvs) {
     loop_srefs.pop_back();
     StmtSRef fused = schedule::Fuse(state_, outer_sref, inner_sref);
     loop_srefs.push_back(fused);
+    this->state_->DebugVerify();
   }
   return SetRV<LoopRV>(loop_srefs[0]);
 }
@@ -379,6 +381,7 @@ Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
     Array<StmtSRef> parts = schedule::Split(state_,     //
                                             loop_sref,  //
                                             outer_len, inner_len);
+    this->state_->DebugVerify();
     ICHECK_EQ(parts.size(), 2);
     results[i] = parts[0];
     loop_sref = parts[1];
@@ -403,11 +406,13 @@ void ConcreteScheduleNode::ComputeAt(const BlockRV& block_rv, const LoopRV& loop
     // do nothing
   } else if (loop_sref.same_as(inline_mark)) {
     schedule::ComputeInline(state_, this->GetSRef(block_rv));
+    this->state_->DebugVerify();
   } else {
     schedule::ComputeAt(state_,                   //
                         this->GetSRef(block_rv),  //
                         loop_sref,                //
                         preserve_unit_loop);
+    this->state_->DebugVerify();
   }
 }
 
@@ -420,38 +425,46 @@ void ConcreteScheduleNode::ReverseComputeAt(const BlockRV& block_rv, const LoopR
     // do nothing
   } else if (loop_sref.same_as(inline_mark)) {
     schedule::ReverseComputeInline(state_, this->GetSRef(block_rv));
+    this->state_->DebugVerify();
   } else {
     schedule::ReverseComputeAt(state_,                   //
                                this->GetSRef(block_rv),  //
                                loop_sref,                //
                                preserve_unit_loop);
+    this->state_->DebugVerify();
   }
 }
 
 void ConcreteScheduleNode::ComputeInline(const BlockRV& block_rv) {
   schedule::ComputeInline(state_, this->GetSRef(block_rv));
+  this->state_->DebugVerify();
 }
 
 void ConcreteScheduleNode::ReverseComputeInline(const BlockRV& block_rv) {
   schedule::ReverseComputeInline(state_, this->GetSRef(block_rv));
+  this->state_->DebugVerify();
 }
 
 /******** Schedule: parallelize / annotate ********/
 
 void ConcreteScheduleNode::Vectorize(const LoopRV& loop_rv) {
   schedule::Vectorize(state_, this->GetSRef(loop_rv));
+  this->state_->DebugVerify();
 }
 
 void ConcreteScheduleNode::Parallel(const LoopRV& loop_rv) {
   schedule::Parallel(state_, this->GetSRef(loop_rv));
+  this->state_->DebugVerify();
 }
 
 void ConcreteScheduleNode::Unroll(const LoopRV& loop_rv) {
   schedule::Unroll(state_, this->GetSRef(loop_rv));
+  this->state_->DebugVerify();
 }
 
 void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const IterVar& thread) {
   schedule::Bind(state_, this->GetSRef(loop_rv), thread);
+  this->state_->DebugVerify();
 }
 
 void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread) {
@@ -460,10 +473,12 @@ void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread) {
                    kThreadIndex,    //
                    thread);
   schedule::Bind(state_, this->GetSRef(loop_rv), iter_var);
+  this->state_->DebugVerify();
 }
 
 void ConcreteScheduleNode::DoubleBuffer(const BlockRV& block_rv) {
   schedule::DoubleBuffer(state_, this->GetSRef(block_rv));
+  this->state_->DebugVerify();
 }
 
 void ConcreteScheduleNode::Pragma(const LoopRV& loop_rv, const String& pragma_type,
@@ -472,30 +487,37 @@ void ConcreteScheduleNode::Pragma(const LoopRV& loop_rv, const String& pragma_ty
                    this->GetSRef(loop_rv),  //
                    pragma_type,             //
                    this->Get(pragma_value));
+  this->state_->DebugVerify();
 }
 
 /******** Schedule: cache read/write ********/
 
 BlockRV ConcreteScheduleNode::CacheRead(const BlockRV& block_rv, int i,
                                         const String& storage_scope) {
-  return SetRV<BlockRV>(schedule::CacheRead(state_,                   //
-                                            this->GetSRef(block_rv),  //
-                                            i,                        //
-                                            storage_scope));
+  StmtSRef result = schedule::CacheRead(state_,                   //
+                                        this->GetSRef(block_rv),  //
+                                        i,                        //
+                                        storage_scope);
+  this->state_->DebugVerify();
+  return SetRV<BlockRV>(result);
 }
 
 BlockRV ConcreteScheduleNode::CacheWrite(const BlockRV& block_rv, int i,
                                          const String& storage_scope) {
-  return SetRV<BlockRV>(schedule::CacheWrite(state_,                   //
-                                             this->GetSRef(block_rv),  //
-                                             i,                        //
-                                             storage_scope));
+  StmtSRef result = schedule::CacheWrite(state_,                   //
+                                         this->GetSRef(block_rv),  //
+                                         i,                        //
+                                         storage_scope);
+  this->state_->DebugVerify();
+  return SetRV<BlockRV>(result);
 }
 
 /******** Schedule: reduction ********/
 
 BlockRV ConcreteScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
-  return SetRV<BlockRV>(schedule::RFactor(state_, this->GetSRef(loop_rv), factor_axis));
+  StmtSRef result = schedule::RFactor(state_, this->GetSRef(loop_rv), factor_axis);
+  this->state_->DebugVerify();
+  return SetRV<BlockRV>(result);
 }
 
 BlockRV ConcreteScheduleNode::DecomposeReduction(const BlockRV& block_rv,
@@ -503,9 +525,11 @@ BlockRV ConcreteScheduleNode::DecomposeReduction(const BlockRV& block_rv,
   Optional<StmtSRef> opt_loop_sref = opt_loop_rv.defined() ?                 //
                                          this->GetSRef(opt_loop_rv.value())  //
                                                            : Optional<StmtSRef>(NullOpt);
-  return SetRV<BlockRV>(schedule::DecomposeReduction(state_,                   //
-                                                     this->GetSRef(block_rv),  //
-                                                     opt_loop_sref));
+  StmtSRef result = schedule::DecomposeReduction(state_,                   //
+                                                 this->GetSRef(block_rv),  //
+                                                 opt_loop_sref);
+  this->state_->DebugVerify();
+  return SetRV<BlockRV>(result);
 }
 
 void ConcreteScheduleNode::MergeReduction(const BlockRV& init_block_rv,
@@ -513,27 +537,32 @@ void ConcreteScheduleNode::MergeReduction(const BlockRV& init_block_rv,
   schedule::MergeReduction(state_,                        //
                            this->GetSRef(init_block_rv),  //
                            this->GetSRef(update_block_rv));
+  this->state_->DebugVerify();
 }
 
 /******** Schedule: blockize / tensorize ********/
 
 BlockRV ConcreteScheduleNode::Blockize(const LoopRV& loop_rv, const String& exec_scope) {
-  return SetRV<BlockRV>(schedule::Blockize(state_, this->GetSRef(loop_rv), exec_scope));
+  StmtSRef result = schedule::Blockize(state_, this->GetSRef(loop_rv), exec_scope);
+  this->state_->DebugVerify();
+  return SetRV<BlockRV>(result);
 }
 
 void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) {
   schedule::Tensorize(state_, this->GetSRef(loop_rv), intrin);
+  this->state_->DebugVerify();
 }
 
 void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin_name) {
   schedule::Tensorize(state_, this->GetSRef(loop_rv), tir::TensorIntrin::Get(intrin_name));
+  this->state_->DebugVerify();
 }
 
 /******** FFI ********/
 
 TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);
 TVM_REGISTER_GLOBAL("tir.schedule.Schedule")
-    .set_body_typed([](ObjectRef obj, int64_t seed, bool debug_mode) -> Schedule {
+    .set_body_typed([](ObjectRef obj, int64_t seed, int debug_mode) -> Schedule {
       if (const auto* func = obj.as<PrimFuncNode>()) {
         return Schedule::Concrete(GetRef<PrimFunc>(func), seed, debug_mode);
       }

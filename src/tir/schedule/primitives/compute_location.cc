@@ -201,7 +201,7 @@ std::vector<arith::IntSet> SolveCover(const BlockNode* block, const BufferRegion
  */
 For RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int insert_pos,
                     const std::vector<arith::IntSet>& iter_domain, bool preserve_trivial_loop) {
-  const auto* loop = loop_sref->GetStmt<ForNode>();
+  const auto* loop = loop_sref->StmtAs<ForNode>();
   int n_iter_domain = iter_domain.size();
   // Step 1. Construct loop variables
   std::vector<Var> loop_vars;
@@ -319,7 +319,7 @@ StmtSRef GetSubTreeOfParent(const StmtSRef& node) {
 std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop_sref,
                                                             const StmtSRef& block_sref) {
   std::unordered_map<const VarNode*, Range> relax_var;
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
   const String& exec_scope = block->exec_scope;
   StmtSRef sref = loop_sref;
 
@@ -344,7 +344,7 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
   };
 
   while (sref.defined()) {
-    if (const auto* loop = sref->GetStmt<ForNode>()) {
+    if (const auto* loop = sref->StmtAs<ForNode>()) {
       if (update_for_gpu(loop)) {
         relax_var[loop->loop_var.get()] = Range::FromMinExtent(loop->min, loop->extent);
       }
@@ -355,11 +355,11 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
   return relax_var;
 }
 
-bool CheckCompactDataFlow(const ScheduleState& self, const BlockScope& scope,
-                          const StmtSRef& block_sref) {
+bool CheckCompactDataFlow(const ScheduleState& self, const StmtSRef& block_sref,
+                          const StmtSRef& scope_root) {
   StmtSRef subtree_sref = GetSubTreeOfParent(block_sref);
   Array<StmtSRef> children = GetChildBlocks(self, subtree_sref, true);
-  return scope->IsCompactDataFlow(subtree_sref, children);
+  return IsCompactDataFlow(self, scope_root, children);
 }
 
 class StatementInliner : public StmtExprMutator {
@@ -579,15 +579,15 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
    *   - i + iii + iv + v + dominance property => consumers of input_block will
    *     read the same input as before.
    */
-  const auto* block = block_sref->GetStmt<BlockNode>();
-  const auto* loop = loop_sref->GetStmt<ForNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
+  const auto* loop = loop_sref->StmtAs<ForNode>();
   CHECK(block != nullptr) << "TypeError: 'compute_at' expects 'block' to be a block, but get type: "
                           << block_sref->stmt->GetTypeKey();
   CHECK(loop != nullptr) << "TypeError: 'compute_at' expects 'loop' to be a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
-  const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->scopes.at(parent_block_sref);
+  const auto* parent_block = parent_block_sref->StmtAs<BlockNode>();
+  const BlockScope& scope = self->GetBlockScope(parent_block_sref);
   Array<Dependency> edges_to_pred = scope->GetDepsByDst(block_sref);
   Array<Dependency> edges_to_succ = scope->GetDepsBySrc(block_sref);
   Array<StmtSRef> producers = GetProducersFromDependency(edges_to_pred);
@@ -596,7 +596,8 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'compute_at' expects 'block' and 'loop' be in the same block";
   // Cond 1. 'block' is complete/reduction block
-  CHECK(scope->IsComplete(block_sref) || scope->IsReduction(block_sref))
+  CHECK(CompleteBlock(self, block_sref, parent_block_sref) ||
+        ReductionBlock(self, block_sref, parent_block_sref))
       << "ValueError: 'compute_at' expects 'block' to be a complete or reduction block";
   // Cond 2. Check all RAW successors are in the subtree rooted by loop_sref
   CHECK(EachEdgePointsToABlock(edges_to_succ, GetChildBlocks(self, loop_sref, true),
@@ -604,7 +605,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
       << "ValueError: 'compute_at' does not apply to a block that some other "
       << "blocks outside the scope depends on";
   // Cond 3. The subtree has compact data flow
-  CHECK(CheckCompactDataFlow(self, scope, block_sref))
+  CHECK(CheckCompactDataFlow(self, block_sref, parent_block_sref))
       << "ValueError: 'compute_at' expects the subtree of 'block' to have compact dataflow";
   // Cond 4. Check the block is not a output block
   for (const BufferRegion& parent_write : parent_block->writes) {
@@ -678,8 +679,8 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
    *   - generate loops that iterate the whole instance space under
    *     input_loop after all the predecessors
    */
-  const auto* block = block_sref->GetStmt<BlockNode>();
-  const auto* loop = loop_sref->GetStmt<ForNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
+  const auto* loop = loop_sref->StmtAs<ForNode>();
   CHECK(block != nullptr)
       << "TypeError: 'reverse_compute_at' expects 'block' to be a block, but get type: "
       << block_sref->stmt->GetTypeKey();
@@ -687,8 +688,8 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
       << "TypeError: 'reverse_compute_at' expects 'loop' to be a loop, but get type: "
       << loop_sref->stmt->GetTypeKey();
   const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
-  const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->scopes.at(parent_block_sref);
+  const auto* parent_block = parent_block_sref->StmtAs<BlockNode>();
+  const BlockScope& scope = self->GetBlockScope(parent_block_sref);
   Array<Dependency> edges_to_pred = scope->GetDepsByDst(block_sref);
   Array<Dependency> edges_to_succ = scope->GetDepsBySrc(block_sref);
   Array<StmtSRef> producers = GetProducersFromDependency(edges_to_pred);
@@ -697,7 +698,8 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'reverse_compute_at' expects 'block' and 'loop' be in the same block";
   // Cond 1. 'block' is complete/reduction block
-  CHECK(scope->IsComplete(block_sref) || scope->IsReduction(block_sref))
+  CHECK(CompleteBlock(self, block_sref, parent_block_sref) ||
+        ReductionBlock(self, block_sref, parent_block_sref))
       << "ValueError: 'reverse_compute_at' expects 'block' to be a complete or reduction block";
   // Cond 2. Check all RAW predecessors are in the subtree rooted by loop_sref
   CHECK(EachEdgePointsToABlock(edges_to_pred, GetChildBlocks(self, loop_sref, true),
@@ -705,13 +707,14 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
       << "ValueError: 'reverse_compute_at' does not apply to a block that some other "
       << "blocks outside the scope depends on";
   // Cond 3. The subtree has compact data flow
-  CHECK(CheckCompactDataFlow(self, scope, block_sref))
+  CHECK(CheckCompactDataFlow(self, block_sref, parent_block_sref))
       << "ValueError: 'reverse_compute_at' expects the subtree of 'block' to have compact dataflow";
   // Cond 4. Check there is only one RAW predecessor
   CHECK_EQ(edges_to_pred.size(), 1)
       << "ValueError: 'reverse_compute_at' expects only one producer of current block";
   // Cond 5. Check the RAW predecessor is complete/reduction block
-  CHECK(scope->IsComplete(edges_to_pred[0]->dst) || scope->IsReduction(edges_to_pred[0]->dst))
+  CHECK(CompleteBlock(self, edges_to_pred[0]->dst, parent_block_sref) ||
+        ReductionBlock(self, edges_to_pred[0]->dst, parent_block_sref))
       << "ValueError: 'reverse_compute_at' expects producers of 'block' to be a complete or "
          "reduction block";
   // Mutation
@@ -772,15 +775,14 @@ void ComputeInline(ScheduleState self, const StmtSRef& block_sref) {
    *    1. The inner stmt of block_sref if a BufferStore
    *    2. block_sref if a complete Block
    */
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
   const StmtSRef& scope_block_sref = GetScopeRoot(block_sref);
-  const auto* scope_block = scope_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->scopes.at(scope_block_sref);
+  const auto* scope_block = scope_block_sref->StmtAs<BlockNode>();
   CHECK(block->body.as<BufferStoreNode>())
       << "ValueError: 'compute_inline' can only inline single assignment statement";
   CHECK_EQ(block->writes.size(), 1)
       << "ValueError: 'compute_inline' can only inline statement with one output";
-  CHECK(scope->IsComplete(block_sref))
+  CHECK(CompleteBlock(self, block_sref, scope_block_sref))
       << "ValueError: 'compute_inline' can only inline a complete block";
   // Remove leaf
   std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, scope_block_sref);
@@ -804,15 +806,15 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
    *    5. The inner stmt of producer is a BufferStore
    *    6. The producer has only one consumer(which is block_sref)
    */
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
   CHECK(block != nullptr)
       << "TypeError: 'reverse_compute_at' expects 'block' to be a block, but get type: "
       << block_sref->stmt->GetTypeKey();
   const StmtSRef& scope_block_sref = GetScopeRoot(block_sref);
-  const auto* scope_block = scope_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = self->scopes.at(scope_block_sref);
+  const auto* scope_block = scope_block_sref->StmtAs<BlockNode>();
+  const BlockScope& scope = self->GetBlockScope(scope_block_sref);
   // Cond 1. Check block_sref is complete
-  CHECK(scope->IsComplete(block_sref))
+  CHECK(CompleteBlock(self, block_sref, scope_block_sref))
       << "ValueError: 'reverse_compute_inline' expects the 'block' to be a complete block";
   // Cond 2. The inner stmt of block_sref if a BufferStore
   CHECK(block->body.as<BufferStoreNode>())
@@ -825,10 +827,10 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
       << "ValueError: 'reverse_compute_inline' expects the 'block' has only one producer";
   const StmtSRef& producer_sref = producers[0]->src;
   // Cond 4. The producer is complete
-  CHECK(scope->IsComplete(producer_sref))
+  CHECK(CompleteBlock(self, producer_sref, scope_block_sref))
       << "ValueError: 'reverse_compute_inline' expects the producer of 'block' to be complete";
   // Cond 5. The inner stmt of producer is a BufferStore
-  const auto* producer = producer_sref->GetStmt<BlockNode>();
+  const auto* producer = producer_sref->StmtAs<BlockNode>();
   CHECK(producer->body.as<BufferStoreNode>())
       << "ValueError: 'reverse_compute_inline' expects the producer of 'block' to contain a single "
          "BufferStore";
@@ -848,6 +850,12 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
   Map<Block, Block> block_sref_map;
   ReverseStatementInliner inliner(block, producer, &block_sref_map);
   Stmt inlined_stmt = inliner(replaced);
+  if (const auto* inlined_block = inlined_stmt.as<BlockNode>()) {
+    const auto* src_stmt = TVM_SREF_TO_BLOCK(src_stmt, scope_block_sref);
+    block_sref_map.Set(GetRef<Block>(src_stmt), GetRef<Block>(inlined_block));
+  }
+  ICHECK(replaced->IsInstance<BlockNode>());
+  ICHECK(inlined_stmt->IsInstance<BlockNode>());
   self->Replace(scope_block_sref, inlined_stmt, block_sref_map);
 }
 

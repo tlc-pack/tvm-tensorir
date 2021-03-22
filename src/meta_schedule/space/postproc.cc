@@ -80,7 +80,7 @@ class PostprocRewriteTensorize {
     arith::Analyzer analyzer;
     for (const auto& kv : info->loop_map) {
       const tir::StmtSRef& block_loop_sref = kv.first;
-      const auto* block_loop = block_loop_sref->GetStmt<tir::ForNode>();
+      const auto* block_loop = block_loop_sref->StmtAs<tir::ForNode>();
       const tir::For& desc_loop = kv.second;
       if (!analyzer.CanProve(block_loop->extent == desc_loop->extent)) {
         return false;
@@ -129,7 +129,7 @@ class PostprocRewriteCooperativeFetch {
     return [sch, idx](const tir::BlockNode* block) -> bool {
       const tir::StmtSRefNode* sref = sch->GetSRef(block)->parent;
       for (int& i = *idx = 0; sref != nullptr; sref = sref->parent, ++i) {
-        const tir::ForNode* loop = sref->GetStmt<tir::ForNode>();
+        const tir::ForNode* loop = sref->StmtAs<tir::ForNode>();
         if (!loop) {
           break;
         }
@@ -147,7 +147,7 @@ class PostprocRewriteCooperativeFetch {
                FindBlockSRef(sch->state(), MakeBlockFinder(sch, &idx))) {
       // Extract block info
       tir::StmtSRef block_sref = opt_block_sref.value();
-      const auto* block = block_sref->GetStmt<tir::BlockNode>();
+      const auto* block = block_sref->StmtAs<tir::BlockNode>();
       BlockRV block_rv = sch->GetBlock(block->name_hint);
       // Extract loop info
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
@@ -161,7 +161,7 @@ class PostprocRewriteCooperativeFetch {
       PrimExpr thread_idx_extent{nullptr};
       for (const tir::StmtSRefNode* sref = loop_sref->parent;; sref = sref->parent) {
         ICHECK(sref) << "ValueError: Cannot find loops above with threadIdx.x";
-        if (const tir::ForNode* loop = sref->GetStmt<tir::ForNode>()) {
+        if (const tir::ForNode* loop = sref->StmtAs<tir::ForNode>()) {
           if (HasBinding(GetRef<tir::StmtSRef>(sref), "threadIdx.x")) {
             ICHECK(tir::is_zero(loop->min))
                 << "ValueError: Expect loops to start from 0, but gets: " << GetRef<tir::For>(loop);
@@ -334,7 +334,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       // Extract block info
       tir::StmtSRef block_sref = opt_block_sref.value();
       RemoveParsedAnn(sch, block_sref, parsed);
-      const auto* block = block_sref->GetStmt<tir::BlockNode>();
+      const auto* block = block_sref->StmtAs<tir::BlockNode>();
       BlockRV block_rv = sch->GetBlock(block->name_hint);
       // Extract loop info
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
@@ -432,7 +432,7 @@ class PostprocRewriteUnboundBlocks {
 
   void BindThreadAxes(const Schedule& sch, const tir::StmtSRef& block_sref) const {
     // Extract the block
-    const auto* block = block_sref->GetStmt<tir::BlockNode>();
+    const auto* block = block_sref->StmtAs<tir::BlockNode>();
     ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
     BlockRV block_rv = sch->GetBlock(block->name_hint);
     // Extract loops
