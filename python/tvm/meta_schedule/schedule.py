@@ -50,8 +50,14 @@ class Schedule(TIRSchedule):
         self,
         func: tir.PrimFunc,
         seed: Optional[int] = None,
-        debug_mode: bool = False,
+        debug_mode: Union[bool, int] = False,
     ):
+        if isinstance(debug_mode, bool):
+            if debug_mode:
+                debug_mode = -1
+            else:
+                debug_mode = 0
+        assert isinstance(debug_mode, int)
         if seed is None:
             seed = -1
         self.__init_handle_by_constructor__(

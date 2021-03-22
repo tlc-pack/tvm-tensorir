@@ -295,12 +295,11 @@ def test_reduction_compute_inline():
     tvm.ir.assert_structural_equal(s.mod["main"], matmul_scale_inline)
 
 
-def test_reduction_rfactor():
-    # Test 1
+def test_reduction_rfactor_1():
     func = util.matmul_stmt()
     s = tir.Schedule(func, debug_mode=True)
     C = s.get_block("update")
-    i, j, k = s.get_axes(C)
+    _, _, k = s.get_axes(C)
     _, ki = s.split(k, factor=32)
     _, kii = s.split(ki, factor=4)
     _ = s.rfactor(kii, factor=0)
@@ -316,10 +315,11 @@ def test_reduction_rfactor():
     c_np = np.matmul(a_np, b_np.T)
     tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
 
-    # Test 2
+
+def test_reduction_rfactor_2():
     s = tir.Schedule(square_sum, debug_mode=True)
     C = s.get_block("C")
-    b, i, j = s.get_axes(C)
+    _, _, j = s.get_axes(C)
     _ = s.rfactor(j, 1)
     tvm.ir.assert_structural_equal(s.mod["main"], square_sum_rfactor)
 
@@ -331,10 +331,11 @@ def test_reduction_rfactor():
     c_np = np.sum(a_np * a_np, axis=(1, 2))
     tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
 
-    # Test 3
+
+def test_reduction_rfactor_3():
     s = tir.Schedule(square_sum_square_root, debug_mode=True)
     C = s.get_block("C")
-    b, i, j = s.get_axes(C)
+    _, i, j = s.get_axes(C)
     fuse = s.fuse(i, j)
     _, fi = s.split(fuse, factor=1)
     _ = s.rfactor(fi, 0)
@@ -349,13 +350,11 @@ def test_reduction_rfactor():
     tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
 
 
-def test_reduction_allreduce():
+def test_reduction_allreduce_1():
     ctx = tvm.gpu(0)
-    # Test 1
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
     thread_x = tir.thread_axis((0, 16), "threadIdx.x")
     thread_y = tir.thread_axis((0, 16), "threadIdx.y")
-
     B_block = s.get_block("B")
     _, ax_i, ax_j = s.get_axes(B_block)
     s.bind(ax_j, thread_x)
@@ -369,12 +368,13 @@ def test_reduction_allreduce():
     b_np = np.sum(a_np, axis=(1, 2))
     np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
 
-    # Test 2
+
+def test_reduction_allreduce_2():
+    ctx = tvm.gpu(0)
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
     thread_x = tir.thread_axis((0, 16), "threadIdx.x")
-
     B_block = s.get_block("B")
-    _, ax_i, ax_j = s.get_axes(B_block)
+    _, _, ax_j = s.get_axes(B_block)
     s.bind(ax_j, thread_x)
 
     f = tvm.build(s.mod["main"], target="cuda")
@@ -385,12 +385,13 @@ def test_reduction_allreduce():
     b_np = np.sum(a_np, axis=(1, 2))
     np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
 
-    # Test 3
+
+def test_reduction_allreduce_3():
+    ctx = tvm.gpu(0)
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
     thread_x = tir.thread_axis((0, 16), "threadIdx.x")
-
     B_block = s.get_block("B")
-    _, ax_i, ax_j = s.get_axes(B_block)
+    _, ax_i, _ = s.get_axes(B_block)
     s.bind(ax_i, thread_x)
 
     f = tvm.build(s.mod["main"], target="cuda")
@@ -401,24 +402,21 @@ def test_reduction_allreduce():
     b_np = np.sum(a_np, axis=(1, 2))
     np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
 
-    # Test 4
+
+def test_reduction_allreduce_4():
+    ctx = tvm.gpu(0)
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
-    thread_x = tir.thread_axis((0, 16), "threadIdx.x")
-
+    _ = tir.thread_axis((0, 16), "threadIdx.x")
     B_block = s.get_block("B")
-    _, ax_i, ax_j = s.get_axes(B_block)
-
+    _, ax_i, _ = s.get_axes(B_block)
     B_rf = s.rfactor(ax_i, 0)
     ax_i_rf, ax_ii_rf, ax_j_rf = s.get_axes(B_rf)
     s.reorder(ax_ii_rf, ax_i_rf, ax_j_rf)
     ax_i_rf_o, _ = s.split(ax_i_rf, factor=4)
-
     s.bind(ax_ii_rf, tir.thread_axis("blockIdx.x"))
     s.bind(ax_i_rf_o, tir.thread_axis("threadIdx.x"))
-
     _ = s.cache_write(B_rf, 0, "local")
     s.compute_inline(B_rf)
-
     s.reverse_compute_at(B_block, ax_i_rf_o)
 
     f = tvm.build(s.mod["main"], target="cuda")
@@ -436,5 +434,10 @@ if __name__ == "__main__":
     test_reduction_merge()
     test_reduction_blockize()
     test_reduction_compute_inline()
-    test_reduction_rfactor()
-    test_reduction_allreduce()
+    test_reduction_rfactor_1()
+    test_reduction_rfactor_2()
+    test_reduction_rfactor_3()
+    test_reduction_allreduce_1()
+    test_reduction_allreduce_2()
+    test_reduction_allreduce_3()
+    test_reduction_allreduce_4()
