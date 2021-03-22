@@ -25,8 +25,8 @@ def convert_division(divisions):
         return []
     res = []
     for division in divisions[:-1]:
-        res.append([tvm.arith.iter_map_convert(division[0].source),
-                    tvm.arith.iter_map_convert(division[1].source)])
+        res.append([tvm.arith.normalize_iter_map_to_expr(division[0].source),
+                    tvm.arith.normalize_iter_map_to_expr(division[1].source)])
     res.append([divisions[-1][0].extent, divisions[-1][1].extent])
     return res
 

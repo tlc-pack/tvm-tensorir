@@ -546,7 +546,7 @@ class ArrayNode : public Object, public InplaceArrayBase<ArrayNode, ObjectRef> {
 };
 
 /*!
- * \brief Array, container representing a contagious sequence of ObjectRefs.
+ * \brief Array, container representing a contiguous sequence of ObjectRefs.
  *
  *  Array implements in-place copy-on-write semantics.
  *
@@ -555,7 +555,7 @@ class ArrayNode : public Object, public InplaceArrayBase<ArrayNode, ObjectRef> {
  *
  * If the array has reference count equal to one, we directly update the
  * container in place without copying. This is optimization is sound because
- * when the reference count is equal to one this reference is guranteed to be
+ * when the reference count is equal to one this reference is guaranteed to be
  * the sole pointer to the container.
  *
  *
