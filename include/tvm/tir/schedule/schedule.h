@@ -19,6 +19,7 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_H_
 
+#include <tvm/tir/function.h>
 #include <tvm/tir/schedule/state.h>
 
 namespace tvm {

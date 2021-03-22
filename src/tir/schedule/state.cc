@@ -121,7 +121,7 @@ class StateCreator : private StmtVisitor {
     n->mod = std::move(mod);
     // Set `n->debug_mode`
     n->debug_mode = debug_mode;
-    // Set `n->stmt2ref` and `n->scopes`
+    // Set `n->stmt2ref` and `n->block_scopes`
     StateCreator creator(self);
     for (const auto& kv : n->mod->functions) {
       const BaseFunc& base_func = kv.second;
@@ -141,9 +141,62 @@ class StateCreator : private StmtVisitor {
     return sref;
   }
 
+    Array<StmtSRef> child_block_srefs = std::move(block_frames_.back());
+    BlockScope scope(child_block_srefs);
+    // Calculate `BlockInfo::affine_binding`
+    int n = static_cast<int>(srefs_.size());
+    Map<Var, Range> loop_var_ranges;
+    for (int i = n - 1; i >= 0; --i) {
+      const StmtSRef& sref = srefs_[i];
+      if (const auto* loop = sref->StmtAs<ForNode>()) {
+        loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      } else {
+        break;
+      }
+    }
+    // Calculate `BlockInfo::affine_binding`
+    bool affine_binding =
+        ValidateBlockBinding(GetRef<BlockRealize>(realizes_.back()), loop_var_ranges);
+    // Set `BlockInfo::region_cover`
+    bool region_cover = realizes_.size() == 1;
+    // Set `BlockInfo::stage_pipeline` temporarily to false
+    BlockInfo& info = self_->block_info
+                          .emplace(scope_root, BlockInfo(/*scope=*/std::move(scope),
+                                                         /*affine_binding=*/affine_binding,
+                                                         /*region_cover=*/region_cover,
+                                                         /*stage_pipeline=*/false))
+                          .first->second;
+    // Update `BlockInfo::region_cover` for child blocks
+    // Update `BlockInfo::stage_pipeline` for the scope root
+    ScheduleState self = GetRef<ScheduleState>(self_);
+    bool stage_pipeline = true;
+    for (const StmtSRef& block_sref : child_block_srefs) {
+      auto it = self_->block_info.find(block_sref);
+      ICHECK(it != self_->block_info.end());
+      BlockInfo& child_info = it->second;
+      child_info.region_cover = RegionCoveredConsumer(self, block_sref, scope_root);
+      // Cond 1. The region cover property holds for every of it child blocks
+      if (child_info.region_cover == false) {
+        stage_pipeline = false;
+      }
+    }
+    if (stage_pipeline) {
+      // Cond 2. No write-after-read dependency
+      stage_pipeline = [&info]() -> bool {
+        for (const auto& kv : info.scope->src2deps) {
+          for (const Dependency& dep : kv.second) {
+            if (dep->kind == DepKind::kWAR) {
+              return false;
+            }
+          }
+        }
+      }();
+    }
+    info.stage_pipeline = stage_pipeline;
+  }
+
   void VisitStmt_(const ForNode* loop) final {
     PushSRef(loop);
-    VisitStmt(loop->body);
     PopAndRecordSRef();
   }
 
@@ -620,6 +673,11 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
                  << GetRef<Stmt>(src_stmt) << "\ntgt_stmt:\n"
                  << tgt_stmt;
     }
+    if (src_stmt->IsInstance<BlockNode>() && tgt_stmt->IsInstance<BlockNode>()) {
+      const auto* src_block = static_cast<const BlockNode*>(src_stmt);
+      const auto* tgt_block = static_cast<const BlockNode*>(tgt_stmt.get());
+      block_sref_reuse.emplace(src_block, tgt_block);
+    }
   }
   // Rule out the case that no replacement happens
   if (_src_sref->stmt == tgt_stmt.get()) {
@@ -672,15 +730,9 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     const StmtSRefNode* p = src_sref.get();
     while (true) {
       if (!p->stmt->unique()) {
-        num_copy_steps = i;
       }
       if (p->parent == nullptr) {
         break;
-      }
-      ++i;
-      p = p->parent;
-    }
-    // Find `g_func` and `g_var` where the `src_sref` is in
     g_func = GetRootPrimFunc(this->mod, p->stmt, &g_var);
     need_module_copy = num_copy_steps == i ||             //
                        !this->mod.unique() ||             //
@@ -785,6 +837,27 @@ void ScheduleStateNode::DebugVerify() const {
   }
   if (debug_mode == -1 || (debug_mode & kVerifyStagePipeline)) {
     // TODO(@junrushao1994): Verify stage pipeline
+  }
+}
+
+/**************** BlockInfo-related ****************/
+
+BlockInfo ScheduleStateNode::GetBlockInfo(const StmtSRef& block_sref) const {
+  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  auto it = this->block_info.find(block_sref);
+  CHECK(it != this->block_info.end())
+      << "IndexError: Cannot find the corresponding BlockScope to the block sref:\n"
+      << GetRef<Stmt>(block_sref->stmt);
+  return it->second;
+}
+
+void ScheduleStateNode::DebugVerify() const {
+  ICHECK_GE(this->debug_mode, 0);
+  if (this->debug_mode & 1) {
+    VerifySRefTree(GetRef<ScheduleState>(this));
+  }
+  if (this->debug_mode & 2) {
+    VerifyBlockInfo(GetRef<ScheduleState>(this));
   }
 }
 
