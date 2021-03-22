@@ -602,41 +602,122 @@ Postproc RewriteUnboundBlocks() {
 
 class PostprocRewriteReductionBlock {
  public:
-  /*!
-   * \brief Check if the block has at least one reduction block var
-   * \param block_sref The block to be checked
-   * \return A boolean indicating if it has at least one reduction block var
-   */
-  static bool HasReductionIterVar(const tir::BlockNode* block) {
-    for (const tir::IterVar& var : block->iter_vars) {
-      if (var->iter_type == tir::kCommReduce) {
-        return true;
-      }
-    }
-    return false;
-  }
 
-  static const tir::BlockNode* Find(const tir::Stmt& body) {
-    const tir::BlockNode* res = nullptr;
-    tir::PreOrderVisit(body, [&res](const ObjectRef& node) {
-      if (res) {
+  /*!
+   * \brief An auxiliary class to help find reduction blocks whose init block is going to be
+   *        decomposed.
+   */
+  class Finder : public tir::StmtVisitor {
+   public:
+    Finder() : bound_loop_vars_(), stack_(), result_(nullptr) {}
+
+    /*!
+     * \brief Collect all the loops inside `stmt` that are bound to threadIdx.
+     * \param stmt The stmt to be inspected.
+     */
+    void CollectBoundLoops(const tir::Stmt& stmt) {
+      tir::PreOrderVisit(stmt, [this](const ObjectRef& node) {
+        if (const auto* loop = node.as<tir::ForNode>()) {
+          std::string thread_tag =
+              loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";
+          if (thread_tag.substr(0, 9) == "threadIdx") {
+            ICHECK(thread_tag == "threadIdx.x" || thread_tag == "threadIdx.y" ||
+                   thread_tag == "threadIdx.z");
+            bound_loop_vars_.insert(loop->loop_var.get());
+          }
+        }
         return false;
-      }
-      if (const auto* block = node.as<tir::BlockNode>()) {
-        // If a block doesn't have any reduction block var, there is no need to decompose reduction.
-        if (block->init.defined() && HasReductionIterVar(block)) {
-          res = block;
-          return false;
+      });
+    }
+
+    /*!
+     * \brief Check whether the two following conditions are both satisfied:
+     *   1. the block has at least one reduction block var, and
+     *   2. none of its reduction block var bindings is bound to threadIdx.
+     * \param block_sref The block to be checked
+     * \return A boolean indicating if it has at least one reduction block var
+     */
+    bool AllReductionIterVarAreUnbound(const tir::BlockNode* block) {
+      bool has_reduction_var = false;
+      CHECK(!stack_.empty() && stack_.back()->block.get() == block)
+          << "ValueError: the block has outer BlockRealize or the outer BlockRealize doesn't match "
+             "the block.";
+      const tir::BlockRealize& block_realize = GetRef<tir::BlockRealize>(stack_.back());
+      ICHECK_EQ(block_realize->binding_values.size(), block->iter_vars.size());
+      for (const tir::IterVar& var : block->iter_vars) {
+        if (var->iter_type == tir::kCommReduce) {
+          has_reduction_var = true;
+          bool is_bound = false;
+          tir::PreOrderVisit(block_realize, [this, &is_bound] (const ObjectRef& node) {
+            if (is_bound) {
+              return false;
+            }
+            if (const auto* var = node.as<tir::VarNode>()) {
+              if (bound_loop_vars_.count(var)) {
+                is_bound = true;
+              }
+              return false;
+            }
+            return true;
+          });
+          if (is_bound) {
+            return false;
+          }
         }
       }
-      return true;
-    });
-    ICHECK(res == nullptr || (res->init.defined() && HasReductionIterVar(res)));
-    return res;
-  }
+      return has_reduction_var;
+    }
+
+    static const tir::BlockNode* Find(const tir::Stmt& stmt) {
+      Finder finder;
+      finder.CollectBoundLoops(stmt);
+      finder.VisitStmt(stmt);
+      ICHECK(finder.result_ == nullptr || (finder.result_->init.defined() &&
+                                           finder.AllReductionIterVarAreUnbound(finder.result_)));
+      return finder.result_;
+    }
+
+   private:
+    void VisitStmt_(const tir::BlockNode* block) override {
+      if (result_ != nullptr) {
+        return;
+      }
+      /* 1. If a block doesn't have any bound reduction block var, there is no need to
+       *    decompose reduction.
+       * 2. If some of its reduction block var bindings are bound to threadIdx, this indicates
+       *    that cross-thread-reduction is needed, and hence we should not decompose the init block.
+       */
+      if (block->init.defined() && AllReductionIterVarAreUnbound(block)) {
+        result_ = block;
+      } else {
+        tir::StmtVisitor::VisitStmt_(block);
+      }
+    }
+
+    void VisitStmt_(const tir::BlockRealizeNode* block_realize) override {
+      if (result_ != nullptr) {
+        return;
+      }
+      stack_.push_back(block_realize);
+      tir::StmtVisitor::VisitStmt_(block_realize);
+      ICHECK(!stack_.empty());
+      stack_.pop_back();
+    }
+
+   private:
+    /*! \brief A map recording all the bound loop vars. */
+    std::unordered_set<const tir::VarNode*> bound_loop_vars_;
+    /*! \brief A stack recording all the BlockRealizes along the visiting path. */
+    std::vector<const tir::BlockRealizeNode*> stack_;
+    /*!
+     * \brief The result block which has reduction block vars and none of the block var bindings is
+     *        bound to threadIdx (i.e., cross-thread-reduction is not needed).
+     */
+    const tir::BlockNode* result_;
+  };
 
   bool Proc(const Schedule& sch) const {
-    while (const tir::BlockNode* block = Find(GetOnlyFunc(sch->mod())->body)) {
+    while (const tir::BlockNode* block = Finder::Find(GetOnlyFunc(sch->mod())->body)) {
       BlockRV block_rv = sch->GetBlock(block->name_hint);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
