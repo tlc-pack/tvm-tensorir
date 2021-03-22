@@ -58,9 +58,9 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
   }
 }
 
-class IRSubstitueInScope : public StmtExprMutator {
+class IRSubstituteInScope : public StmtExprMutator {
  public:
-  explicit IRSubstitueInScope(std::function<PrimExpr(const VarNode*)> fmap)
+  explicit IRSubstituteInScope(std::function<PrimExpr(const VarNode*)> fmap)
       : fmap_(std::move(fmap)) {}
 
   PrimExpr VisitExpr_(const VarNode* op) final {
@@ -94,7 +94,7 @@ class IRSubstitueInScope : public StmtExprMutator {
 
 Stmt SubstituteInScope(const Stmt& stmt,
                        const std::function<PrimExpr(const VarNode*)>& value_func) {
-  return IRSubstitueInScope(value_func)(stmt);
+  return IRSubstituteInScope(value_func)(stmt);
 }
 
 Stmt SubstituteInScope(const Stmt& stmt,
@@ -107,7 +107,7 @@ Stmt SubstituteInScope(const Stmt& stmt,
       return NullValue<PrimExpr>();
     }
   };
-  return IRSubstitueInScope(vmap)(stmt);
+  return IRSubstituteInScope(vmap)(stmt);
 }
 
 PrimExpr SubstituteInScope(const PrimExpr& expr,
@@ -120,7 +120,7 @@ PrimExpr SubstituteInScope(const PrimExpr& expr,
       return NullValue<PrimExpr>();
     }
   };
-  return IRSubstitueInScope(vmap)(expr);
+  return IRSubstituteInScope(vmap)(expr);
 }
 
 Stmt SubstituteInScope(const Stmt& stmt,
@@ -133,7 +133,7 @@ Stmt SubstituteInScope(const Stmt& stmt,
       return NullValue<PrimExpr>();
     }
   };
-  return IRSubstitueInScope(vmap)(stmt);
+  return IRSubstituteInScope(vmap)(stmt);
 }
 
 PrimExpr SubstituteInScope(const PrimExpr& expr,
@@ -146,7 +146,7 @@ PrimExpr SubstituteInScope(const PrimExpr& expr,
       return NullValue<PrimExpr>();
     }
   };
-  return IRSubstitueInScope(vmap)(expr);
+  return IRSubstituteInScope(vmap)(expr);
 }
 
 BufferRegion SubstituteBufferRegion(

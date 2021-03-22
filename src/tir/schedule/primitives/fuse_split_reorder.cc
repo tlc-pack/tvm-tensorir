@@ -134,7 +134,7 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimE
     if (v == loop->loop_var.get()) {
       return outer_var * factor + inner_var;
     } else {
-      return NullValue<PrimExpr>();
+      return PrimExpr{nullptr};
     }
   });
   // Step 2. Update predicate to guard the loop
@@ -203,7 +203,7 @@ StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef& in
     } else if (GetRef<Var>(v).same_as(inner->loop_var)) {
       return floormod(fused_var, inner->extent) + inner->min;
     } else {
-      return NullValue<PrimExpr>();
+      return PrimExpr{nullptr};
     }
   });
   // Step 3. Generate a loop to replace the original two nested loops
