@@ -1050,11 +1050,6 @@ class SubspaceDivider {
 
   size_t unresolved_count() const { return unresolved_count_; }
 
-  DivisionResult Fail() {
-    unresolved_count_++;
-    return DivisionResult(IterSumExpr({}, 0), 0, IterSumExpr({}, 0), 0);
-  }
-
   DivisionResult DivideIterSumExpr(const IterSumExpr& expr, const PrimExpr& mark_extent) {
     if (expr->args.size() == 0) {
       // base
@@ -1117,6 +1112,11 @@ class SubspaceDivider {
   PrimExpr GetInnerPreds() const { return inner_preds_; }
 
  private:
+  DivisionResult Fail() {
+    unresolved_count_++;
+    return DivisionResult(IterSumExpr({}, 0), 0, IterSumExpr({}, 0), 0);
+  }
+
   DivisionResult AddBase(DivisionResult division, const PrimExpr& base) {
     auto res = division;
     if (const auto* op = division.inner.as<IterSplitExprNode>()) {
