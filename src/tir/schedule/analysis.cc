@@ -66,6 +66,9 @@ std::unordered_set<const VarNode*> Vars(const ObjectRef& stmt_or_expr) {
 }
 
 bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& loop_var_ranges) {
+  if (loop_var_ranges.empty()) {
+    return true;
+  }
   arith::Analyzer analyzer;
   Array<arith::IterSumExpr> results = arith::DetectIterMap(
       /*leaf_iters=*/realize->block->iter_vars,
@@ -87,62 +90,65 @@ bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& lo
   return true;
 }
 
-void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block_sref) {
+bool RegionCoveredConsumer(const ScheduleState& self, const StmtSRef& consumer_block_sref,
+                           const StmtSRef& scope_root) {
   if (consumer_block_sref->parent == nullptr) {
-    return;
+    return true;
   }
-  const auto* consumer_block = consumer_block_sref->GetStmt<BlockNode>();
-  const StmtSRef& parent_block_sref = GetScopeRoot(consumer_block_sref);
-  // Gather all the producers
+  const auto* consumer_block = TVM_SREF_TO_BLOCK(consumer_block, consumer_block_sref);
+  BlockScope scope = self->GetBlockScope(scope_root);
+  // Step 1. Gather all the producers
   struct Producer {
     /*! \brief The block that writes the buffer */
     StmtSRef block_sref;
     /*! \brief The region the buffer is written */
     BufferRegion region;
     /*! \brief Constructor */
-    Producer(const StmtSRef& block_sref, const BufferRegion& region)
-        : block_sref(block_sref), region(region) {}
+    explicit Producer(StmtSRef block_sref, BufferRegion region)
+        : block_sref(std::move(block_sref)), region(std::move(region)) {}
   };
   // Maps a buffer var to its producers
   std::unordered_map<const VarNode*, std::vector<Producer>> buffer_producers;
   // Collect all producers to a buffer by enumerating all RAW predecessors of the consumer
-  for (const Dependency& edge :
-       self->scopes.at(parent_block_sref)->GetDepsByDst(consumer_block_sref)) {
-    if (edge->kind != DepKind::kRAW) {
-      continue;
-    }
+  for (const Dependency& edge : scope->GetDepsByDst(consumer_block_sref)) {
     // i.e. the RAW predecessor is producer
-    const StmtSRef& producer_block_sref = edge->src;
-    for (const BufferRegion& output_region : producer_block_sref->GetStmt<BlockNode>()->writes) {
-      const VarNode* buffer_var = output_region->buffer->data.get();
-      buffer_producers[buffer_var].emplace_back(producer_block_sref, output_region);
+    if (edge->kind == DepKind::kRAW) {
+      const StmtSRef& producer_block_sref = edge->src;
+      const auto* producer_block = TVM_SREF_TO_BLOCK(producer_block, producer_block_sref);
+      for (const BufferRegion& output_region : producer_block->writes) {
+        const VarNode* buffer_var = output_region->buffer->data.get();
+        buffer_producers[buffer_var].emplace_back(producer_block_sref, output_region);
+      }
     }
   }
-  // Check the region cover property for each buffer that the consumer reads
+  // Step 2. For each buffer that the consumer reads, check the region cover property
+  arith::Analyzer analyzer;
   for (const BufferRegion& consumer_region : consumer_block->reads) {
+    // Step 2.1. Find the producers of the buffer
     const VarNode* buffer_var = consumer_region->buffer->data.get();
-    if (!buffer_producers.count(buffer_var)) {
+    auto it = buffer_producers.find(buffer_var);
+    if (it == buffer_producers.end()) {
       continue;
     }
-    // Producers of the current buffer
-    const std::vector<Producer>& producers = buffer_producers.at(buffer_var);
-    // Figure out LCA of consumer and all producers
-    StmtSRef lca = [&producers, &consumer_block_sref, &parent_block_sref]() {
-      // inputs include consumer and all producers
-      std::vector<StmtSRef> inputs = {consumer_block_sref};
+    const std::vector<Producer>& producers = it->second;
+    // Step 2.2. Figure out LCA of consumer and all producers
+    StmtSRef lca{nullptr};
+    {
+      std::vector<StmtSRef> inputs;
+      inputs.reserve(producers.size() + 1);
+      inputs.emplace_back(consumer_block_sref);
       for (const Producer& producer : producers) {
-        inputs.push_back(producer.block_sref);
+        inputs.emplace_back(producer.block_sref);
       }
-      return LowestCommonAncestor(inputs, parent_block_sref);
-    }();
-    arith::Analyzer analyzer;
-    // Relax the read region with the loops under LCA
+      lca = LowestCommonAncestor(inputs, scope_root);
+    }
+    // Step 2.3. Relax the read region with the loops under LCA
     BufferRegion read = RelaxRegion(consumer_block_sref, lca, consumer_region);
     int ndim = read->region.size();
     for (const Producer& producer : producers) {
       // Relax the write region with the loops under LCA
       BufferRegion write = RelaxRegion(producer.block_sref, lca, producer.region);
-      CHECK_EQ(read->region.size(), write->region.size())
+      ICHECK_EQ(read->region.size(), write->region.size())
           << "ValueError: Inconsistent rank of the same buffer between reads and writes";
       // Check if the write domain covers the read domain
       for (int i = 0; i < ndim; ++i) {
@@ -150,149 +156,176 @@ void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block
         PrimExpr read_max = read_min + read->region[i]->extent;
         PrimExpr write_min = write->region[i]->min;
         PrimExpr write_max = write_min + write->region[i]->extent;
-        if (!analyzer.CanProve(write_min <= read_min) ||
-            !analyzer.CanProve(read_max <= write_max)) {
-          LOG(FATAL) << "ValueError: Cannot prove the region cover property on dimension " << i
-                     << "\nThe producer is:\n  " << write << ", write range: [" << write_min << ", "
-                     << write_max << ")"
-                     << "\nThe consumer is:\n  " << read << ", read range: [" << read_min << ","
-                     << read_max << ")";
+        PrimExpr cond = (write_min <= read_min) && (read_max <= write_max);
+        if (!analyzer.CanProve(cond)) {
+          return false;
         }
       }
     }
   }
+  return true;
 }
 
-void VerifySRefTree(const ScheduleState& self) {
-  /*!
-   * \brief A helper class to validate correctness of StmtSRef
-   * TODO(@junrushao1994): refactor this
-   */
-  class SRefTreeVerifier : public StmtVisitor {
-   public:
-    static void Verify(const ScheduleStateNode* self) { SRefTreeVerifier(self).Verify(); }
+class SRefTreeVerifier : public StmtVisitor {
+ public:
+  static void Verify(const ScheduleStateNode* self) { SRefTreeVerifier(self).Verify(); }
 
-   private:
-    /*! \brief Constructor */
-    explicit SRefTreeVerifier(const ScheduleStateNode* self)
-        : self_(self),
-          ancestors_{nullptr},
-          is_in_init_block_(0),
-          n_sref_visited_(0),
-          n_block_sref_visited_(0) {}
+ private:
+  /*! \brief Constructor */
+  explicit SRefTreeVerifier(const ScheduleStateNode* self) : self_(self) {}
 
-    void Verify() {
-      for (const auto& kv : self_->mod->functions) {
-        const BaseFunc& base_func = kv.second;
-        if (const auto* func = base_func.as<PrimFuncNode>()) {
-          VisitStmt(func->body);
-        }
-      }
-      ICHECK_EQ(n_sref_visited_, static_cast<int>(self_->stmt2ref.size()));
-      for (const auto& kv : self_->scopes) {
-        const StmtSRef& sref = kv.first;
-        ICHECK(sref->stmt != nullptr);
-        ICHECK(self_->stmt2ref.count(sref->stmt));
-        const StmtSRef& sref2 = self_->stmt2ref.at(sref->stmt);
-        ICHECK(sref.same_as(sref2));
-      }
-      ICHECK_EQ(n_block_sref_visited_, static_cast<int>(self_->scopes.size()));
+  void Verify() {
+    VisitPrimFuncs(self_->mod, [this](const PrimFuncNode* func) { this->VisitStmt(func->body); });
+    ICHECK_EQ(n_sref_visited_, static_cast<int>(self_->stmt2ref.size()));
+    for (const auto& kv : self_->block_info) {
+      const StmtSRef& sref = kv.first;
+      ICHECK(sref->stmt != nullptr)
+          << "InternalError: An expired sref is found in the block_scope mapping";
+      ICHECK(self_->stmt2ref.count(sref->stmt))
+          << "InternalError: The sref points to a statement that does not exist in stmt2ref";
+      const StmtSRef& sref2 = self_->stmt2ref.at(sref->stmt);
+      ICHECK(sref.same_as(sref2))
+          << "InternalError: The sref points to a statement whose corresponding sref in stmt2ref "
+             "is not the same object as itself";
     }
+    ICHECK_EQ(n_block_sref_visited_, static_cast<int>(self_->block_info.size()));
+  }
 
-    // Valida each block
-    void VisitStmt_(const BlockNode* block) override {
-      if (is_in_init_block_) {
-        ICHECK(!self_->stmt2ref.count(block));
-        StmtVisitor::VisitStmt_(block);
-        return;
-      }
-      ICHECK(self_->stmt2ref.count(block))
-          << "InternalError: A BlockNode should appear in sref map, but it didn't\n"
-          << GetRef<Stmt>(block);
-      ++n_sref_visited_;
-      ++n_block_sref_visited_;
-      const StmtSRef& sref = self_->stmt2ref.at(block);
-      ICHECK(self_->scopes.count(sref))
-          << "InternalError: Cannot find scope information of the BlockNode:\n"
-          << GetRef<Stmt>(block);
-      ICHECK(sref->parent == ancestors_.back())
-          << "InternalError: Parent information mismatch for BlockNode:\n"
-          << GetRef<Stmt>(block) << "\nIts parent is supposed to be:\n"
-          << GetRef<Stmt>(ancestors_.back()->stmt) << "\nHowever, its parent is incorrect and is:\n"
-          << (sref->parent ? Optional<Stmt>(GetRef<Stmt>(sref->parent->stmt))
-                           : Optional<Stmt>(NullOpt));
-      ancestors_.push_back(sref.operator->());
-      if (block->init.defined()) {
-        ++is_in_init_block_;
-        VisitStmt(block->init.value());
-        --is_in_init_block_;
-      }
-      VisitStmt(block->body);
-      ancestors_.pop_back();
+  void VisitStmt_(const BlockNode* block) override {
+    if (init_block_depth_) {
+      ICHECK(!self_->stmt2ref.count(block)) << "InternalError: A block inside init block has its "
+                                               "corresponding sref, which is not allowed";
+      StmtVisitor::VisitStmt_(block);
+      return;
     }
+    ICHECK(self_->stmt2ref.count(block))
+        << "InternalError: A BlockNode should appear in sref map, but it didn't\n"
+        << GetRef<Stmt>(block);
+    ++n_sref_visited_;
+    ++n_block_sref_visited_;
+    const StmtSRef& sref = self_->stmt2ref.at(block);
+    ICHECK(self_->block_info.count(sref))
+        << "InternalError: Cannot find scope information of the BlockNode:\n"
+        << GetRef<Stmt>(block);
+    ICHECK(sref->parent == ancestors_.back())
+        << "InternalError: Parent information mismatch for BlockNode:\n"
+        << GetRef<Stmt>(block) << "\nIts parent is supposed to be:\n"
+        << GetRef<Stmt>(ancestors_.back()->stmt) << "\nHowever, its parent is incorrect and is:\n"
+        << (sref->parent ? Optional<Stmt>(GetRef<Stmt>(sref->parent->stmt))
+                         : Optional<Stmt>(NullOpt));
+    ancestors_.push_back(sref.operator->());
+    if (block->init.defined()) {
+      ++init_block_depth_;
+      VisitStmt(block->init.value());
+      --init_block_depth_;
+    }
+    VisitStmt(block->body);
+    ancestors_.pop_back();
+  }
 
-    // Validate each loop
-    void VisitStmt_(const ForNode* loop) override {
-      if (is_in_init_block_) {
-        ICHECK(!self_->stmt2ref.count(loop));
-        StmtVisitor::VisitStmt_(loop);
-        return;
-      }
-      ICHECK(self_->stmt2ref.count(loop))
-          << "InternalError: A ForNode should appear in sref map, but it didn't\n"
-          << GetRef<Stmt>(loop);
-      ++n_sref_visited_;
-      const StmtSRef& sref = self_->stmt2ref.at(loop);
-      Optional<Stmt> stmt = NullOpt;
-      ICHECK(sref->parent == ancestors_.back())
-          << "InternalError: Parent information mismatch for ForNode:\n"
-          << GetRef<Stmt>(loop) << "\nIts parent is supposed to be:\n"
-          << GetRef<Stmt>(ancestors_.back()->stmt) << "\nHowever, its parent is incorrect and is:\n"
-          << (sref->parent ? Optional<Stmt>(GetRef<Stmt>(sref->parent->stmt))
-                           : Optional<Stmt>(NullOpt));
-      ancestors_.push_back(sref.operator->());
+  void VisitStmt_(const ForNode* loop) override {
+    if (init_block_depth_) {
+      ICHECK(!self_->stmt2ref.count(loop)) << "InternalError: A loop inside init block has its "
+                                              "corresponding sref, which is not allowed";
       StmtVisitor::VisitStmt_(loop);
-      ancestors_.pop_back();
+      return;
     }
+    ICHECK(self_->stmt2ref.count(loop))
+        << "InternalError: A ForNode should appear in sref map, but it didn't\n"
+        << GetRef<Stmt>(loop);
+    ++n_sref_visited_;
+    const StmtSRef& sref = self_->stmt2ref.at(loop);
+    Optional<Stmt> stmt = NullOpt;
+    ICHECK(sref->parent == ancestors_.back())
+        << "InternalError: Parent information mismatch for ForNode:\n"
+        << GetRef<Stmt>(loop) << "\nIts parent is supposed to be:\n"
+        << GetRef<Stmt>(ancestors_.back()->stmt) << "\nHowever, its parent is incorrect and is:\n"
+        << (sref->parent ? Optional<Stmt>(GetRef<Stmt>(sref->parent->stmt))
+                         : Optional<Stmt>(NullOpt));
+    ancestors_.push_back(sref.operator->());
+    StmtVisitor::VisitStmt_(loop);
+    ancestors_.pop_back();
+  }
 
-    // Validate seq_index
-    void VisitStmt_(const SeqStmtNode* seq_stmt) override {
-      if (is_in_init_block_) {
-        StmtVisitor::VisitStmt_(seq_stmt);
-        return;
-      }
-      int n = seq_stmt->seq.size();
-      for (int i = 0; i < n; ++i) {
-        const Stmt& child = seq_stmt->seq[i];
-        StmtSRef sref{nullptr};
-        if (const auto* realize = child.as<BlockRealizeNode>()) {
-          const auto* block = realize->block.get();
-          ICHECK(self_->stmt2ref.count(block));
-          sref = self_->stmt2ref.at(block);
-        } else if (child->IsInstance<ForNode>()) {
-          ICHECK(self_->stmt2ref.count(child.get()));
-          sref = self_->stmt2ref.at(child.get());
-        } else {
-          continue;
-        }
-        ICHECK_EQ(sref->seq_index, i) << "InternalError: A StmtSRef has incorrect seq_index";
-      }
+  void VisitStmt_(const SeqStmtNode* seq_stmt) override {
+    // Verify seq_index
+    if (init_block_depth_) {
       StmtVisitor::VisitStmt_(seq_stmt);
+      return;
     }
+    int n = static_cast<int>(seq_stmt->seq.size());
+    for (int i = 0; i < n; ++i) {
+      const Stmt& child = seq_stmt->seq[i];
+      StmtSRef sref{nullptr};
+      if (const auto* realize = child.as<BlockRealizeNode>()) {
+        const auto* block = realize->block.get();
+        ICHECK(self_->stmt2ref.count(block));
+        sref = self_->stmt2ref.at(block);
+      } else if (child->IsInstance<ForNode>()) {
+        ICHECK(self_->stmt2ref.count(child.get()));
+        sref = self_->stmt2ref.at(child.get());
+      } else {
+        continue;
+      }
+      ICHECK_EQ(sref->seq_index, i) << "InternalError: A StmtSRef has incorrect seq_index";
+    }
+    StmtVisitor::VisitStmt_(seq_stmt);
+  }
 
-    /*! \brief The schedule it belongs to */
-    const ScheduleStateNode* self_;
-    /*! \brief Parent information during the visit */
-    std::vector<const StmtSRefNode*> ancestors_;
-    /*! \brief If the visitor is currently in the init block */
-    int is_in_init_block_;
-    /*! \brief Number of srefs that are visited */
-    int n_sref_visited_;
-    /*! \brief Number of block srefs that are visited */
-    int n_block_sref_visited_;
-  };
-  SRefTreeVerifier::Verify(self.get());
-}
+  /*! \brief The schedule it belongs to */
+  const ScheduleStateNode* self_;
+  /*! \brief Parent information during the visit */
+  std::vector<const StmtSRefNode*> ancestors_ = {nullptr};
+  /*! \brief If the visitor is currently in the init block */
+  int init_block_depth_ = 0;
+  /*! \brief Number of srefs that are visited */
+  int n_sref_visited_ = 0;
+  /*! \brief Number of block srefs that are visited */
+  int n_block_sref_visited_ = 0;
+};
+
+void VerifySRefTree(const ScheduleState& self) { SRefTreeVerifier::Verify(self.get()); }
+
+class BlockInfoVerifier : public StmtVisitor {
+ public:
+  static void Verify(const ScheduleStateNode* self) { BlockInfoVerifier(self).Verify(); }
+
+ private:
+  /*! \brief Constructor */
+  explicit BlockInfoVerifier(const ScheduleStateNode* self) : self_(self) {}
+
+  void Verify() {
+    VisitPrimFuncs(self_->mod, [this](const PrimFuncNode* func) { this->VisitStmt(func->body); });
+  }
+
+  void CheckAffineBinding(const BlockRealizeNode* realize) const {
+    const auto* block = realize->block.get();
+    StmtSRef block_sref = self_->stmt2ref.at(block);
+    Map<Var, Range> loop_var_ranges;
+    for (StmtSRefNode* loop_sref = block_sref->parent; loop_sref != nullptr;
+         loop_sref = loop_sref->parent) {
+      if (const auto* loop = loop_sref->StmtAs<ForNode>()) {
+        loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      } else {
+        break;
+      }
+    }
+    bool affine_binding = ValidateBlockBinding(GetRef<BlockRealize>(realize), loop_var_ranges);
+    ICHECK_EQ(affine_binding, self_->IsAffineBlockBinding(block_sref))
+        << "Block: " << realize->block->name_hint << "\n"
+        << Repr(self_->mod) << "\n"
+        << loop_var_ranges;
+  }
+
+  void VisitStmt_(const BlockRealizeNode* realize) override {
+    this->VisitStmt(realize->block->body);
+    CheckAffineBinding(realize);
+  }
+  /*! \brief The schedule it belongs to */
+  const ScheduleStateNode* self_;
+};
+
+void VerifyBlockInfo(const ScheduleState& self) { BlockInfoVerifier::Verify(self.get()); }
 
 StmtSRef GetScopeRoot(const StmtSRef& sref) {
   for (const StmtSRefNode* p = sref->parent; p != nullptr; p = p->parent) {
@@ -306,7 +339,7 @@ StmtSRef GetScopeRoot(const StmtSRef& sref) {
 
 Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name) {
   Array<StmtSRef> result;
-  for (const auto& kv : self->scopes) {
+  for (const auto& kv : self->block_info) {
     const StmtSRef& block_sref = kv.first;
     const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
     if (block->name_hint == name) {
@@ -314,6 +347,179 @@ Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name) {
     }
   }
   return result;
+}
+
+bool IsCompactDataFlow(const ScheduleState& self, const StmtSRef& scope_root,
+                       const Array<StmtSRef>& child_blocks) {
+  for (const StmtSRef& block : child_blocks) {
+    if (!CompleteBlock(self, block, scope_root) && !ReductionBlock(self, block, scope_root)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/*!
+ * \brief Check if each reduction instance is valid. Particularly, check:
+ * 1) Each iteration variable is either data parallel or reduction
+ * 2) Indices used to access the output buffer are not related to or affected by reduction iteration
+ * variables.
+ * \param iter_vars Iteration variables of the reduction
+ * \param output_buffer_indices Indices used to access the output buffer
+ * \return A boolean indicating if the reduction instance is valid
+ */
+bool CheckReductionInstance(const Array<IterVar>& iter_vars,
+                            const Array<PrimExpr>& output_buffer_indices) {
+  std::unordered_set<const VarNode*> reduction_block_vars;
+  reduction_block_vars.reserve(iter_vars.size());
+  // Check 1. Each iter_var can only be data parallel or reduction
+  for (const IterVar& iter_var : iter_vars) {
+    IterVarType kind = iter_var->iter_type;
+    if (kind != kDataPar && kind != kCommReduce) {
+      return false;
+    }
+    if (kind == kCommReduce) {
+      reduction_block_vars.insert(iter_var->var.get());
+    }
+  }
+  // Check 2. Each reduction iter_var should not be used to index output buffer
+  for (const PrimExpr& idx : output_buffer_indices) {
+    if (ContainsVar(idx, reduction_block_vars)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsDominant(const BlockScope& self, const StmtSRef& block_sref) {
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  // Cond 1. Block is the only writer to its outputs
+  const auto& buffer_writers = self->buffer_writers;
+  for (const BufferRegion& write_region : block->writes) {
+    ICHECK(buffer_writers.count(write_region->buffer))
+        << "InternalError: buffer \"" << write_region->buffer->name
+        << "\" does not exist in the current scope, when querying block:\n"
+        << GetRef<Block>(block);
+    // Check if the buffer is only written once (by the given block)
+    if (buffer_writers.at(write_region->buffer).size() != 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
+                   const StmtSRef& scope_root) {
+  BlockScope scope = self->GetBlockScope(scope_root);
+  // Cond 2. Check if all the block vars are data parallel
+  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  for (const IterVar& iter_var : block->iter_vars) {
+    if (iter_var->iter_type != kDataPar) {
+      return false;
+    }
+  }
+  // Cond 1. A complete block must be dominate
+  if (!IsDominant(scope, block_sref)) {
+    return false;
+  }
+  // Cond 3. Check if there is no overlap between buffers read and buffers written
+  for (const BufferRegion& write : block->writes) {
+    const Buffer& buffer = write->buffer;
+    for (const BufferRegion& read : block->reads) {
+      if (buffer.same_as(read->buffer)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool ReductionBlock(const ScheduleState& self, const StmtSRef& block_sref,
+                    const StmtSRef& scope_root) {
+  BlockScope scope = self->GetBlockScope(scope_root);
+  // Cond 3. Block binding is valid iter affine map
+  // TODO
+  // if (!this->IsAffineBlockBinding(block_sref)) {
+  //   return false;
+  // }
+  // Cond 4. Check whether the block body has the init statement.
+  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  if (!block->init.defined()) {
+    return false;
+  }
+  // Cond 2. All block vars are either data parallel or reduction
+  const Array<IterVar>& iter_vars = block->iter_vars;
+  for (const IterVar& iter_var : iter_vars) {
+    if (iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
+      return false;
+    }
+  }
+  // Cond 1. Dominate block
+  if (!IsDominant(scope, block_sref)) {
+    return false;
+  }
+  // Cond 5. All reduction vars should not affect indexing the output buffer
+  std::unordered_set<const BufferNode*> buffer_written;
+  buffer_written.reserve(block->writes.size());
+  for (const BufferRegion& write_region : block->writes) {
+    buffer_written.insert(write_region->buffer.get());
+  }
+  bool not_affected = true;
+  PreOrderVisit(block->body, [&not_affected, &iter_vars, &buffer_written](const ObjectRef& obj) {
+    if (!not_affected) {
+      return false;
+    }
+    if (const auto* store = obj.as<BufferStoreNode>()) {
+      // Only consider buffers written by the block
+      if (buffer_written.count(store->buffer.get())) {
+        if (!CheckReductionInstance(iter_vars, store->indices)) {
+          not_affected = false;
+        }
+      } else {
+        LOG(FATAL) << "InternalError: A write buffer is not in the block signature: "
+                   << store->buffer;
+      }
+      return false;
+    }
+    return true;
+  });
+  return not_affected;
+}
+
+bool CanMergeReduction(const ScheduleState& self, const StmtSRef& init_block_sref,
+                       const StmtSRef& update_block_sref, const StmtSRef& scope_root) {
+  BlockScope scope = self->GetBlockScope(scope_root);
+  const auto* init = TVM_SREF_TO_BLOCK(init, init_block_sref);
+  const auto* update = TVM_SREF_TO_BLOCK(update, update_block_sref);
+  // Cond 1. Check the binding of update block is valid
+  if (!self->IsAffineBlockBinding(update_block_sref)) {
+    return false;
+  }
+  // Cond 2. Check init_block and update_block are the only two producers for their output buffer
+  for (const BufferRegion& write_region : update->writes) {
+    const Array<StmtSRef>& writers = scope->buffer_writers.at(write_region->buffer);
+    if (writers.size() != 2) {
+      return false;
+    }
+    if (!writers[0].same_as(init_block_sref) && !writers[0].same_as(update_block_sref)) {
+      return false;
+    }
+    if (!writers[1].same_as(init_block_sref) && !writers[1].same_as(update_block_sref)) {
+      return false;
+    }
+  }
+  // Cond 3. init and update share the same buffer
+  const auto* init_body = TVM_TYPE_AS(init_body, init->body, BufferStoreNode);
+  const auto* update_body = TVM_TYPE_AS(update_body, update->body, BufferStoreNode);
+  if (!init_body->buffer.same_as(update_body->buffer)) {
+    return false;
+  }
+  // Access must be the same dimensional
+  ICHECK_EQ(init_body->indices.size(), update_body->indices.size())
+      << "InternalError: indexing to the same buffer with different dimensions";
+  // Cond 4. All block vars of update_block are either data parallel or reduction,
+  // and reduction vars of update_block should not affect indexing the output buffer
+  return CheckReductionInstance(update->iter_vars, update_body->indices);
 }
 
 Array<StmtSRef> GetAxes(const ScheduleState& self, const StmtSRef& block_sref) {
@@ -351,8 +557,7 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
 }
 
 Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<Dependency> pred_edges = self->scopes
-                                     .at(GetScopeRoot(block_sref))  //
+  Array<Dependency> pred_edges = self->GetBlockScope(GetScopeRoot(block_sref))  //
                                      ->GetDepsByDst(block_sref);
   Array<StmtSRef> results;
   results.reserve(pred_edges.size());
@@ -365,8 +570,7 @@ Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sr
 }
 
 Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<Dependency> succ_edges = self->scopes
-                                     .at(GetScopeRoot(block_sref))  //
+  Array<Dependency> succ_edges = self->GetBlockScope(GetScopeRoot(block_sref))  //
                                      ->GetDepsBySrc(block_sref);
   Array<StmtSRef> results;
   results.reserve(succ_edges.size());
@@ -380,9 +584,9 @@ Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sr
 
 bool HasSingleChild(const StmtSRef& loop_or_block_sref) {
   const StmtNode* body = nullptr;
-  if (const auto* loop = loop_or_block_sref->GetStmt<ForNode>()) {
+  if (const auto* loop = loop_or_block_sref->StmtAs<ForNode>()) {
     body = loop->body.get();
-  } else if (const auto* block = loop_or_block_sref->GetStmt<BlockNode>()) {
+  } else if (const auto* block = loop_or_block_sref->StmtAs<BlockNode>()) {
     body = block->body.get();
   } else {
     LOG(FATAL) << "TypeError: Unable to recognize the type of `loop_or_block_sref`: "

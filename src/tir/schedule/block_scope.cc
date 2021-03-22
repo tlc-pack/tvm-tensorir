@@ -16,8 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include <tvm/tir/schedule/block_scope.h>
-
 #include "./utils.h"
 
 namespace tvm {
@@ -44,80 +42,54 @@ void AddDependency(BlockScopeNode* self, const StmtSRef& src, const StmtSRef& ds
 }
 
 /*!
- * \brief Add a new rightmost a new child block,
- * update the `buffer_writes`, `buffer_readers` and the dependency graph
- * \param block_sref The child block to be added
- * \param buffer_readers An auxiliary data structure mapping existing buffers to a list of blocks
+ * \brief Add a new child block, which is assumed to be the last one if visiting subtrees
+ * from left to right, then update the `buffer_writers`, `buffer_readers` and the dependency graph
+ * \param self The block scope to be updated
+ * \param child_block_sref The child block to be added
+ * \param _buffer_readers An auxiliary data structure that maps existing buffers to a list of blocks
  * that reads it
  */
-void AddChildBlock(BlockScopeNode* self, const StmtSRef& child_sref,
-                   TBufferReaderWriter* _buffer_readers) {
-  const BlockNode* block = child_sref->GetStmt<BlockNode>();
-  ICHECK(block) << "InternalError: Scope::AddChildBlock only accepts a Block as child_sref";
-  TBufferReaderWriter& buffer_readers = *_buffer_readers;
-  TBufferReaderWriter& buffer_writers = self->buffer_writers;
+void AddLastChildBlock(BlockScopeNode* self, const StmtSRef& child_block_sref,
+                       SMap<Buffer, Array<StmtSRef>>* _buffer_readers) {
+  const BlockNode* child_block = TVM_SREF_TO_BLOCK(child_block, child_block_sref);
+  SMap<Buffer, Array<StmtSRef>>& buffer_readers = *_buffer_readers;
+  SMap<Buffer, Array<StmtSRef>>& buffer_writers = self->buffer_writers;
   // Step 1. Update `buffer_readers` and `buffer_writer` for each buffer
-  for (const BufferRegion& region : block->writes) {
-    buffer_writers[region->buffer].push_back(child_sref);
+  for (const BufferRegion& region : child_block->writes) {
+    buffer_writers[region->buffer].push_back(child_block_sref);
   }
-  for (const BufferRegion& region : block->reads) {
-    buffer_readers[region->buffer].push_back(child_sref);
+  for (const BufferRegion& region : child_block->reads) {
+    buffer_readers[region->buffer].push_back(child_block_sref);
   }
   // Check and update block dependencies: RAW, WAW, WAR.
   // Note: AddEdge is effectively NOP on self-loops
   // Step 2. Update RAW dependency
-  for (const BufferRegion& region : block->reads) {
-    if (buffer_writers.count(region->buffer)) {
-      for (const StmtSRef& from : buffer_writers[region->buffer]) {
-        AddEdge(self, from, child_sref, DepKind::kRAW);
+  for (const BufferRegion& region : child_block->reads) {
+    auto it = buffer_writers.find(region->buffer);
+    if (it != buffer_writers.end()) {
+      for (const StmtSRef& from : it->second) {
+        AddEdge(self, from, child_block_sref, DepKind::kRAW);
       }
     }
   }
   // Step 3. Update WAW dependency
-  for (const BufferRegion& region : block->writes) {
-    if (buffer_writers.count(region->buffer)) {
-      for (const StmtSRef& from : buffer_writers[region->buffer]) {
-        AddEdge(self, from, child_sref, DepKind::kWAW);
+  for (const BufferRegion& region : child_block->writes) {
+    auto it = buffer_writers.find(region->buffer);
+    if (it != buffer_writers.end()) {
+      for (const StmtSRef& from : it->second) {
+        AddEdge(self, from, child_block_sref, DepKind::kWAW);
       }
     }
   }
-  // Step 4. Check WAR dependency: not allowed in the IR
-  for (const BufferRegion& region : block->writes) {
-    if (buffer_readers.count(region->buffer)) {
-      for (const StmtSRef& from : buffer_readers[region->buffer]) {
-        CHECK(from.same_as(child_sref)) << "TypeError: WAR dependency is not allowed";
+  // Step 4. Update WAR dependency
+  for (const BufferRegion& region : child_block->writes) {
+    auto it = buffer_readers.find(region->buffer);
+    if (it != buffer_readers.end()) {
+      for (const StmtSRef& from : it->second) {
+        AddEdge(self, from, child_block_sref, DepKind::kWAR);
       }
     }
   }
-}
-
-/*!
- * \brief Check if each reduction instance is valid. Particularly, check:
- * 1) Each iteration variable is either data parallel or reduction
- * 2) Indices used to access the output buffer are not related to or affected by reduction iteration
- * variables.
- * \param iter_vars Iteration variables of the reduction
- * \param output_buffer_indices Indices used to access the output buffer
- * \return A boolean indicating if the reduction instance is valid
- */
-bool CheckReductionInstance(const Array<IterVar>& iter_vars,
-                            const Array<PrimExpr>& output_buffer_indices) {
-  for (const IterVar& iter_var : iter_vars) {
-    IterVarType kind = iter_var->iter_type;
-    // Check 1. Each iter_var can only be data parallel or reduction
-    if (kind != kDataPar && kind != kCommReduce) {
-      return false;
-    }
-    // Check 2. Each reduction iter_var should not be used to index output buffer
-    if (kind == kCommReduce) {
-      for (const PrimExpr& idx : output_buffer_indices) {
-        if (ContainsVar(idx, iter_var->var)) {
-          return false;
-        }
-      }
-    }
-  }
-  return true;
 }
 
 /******** Constructors ********/

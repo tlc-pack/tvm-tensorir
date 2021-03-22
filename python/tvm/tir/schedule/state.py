@@ -178,7 +178,6 @@ class ScheduleState(Object):
         with a specific statement `tgt_stmt`, and maintain the sref tree accordingly.
         Replace will try to perform copy on write as much as possible when the ScheduleState holds
         the only copy to the IRModule and IR nodes.
-
         Only 3 types of replacements are allowed: from `src_sref->stmt` to `tgt_stmt`.
         1) Block -> Block
         2) Loop -> Loop

@@ -43,6 +43,7 @@
 #include <tvm/arith/int_set.h>
 #include <tvm/arith/iter_affine_map.h>
 #include <tvm/tir/analysis.h>
+#include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/schedule/state.h>
@@ -185,7 +186,7 @@ inline Map<Var, arith::IntSet> AsIntSet(const Map<Var, Range>& var_dom) {
 
 #endif  // TVM_TIR_SCHEDULE_UTILS_H_
 #define TVM_SREF_TO_E(Result, SRef, Type) \
-  SRef->GetStmt<Type>();                  \
+  SRef->StmtAs<Type>();                   \
   ICHECK(Result)
 
 #define TVM_SREF_TO_BLOCK(Result, SRef)              \
@@ -249,7 +250,7 @@ Array<TDst> AsArray(const std::vector<TSrc>& vec);
  * \return The result Array
  */
 template <class TSrc, class TDst>
-inline Array<Optional<TDst> > AsOptArray(const Array<TSrc>& array);
+inline Array<Optional<TDst>> AsOptArray(const Array<TSrc>& array);
 
 /*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)
@@ -381,9 +382,9 @@ bool StmtExprContainsVar(const ObjectRef& obj, const std::vector<Var>& vars);
  */
 bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*>& vars);
 
-inline void UpdateScope(ScheduleState self, const StmtSRef& sref) {
-  self->scopes.Set(sref, BlockScope(tir::GetChildBlocks(self, sref)));
-}
+void UpdateScope(ScheduleState self, const StmtSRef& block_sref);
+
+void UpdateAffineFlag(ScheduleState self, const StmtSRef& block_sref);
 
 class StmtReplacer : public StmtMutator {
  public:
@@ -767,8 +768,8 @@ inline std::vector<TDst> AsVector(const Array<TSrc>& vec) {
 /**************** AsOptArray<TSrc, TDst> ****************/
 
 template <class TSrc, class TDst>
-inline Array<Optional<TDst> > AsOptArray(const Array<TSrc>& array) {
-  Array<Optional<TDst> > res;
+inline Array<Optional<TDst>> AsOptArray(const Array<TSrc>& array) {
+  Array<Optional<TDst>> res;
   for (const TSrc& x : array) {
     res.push_back(x);
   }

@@ -24,7 +24,6 @@
 #define TVM_TIR_SCHEDULE_STATE_H_
 
 #include <tvm/ir/module.h>
-#include <tvm/tir/function.h>
 #include <tvm/tir/schedule/block_scope.h>
 
 #include <unordered_map>
@@ -32,6 +31,35 @@
 
 namespace tvm {
 namespace tir {
+
+class PrimFunc;
+
+struct BlockInfo {
+  /*! \brief Property of a block scope rooted at the block, storing dependencies in the scope */
+  BlockScope scope{nullptr};
+  /*! \brief Property of a block, indicating if the block binding is quasi-affine */
+  bool affine_binding{false};
+  /*!
+   * \brief Property of a block, indicating if each of the block's read regions is
+   * produced by its producers
+   */
+  bool region_cover{false};
+  /*!
+   * \brief Property of a block scope root at the block, indicaiting if the scope is an equivalence
+   * of a stage pipeline. Conditions:
+   * 1) The region cover property holds for every of it child blocks
+   * 2) No write-after-read dependency
+   */
+  bool stage_pipeline{false};
+
+  BlockInfo() = default;
+
+  explicit BlockInfo(BlockScope scope, bool affine_binding, bool region_cover, bool stage_pipeline)
+      : scope(std::move(scope)),         //
+        affine_binding(affine_binding),  //
+        region_cover(region_cover),      //
+        stage_pipeline(stage_pipeline) {}
+};
 
 /*!
  * \brief The information about a TensorIR block, it contains two categories of information
@@ -134,6 +162,9 @@ class ScheduleStateNode : public Object {
    * 2) If the bitmask `kVerifyCachedFlags` is on, verify the correctness of `affine_binding`,
    * `region_cover` and `stage_pipeline`
    */
+  TVM_DLL void DebugVerify() const;
+
+  /*! \brief Trigger the verification depending on `debug_mode` */
   TVM_DLL void DebugVerify() const;
 
   static constexpr const char* _type_key = "tir.ScheduleState";

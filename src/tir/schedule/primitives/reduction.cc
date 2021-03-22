@@ -49,11 +49,11 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
   // A bunch of type checking
   ICHECK(block_sref.defined())
       << "ValueError: 'decompose_reduction' expect a block as first argument, but get value 'None'";
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->StmtAs<BlockNode>();
   if (loop_sref_opt) {
     // 'loop' is not 'None'.
     StmtSRef loop_sref = loop_sref_opt.value();
-    const auto* loop = loop_sref->GetStmt<ForNode>();
+    const auto* loop = loop_sref->StmtAs<ForNode>();
     CHECK(block != nullptr)
         << "TypeError: 'decompose_reduction' expect a block as first argument, but get type: "
         << block_sref->stmt->GetTypeKey();
@@ -68,7 +68,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     CHECK(ListContainsElement(loops, loop_sref))
         << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
     // Cond 1. Check block is reduction
-    CHECK(self->scopes.at(GetScopeRoot(block_sref))->IsReduction(block_sref))
+    CHECK(ReductionBlock(self, block_sref, GetScopeRoot(block_sref)))
         << "decompose_reduction expect the block to be a reduction block";
     // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
@@ -84,7 +84,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
           break;
         }
         // loop_var of a higher loop shouldn't contain loop var
-        const Var& loop_var = higher_loop->GetStmt<ForNode>()->loop_var;
+        const Var& loop_var = higher_loop->StmtAs<ForNode>()->loop_var;
         CHECK(!StmtExprContainsVar(binding, loop_var))
             << "ValueError: 'decompose_reduction' expect the loop to be higher "
                "than all the loops related to reduce block var";
@@ -126,7 +126,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     // Step 3. Create loops above the init block
     Stmt body = BlockRealize(init_realize);
     for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
-      const auto* higher_loop = loops[i]->GetStmt<ForNode>();
+      const auto* higher_loop = loops[i]->StmtAs<ForNode>();
       for (const PrimExpr& expr : init_realize->binding_values) {
         // Skip irrelevant loops
         if (!StmtExprContainsVar(expr, higher_loop->loop_var)) {
@@ -149,7 +149,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
       }
     }
     // Step 4. Create the parent of the new loop
-    if (const auto* parent = loop_sref->parent->GetStmt<ForNode>()) {
+    if (const auto* parent = loop_sref->parent->StmtAs<ForNode>()) {
       self->Replace(GetRef<StmtSRef>(loop_sref->parent),
                     For(/*loop_var=*/parent->loop_var,
                         /*min=*/parent->min,
@@ -159,13 +159,14 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
                         /*thread_binding*/ parent->thread_binding,
                         /*annotations*/ parent->annotations),
                     {});
-    } else if (const auto* parent = loop_sref->parent->GetStmt<BlockNode>()) {
+    } else if (const auto* parent = loop_sref->parent->StmtAs<BlockNode>()) {
       auto block_node = make_object<BlockNode>(*parent);
       block_node->body = SeqStmt::Flatten(Array<Stmt>{body, parent->body});
       block_node->init = NullOpt;
       Block new_block = Block(block_node);
       self->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
                     {{GetRef<Block>(parent), new_block}});
+      UpdateAffineFlag(self, GetRef<StmtSRef>(loop_sref->parent));
     } else {
       LOG(FATAL)
           << "TypeError: 'decompose_reduction' is applied to loop whose parent's type is not "
@@ -180,7 +181,10 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     self->Replace(block_sref, update_block, {{GetRef<Block>(block), update_block}});
     // Update scope information
     UpdateScope(self, block_sref);
-    return self->stmt2ref.at(init_block.get());
+    UpdateAffineFlag(self, block_sref);
+    StmtSRef init_block_sref = self->stmt2ref.at(init_block.get());
+    UpdateAffineFlag(self, init_block_sref);
+    return init_block_sref;
   } else {
     // 'loop' is 'None'. Convert `tir.init()` to a conjunction of conditions.
     CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
@@ -207,6 +211,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     self->Replace(block_sref, new_block, {{GetRef<Block>(block), new_block}});
     // Update scope information
     UpdateScope(self, block_sref);
+    UpdateAffineFlag(self, block_sref);
     return self->stmt2ref.at(new_block.get());
   }
 }
@@ -223,8 +228,8 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
    *   - generate reduction block
    */
   // Type checks
-  const auto* init = init_sref->GetStmt<BlockNode>();
-  const auto* update = update_sref->GetStmt<BlockNode>();
+  const auto* init = init_sref->StmtAs<BlockNode>();
+  const auto* update = update_sref->StmtAs<BlockNode>();
   CHECK(init != nullptr) << "TypeError: 'merge_reduction' expects 'init' of type Block, but get: "
                          << init_sref->stmt->GetTypeKey();
   CHECK(update != nullptr)
@@ -270,14 +275,14 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
     }
   }
   // Cond 4. Check the merged block is decomposable
-  CHECK(self->scopes.at(scope)->CanMergeReduction(init_sref, update_sref));
+  CHECK(CanMergeReduction(self, init_sref, update_sref, scope));
   // Cond 2. Check LCA is higher than all the loops related to update_block's reduce block var
   if (!scope.same_as(lca)) {
     for (const StmtSRef& higher_loop : GetAxes(self, update_sref)) {
       if (higher_loop.same_as(lca)) {
         break;
       }
-      const Var& loop_var = higher_loop->GetStmt<ForNode>()->loop_var;
+      const Var& loop_var = higher_loop->StmtAs<ForNode>()->loop_var;
       for (int i = 0, n = update->iter_vars.size(); i < n; ++i) {
         const IterVar& iter_var = update->iter_vars[i];
         const PrimExpr& binding = update_realize->binding_values[i];
@@ -304,6 +309,7 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
   self->Replace(update_sref, merged, {{GetRef<Block>(update), merged}});
   // Update scope information
   UpdateScope(self, update_sref);
+  UpdateAffineFlag(self, update_sref);
 }
 
 class VarCollector : public StmtExprVisitor {
@@ -322,7 +328,7 @@ void CollectVars(std::unordered_set<const VarNode*>* res, const PrimExpr& expr) 
 }
 
 StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis) {
-  const auto* loop = loop_sref->GetStmt<ForNode>();
+  const auto* loop = loop_sref->StmtAs<ForNode>();
 
   // Check the conditions of rfactor.
   CHECK(loop) << "TypeError: Only support rfactor a loop for now, but get type: "
@@ -334,8 +340,9 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   StmtSRef block_sref = child_blocks[0];
   BlockRealize block_realize = GetBlockRealize(block_sref);
   Block block = block_realize->block;
-  BlockScope scope = self->scopes.at(GetScopeRoot(block_sref));
-  CHECK(scope->IsReduction(block_sref)) << "ValueError: can only rfactor a reduction block";
+  StmtSRef scope_root = GetScopeRoot(block_sref);
+  CHECK(ReductionBlock(self, block_sref, scope_root))
+      << "ValueError: can only rfactor a reduction block";
 
   // Collect the information of loops and blocks.
   /*! \brief The data parallel vars and reduction vars contained in the block bindings. */
@@ -385,7 +392,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   std::unordered_map<const VarNode*, For> loop_vars;
   Array<StmtSRef> loops = GetAxes(self, block_sref);
   for (const StmtSRef& l_sref : loops) {
-    const auto* l = l_sref->GetStmt<ForNode>();
+    const auto* l = l_sref->StmtAs<ForNode>();
     ICHECK(l) << "InternalError: GetAxes returns a block sref";
     CHECK(!data_par_iters.count(l->loop_var.get()) || !reduce_iters.count(l->loop_var.get()))
         << "ValueError: loop " << l->loop_var << " is related with both data_par and reduce iters ";
@@ -563,7 +570,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
                 SubstituteInScope(wb_body, {{loop->loop_var.get(), wb_loop_var.get()}}));
   Optional<StmtSRef> top = NullOpt;
   for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
-    const auto* l = loops[i]->GetStmt<ForNode>();
+    const auto* l = loops[i]->StmtAs<ForNode>();
     ICHECK(l) << "InternalError: GetAxes returns a block sref";
     if (l->body->IsInstance<SeqStmtNode>()) {
       CHECK(i != static_cast<int>(loops.size()) - 1) << "ValueError: can not rfactor";
@@ -607,12 +614,12 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
     res.insert(res.begin() + pos, input.begin(), input.end());
     return SeqStmt(res);
   };
-  if (const auto* parent = top.value()->parent->GetStmt<ForNode>()) {
+  if (const auto* parent = top.value()->parent->StmtAs<ForNode>()) {
     SeqStmt parent_body = insert(parent->body, top.value()->seq_index, {rf_body, wb_body});
     self->Replace(GetRef<StmtSRef>(top.value()->parent),
                   For(parent->loop_var, parent->min, parent->extent, ForKind::kSerial, parent_body),
                   {{block, wb_block}});
-  } else if (const auto* parent = top.value()->parent->GetStmt<BlockNode>()) {
+  } else if (const auto* parent = top.value()->parent->StmtAs<BlockNode>()) {
     SeqStmt parent_body = insert(parent->body, top.value()->seq_index, {rf_body, wb_body});
     auto block_node = make_object<BlockNode>(*parent);
     block_node->body = parent_body;
@@ -624,13 +631,15 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
 
   // Insert the rfactor buffer into the scope block's allocation.
   StmtSRef scope_sref = GetScopeRoot(block_sref);
-  Block scope_block = GetRef<Block>(scope_sref->GetStmt<BlockNode>()),
-        new_scope_block = scope_block;
+  Block scope_block = GetRef<Block>(scope_sref->StmtAs<BlockNode>()), new_scope_block = scope_block;
   new_scope_block.CopyOnWrite()->alloc_buffers.push_back(rf_buf);
   self->Replace(scope_sref, new_scope_block, {{scope_block, new_scope_block}});
   // Update scope information.
+  StmtSRef result_rf_block_sref = self->stmt2ref.at(rf_block.get());
   UpdateScope(self, scope_sref);
-  return self->stmt2ref.at(rf_block.get());
+  UpdateAffineFlag(self, scope_sref);
+  UpdateAffineFlag(self, result_rf_block_sref);
+  return result_rf_block_sref;
 }
 
 }  // namespace schedule
