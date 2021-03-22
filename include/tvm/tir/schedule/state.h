@@ -47,8 +47,8 @@ struct BlockInfo {
   /*!
    * \brief Property of a block scope root at the block, indicaiting if the scope is an equivalence
    * of a stage pipeline. Conditions:
-   * 1) No write-after-read dependency
-   * 2) The region cover property holds for every of it child blocks
+   * 1) The region cover property holds for every of it child blocks
+   * 2) No write-after-read dependency
    */
   bool stage_pipeline{false};
 

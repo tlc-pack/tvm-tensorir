@@ -197,15 +197,32 @@ class StateCreator : private StmtVisitor {
                                                          /*stage_pipeline=*/false))
                           .first->second;
     // Update `BlockInfo::region_cover` for child blocks
+    // Update `BlockInfo::stage_pipeline` for the scope root
     ScheduleState self = GetRef<ScheduleState>(self_);
+    bool stage_pipeline = true;
     for (const StmtSRef& block_sref : child_block_srefs) {
       auto it = self_->block_info.find(block_sref);
       ICHECK(it != self_->block_info.end());
-      BlockInfo& info = it->second;
-      info.region_cover = RegionCoveredConsumer(self, block_sref, scope_root);
+      BlockInfo& child_info = it->second;
+      child_info.region_cover = RegionCoveredConsumer(self, block_sref, scope_root);
+      // Cond 1. The region cover property holds for every of it child blocks
+      if (child_info.region_cover == false) {
+        stage_pipeline = false;
+      }
     }
-    // Update `BlockInfo::stage_pipeline`
-    bool stage_pipeline = true;
+    if (stage_pipeline) {
+      // Cond 2. No write-after-read dependency
+      stage_pipeline = [&info]() -> bool {
+        for (const auto& kv : info.scope->src2deps) {
+          for (const Dependency& dep : kv.second) {
+            if (dep->kind == DepKind::kWAR) {
+              return false;
+            }
+          }
+        }
+      }();
+    }
+    info.stage_pipeline = stage_pipeline;
   }
 
   void VisitStmt_(const ForNode* loop) final {
