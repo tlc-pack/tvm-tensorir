@@ -309,6 +309,7 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
   self->Replace(update_sref, merged, {{GetRef<Block>(update), merged}});
   // Update scope information
   UpdateScope(self, update_sref);
+  UpdateAffineFlag(self, update_sref);
 }
 
 class VarCollector : public StmtExprVisitor {
@@ -636,6 +637,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   // Update scope information.
   StmtSRef result_rf_block_sref = self->stmt2ref.at(rf_block.get());
   UpdateScope(self, scope_sref);
+  UpdateAffineFlag(self, scope_sref);
   UpdateAffineFlag(self, result_rf_block_sref);
   return result_rf_block_sref;
 }

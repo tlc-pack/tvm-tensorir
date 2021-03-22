@@ -435,7 +435,7 @@ bool StmtExprContainsVar(const ObjectRef& obj, const PrimExpr& vars) {
 void UpdateScope(ScheduleState self, const StmtSRef& block_sref) {
   BlockScope scope(tir::GetChildBlocks(self, block_sref));
   // TODO
-  bool affine_binding = true;
+  bool affine_binding = false;
   bool region_cover = true;
   self->block_info[block_sref] = BlockInfo(std::move(scope), affine_binding, region_cover);
 }
