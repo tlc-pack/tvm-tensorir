@@ -231,6 +231,36 @@ class IterMapRewriter : public ExprMutator {
     return true;
   }
 
+  /*!
+   * \brief Check the validness of predicates
+   *    The flattened forms of two different predicates either follow inclusion relation
+   *    or have no intersection
+   * \return whether the prediactes are valid;
+   */
+  bool CheckPredicates() {
+    // the pred_sum_exprs are in the order of shorter to longer
+    for (size_t i = 0; i < pred_sum_exprs_.size(); ++i) {
+      for (size_t j = i + 1; j < pred_sum_exprs_.size(); ++j) {
+        // state: 0(start), -1(no intersection), 1(inclusion)
+        int state = 0;
+        for (const auto& arg1 : pred_sum_exprs_[i]->args) {
+          bool find = false;
+          for (const auto& arg2 : pred_sum_exprs_[j]->args) {
+            if (IterSplitEqual(arg1, arg2)) {
+              find = true;
+              break;
+            }
+          }
+          int transition = find ? 1 : -1;
+          // go to fail
+          if (state + transition == 0) return false;
+          state = transition;
+        }
+      }
+    }
+    return true;
+  }
+
   // override the original mutate function.
   PrimExpr VisitExpr(const PrimExpr& input_expr) final {
     auto expr = ExprMutator::VisitExpr(input_expr);
@@ -352,36 +382,6 @@ class IterMapRewriter : public ExprMutator {
   }
 
   /*!
-   * \brief Check the validness of predicates
-   *    The flattened forms of two different predicates either follow inclusion relation
-   *    or have no intersection
-   * \return whether the prediactes are valid;
-   */
-  bool CheckPredicates() {
-    // the pred_sum_exprs are in the order of shorter to longer
-    for (size_t i = 0; i < pred_sum_exprs_.size(); ++i) {
-      for (size_t j = i + 1; j < pred_sum_exprs_.size(); ++j) {
-        // state: 0(start), -1(no intersection), 1(inclusion)
-        int state = 0;
-        for (const auto& arg1 : pred_sum_exprs_[i]->args) {
-          bool find = false;
-          for (const auto& arg2 : pred_sum_exprs_[j]->args) {
-            if (IterSplitEqual(arg1, arg2)) {
-              find = true;
-              break;
-            }
-          }
-          int transition = find ? 1 : -1;
-          // go to fail
-          if (state + transition == 0) return false;
-          state = transition;
-        }
-      }
-    }
-    return true;
-  }
-
-  /*!
    * \brief Normalize the left hand side of predicate(expr < predicate_induced_extent)
    * \param expr The left hand side of predicate
    * \param predicate_induced_extent Extent from predicate
@@ -400,8 +400,7 @@ class IterMapRewriter : public ExprMutator {
       IterMark mark = sum_fuse_map_.at(flattened_form);
       mark.CopyOnWrite()->extent = min(predicate_induced_extent, mark->extent);
       sum_fuse_map_[flattened_form] = mark;
-      // check the validness of predicates
-      if (!CheckPredicates()) ++unresolved_count_;
+      pred_sum_exprs_.push_back(flattened_form);
       expr.CopyOnWrite()->args = Array<IterSplitExpr>({opt.value()});
       return expr;
     }
@@ -529,7 +528,6 @@ class IterMapRewriter : public ExprMutator {
                         : IterMark(structured_form, div(expected_scale, base_scale.value()));
     sum_fuse_map_[flattened_form] = mark;
     flattened_map_[structured_form] = flattened_form;
-    pred_sum_exprs_.push_back(flattened_form);
     return IterSplitExpr(mark, base_scale.value());
   }
 
@@ -676,6 +674,7 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
     PrimExpr res = rewriter.Rewrite(predicate.lhs, predicate.rhs);
     if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
   }
+  if (!rewriter.CheckPredicates()) return Array<IterSumExpr>();
   // Step0.1: rewrite bindings
   Array<IterSumExpr> results;
   for (PrimExpr value : indices) {
