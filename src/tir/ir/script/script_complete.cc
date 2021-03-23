@@ -36,12 +36,15 @@ namespace tir {
 /*! \brief Generate surrounding loops automatically */
 class ScriptCompleter : public StmtMutator {
  public:
-  explicit ScriptCompleter(Map<Var, Buffer>* buffer_var_map) : buffer_var_map_(buffer_var_map) {}
+  explicit ScriptCompleter(Map<Var, Buffer>* buffer_var_map, bool contain_root)
+      : buffer_var_map_(buffer_var_map), contain_root(contain_root) {}
   /*! \brief Whether the stmt contains at least one block. */
   bool contains_block = false;
 
  private:
   Map<Var, Buffer>* buffer_var_map_;
+  bool contain_root;
+  bool visited_root = false;
   Stmt VisitStmt_(const BlockRealizeNode* op) override {
     contains_block = true;
     Stmt body = StmtMutator::VisitStmt_(op);
@@ -62,6 +65,8 @@ class ScriptCompleter : public StmtMutator {
   }
 
   Stmt VisitStmt_(const BlockNode* op) override {
+    bool is_root_block = contain_root && !visited_root;
+    visited_root = true;
     // Buffers allocated in the block can be accessed by its body.
     for (const auto& alloc_buffer : op->alloc_buffers) {
       buffer_var_map_->Set(alloc_buffer->data, alloc_buffer);
@@ -71,8 +76,15 @@ class ScriptCompleter : public StmtMutator {
     for (const auto& alloc_buffer : op->alloc_buffers) {
       buffer_var_map_->erase(alloc_buffer->data);
     }
-    // ignore opaque and root block
-    if (!block->iter_vars.empty() && (block->reads.empty() || block->writes.empty())) {
+    // ignore root block or blocks which already has reads/writes regions
+    if (block->reads.empty() || block->writes.empty()) {
+      if (op->iter_vars.empty()) {
+        // non-root opaque block is not allowed
+        CHECK(is_root_block)
+            << "ValueError:Can not auto detect buffer access region for an opaque block. Please "
+               "annotation the access region manually.";
+        return std::move(block);
+      }
       auto access_region = GetBlockAccessRegion(block, *buffer_var_map_);
       const Array<BufferRegion>& reads = access_region[0];
       const Array<BufferRegion>& writes = access_region[1];
@@ -99,12 +111,13 @@ PrimFunc ScriptComplete(PrimFunc func, const Array<Buffer>& root_allocates) {
   for (const auto& alloc : root_allocates) {
     buffer_var_map.Set(alloc->data, alloc);
   }
-  ScriptCompleter script_completer(&buffer_var_map);
+  bool contain_root = root_allocates.empty() && func->body->IsInstance<BlockRealizeNode>() &&
+                      Downcast<BlockRealize>(func->body)->block->iter_vars.empty();
+  ScriptCompleter script_completer(&buffer_var_map, contain_root);
   // generate surrounding loops automatically
   Stmt res = script_completer(func->body);
   // generate root block automatically
-  if (script_completer.contains_block &&
-      (!res->IsInstance<BlockRealizeNode>() || !root_allocates.empty())) {
+  if (script_completer.contains_block && !contain_root) {
     res = Block({}, {}, {}, "root", res, NullOpt, root_allocates);
     res = BlockRealize({}, Bool(true), Downcast<Block>(res));
   }
