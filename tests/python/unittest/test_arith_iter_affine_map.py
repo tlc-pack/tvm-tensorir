@@ -245,7 +245,6 @@ def test_predicate():
     i2 = tvm.tir.Var("i2", "int32"), 2
     i3 = tvm.tir.Var("i3", "int32"), 4
     i4 = tvm.tir.Var("i4", "int32"), 3
-
     res = tvm.arith.detect_iter_map([i1[0]*20 + i2[0]*10 + i3[0]*3 + i4[0]],
                                     var_dom([i1, i2, i3, i4]),
                                     (tvm.tir.all(i1[0]*2 + i2[0] < 13, i1[0]*20 + i2[0]*10 + i3[0]*3 + i4[0] < 128, i3[0]*3 + i4[0] < 10)))

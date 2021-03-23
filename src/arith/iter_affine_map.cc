@@ -192,8 +192,12 @@ class IterMapRewriter : public ExprMutator {
 
   size_t unresolved_count() const { return unresolved_count_; }
 
-  IterSumExpr Rewrite(const PrimExpr& expr, const Optional<PrimExpr>& extent = NullOpt) {
-    return NormalizeToIterWithOffset(ToIterSumExpr(DirectMutate(expr)), extent);
+  IterSumExpr Rewrite(const PrimExpr& expr,
+                      const Optional<PrimExpr>& predicate_induced_extent = NullOpt) {
+    auto sum_expr = ToIterSumExpr(DirectMutate(expr));
+    return predicate_induced_extent
+               ? NormalizeToIterWithExtent(sum_expr, predicate_induced_extent.value())
+               : NormalizeToIterWithOffset(sum_expr);
   }
 
   bool CheckMapping(const Array<IterSumExpr>& bindings, bool require_bijective) {
@@ -289,9 +293,11 @@ class IterMapRewriter : public ExprMutator {
   std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_map_;
   // input iter marks
   std::vector<IterMark> input_marks_;
-  // The canonical map for sum
-  std::unordered_map<IterSumExpr, IterSplitExpr, IterSumHash, IterSumEqual> sum_fuse_map_;
-  // The canonical expressions of predicates
+  // The map for sum that maps flattened form to IterMark with structured form and extent
+  std::unordered_map<IterSumExpr, IterMark, IterSumHash, IterSumEqual> sum_fuse_map_;
+  // The map for sum that maps structured form to flattened form
+  std::unordered_map<IterSumExpr, IterSumExpr, IterSumHash, IterSumEqual> flattened_map_;
+  // The flattened form of iters at the left hand side of predicates
   std::vector<IterSumExpr> pred_sum_exprs_;
 
   /*!
@@ -346,41 +352,83 @@ class IterMapRewriter : public ExprMutator {
   }
 
   /*!
-   * \brief Normalize expr to an iterator + offset.
-   * \param expr The input expression.
-   * \param extent Extent from predicate
-   * \return The Normalized expression.
+   * \brief Check the validness of predicates
+   *    The flattened forms of two different predicates either follow inclusion relation
+   *    or have no intersection
+   * \return whether the prediactes are valid;
    */
-  IterSumExpr NormalizeToIterWithOffset(IterSumExpr expr,
-                                        const Optional<PrimExpr>& extent = NullOpt) {
-    if (extent) {
-      if (is_zero(expr->base)) {
-        auto opt = TryFuseIters(expr, extent);
-        if (opt && is_one(opt.value()->scale)) return expr;
-      }
-      ++unresolved_count_;
-      return expr;
-    } else {
-      if (expr->args.size() <= 1) return expr;
-      PrimExpr base = expr->base;
-      expr.CopyOnWrite()->base = make_zero(expr->dtype);
-      auto opt = TryFuseIters(expr);
-      expr.CopyOnWrite()->base = base;
-      if (opt) {
-        expr.CopyOnWrite()->args = Array<IterSplitExpr>({opt.value()});
-        return expr;
-      } else {
-        ++unresolved_count_;
-        return expr;
+  bool CheckPredicates() {
+    // the pred_sum_exprs are in the order of shorter to longer
+    for (size_t i = 0; i < pred_sum_exprs_.size(); ++i) {
+      for (size_t j = i + 1; j < pred_sum_exprs_.size(); ++j) {
+        // state: 0(start), -1(no intersection), 1(inclusion)
+        int state = 0;
+        for (const auto& arg1 : pred_sum_exprs_[i]->args) {
+          bool find = false;
+          for (const auto& arg2 : pred_sum_exprs_[j]->args) {
+            if (IterSplitEqual(arg1, arg2)) {
+              find = true;
+              break;
+            }
+          }
+          int transition = find ? 1 : -1;
+          // go to fail
+          if (state + transition == 0) return false;
+          state = transition;
+        }
       }
     }
+    return true;
   }
 
-  bool CanProveEqual(const PrimExpr& lhs, const PrimExpr& rhs) {
-    const auto* clhs = lhs.as<IntImmNode>();
-    const auto* crhs = rhs.as<IntImmNode>();
-    if (clhs && crhs) return clhs->value == crhs->value;
-    return analyzer_->CanProve(lhs - rhs == 0);
+  /*!
+   * \brief Normalize the left hand side of predicate(expr < predicate_induced_extent)
+   * \param expr The left hand side of predicate
+   * \param predicate_induced_extent Extent from predicate
+   * \return The Normalized expression.
+   */
+  IterSumExpr NormalizeToIterWithExtent(IterSumExpr expr,
+                                        const PrimExpr& predicate_induced_extent) {
+    // We are normalizing the left hand side of predicate(iter < predicate_induced_extent)
+    auto opt = TryFuseIters(expr);
+    // scale should be 1
+    if (opt && is_one(opt.value()->scale)) {
+      // update the extent of the iter in the sum_fuse_map
+      const auto* sum = opt.value()->source->source.as<IterSumExprNode>();
+      ICHECK(sum);
+      IterSumExpr flattened_form = flattened_map_.at(GetRef<IterSumExpr>(sum));
+      IterMark mark = sum_fuse_map_.at(flattened_form);
+      mark.CopyOnWrite()->extent = min(predicate_induced_extent, mark->extent);
+      sum_fuse_map_[flattened_form] = mark;
+      // check the validness of predicates
+      if (!CheckPredicates()) ++unresolved_count_;
+      expr.CopyOnWrite()->args = Array<IterSplitExpr>({opt.value()});
+      return expr;
+    }
+    ++unresolved_count_;
+    return expr;
+  }
+
+  /*!
+   * \brief Normalize expr to an iterator + offset.
+   * \param expr The input expression.
+   * \param predicate_induced_extent Extent from predicate
+   * \return The Normalized expression.
+   */
+  IterSumExpr NormalizeToIterWithOffset(IterSumExpr expr) {
+    // We are normalizing a regular iter
+    if (expr->args.size() <= 1) return expr;
+    PrimExpr base = expr->base;
+    expr.CopyOnWrite()->base = make_zero(expr->dtype);
+    auto opt = TryFuseIters(expr);
+    expr.CopyOnWrite()->base = base;
+    if (opt) {
+      expr.CopyOnWrite()->args = Array<IterSplitExpr>({opt.value()});
+      return expr;
+    } else {
+      ++unresolved_count_;
+      return expr;
+    }
   }
 
   /*!
@@ -405,16 +453,15 @@ class IterMapRewriter : public ExprMutator {
    *      = y*cn (IterMark y => x1*s1 + x2*s2 + ... + xn)
    *      = [IterSplit(IterMark(y), scale=cn)]
    *    return a corresponding IterSplitExpr if needed.
-   *    Try to normalize IterSum into a fused IterMark
+   *    Try to normalize IterSum into a fused IterMark,
    */
-  Optional<IterSplitExpr> TryFuseIters(IterSumExpr expr,
-                                       const Optional<PrimExpr>& extent = NullOpt) {
+  Optional<IterSplitExpr> TryFuseIters(IterSumExpr expr) {
     if (!is_zero(expr->base)) return NullOpt;
     if (expr->args.size() == 1) return expr->args[0];
     // select the iterators in order
     std::vector<bool> visited(expr->args.size(), false);
     std::vector<IterSplitExpr> iters, sub_iters;
-    // canonicalize the expression
+    // canonicalize the expression into two different forms: flattened form and structured form
     // step0. check if find the base scale first
     Optional<IntImm> base_scale = NullOpt;
     size_t base_index = 0;
@@ -443,33 +490,25 @@ class IterMapRewriter : public ExprMutator {
           if (!sub_expr || sub_expr.value()->args.size() < it->args.size()) {
             sub_expr = it;
           }
-        } else if (extent) {
-          // The IterSum we are trying to fuse is also a predicate,
-          // then we need to make sure the predicate doesn't intersect with this expr (independent)
-          for (const auto& sub_arg : it->args) {
-            if (IterSplitEqual(expr->args[j], sub_arg)) return NullOpt;
-          }
         }
       }
       if (sub_expr) {
-        // sub_expr found
-        // mark the iterators in the sub_expr as visited
+        // sub_expr found mark the iterators in the sub_expr as visited
         for (auto it = sub_expr.value()->args.rbegin(); it != sub_expr.value()->args.rend(); ++it) {
-          size_t j = 0;
-          for (; j < expr->args.size(); ++j) {
-            if (!visited[j] && IterSplitEqual(expr->args[j], *it, false)) {
-              if (CanProveEqual((*it)->scale * expected_scale, expr->args[j]->scale)) break;
+          size_t k = 0;
+          for (; k < expr->args.size(); ++k) {
+            if (!visited[k] && IterSplitEqual(expr->args[k], *it, false)) {
+              if (CanProveEqual((*it)->scale * expected_scale, expr->args[k]->scale)) break;
             }
           }
-          if (j == expr->args.size()) return NullOpt;
-          visited[j] = true;
-          iters.push_back(expr->args[j]);
+          if (k == expr->args.size()) return NullOpt;
+          visited[k] = true;
+          iters.push_back(expr->args[k]);
         }
-        IterSplitExpr sub_iter = sum_fuse_map_[sub_expr.value()];
-        sub_iter.CopyOnWrite()->scale = expected_scale;
-        expected_scale *= sum_fuse_map_[sub_expr.value()]->source->extent;
+        IterMark sub_iter = sum_fuse_map_[sub_expr.value()];
+        sub_iters.emplace_back(sub_iter, expected_scale);
+        expected_scale *= sub_iter->extent;
         i += sub_expr.value()->args.size();
-        sub_iters.push_back(sub_iter);
       } else {
         // sub_expr not found, skip this iterator
         visited[j] = true;
@@ -480,28 +519,25 @@ class IterMapRewriter : public ExprMutator {
       }
     }
     // update the iterator to use the canonicalized form
-    IterSumExpr full_expr = expr, canonical_expr = expr;
-    canonical_expr.CopyOnWrite()->args = Array<IterSplitExpr>(iters.rbegin(), iters.rend());
-    full_expr.CopyOnWrite()->args = Array<IterSplitExpr>(sub_iters.rbegin(), sub_iters.rend());
-    auto it = sum_fuse_map_.find(canonical_expr);
-    if (it != sum_fuse_map_.end()) {
-      if (extent) {
-        // another predicate on this iter
-        IterMark updated_mark = it->second->source;
-        updated_mark.CopyOnWrite()->extent = min(updated_mark->extent, extent.value());
-        IterSplitExpr split = IterSplitExpr(updated_mark, base_scale.value());
-        sum_fuse_map_[canonical_expr] = split;
-        return split;
-      } else {
-        return it->second;
-      }
-    }
-    expected_scale = div(expected_scale, base_scale.value());
-    auto mark = IterMark(full_expr, extent ? min(extent.value(), expected_scale) : expected_scale);
-    IterSplitExpr split(mark, base_scale.value());
-    sum_fuse_map_[canonical_expr] = split;
-    pred_sum_exprs_.push_back(canonical_expr);
-    return split;
+    IterSumExpr structured_form = expr, flattened_form = expr;
+    flattened_form.CopyOnWrite()->args = Array<IterSplitExpr>(iters.rbegin(), iters.rend());
+    structured_form.CopyOnWrite()->args =
+        Array<IterSplitExpr>(sub_iters.rbegin(), sub_iters.rend());
+    auto it = sum_fuse_map_.find(flattened_form);
+    IterMark mark = it != sum_fuse_map_.end()
+                        ? it->second
+                        : IterMark(structured_form, div(expected_scale, base_scale.value()));
+    sum_fuse_map_[flattened_form] = mark;
+    flattened_map_[structured_form] = flattened_form;
+    pred_sum_exprs_.push_back(flattened_form);
+    return IterSplitExpr(mark, base_scale.value());
+  }
+
+  bool CanProveEqual(const PrimExpr& lhs, const PrimExpr& rhs) {
+    const auto* clhs = lhs.as<IntImmNode>();
+    const auto* crhs = rhs.as<IntImmNode>();
+    if (clhs && crhs) return clhs->value == crhs->value;
+    return analyzer_->CanProve(lhs - rhs == 0);
   }
 
   bool CanProveDivisible(const PrimExpr& lhs, const PrimExpr& rhs) {
