@@ -153,7 +153,7 @@ def multi_level_tiling(
     cache_write_scope: str,
     consumer_inline_strict: bool,
     fusion_levels: List[int],
-    max_innermost_factor: int = 16,
+    max_innermost_factor: int = 64,
     vector_load_max_len: Optional[int] = None,
     tile_binds: Optional[List[str]] = None,
 ) -> SearchRule:

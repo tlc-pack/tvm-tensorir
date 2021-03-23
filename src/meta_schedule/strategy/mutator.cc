@@ -376,6 +376,7 @@ class MutatorParallel {
         // Step 4. Find extent candidates.
         int prod_extent = 1;
         std::vector<int> extent_candidates;
+        extent_candidates.emplace_back(1);
         for (int i = 0;
              i < static_cast<int>(loop_srefs.size()) && loop_types[i] == tir::IterVarType::kDataPar;
              ++i) {
