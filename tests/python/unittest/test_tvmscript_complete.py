@@ -19,6 +19,7 @@ import tvm
 from tvm import tir
 from tvm.ir import Range
 from tvm.script import ty, from_source
+from tvm.ir.diagnostics import override_renderer
 
 
 @tvm.script.tir
@@ -51,6 +52,33 @@ def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                         C[vi * 4 + ii, vj * 4 + jj]
                         + A[vi * 4 + ii, vk * 4 + kk] * B[vj * 4 + jj, vk * 4 + kk]
                     )
+
+
+@tvm.script.tir
+def elementwise_with_root(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128, 128])
+    C = tir.match_buffer(c, [128, 128])
+
+    with tir.block([]) as []:
+        with tir.block([128, 128]) as [vi, vj]:
+            B[vi, vj] = A[vi, vj] + tir.float32(1)
+
+        with tir.block([128, 128]) as [vi, vj]:
+            C[vi, vj] = B[vi, vj] + tir.float32(1)
+
+
+def func_with_opaque_block(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128, 128])
+    C = tir.match_buffer(c, [128, 128])
+
+    with tir.block([]) as []:
+        with tir.block([]) as []:
+            B[0, 0] = A[0, 0] + tir.float32(1)
+
+        with tir.block([128, 128]) as [vi, vj]:
+            C[vi, vj] = B[vi, vj] + tir.float32(1)
 
 
 def test_complete_matmul():
@@ -96,6 +124,51 @@ def test_complete_matmul_original():
     tvm.ir.assert_structural_equal(block2.writes, [access_C])
 
 
+def test_complete_with_root():
+    func = elementwise_with_root
+    A, B, C = [func.buffer_map[x] for x in func.params]
+
+    block1 = func.body.block.body[0].body.body.block
+    assert isinstance(block1, tvm.tir.Block)
+    vi, vj = [x.var for x in block1.iter_vars]
+
+    tvm.ir.assert_structural_equal(
+        block1.reads,
+        [tir.BufferRegion(A, [Range.from_min_extent(vi, 1), Range.from_min_extent(vj, 1)])],
+    )
+    tvm.ir.assert_structural_equal(
+        block1.writes,
+        [tir.BufferRegion(B, [Range.from_min_extent(vi, 1), Range.from_min_extent(vj, 1)])],
+    )
+
+    block2 = func.body.block.body[1].body.body.block
+    assert isinstance(block2, tvm.tir.Block)
+    vi, vj = [x.var for x in block2.iter_vars]
+    tvm.ir.assert_structural_equal(
+        block2.reads,
+        [tir.BufferRegion(B, [Range.from_min_extent(vi, 1), Range.from_min_extent(vj, 1)])],
+    )
+    tvm.ir.assert_structural_equal(
+        block2.writes,
+        [tir.BufferRegion(C, [Range.from_min_extent(vi, 1), Range.from_min_extent(vj, 1)])],
+    )
+
+
+def test_complete_opaque_block_error():
+    def render(e):
+        pass
+
+    override_renderer(render)
+
+    try:
+        from_source(func_with_opaque_block)
+    except tvm.error.DiagnosticError:
+        return
+    assert False
+
+
 if __name__ == "__main__":
     test_complete_matmul()
     test_complete_matmul_original()
+    test_complete_with_root()
+    test_complete_opaque_block_error()
