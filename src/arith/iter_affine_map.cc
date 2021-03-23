@@ -127,8 +127,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
  * \brief Collector that collects
  *  the outgoing split reference of each IterMark.
  *
- *  These out-going splits can then be used to
- *  check if the iterators are independent.
+ *  These out-going splits can then be used to check if the iterators are independent.
  */
 class IterMarkSplitCollector {
  public:
@@ -162,8 +161,9 @@ class IterMarkSplitCollector {
   }
 };
 
-// Rewriter to rewrite PrimExpr to IterMapExpr
-// when possible
+/*!
+ * \brief Rewriter to rewrite PrimExpr to IterMapExpr when possible
+ */
 class IterMapRewriter : public ExprMutator {
  public:
   using Parent = ExprMutator;
@@ -200,23 +200,31 @@ class IterMapRewriter : public ExprMutator {
                : NormalizeToIterWithOffset(sum_expr);
   }
 
+  /*!
+   * \brief If require_bijective is true, this function checks two conditions:
+   *   - C0: Each iter mark should be fully covered by non-overlapping splits.
+   *   - C1: All of the input iterators are used.
+   *   Example: given x in [0, 8) y in [0, 6)
+   *   - bindings = [x, x+1, y] won't pass because x and x+1 contribute
+   *     two splits that overlaps with each other.
+   *   - bindings = [x / 4, x % 4, y] will pass because x / 4 and x % 4
+   *     contribute two non-overlapping splits that covers x.
+   *   - bindings = [x / 4, x % 4] won't pass because y is not used.
+   *
+   *   If require_bijective is false, this function checks one condition:
+   *   - C0: Each iter mark exists chance to be fully covered by non-overlapping splits.
+   *   Example: given x in [0, 8) y in [0, 6)
+   *   - bindings = [x / 4] will pass because x / 4 can be one split of x
+   *   - bindings = [x / 4, x % 4] will pass because x / 4 and x % 4
+   *     contribute two non-overlapping splits that covers x.
+   *   - bindings = [x / 3] will not pass because x / 3 can not be one split of x
+   * \return whether the bindings are valid
+   */
   bool CheckMapping(const Array<IterSumExpr>& bindings, bool require_bijective) {
-    // This function checks two conditions:
-    // - C0: Each iter mark should be fully covered by non-overlapping splits.
-    // - C1: All of the input iterators are used.
-    //
-    // Example: given x in [0, 8) y in [0, 6)
-    // - bindings = [x, x+1, y] won't pass because x and x+1 contribute
-    //   two splits that overlaps with each other.
-    // - bindings = [x / 4, x % 4, y] will pass because x / 4 and x % 4
-    //   contribute two non-overlapping splits that covers x.
-    // - bindings = [x / 4, x % 4] won't pass because y is not used.
-    //
     IterMarkSplitCollector collector;
     // We can check that for each iter mark:
     // All the splits that refers to the iter_mark covers its extent.
     // The splits do not overlap with each other.
-
     collector.Collect(bindings);
     for (const IterMark& mark : collector.visited_) {
       if (TryNormalizeSplits(mark, collector.mark2splits_[mark], require_bijective).empty())
@@ -233,19 +241,20 @@ class IterMapRewriter : public ExprMutator {
 
   /*!
    * \brief Check the validness of predicates
-   *    The flattened forms of two different predicates either follow inclusion relation
-   *    or have no intersection
-   * \return whether the prediactes are valid;
+   *    The flattened forms of two different predicates
+   *    either 1) follow inclusion relation or 2) have no intersection
+   * \return whether the predicates are valid;
    */
   bool CheckPredicates() {
     // the pred_sum_exprs are in the order of shorter to longer
-    for (size_t i = 0; i < pred_sum_exprs_.size(); ++i) {
-      for (size_t j = i + 1; j < pred_sum_exprs_.size(); ++j) {
+    // since we visit the predicates in the order of size
+    for (size_t i = 0; i < pred_flattened_.size(); ++i) {
+      for (size_t j = i + 1; j < pred_flattened_.size(); ++j) {
         // state: 0(start), -1(no intersection), 1(inclusion)
         int state = 0;
-        for (const auto& arg1 : pred_sum_exprs_[i]->args) {
+        for (const auto& arg1 : pred_flattened_[i]->args) {
           bool find = false;
-          for (const auto& arg2 : pred_sum_exprs_[j]->args) {
+          for (const auto& arg2 : pred_flattened_[j]->args) {
             if (IterSplitEqual(arg1, arg2)) {
               find = true;
               break;
@@ -327,13 +336,14 @@ class IterMapRewriter : public ExprMutator {
   std::unordered_map<IterSumExpr, IterMark, IterSumHash, IterSumEqual> sum_fuse_map_;
   // The map for sum that maps structured form to flattened form
   std::unordered_map<IterSumExpr, IterSumExpr, IterSumHash, IterSumEqual> flattened_map_;
-  // The flattened form of iters at the left hand side of predicates
-  std::vector<IterSumExpr> pred_sum_exprs_;
+  // The flattened forms of iters at the left hand side of predicates
+  std::vector<IterSumExpr> pred_flattened_;
 
   /*!
-   * \brief Verify that splits fully covers mark in a non-overlapping fashion.
-   *        If verification passes, return splits from outermost to inner most order.
-   *        If not, return an empty array
+   * \brief If bijective is required, verify that splits fully covers mark in a non-overlapping
+   *   fashion, If not, verify that splits are valid and compatible for the mark.
+   *   If verification passes, return splits from outermost to inner most order.
+   *   If not, return an empty array
    * \param mark The iterator of interest.
    * \param splits The splits to be verified.
    * \param require_bijective A boolean flag that indicates whether the bindings should be bijective
@@ -400,7 +410,7 @@ class IterMapRewriter : public ExprMutator {
       IterMark mark = sum_fuse_map_.at(flattened_form);
       mark.CopyOnWrite()->extent = min(predicate_induced_extent, mark->extent);
       sum_fuse_map_[flattened_form] = mark;
-      pred_sum_exprs_.push_back(flattened_form);
+      pred_flattened_.push_back(flattened_form);
       expr.CopyOnWrite()->args = Array<IterSplitExpr>({opt.value()});
       return expr;
     }
@@ -476,24 +486,30 @@ class IterMapRewriter : public ExprMutator {
     // check if it can be remapped into a fused pattern.
     PrimExpr expected_scale = base_scale.value();
     for (size_t i = 0; i < expr->args.size();) {
+      // find j such that expr->args[j] has expected scale
       size_t j = i == 0 ? base_index : 0;
       for (; j < expr->args.size(); ++j) {
         if (!visited[j] && CanProveEqual(expr->args[j]->scale, expected_scale)) break;
       }
       if (j == expr->args.size()) return NullOpt;
       // look for the longest predicate started from expr->args[j]
-      Optional<IterSumExpr> sub_expr;
-      for (const auto& it : pred_sum_exprs_) {
+      // Example: expr = i*9 + j*2 + k, i in [0, 4) j in [0, 5) k in [0, 2)
+      //          predicate: j*2 + k < 9
+      // We need to match the predicate in expr and adjust the expected sacle,
+      // otherwise we expect the scale of i to be 2*5=10
+      Optional<IterSumExpr> pred_to_match;
+      for (const auto& it : pred_flattened_) {
         if (IterSplitEqual(expr->args[j], it->args.back(), false)) {
           // find a predicate started from expr->args[j]
-          if (!sub_expr || sub_expr.value()->args.size() < it->args.size()) {
-            sub_expr = it;
+          if (!pred_to_match || pred_to_match.value()->args.size() < it->args.size()) {
+            pred_to_match = it;
           }
         }
       }
-      if (sub_expr) {
-        // sub_expr found mark the iterators in the sub_expr as visited
-        for (auto it = sub_expr.value()->args.rbegin(); it != sub_expr.value()->args.rend(); ++it) {
+      if (pred_to_match) {
+        // match the predicate and mark the iterators in the pred_to_match as visited
+        for (auto it = pred_to_match.value()->args.rbegin();
+             it != pred_to_match.value()->args.rend(); ++it) {
           size_t k = 0;
           for (; k < expr->args.size(); ++k) {
             if (!visited[k] && IterSplitEqual(expr->args[k], *it, false)) {
@@ -504,12 +520,13 @@ class IterMapRewriter : public ExprMutator {
           visited[k] = true;
           iters.push_back(expr->args[k]);
         }
-        IterMark sub_iter = sum_fuse_map_[sub_expr.value()];
-        sub_iters.emplace_back(sub_iter, expected_scale);
-        expected_scale *= sub_iter->extent;
-        i += sub_expr.value()->args.size();
+        IterMark iter_matched = sum_fuse_map_[pred_to_match.value()];
+        sub_iters.emplace_back(iter_matched, expected_scale);
+        expected_scale *= iter_matched->extent;
+        // move forward
+        i += pred_to_match.value()->args.size();
       } else {
-        // sub_expr not found, skip this iterator
+        // pred_to_match not found, skip this iterator
         visited[j] = true;
         iters.push_back(expr->args[j]);
         sub_iters.push_back(expr->args[j]);
@@ -517,18 +534,23 @@ class IterMapRewriter : public ExprMutator {
         ++i;
       }
     }
-    // update the iterator to use the canonicalized form
+    // Get the flattened form and structured form
+    // both forms have splits from outermost to innermost
     IterSumExpr structured_form = expr, flattened_form = expr;
     flattened_form.CopyOnWrite()->args = Array<IterSplitExpr>(iters.rbegin(), iters.rend());
     structured_form.CopyOnWrite()->args =
         Array<IterSplitExpr>(sub_iters.rbegin(), sub_iters.rend());
     auto it = sum_fuse_map_.find(flattened_form);
-    IterMark mark = it != sum_fuse_map_.end()
-                        ? it->second
-                        : IterMark(structured_form, div(expected_scale, base_scale.value()));
-    sum_fuse_map_[flattened_form] = mark;
-    flattened_map_[structured_form] = flattened_form;
-    return IterSplitExpr(mark, base_scale.value());
+    if (it != sum_fuse_map_.end()) {
+      // old iter
+      return IterSplitExpr(it->second, base_scale.value());
+    } else {
+      // new iter, form a new mark
+      IterMark mark = IterMark(structured_form, div(expected_scale, base_scale.value()));
+      sum_fuse_map_[flattened_form] = mark;
+      flattened_map_[structured_form] = flattened_form;
+      return IterSplitExpr(mark, base_scale.value());
+    }
   }
 
   bool CanProveEqual(const PrimExpr& lhs, const PrimExpr& rhs) {
@@ -593,6 +615,9 @@ class IterMapRewriter : public ExprMutator {
   }
 };
 
+/*!
+ * \brief An internal struct to store the result of subspace division
+ */
 struct Predicate {
   size_t size;
   PrimExpr lhs;
@@ -1030,11 +1055,21 @@ TVM_REGISTER_GLOBAL("arith.IterVarMapConvert").set_body_typed([](const IterMapEx
   return IterVarMapConvert(expr);
 });
 
+/*!
+ * \brief Divider to divide the bindings into two sets of bindings(outer and inner)
+ *   such that binding_i = Y_i * E(Xi) + Xi
+ *   We do message passing among IterSplitExpr and IterSumExpr
+ *   Example
+ *   - If we encounter sum = i*10 + j*5 + k, and i, j, k are splits,
+ *     and we know i = Yi*1 + 0, j = 0*E(Xj) + Xj, k = 0*E(Xk) + Xk through message passing,
+ *     then sum = Yi*10 + (Xj*5 + Xk) = Y*E(X) + X, where Y = Yi, X = Xj*5 + Xk.
+ *   - If we encounter split = (i / 2) % 4, and we know i = Y*E(X) + X through message passing.
+ *     We inspect all the splits of i, which are i / 8, (i / 2) % 4, i % 2.
+ *     Their extents are 2, 4, 2, if E(X) = 2, 8, 16, the splits can be divided.
+ */
 class SubspaceDivider {
  private:
-  /*!
-   * \brief Denotes outer*inner_extent + inner, where outer and inner are IterVarMaps
-   */
+  // Denotes outer*inner_extent + inner, used as message passing carrier
   struct DivisionResult {
    public:
     // IterMapExpr of outer iters
@@ -1097,7 +1132,8 @@ class SubspaceDivider {
       return res;
     }
     // arg1 + arg2 + ... + argn + base
-    // then we can write it as Y*E(X)+X if it starts with Y*1+0, followed by 0*E(X)+X
+    // then we can write it as Y*E(X)+X
+    // if it starts with contiguous outer splits, followed by contiguous inner splits
     PrimExpr extent = 1;
     std::vector<IterSplitExpr> outer_args, inner_args;
     bool inner = true, scale_is_one = false;
@@ -1107,11 +1143,9 @@ class SubspaceDivider {
       DivisionResult arg_division = DivideIterSplitExpr(arg);
       IterSplitExpr new_arg;
       if (arg_division.IsInner()) {
-        // 0*E(Xi)+Xi
         if (!inner) return Fail();
         inner_args.push_back(new_arg = arg_division.GetInnerAsSplit());
         inner = true;
-        // Yi*1+0
       } else if (arg_division.IsOuter()) {
         outer_args.push_back(new_arg = arg_division.GetOuterAsSplit());
         inner = false;
