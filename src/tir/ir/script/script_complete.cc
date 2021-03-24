@@ -37,14 +37,14 @@ namespace tir {
 class ScriptCompleter : public StmtMutator {
  public:
   explicit ScriptCompleter(Map<Var, Buffer>* buffer_var_map, bool contain_root)
-      : buffer_var_map_(buffer_var_map), contain_root(contain_root) {}
+      : buffer_var_map_(buffer_var_map), contain_root_(contain_root) {}
   /*! \brief Whether the stmt contains at least one block. */
   bool contains_block = false;
 
  private:
   Map<Var, Buffer>* buffer_var_map_;
-  bool contain_root;
-  bool visited_root = false;
+  bool contain_root_;
+  bool visited_root_ = false;
   Stmt VisitStmt_(const BlockRealizeNode* op) override {
     contains_block = true;
     Stmt body = StmtMutator::VisitStmt_(op);
@@ -65,8 +65,8 @@ class ScriptCompleter : public StmtMutator {
   }
 
   Stmt VisitStmt_(const BlockNode* op) override {
-    bool is_root_block = contain_root && !visited_root;
-    visited_root = true;
+    bool is_root_block = contain_root_ && !visited_root_;
+    visited_root_ = true;
     // Buffers allocated in the block can be accessed by its body.
     for (const auto& alloc_buffer : op->alloc_buffers) {
       buffer_var_map_->Set(alloc_buffer->data, alloc_buffer);
