@@ -124,8 +124,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     });
 
 /*!
- * \brief Collector that collects
- *  the outgoing split reference of each IterMark.
+ * \brief Collector that collects the outgoing split reference of each IterMark.
  *
  *  These out-going splits can then be used to check if the iterators are independent.
  */
