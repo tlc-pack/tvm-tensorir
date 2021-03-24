@@ -270,7 +270,7 @@ class IterSumExpr : public IterMapExpr {
  *  For returned value rv, the following is always true:
  *  - rv[i]->args.size() <=1: only one iterator per element.
  *
- * \param indices The input indices
+ * \param indices The indices to detect pattern for.
  * \param input_iters Map from variable to iterator's range.
  * \param input_predicate The boolean predicate that input_iters must satisfy.
  * \param require_bijective A boolean flag that indicates whether the mapping should be bijective.
@@ -291,6 +291,8 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
  *       b = some-quasi-affine-iter-map(sub_iters)
  *       c is constant symbols
  *       e is the extent of b
+ *
+ * For example, z*12 + y*3 + x + c = (z*4+y)*3 + x, if sub_iters={x}
  *
  * \param bindings The input bindings
  * \param input_iters Map from variable to iterator's range.
