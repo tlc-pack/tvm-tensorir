@@ -88,22 +88,22 @@ class IterSumExpr(IterMapExpr):
         self.__init_handle_by_constructor__(_ffi_api.IterSumExpr, args, base)
 
 
-def detect_iter_map(bindings, root_iters, predicate=True, require_bijective=False):
-    """Detect if bindings can be written mapped iters from root iters
+def detect_iter_map(indices, input_iters, input_predicate=True, require_bijective=False):
+    """Detect if indices can be written as mapped iters from input iters
 
     Parameters
     ----------
-    bindings : List[PrimExpr]
-        The bindings of leaf iterators
+    indices : List[PrimExpr]
+        The input indices
 
-    root_iters : Map[Var, Range]
-        The domain of each root iterators.
+    input_iters : Map[Var, Range]
+        The domain of each input iterators.
 
-    predicate : PrimExpr
+    input_predicate : PrimExpr
         The predicate tht input iterators follow
 
     require_bijective : bool
-        A boolean flag that indicates whether the bindings should be bijective
+        A boolean flag that indicates whether the mapping should be bijective
 
     Returns
     -------
@@ -111,13 +111,13 @@ def detect_iter_map(bindings, root_iters, predicate=True, require_bijective=Fals
         The iter map matching result.
         Empty array if no match can be found.
     """
-    return _ffi_api.DetectIterMap(bindings, root_iters, predicate, require_bijective)
+    return _ffi_api.DetectIterMap(indices, input_iters, input_predicate, require_bijective)
 
 
-def subspace_division(bindings, root_iters, sub_iters, predicate=True, require_bijective=False):
+def subspace_division(bindings, input_iters, sub_iters, predicate=True, require_bijective=False):
     """Detect if bindings can be written as
     [a_0*e_0 + b_0 + c_0, a_1*e_1 + b_1, ..., a_n*e_n + b_n]
-    where a = some-quasi-affine-iter-map(root_iters set_minus sub_iters)
+    where a = some-quasi-affine-iter-map(input_iters set_minus sub_iters)
           b = some-quasi-affine-iter-map(sub_iters)
           c is constant symbols
           e is the extent of b
@@ -126,10 +126,10 @@ def subspace_division(bindings, root_iters, sub_iters, predicate=True, require_b
     Parameters
     ----------
     bindings : List[PrimExpr]
-        The bindings to detect pattern for.
+        The input bindings
 
-    root_iters : Map[Var, Range]
-        The domain of each input iterators, which is the basis of the whole space
+    input_iters : Map[Var, Range]
+        The domain of input iterator, which is the basis of the whole space
 
     sub_iters : Array[Var]
         The subset of input_iters, which is the basis of the subspace
@@ -148,7 +148,7 @@ def subspace_division(bindings, root_iters, sub_iters, predicate=True, require_b
         The second expr is the basis of the subspace.
         Empty array if no match can be found.
     """
-    return _ffi_api.SubspaceDivision(bindings, root_iters, sub_iters, predicate, require_bijective)
+    return _ffi_api.SubspaceDivision(bindings, input_iters, sub_iters, predicate, require_bijective)
 
 
 def normalize_iter_map_to_expr(expr):

@@ -260,7 +260,6 @@ class IterSumExpr : public IterMapExpr {
 
 /*!
  * \brief Detect if indices can be written as
- *
  *  [y_0 + c_0, y_1 + c_1, ..., y_n + c_n]
  *
  *  Here y = some-quasi-affine-iter-map(input_iters)
@@ -271,10 +270,10 @@ class IterSumExpr : public IterMapExpr {
  *  For returned value rv, the following is always true:
  *  - rv[i]->args.size() <=1: only one iterator per element.
  *
- * \param indices The indices to detect pattern for.
+ * \param indices The input indices
  * \param input_iters Map from variable to iterator's range.
- * \param input_predicate The boolean predicate that input_iters must satisfy
- * \param require_bijective A boolean flag that indicates whether the bindings should be bijective
+ * \param input_predicate The boolean predicate that input_iters must satisfy.
+ * \param require_bijective A boolean flag that indicates whether the mapping should be bijective.
  * \param analyzer Analyzer used to get context information.
  *
  * \return The detected pattern if a match exists,
@@ -286,26 +285,25 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
 
 /*!
  * \brief Detect if bindings can be written as
- *
  * [a_0*e_0 + b_0 + c_0, a_1*e_1 + b_1, ..., a_n*e_n + b_n]
  *
- * where a = some-quasi-affine-iter-map(root_iters set_minus sub_iters)
+ * where a = some-quasi-affine-iter-map(input_iters set_minus sub_iters)
  *       b = some-quasi-affine-iter-map(sub_iters)
  *       c is constant symbols
  *       e is the extent of b
  *
- * \param bindings The bindings to detect pattern for.
- * \param root_iters Map from variable to iterator's range.
- * \param sub_iters Iterators of subspace
- * \param predicate The predicate for input_inters
- * \param require_bijective A boolean flag that indicates whether the bindings should be bijective
+ * \param bindings The input bindings
+ * \param input_iters Map from variable to iterator's range.
+ * \param sub_iters Iterators of subspace.
+ * \param predicate The predicate for input_inters.
+ * \param require_bijective A boolean flag that indicates whether the mapping should be bijective.
  * \param analyzer Analyzer used to get context information.
  *
  * \return The detected a and b if a match exists,
  *         otherwise return an empty array.
  */
 Array<Array<IterMark>> SubspaceDivision(const Array<PrimExpr>& bindings,
-                                        const Map<Var, Range>& root_iters,
+                                        const Map<Var, Range>& input_iters,
                                         const Array<Var>& sub_iters, const PrimExpr& predicate,
                                         bool require_bijective, arith::Analyzer* analyzer);
 

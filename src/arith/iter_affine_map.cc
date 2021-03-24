@@ -161,9 +161,7 @@ class IterMarkSplitCollector {
   }
 };
 
-/*!
- * \brief Rewriter to rewrite PrimExpr to IterMapExpr when possible
- */
+/*! \brief Rewriter to rewrite PrimExpr to IterMapExpr when possible */
 class IterMapRewriter : public ExprMutator {
  public:
   using Parent = ExprMutator;
@@ -240,7 +238,7 @@ class IterMapRewriter : public ExprMutator {
   }
 
   /*!
-   * \brief Check the validness of predicates
+   * \brief Check the validity of predicates
    *    The flattened forms of two different predicates
    *    either 1) follow inclusion relation or 2) have no intersection
    * \return whether the predicates are valid;
@@ -342,7 +340,7 @@ class IterMapRewriter : public ExprMutator {
   /*!
    * \brief If bijective is required, verify that splits fully covers mark in a non-overlapping
    *   fashion, If not, verify that splits are valid and compatible for the mark.
-   *   If verification passes, return splits from outermost to inner most order.
+   *   If verification passes, return splits from outermost to innermost order.
    *   If not, return an empty array
    * \param mark The iterator of interest.
    * \param splits The splits to be verified.
@@ -421,7 +419,7 @@ class IterMapRewriter : public ExprMutator {
   /*!
    * \brief Normalize expr to an iterator + offset.
    * \param expr The input expression.
-   * \param predicate_induced_extent Extent from predicate
+   * \param predicate_induced_extent Extent from predicate.
    * \return The Normalized expression.
    */
   IterSumExpr NormalizeToIterWithOffset(IterSumExpr expr) {
@@ -495,7 +493,7 @@ class IterMapRewriter : public ExprMutator {
       // look for the longest predicate started from expr->args[j]
       // Example: expr = i*9 + j*2 + k, i in [0, 4) j in [0, 5) k in [0, 2)
       //          predicate: j*2 + k < 9
-      // We need to match the predicate in expr and adjust the expected sacle,
+      // We need to match the predicate in expr and adjust the expected scale,
       // otherwise we expect the scale of i to be 2*5=10
       Optional<IterSumExpr> pred_to_match;
       for (const auto& it : pred_flattened_) {
@@ -1118,8 +1116,9 @@ class SubspaceDivider {
                            const std::unordered_set<const VarNode*>& sub_iters)
       : analyzer_(analyzer), collector_(collector), sub_iters_(sub_iters) {}
 
-  size_t unresolved_count() const { return unresolved_count_; }
+  size_t UnresolvedCount() const { return unresolved_count_; }
 
+  // Divide an IterSumExpr
   DivisionResult DivideIterSumExpr(const IterSumExpr& expr, const PrimExpr& mark_extent) {
     if (expr->args.size() == 0) {
       // base
@@ -1300,10 +1299,10 @@ class SubspaceDivider {
 };
 
 Array<Array<IterMark>> SubspaceDivision(const Array<PrimExpr>& bindings,
-                                        const Map<Var, Range>& root_iters,
+                                        const Map<Var, Range>& input_iters,
                                         const Array<Var>& sub_iters, const PrimExpr& predicate,
                                         bool require_bijective, arith::Analyzer* analyzer) {
-  const auto& maps = DetectIterMap(bindings, root_iters, predicate, require_bijective, analyzer);
+  const auto& maps = DetectIterMap(bindings, input_iters, predicate, require_bijective, analyzer);
   if (maps.empty()) return {};
 
   std::unordered_set<const VarNode*> inner_iter_set;
@@ -1316,7 +1315,7 @@ Array<Array<IterMark>> SubspaceDivision(const Array<PrimExpr>& bindings,
   std::vector<Array<IterMark>> results;
   for (const auto& expr : maps) {
     auto res = subspace_divider.DivideIterSumExpr(expr, 0);
-    if (subspace_divider.unresolved_count()) return {};
+    if (subspace_divider.UnresolvedCount()) return {};
     results.push_back(
         {IterMark(res.outer, res.outer_extent), IterMark(res.inner, res.inner_extent)});
   }

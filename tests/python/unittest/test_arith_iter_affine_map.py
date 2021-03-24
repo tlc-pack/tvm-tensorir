@@ -16,7 +16,6 @@
 # under the License.
 import tvm
 import tvm.testing
-from tvm import te
 from tvm.tir import floormod, floordiv
 
 
@@ -96,9 +95,6 @@ def test_fuse():
     x = tvm.tir.Var("x", "int32")
     y = tvm.tir.Var("y", "int32")
     c = tvm.tir.SizeVar("c", "int32")
-    c0 = tvm.tir.SizeVar("c0", "int32")
-    c1 = tvm.tir.SizeVar("c1", "int32")
-    c2 = tvm.tir.SizeVar("c1", "int32")
 
     res = tvm.arith.detect_iter_map([y * 3 + 1 + c + x], var_dom([(x, 3), (y, 4)]))
     assert len(res) == 1
@@ -129,10 +125,8 @@ def test_fuse():
 def test_split():
     x = tvm.tir.Var("x", "int32")
     y = tvm.tir.Var("y", "int32")
-    z = tvm.tir.Var("y", "int32")
     c0 = tvm.tir.SizeVar("c0", "int32")
     c1 = tvm.tir.SizeVar("c1", "int32")
-    c2 = tvm.tir.SizeVar("c1", "int32")
     fld = tvm.tir.floordiv
     flm = tvm.tir.floormod
 
