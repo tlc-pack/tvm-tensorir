@@ -81,8 +81,8 @@ class ScriptCompleter : public StmtMutator {
       if (op->iter_vars.empty()) {
         // non-root opaque block is not allowed
         CHECK(is_root_block)
-            << "ValueError:Can not auto detect buffer access region for an opaque block. Please "
-               "annotation the access region manually.";
+            << "ValueError: Can not auto detect buffer access region for an opaque block. Please "
+               "annotate the access region manually.";
         return std::move(block);
       }
       auto access_region = GetBlockAccessRegion(block, *buffer_var_map_);
