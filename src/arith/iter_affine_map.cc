@@ -340,10 +340,11 @@ class IterMapRewriter : public ExprMutator {
    * \brief If bijective is required, verify that splits fully covers mark in a non-overlapping
    *   fashion, If not, verify that splits are valid and compatible for the mark.
    *   If verification passes, return splits from outermost to innermost order.
-   *   If not, return an empty array
+   *   If not, return an empty array.
    * \param mark The iterator of interest.
    * \param splits The splits to be verified.
-   * \param require_bijective A boolean flag that indicates whether the bindings should be bijective
+   * \param require_bijective A boolean flag that indicates whether the bindings should be
+   * bijective.
    * \return The normalized splits.
    */
   Array<IterSplitExpr> TryNormalizeSplits(const IterMark& mark,
@@ -390,8 +391,8 @@ class IterMapRewriter : public ExprMutator {
 
   /*!
    * \brief Normalize the left hand side of predicate(expr < predicate_induced_extent)
-   * \param expr The left hand side of predicate
-   * \param predicate_induced_extent Extent from predicate
+   * \param expr The left hand side of predicate.
+   * \param predicate_induced_extent Extent from predicate.
    * \return The Normalized expression.
    */
   IterSumExpr NormalizeToIterWithExtent(IterSumExpr expr,
@@ -459,7 +460,9 @@ class IterMapRewriter : public ExprMutator {
    *      = y*cn (IterMark y => x1*s1 + x2*s2 + ... + xn)
    *      = [IterSplit(IterMark(y), scale=cn)]
    *    return a corresponding IterSplitExpr if needed.
-   *    Try to normalize IterSum into a fused IterMark,
+   *    Try to normalize IterSum into a fused IterMark
+   * \param expr The input sum.
+   * \return The split with the fused IterMark if succeed.
    */
   Optional<IterSplitExpr> TryFuseIters(IterSumExpr expr) {
     if (!is_zero(expr->base)) return NullOpt;
@@ -612,9 +615,7 @@ class IterMapRewriter : public ExprMutator {
   }
 };
 
-/*!
- * \brief An internal struct to store the result of subspace division
- */
+/*! \brief An internal struct to store the result of subspace division */
 struct Predicate {
   size_t size;
   PrimExpr lhs;
@@ -647,14 +648,12 @@ std::vector<Predicate> SplitPredicate(PrimExpr pred) {
   return result;
 }
 
-/*!
- * \brief Count the size of the PrimExpr
- */
+/*! \brief Count the size of the PrimExpr */
 class PrimExprSizeCounter : public ExprVisitor {
  public:
   explicit PrimExprSizeCounter() = default;
 
-  void VisitExpr(const PrimExpr& expr) override {
+  void VisitExpr(const PrimExpr& expr) final {
     counter_++;
     ExprVisitor::VisitExpr(expr);
   }
@@ -1054,8 +1053,9 @@ TVM_REGISTER_GLOBAL("arith.IterVarMapConvert").set_body_typed([](const IterMapEx
 
 /*!
  * \brief Divider to divide the bindings into two sets of bindings(outer and inner)
- *   such that binding_i = Y_i * E(Xi) + Xi
- *   We do message passing among IterSplitExpr and IterSumExpr
+ *   such that binding_i = Y_i * E(Xi) + Xi.
+ *   We do message passing among IterSplitExpr and IterSumExpr.
+ *
  *   Example
  *   - If we encounter sum = i*10 + j*5 + k, and i, j, k are splits,
  *     and we know i = Yi*1 + 0, j = 0*E(Xj) + Xj, k = 0*E(Xk) + Xk through message passing,
@@ -1065,7 +1065,13 @@ TVM_REGISTER_GLOBAL("arith.IterVarMapConvert").set_body_typed([](const IterMapEx
  *     Their extents are 2, 4, 2, if E(X) = 2, 8, 16, the splits can be divided.
  */
 class SubspaceDivider {
- private:
+ public:
+  explicit SubspaceDivider(Analyzer* analyzer, const IterMarkSplitCollector& collector,
+                           const std::unordered_set<const VarNode*>& sub_iters)
+      : analyzer_(analyzer), collector_(collector), sub_iters_(sub_iters) {}
+
+  size_t UnresolvedCount() const { return unresolved_count_; }
+
   // Denotes outer*inner_extent + inner, used as message passing carrier
   struct DivisionResult {
    public:
@@ -1109,13 +1115,6 @@ class SubspaceDivider {
       return DivisionResult(iter, extent, IterSumExpr({}, 0), 1);
     }
   };
-
- public:
-  explicit SubspaceDivider(Analyzer* analyzer, const IterMarkSplitCollector& collector,
-                           const std::unordered_set<const VarNode*>& sub_iters)
-      : analyzer_(analyzer), collector_(collector), sub_iters_(sub_iters) {}
-
-  size_t UnresolvedCount() const { return unresolved_count_; }
 
   // Divide an IterSumExpr
   DivisionResult DivideIterSumExpr(const IterSumExpr& expr, const PrimExpr& mark_extent) {
