@@ -272,7 +272,7 @@ class IterSumExpr : public IterMapExpr {
  *
  * \param indices The indices to detect pattern for.
  * \param input_iters Map from variable to iterator's range.
- * \param input_predicate The boolean predicate that input_iters must satisfy.
+ * \param predicate The predicate constraints on the input iterators
  * \param require_bijective A boolean flag that indicates whether the mapping should be bijective.
  * \param analyzer Analyzer used to get context information.
  *
@@ -280,7 +280,7 @@ class IterSumExpr : public IterMapExpr {
  *         otherwise return an empty array.
  */
 Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
-                                 const PrimExpr& input_predicate, bool require_bijective,
+                                 const PrimExpr& predicate, bool require_bijective,
                                  arith::Analyzer* analyzer);
 
 /*!
@@ -297,17 +297,17 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
  * \param bindings The input bindings
  * \param input_iters Map from variable to iterator's range.
  * \param sub_iters Iterators of subspace.
- * \param predicate The predicate for input_inters.
+ * \param predicate The predicate constraints on the input iterators
  * \param require_bijective A boolean flag that indicates whether the mapping should be bijective.
  * \param analyzer Analyzer used to get context information.
  *
  * \return The detected a and b if a match exists,
  *         otherwise return an empty array.
  */
-Array<Array<IterMark>> SubspaceDivision(const Array<PrimExpr>& bindings,
-                                        const Map<Var, Range>& input_iters,
-                                        const Array<Var>& sub_iters, const PrimExpr& predicate,
-                                        bool require_bijective, arith::Analyzer* analyzer);
+Array<Array<IterMark>> SubspaceDivide(const Array<PrimExpr>& bindings,
+                                      const Map<Var, Range>& input_iters,
+                                      const Array<Var>& sub_iters, const PrimExpr& predicate,
+                                      bool require_bijective, arith::Analyzer* analyzer);
 
 }  // namespace arith
 }  // namespace tvm

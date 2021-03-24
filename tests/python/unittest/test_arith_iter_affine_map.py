@@ -298,7 +298,7 @@ def test_subspace_division():
     c = tvm.tir.SizeVar("c", "int32")
 
     # simple 1.1
-    res = tvm.arith.subspace_division(
+    res = tvm.arith.subspace_divide(
         [z * 12 + y * 3 + x + c], var_dom([(x, 3), (y, 4), (z, 5)]), [x]
     )
     res = convert_division(res)
@@ -307,7 +307,7 @@ def test_subspace_division():
     tvm.ir.assert_structural_equal(res[0][1], x + c)
 
     # simple 1.2
-    res = tvm.arith.subspace_division(
+    res = tvm.arith.subspace_divide(
         [z * 12 + y * 3 + x + c], var_dom([(x, 3), (y, 4), (z, 5)]), [x], z * 4 + y < 18
     )
     res = convert_division(res)
@@ -327,7 +327,7 @@ def test_subspace_division():
     k1 = ifuse([i2, i3])
 
     # compound 1.1
-    res = tvm.arith.subspace_division([k0[0], k1[0]], var_dom([i0, j0, i3]), [i3[0]])
+    res = tvm.arith.subspace_divide([k0[0], k1[0]], var_dom([i0, j0, i3]), [i3[0]])
     res = convert_division(res)
     assert len(res) == 3
     tvm.ir.assert_structural_equal(res[0][0], (i0[0] * 2) + floordiv(j0[0], 4))
@@ -341,7 +341,7 @@ def test_subspace_division():
     assert len(res2) == 2
 
     # compound 1.2
-    res = tvm.arith.subspace_division([k0[0], k1[0]], var_dom([i0, j0, i3]), [j0[0], i3[0]])
+    res = tvm.arith.subspace_divide([k0[0], k1[0]], var_dom([i0, j0, i3]), [j0[0], i3[0]])
     res = convert_division(res)
     assert len(res) == 3
     tvm.ir.assert_structural_equal(res[0][0], i0[0])
@@ -355,12 +355,12 @@ def test_subspace_division():
     assert len(res2) == 2
 
     # compound 1.3
-    res = tvm.arith.subspace_division([k0[0], k1[0]], var_dom([i0, j0, i3]), [i0[0], i3[0]])
+    res = tvm.arith.subspace_divide([k0[0], k1[0]], var_dom([i0, j0, i3]), [i0[0], i3[0]])
     res = convert_division(res)
     assert len(res) == 0
 
     # compound 1.4
-    res = tvm.arith.subspace_division([k0[0], k1[0]], var_dom([i0, j0, i3]), [i3[0]], k0[0] < 7)
+    res = tvm.arith.subspace_divide([k0[0], k1[0]], var_dom([i0, j0, i3]), [i3[0]], k0[0] < 7)
     res = convert_division(res)
     assert len(res) == 3
     tvm.ir.assert_structural_equal(res[0][0], (i0[0] * 2) + floordiv(j0[0], 4))
@@ -376,7 +376,7 @@ def test_subspace_division():
     assert len(res2) == 2
 
     # compound 1.5
-    res = tvm.arith.subspace_division(
+    res = tvm.arith.subspace_divide(
         [k0[0], k1[0]], var_dom([i0, j0, i3]), [j0[0], i3[0]], k1[0] < 7
     )
     res = convert_division(res)
@@ -394,7 +394,7 @@ def test_subspace_division():
     assert len(res2) == 2
 
     # compound 1.6
-    res = tvm.arith.subspace_division(
+    res = tvm.arith.subspace_divide(
         [k0[0], k1[0]], var_dom([i0, j0, i3]), [i3[0]], tvm.tir.all(k0[0] < 7, k1[0] < 7)
     )
     res = convert_division(res)
@@ -413,7 +413,7 @@ def test_subspace_division():
     i2 = ifuse([j2, j3])
 
     # compound 2.1
-    res = tvm.arith.subspace_division(
+    res = tvm.arith.subspace_divide(
         [i0[0], i1[0], i2[0]], var_dom([j0, l0, l1, j3]), [l1[0], j3[0]]
     )
     res = convert_division(res)
@@ -431,7 +431,7 @@ def test_subspace_division():
     assert len(res2) == 3
 
     # compound 2.2
-    res = tvm.arith.subspace_division(
+    res = tvm.arith.subspace_divide(
         [i0[0], i1[0], i2[0]], var_dom([j0, l0, l1, j3]), [l0[0], l1[0], j3[0]]
     )
     res = convert_division(res)
@@ -449,14 +449,14 @@ def test_subspace_division():
     assert len(res2) == 3
 
     # compound 2.3
-    res = tvm.arith.subspace_division(
+    res = tvm.arith.subspace_divide(
         [i0[0], i1[0], i2[0]], var_dom([j0, l0, l1, j3]), [l0[0], j3[0]]
     )
     res = convert_division(res)
     assert len(res) == 0
 
     # compound 2.4
-    res = tvm.arith.subspace_division(
+    res = tvm.arith.subspace_divide(
         [i0[0], i1[0], i2[0]],
         var_dom([j0, l0, l1, j3]),
         [l1[0], j3[0]],
@@ -479,7 +479,7 @@ def test_subspace_division():
     assert len(res2) == 3
 
     # compound 2.5
-    res = tvm.arith.subspace_division(
+    res = tvm.arith.subspace_divide(
         [i0[0], i1[0], i2[0]], var_dom([j0, l0, l1, j3]), [j3[0]], i2[0] < 8
     )
     res = convert_division(res)
@@ -577,7 +577,7 @@ def test_complex():
     assert len(res) == 0
 
     # subspace_division
-    res = tvm.arith.subspace_division(
+    res = tvm.arith.subspace_divide(
         [i0[0], i1[0]],
         var_dom([l0, l1, n0, n1, m1, l3]),
         [n0[0], n1[0], m1[0], l3[0]],

@@ -187,7 +187,7 @@ class IterMapRewriter : public ExprMutator {
     }
   }
 
-  size_t UnresolvedCount() const { return unresolved_count_; }
+  size_t unresolved_count() const { return unresolved_count_; }
 
   IterSumExpr Rewrite(const PrimExpr& expr,
                       const Optional<PrimExpr>& predicate_induced_extent = NullOpt) {
@@ -242,25 +242,26 @@ class IterMapRewriter : public ExprMutator {
    *    either 1) follow inclusion relation or 2) have no intersection
    * \return whether the predicates are valid;
    */
-  bool CheckPredicates() {
-    // the pred_sum_exprs are in the order of shorter to longer
+  bool CheckPredicates() const {
+    // the pred_flattened_ are in the order of shorter to longer
     // since we visit the predicates in the order of size
     for (size_t i = 0; i < pred_flattened_.size(); ++i) {
       for (size_t j = i + 1; j < pred_flattened_.size(); ++j) {
         // state: 0(start), -1(no intersection), 1(inclusion)
         int state = 0;
         for (const auto& arg1 : pred_flattened_[i]->args) {
-          bool find = false;
+          bool found = false;
           for (const auto& arg2 : pred_flattened_[j]->args) {
             if (IterSplitEqual(arg1, arg2)) {
-              find = true;
+              found = true;
               break;
             }
           }
-          int transition = find ? 1 : -1;
-          // go to fail
-          if (state + transition == 0) return false;
-          state = transition;
+          if (state == 0) {
+            state = found ? 1 : -1;
+          } else if ((state == -1 && found) || (state == 1 && !found)) {
+            return false;
+          }
         }
       }
     }
@@ -669,21 +670,21 @@ class PrimExprSizeCounter : public ExprVisitor {
 };
 
 Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
-                                 const PrimExpr& input_predicate, bool require_bijective,
+                                 const PrimExpr& predicate, bool require_bijective,
                                  arith::Analyzer* analyzer) {
   // Overall detection algorithm is divided into two steps:
   // - Step0: IterMapRewriter rewrites the expression to use IterMapExpr patterns.
   // - Step1: IterIndependenceChecker checks if the iterator are independent.
 
-  std::vector<Predicate> predicates = SplitPredicate(input_predicate);
-  if (!is_one(input_predicate) && predicates.empty()) return Array<IterSumExpr>();
+  std::vector<Predicate> predicates = SplitPredicate(predicate);
+  if (!is_one(predicate) && predicates.empty()) return Array<IterSumExpr>();
 
   // We have to make sure when we visit an iterator, all the predicates related with its successors
   // in the iter var graph has been visited, where the expression of this iterator will contain the
   // expression of its successor, so we sort them by their sizes.
   PrimExprSizeCounter prim_expr_size_counter;
-  for (auto& predicate : predicates) {
-    predicate.size = prim_expr_size_counter.Count(predicate.lhs);
+  for (auto& pred : predicates) {
+    pred.size = prim_expr_size_counter.Count(pred.lhs);
   }
 
   std::sort(predicates.begin(), predicates.end(),
@@ -691,16 +692,16 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
 
   IterMapRewriter rewriter(analyzer, input_iters);
   // Step0.0: rewrite predicates in the order from size-small ones to size-big ones
-  for (const Predicate& predicate : predicates) {
-    PrimExpr res = rewriter.Rewrite(predicate.lhs, predicate.rhs);
-    if (rewriter.UnresolvedCount() != 0) return Array<IterSumExpr>();
+  for (const Predicate& pred : predicates) {
+    PrimExpr res = rewriter.Rewrite(pred.lhs, pred.rhs);
+    if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
   }
   if (!rewriter.CheckPredicates()) return Array<IterSumExpr>();
   // Step0.1: rewrite bindings
   Array<IterSumExpr> results;
   for (PrimExpr value : indices) {
     results.push_back(rewriter.Rewrite(value));
-    if (rewriter.UnresolvedCount() != 0) return Array<IterSumExpr>();
+    if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
   }
   // Step1: IterIndependenceChecker checks if the iterator are independent.
   if (!rewriter.CheckMapping(results, require_bijective)) return Array<IterSumExpr>();
@@ -1068,7 +1069,7 @@ class SubspaceDivider {
                            const std::unordered_set<const VarNode*>& sub_iters)
       : analyzer_(analyzer), collector_(collector), sub_iters_(sub_iters) {}
 
-  size_t UnresolvedCount() const { return unresolved_count_; }
+  size_t unresolved_count() const { return unresolved_count_; }
 
   // Denotes outer*inner_extent + inner, used as message passing carrier
   struct DivisionResult {
@@ -1294,10 +1295,10 @@ class SubspaceDivider {
   PrimExpr outer_preds_{Bool(true)}, inner_preds_{Bool(true)};
 };
 
-Array<Array<IterMark>> SubspaceDivision(const Array<PrimExpr>& bindings,
-                                        const Map<Var, Range>& input_iters,
-                                        const Array<Var>& sub_iters, const PrimExpr& predicate,
-                                        bool require_bijective, arith::Analyzer* analyzer) {
+Array<Array<IterMark>> SubspaceDivide(const Array<PrimExpr>& bindings,
+                                      const Map<Var, Range>& input_iters,
+                                      const Array<Var>& sub_iters, const PrimExpr& predicate,
+                                      bool require_bijective, arith::Analyzer* analyzer) {
   const auto& maps = DetectIterMap(bindings, input_iters, predicate, require_bijective, analyzer);
   if (maps.empty()) return {};
 
@@ -1311,7 +1312,7 @@ Array<Array<IterMark>> SubspaceDivision(const Array<PrimExpr>& bindings,
   std::vector<Array<IterMark>> results;
   for (const auto& expr : maps) {
     auto res = subspace_divider.DivideIterSumExpr(expr, 0);
-    if (subspace_divider.UnresolvedCount()) return {};
+    if (subspace_divider.unresolved_count()) return {};
     results.push_back(
         {IterMark(res.outer, res.outer_extent), IterMark(res.inner, res.inner_extent)});
   }
@@ -1321,12 +1322,12 @@ Array<Array<IterMark>> SubspaceDivision(const Array<PrimExpr>& bindings,
   return results;
 }
 
-TVM_REGISTER_GLOBAL("arith.SubspaceDivision")
+TVM_REGISTER_GLOBAL("arith.SubspaceDivide")
     .set_body_typed([](const Array<PrimExpr>& bindings, const Map<Var, Range>& root_iters,
                        const Array<Var>& sub_iters, const PrimExpr& predicate,
                        bool require_bijective) {
       arith::Analyzer ana;
-      return SubspaceDivision(bindings, root_iters, sub_iters, predicate, require_bijective, &ana);
+      return SubspaceDivide(bindings, root_iters, sub_iters, predicate, require_bijective, &ana);
     });
 
 }  // namespace arith
