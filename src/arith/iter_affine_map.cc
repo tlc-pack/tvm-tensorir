@@ -187,7 +187,7 @@ class IterMapRewriter : public ExprMutator {
     }
   }
 
-  size_t unresolved_count() const { return unresolved_count_; }
+  size_t UnresolvedCount() const { return unresolved_count_; }
 
   IterSumExpr Rewrite(const PrimExpr& expr,
                       const Optional<PrimExpr>& predicate_induced_extent = NullOpt) {
@@ -615,7 +615,7 @@ class IterMapRewriter : public ExprMutator {
   }
 };
 
-/*! \brief An internal struct to store the result of subspace division */
+/*! \brief An internal struct to store the result of subspace division. */
 struct Predicate {
   size_t size;
   PrimExpr lhs;
@@ -627,9 +627,9 @@ struct Predicate {
 
 /*!
  * \brief Split the predicate into `(a < b) && (c < d) && ...`
- * \param pred The predicate to be split
+ * \param pred The predicate to be split.
  * \return A list of pairs, each element of which are lhs and rhs of the '<' sign,
- *         empty if the split failed
+ *         empty if the split failed.
  */
 std::vector<Predicate> SplitPredicate(PrimExpr pred) {
   std::vector<Predicate> result;
@@ -648,7 +648,7 @@ std::vector<Predicate> SplitPredicate(PrimExpr pred) {
   return result;
 }
 
-/*! \brief Count the size of the PrimExpr */
+/*! \brief Count the size of the PrimExpr. */
 class PrimExprSizeCounter : public ExprVisitor {
  public:
   explicit PrimExprSizeCounter() = default;
@@ -693,14 +693,14 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   // Step0.0: rewrite predicates in the order from size-small ones to size-big ones
   for (const Predicate& predicate : predicates) {
     PrimExpr res = rewriter.Rewrite(predicate.lhs, predicate.rhs);
-    if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
+    if (rewriter.UnresolvedCount() != 0) return Array<IterSumExpr>();
   }
   if (!rewriter.CheckPredicates()) return Array<IterSumExpr>();
   // Step0.1: rewrite bindings
   Array<IterSumExpr> results;
   for (PrimExpr value : indices) {
     results.push_back(rewriter.Rewrite(value));
-    if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
+    if (rewriter.UnresolvedCount() != 0) return Array<IterSumExpr>();
   }
   // Step1: IterIndependenceChecker checks if the iterator are independent.
   if (!rewriter.CheckMapping(results, require_bijective)) return Array<IterSumExpr>();
@@ -996,9 +996,7 @@ PrimExpr IterMapRewriter::VisitExpr_(const FloorModNode* op) {
   }
 }
 
-/*!
- * \brief Given an IterVarMapExpr, transform it to normal PrimExpr
- */
+/*! * \brief Given an IterVarMapExpr, transform it to normal PrimExpr. */
 class IterVarMapConverter {
  public:
   explicit IterVarMapConverter(Analyzer* analyzer) : analyzer_(analyzer) {}
