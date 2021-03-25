@@ -1126,7 +1126,7 @@ TVM_REGISTER_GLOBAL("arith.NormalizeIterMapToExpr").set_body_typed([](const Iter
 class SubspaceDivider {
  public:
   explicit SubspaceDivider(Analyzer* analyzer, const IterMarkSplitCollector& collector,
-                           const std::unordered_set<const VarNode*>& sub_iters)
+                           const std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual>& sub_iters)
       : analyzer_(analyzer), collector_(collector), sub_iters_(sub_iters) {}
 
   size_t unresolved_count() const { return unresolved_count_; }
@@ -1180,7 +1180,7 @@ class SubspaceDivider {
 
   // Divide an IterSumExpr
   DivisionResult DivideIterSumExpr(const IterSumExpr& expr, const PrimExpr& mark_extent) {
-    if (expr->args.size() == 0) {
+    if (expr->args.empty()) {
       // base
       return DivisionResult(IterSumExpr({}, 0), 1, IterSumExpr({}, expr->base), 1);
     } else if (expr->args.size() == 1) {
@@ -1218,26 +1218,27 @@ class SubspaceDivider {
     }
     if (!scale_is_one) return Fail();
     bool need_predicate = !CanProveEqual(extent, mark_extent);
-    const std::pair<IterSumExpr, PrimExpr>& outer_mark = MarkFromArgsAndBase(outer_args, 0);
-    const std::pair<IterSumExpr, PrimExpr>& inner_mark =
-        MarkFromArgsAndBase(inner_args, expr->base);
+    const IterMark& outer_mark = MarkFromArgsAndBase(outer_args, 0);
+    const IterMark& inner_mark = MarkFromArgsAndBase(inner_args, expr->base);
+    IterSumExpr outer_source = Downcast<IterSumExpr>(outer_mark->source);
+    IterSumExpr inner_source = Downcast<IterSumExpr>(inner_mark->source);
     if (need_predicate) {
       // if we have a predicate on this sum expr, then we cannot divide it into Y*E+X
       // it should either be Y*1+0 or 0*E(X)+X
       IterMapToExprNormalizer converter(analyzer_);
       if (inner_args.empty()) {
         // Y*1+0
-        outer_preds_ = outer_preds_ && (converter.Convert(outer_mark.first) < mark_extent);
-        return DivisionResult::Outer(outer_mark.first, mark_extent);
+        outer_preds_ = outer_preds_ && (converter.Convert(outer_source) < mark_extent);
+        return DivisionResult::Outer(outer_source, mark_extent);
       } else if (outer_args.empty()) {
         // 0*E(X)+X
-        inner_preds_ = inner_preds_ && (converter.Convert(inner_mark.first) < mark_extent);
-        return DivisionResult::Inner(inner_mark.first, mark_extent);
+        inner_preds_ = inner_preds_ && (converter.Convert(inner_source) < mark_extent);
+        return DivisionResult::Inner(inner_source, mark_extent);
       } else {
         return Fail();
       }
     }
-    return DivisionResult(outer_mark.first, outer_mark.second, inner_mark.first, inner_mark.second);
+    return DivisionResult(outer_source, outer_mark->extent, inner_source, inner_mark->extent);
   }
 
   PrimExpr GetOuterPreds() const { return outer_preds_; }
@@ -1260,8 +1261,8 @@ class SubspaceDivider {
     return res;
   }
 
-  static std::pair<IterSumExpr, PrimExpr> MarkFromArgsAndBase(
-      const std::vector<IterSplitExpr>& args, PrimExpr base) {
+  // args are sorted from inner to outer
+  static IterMark MarkFromArgsAndBase(const std::vector<IterSplitExpr>& args, PrimExpr base) {
     std::vector<IterSplitExpr> res;
     PrimExpr extent = 1;
     for (const IterSplitExpr& it : args) {
@@ -1270,8 +1271,7 @@ class SubspaceDivider {
       extent *= arg->extent;
       res.push_back(arg);
     }
-    return std::make_pair(IterSumExpr(Array<IterSplitExpr>(res.rbegin(), res.rend()), base),
-                          extent);
+    return IterMark(IterSumExpr(Array<IterSplitExpr>(res.rbegin(), res.rend()), base), extent);
   }
 
   DivisionResult DivideIterSplitExpr(const IterSplitExpr& expr) {
@@ -1284,7 +1284,7 @@ class SubspaceDivider {
       const Array<IterSplitExpr>& splits = collector_.mark2splits_.at(expr->source);
       if (const auto* iter_ptr = expr->source->source.as<VarNode>()) {
         // source is input_iter,
-        bool inner = sub_iters_.count(iter_ptr);
+        bool inner = sub_iters_.count(GetRef<Var>(iter_ptr));
         for (const IterSplitExpr& split : splits) {
           if (inner) {
             // 0*E(split)+split
@@ -1318,10 +1318,10 @@ class SubspaceDivider {
         std::vector<bool> used(splits.size(), false);
         std::vector<IterSplitExpr> inner_iters, outer_iters;
         PrimExpr expected_lower_factor = make_const(expr->source->source->dtype, 1);
+        // find the boundary of outer and inner, like case 1 above
         for (size_t i = 0; i < splits.size(); ++i) {
           size_t j = 0;
           for (; j < splits.size(); ++j) {
-            if (used[j]) continue;
             if (!used[j] && CanProveEqual(splits[j]->lower_factor, expected_lower_factor)) break;
           }
           if (j == splits.size()) return Fail();
@@ -1332,7 +1332,8 @@ class SubspaceDivider {
             outer_iters.push_back(splits[j]);
           }
           expected_lower_factor *= splits[j]->extent;
-          if (CanProveEqual(expected_lower_factor, mark_division.inner_extent)) encountered_boundary = true;
+          if (CanProveEqual(expected_lower_factor, mark_division.inner_extent))
+            encountered_boundary = true;
         }
         if (!encountered_boundary) return Fail();
         for (const IterSplitExpr& inner_iter : inner_iters) {
@@ -1365,7 +1366,7 @@ class SubspaceDivider {
   Analyzer* analyzer_;
   const IterMarkSplitCollector collector_;
   // the set of subspace iters
-  const std::unordered_set<const VarNode*>& sub_iters_;
+  const std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual>& sub_iters_;
   // map from SplitExpr to its corresponding DivisionResult(Y*E(X)+X)
   std::unordered_map<IterSplitExpr, DivisionResult, ObjectPtrHash, ObjectPtrEqual> split_map_;
   // predicate of outer space and inner space;
@@ -1380,9 +1381,9 @@ Array<Array<IterMark>> SubspaceDivide(const Array<PrimExpr>& bindings,
       DetectIterMap(bindings, input_iters, predicate, require_bijective, analyzer);
   if (maps.empty()) return {};
 
-  std::unordered_set<const VarNode*> inner_iter_set;
+  std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> inner_iter_set;
   for (const Var& inner_iter : sub_iters) {
-    inner_iter_set.insert(inner_iter.get());
+    inner_iter_set.insert(inner_iter);
   }
 
   IterMarkSplitCollector collector;
