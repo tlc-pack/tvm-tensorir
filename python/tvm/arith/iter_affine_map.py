@@ -170,4 +170,4 @@ def normalize_iter_map_to_expr(expr):
     result : PrimExpr
         the corresponding normal PrimExpr
     """
-    return _ffi_api.IterVarMapConvert(expr)
+    return _ffi_api.NormalizeIterMapToExpr(expr)
