@@ -711,18 +711,18 @@ class PrimExprSizeCounter : public ExprVisitor {
  public:
   explicit PrimExprSizeCounter() = default;
 
+  static size_t Count(const PrimExpr& expr) {
+    PrimExprSizeCounter prim_expr_size_counter;
+    prim_expr_size_counter.VisitExpr(expr);
+    return prim_expr_size_counter.counter_;
+  }
+
+ private:
   void VisitExpr(const PrimExpr& expr) final {
     counter_++;
     ExprVisitor::VisitExpr(expr);
   }
 
-  size_t Count(const PrimExpr& expr) {
-    counter_ = 0;
-    VisitExpr(expr);
-    return counter_;
-  }
-
- private:
   size_t counter_{0};
 };
 
@@ -739,9 +739,8 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   // We have to make sure when we visit an iterator, all the constraints related with its successors
   // in the iter var graph has been visited, where the expression of this iterator will contain the
   // expression of its successor, so we sort them by their sizes.
-  PrimExprSizeCounter prim_expr_size_counter;
   for (auto& constraint : constraints) {
-    constraint.expr_size = prim_expr_size_counter.Count(constraint.iter);
+    constraint.expr_size = PrimExprSizeCounter::Count(constraint.iter);
   }
 
   std::sort(
