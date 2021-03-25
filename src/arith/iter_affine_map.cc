@@ -168,33 +168,33 @@ class IterMapRewriter : public ExprMutator {
   explicit IterMapRewriter(Analyzer* analyzer, const Map<Var, Range>& input_iters)
       : analyzer_(analyzer) {
     for (auto kv : input_iters) {
-      const auto& vrng = kv.second;
+      const Var& var = kv.first;
+      const Range& vrng = kv.second;
       if (is_one(vrng->extent)) {
         var_map_[kv.first] = IterSumExpr({}, vrng->min);
+      } else if (is_zero(vrng->min)) {
+        IterMark mark(var, vrng->extent);
+        var_map_[var] = IterSplitExpr(mark);
+        input_marks_.push_back(mark);
       } else {
-        if (is_zero(vrng->min)) {
-          IterMark mark(kv.first, vrng->extent);
-          var_map_[kv.first] = IterSplitExpr(mark);
-          input_marks_.push_back(mark);
-        } else {
-          IterMark mark(kv.first - vrng->min, vrng->extent);
-          auto sum_expr = ToIterSumExpr(IterSplitExpr(mark));
-          sum_expr.CopyOnWrite()->base = vrng->min;
-          var_map_[kv.first] = sum_expr;
-          input_marks_.push_back(mark);
-        }
+        IterMark mark(var - vrng->min, vrng->extent);
+        auto sum_expr = ToIterSumExpr(IterSplitExpr(mark));
+        sum_expr.CopyOnWrite()->base = vrng->min;
+        var_map_[var] = sum_expr;
+        input_marks_.push_back(mark);
       }
     }
   }
 
   size_t unresolved_count() const { return unresolved_count_; }
 
-  IterSumExpr Rewrite(const PrimExpr& expr,
-                      const Optional<PrimExpr>& predicate_induced_extent = NullOpt) {
-    auto sum_expr = ToIterSumExpr(DirectMutate(expr));
-    return predicate_induced_extent
-               ? NormalizeToIterOnBoundExpr(sum_expr, predicate_induced_extent.value())
-               : NormalizeToIterWithOffset(sum_expr);
+  IterSumExpr Rewrite(const PrimExpr& expr) {
+    return NormalizeToIterWithOffset(ToIterSumExpr(DirectMutate(expr)));
+  }
+
+  IterSumExpr RewriteIterConstraint(const PrimExpr& expr,
+                                    const PrimExpr& predicate_induced_extent) {
+    return NormalizeToIterOnBoundExpr(ToIterSumExpr(DirectMutate(expr)), predicate_induced_extent);
   }
 
   /*!
@@ -202,7 +202,7 @@ class IterMapRewriter : public ExprMutator {
    *   - C0: Each iter mark should be fully covered by non-overlapping splits.
    *   - C1: All of the input iterators are used.
    *   Example: given x in [0, 8) y in [0, 6)
-   *   - bindings = [x, x+1, y] won't pass because x and x+1 contribute
+   *   - bindings = [x, x + 1, y] won't pass because x and x+1 contribute
    *     two splits that overlaps with each other.
    *   - bindings = [x / 4, x % 4, y] will pass because x / 4 and x % 4
    *     contribute two non-overlapping splits that covers x.
@@ -237,21 +237,26 @@ class IterMapRewriter : public ExprMutator {
   }
 
   /*!
-   * \brief Check the validity of predicates
-   *    The flattened forms of two different predicates
+   * \brief Check the validity of iterator constraints
+   *    The flattened forms of two different iterator constraints
    *    either 1) follow inclusion relation or 2) have no intersection
+   *
+   *    For Example, x = i0*30 + i1*15 + i2*3 + i3,
+   *    1) [i0*2 + i1 < 3, i2*3 + i3 < 5] is valid, since {i0, i1} \intersect {i2, i3} = empty set.
+   *    2) [i0*2 + i1 < 3, i1*5 + i2 < 5] is not valid,
+   *       since {i0, i1} \intersect {i1, i2} = {i1}, i0 \in {i0, i1}, i0 \notin {i1, i2}
    * \return whether the predicates are valid;
    */
-  bool CheckPredicates() const {
-    // the pred_lhs_flattened_ are in the order of shorter to longer
+  bool CheckConstraints() const {
+    // the constrained_iters_flattened_ are in the order of shorter to longer
     // since we visit the predicates in the order of size
-    for (size_t i = 0; i < pred_lhs_flattened_.size(); ++i) {
-      for (size_t j = i + 1; j < pred_lhs_flattened_.size(); ++j) {
+    for (size_t i = 0; i < constrained_iters_flattened_.size(); ++i) {
+      for (size_t j = i + 1; j < constrained_iters_flattened_.size(); ++j) {
         // state: 0(start), -1(no intersection), 1(inclusion)
         int state = 0;
-        for (const auto& arg1 : pred_lhs_flattened_[i]->args) {
+        for (const auto& arg1 : constrained_iters_flattened_[i]->args) {
           bool found = false;
-          for (const auto& arg2 : pred_lhs_flattened_[j]->args) {
+          for (const auto& arg2 : constrained_iters_flattened_[j]->args) {
             if (IterSplitEqual(arg1, arg2)) {
               found = true;
               break;
@@ -331,12 +336,12 @@ class IterMapRewriter : public ExprMutator {
   std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_map_;
   // input iter marks
   std::vector<IterMark> input_marks_;
-  // The map for sum that maps flattened form to IterMark with structured form and extent
+  // The map for sum that maps flattened form to IterMark with normal form and extent
   std::unordered_map<IterSumExpr, IterMark, IterSumHash, IterSumEqual> sum_fuse_map_;
-  // The map for sum that maps structured form to flattened form
+  // The map for sum that maps normal form to flattened form
   std::unordered_map<IterSumExpr, IterSumExpr, IterSumHash, IterSumEqual> flattened_map_;
-  // The flattened forms of iters at the left hand side of predicates
-  std::vector<IterSumExpr> pred_lhs_flattened_;
+  // The flattened forms of constrained iters
+  std::vector<IterSumExpr> constrained_iters_flattened_;
 
   /*!
    * \brief Look for a split in splits that is not used such that its lower_factor is smallest.
@@ -417,14 +422,14 @@ class IterMapRewriter : public ExprMutator {
   }
 
   /*!
-   * \brief Normalize the left hand side of predicate(expr < predicate_induced_extent)
-   * \param expr The left hand side of predicate.
-   * \param predicate_induced_extent Extent from predicate.
+   * \brief Normalize the left hand side of iter constraint(expr < predicate_induced_extent)
+   * \param expr The left hand side of iter constraint.
+   * \param predicate_induced_extent Extent from iter constraint.
    * \return The Normalized expression.
    */
   IterSumExpr NormalizeToIterOnBoundExpr(IterSumExpr expr,
                                          const PrimExpr& predicate_induced_extent) {
-    // We are normalizing the left hand side of predicate(iter < predicate_induced_extent)
+    // We are normalizing the left hand side of iter constraint(iter < predicate_induced_extent)
     auto opt = TryFuseIters(expr);
     // scale should be 1
     if (opt && is_one(opt.value()->scale)) {
@@ -440,7 +445,7 @@ class IterMapRewriter : public ExprMutator {
       mark.CopyOnWrite()->extent = min(predicate_induced_extent, mark->extent);
       // update the bound of the lhs based on predicate_induced_extent
       sum_fuse_map_[flattened_form] = mark;
-      pred_lhs_flattened_.push_back(flattened_form);
+      constrained_iters_flattened_.push_back(flattened_form);
       expr.CopyOnWrite()->args = Array<IterSplitExpr>({opt.value()});
       return expr;
     }
@@ -451,7 +456,6 @@ class IterMapRewriter : public ExprMutator {
   /*!
    * \brief Normalize expr to an iterator + offset.
    * \param expr The input expression.
-   * \param predicate_induced_extent Extent from predicate.
    * \return The Normalized expression.
    */
   IterSumExpr NormalizeToIterWithOffset(IterSumExpr expr) {
@@ -459,9 +463,9 @@ class IterMapRewriter : public ExprMutator {
     if (expr->args.size() <= 1) return expr;
     PrimExpr base = expr->base;
     expr.CopyOnWrite()->base = make_zero(expr->dtype);
-    auto opt = TryFuseIters(expr);
+    Optional<IterSplitExpr> opt = TryFuseIters(expr);
     expr.CopyOnWrite()->base = base;
-    if (opt) {
+    if (opt.defined()) {
       expr.CopyOnWrite()->args = Array<IterSplitExpr>({opt.value()});
       return expr;
     } else {
@@ -530,7 +534,7 @@ class IterMapRewriter : public ExprMutator {
       // We need to match the predicate in expr and adjust the expected scale,
       // otherwise we expect the scale of i to be 2*5=10
       Optional<IterSumExpr> pred_to_match;
-      for (const auto& it : pred_lhs_flattened_) {
+      for (const auto& it : constrained_iters_flattened_) {
         if (IterSplitEqual(expr->args[j], it->args.back(), false)) {
           // find a predicate started from expr->args[j]
           if (!pred_to_match || pred_to_match.value()->args.size() < it->args.size()) {
@@ -650,13 +654,13 @@ class IterMapRewriter : public ExprMutator {
   }
 };
 
-/*! \brief An internal struct to represent predicates. */
-struct Predicate {
+/*! \brief An internal struct to represent range extent on iterators. */
+struct IterConstraint {
   PrimExpr iter;
   PrimExpr upper_bound;
   size_t expr_size = 0;
 
-  Predicate(const PrimExpr& iter, const PrimExpr& upper_bound, size_t size)
+  IterConstraint(const PrimExpr& iter, const PrimExpr& upper_bound, size_t size)
       : iter(iter), upper_bound(upper_bound), expr_size(size) {}
 };
 
@@ -666,8 +670,8 @@ struct Predicate {
  * \return A list of pairs, each element of which are lhs and rhs of the '<' sign,
  *         empty if the split failed.
  */
-std::vector<Predicate> SplitPredicate(PrimExpr pred) {
-  std::vector<Predicate> result;
+std::vector<IterConstraint> SplitPredicate(PrimExpr pred) {
+  std::vector<IterConstraint> result;
   arith::PVar<PrimExpr> lhs, rhs, rest;
   for (;;) {
     if ((rest && (lhs < rhs)).Match(pred)) {
@@ -677,7 +681,7 @@ std::vector<Predicate> SplitPredicate(PrimExpr pred) {
       result.emplace_back(lhs.Eval(), rhs.Eval(), 0);
       break;
     } else {
-      return std::vector<Predicate>({});
+      return std::vector<IterConstraint>({});
     }
   }
   return result;
@@ -710,28 +714,29 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   // - Step0: IterMapRewriter rewrites the expression to use IterMapExpr patterns.
   // - Step1: IterIndependenceChecker checks if the iterator are independent.
 
-  std::vector<Predicate> predicates = SplitPredicate(predicate);
-  if (!is_one(predicate) && predicates.empty()) return Array<IterSumExpr>();
+  std::vector<IterConstraint> constraints = SplitPredicate(predicate);
+  if (!is_one(predicate) && constraints.empty()) return Array<IterSumExpr>();
 
-  // We have to make sure when we visit an iterator, all the predicates related with its successors
+  // We have to make sure when we visit an iterator, all the constraints related with its successors
   // in the iter var graph has been visited, where the expression of this iterator will contain the
   // expression of its successor, so we sort them by their sizes.
   PrimExprSizeCounter prim_expr_size_counter;
-  for (auto& pred : predicates) {
-    pred.expr_size = prim_expr_size_counter.Count(pred.iter);
+  for (auto& constraint : constraints) {
+    constraint.expr_size = prim_expr_size_counter.Count(constraint.iter);
   }
 
-  std::sort(predicates.begin(), predicates.end(),
-            [](const Predicate& a, const Predicate& b) { return a.expr_size < b.expr_size; });
+  std::sort(
+      constraints.begin(), constraints.end(),
+      [](const IterConstraint& a, const IterConstraint& b) { return a.expr_size < b.expr_size; });
 
   IterMapRewriter rewriter(analyzer, input_iters);
-  // Step0.0: rewrite predicates in the order from size-small ones to size-big ones
-  for (const Predicate& pred : predicates) {
-    PrimExpr res = rewriter.Rewrite(pred.iter, pred.upper_bound);
+  // Step0.0: rewrite constraints in the order from size-small ones to size-big ones
+  for (const IterConstraint& constraint : constraints) {
+    PrimExpr res = rewriter.RewriteIterConstraint(constraint.iter, constraint.upper_bound);
     if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
   }
-  if (!rewriter.CheckPredicates()) return Array<IterSumExpr>();
-  // Step0.1: rewrite bindings
+  if (!rewriter.CheckConstraints()) return Array<IterSumExpr>();
+  // Step0.1: rewrite indices
   Array<IterSumExpr> results;
   for (PrimExpr value : indices) {
     results.push_back(rewriter.Rewrite(value));

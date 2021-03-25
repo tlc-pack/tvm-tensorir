@@ -1054,7 +1054,7 @@ class ReduceNode : public PrimExprNode {
   /*! \brief The reduction axis */
   Array<IterVar> axis;
   /*!
-   * \brief Predicate on the reduction
+   * \brief IterConstraint on the reduction
    *  Only add the body to reduction if condition is true.
    */
   PrimExpr condition;
