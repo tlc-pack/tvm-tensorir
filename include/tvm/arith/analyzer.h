@@ -459,6 +459,11 @@ class TVM_DLL Analyzer {
    */
   bool CanProveLess(const PrimExpr& expr, int64_t upper_bound);
   /*!
+   * \brief Whether can we prove lhs == rhs.
+   *
+   */
+  bool CanProveEqual(const PrimExpr& lhs, const PrimExpr& rhs);
+  /*!
    * \brief Whether can we prove condition.
    *
    * \param cond The expression to be proved.
