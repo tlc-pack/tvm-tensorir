@@ -1196,6 +1196,7 @@ class SubspaceDivider {
     PrimExpr extent = 1;
     std::vector<IterSplitExpr> outer_args, inner_args;
     bool inner = true, scale_is_one = false;
+    // we check in inverse order so we can visit from inner to outer
     for (auto it = expr->args.rbegin(); it != expr->args.rend(); ++it) {
       const IterSplitExpr& arg = *it;
       if (is_one(arg->scale)) scale_is_one = true;
@@ -1203,10 +1204,12 @@ class SubspaceDivider {
       IterSplitExpr new_arg;
       if (arg_division.IsInner()) {
         if (!inner) return Fail();
-        inner_args.push_back(new_arg = arg_division.GetInnerAsSplit());
+        new_arg = arg_division.GetInnerAsSplit();
+        inner_args.push_back(new_arg);
         inner = true;
       } else if (arg_division.IsOuter()) {
-        outer_args.push_back(new_arg = arg_division.GetOuterAsSplit());
+        new_arg = arg_division.GetOuterAsSplit();
+        outer_args.push_back(new_arg);
         inner = false;
       } else {
         return Fail();
@@ -1246,7 +1249,7 @@ class SubspaceDivider {
     return DivisionResult(IterSumExpr({}, 0), 0, IterSumExpr({}, 0), 0);
   }
 
-  DivisionResult AddBase(DivisionResult division, const PrimExpr& base) {
+  DivisionResult AddBase(DivisionResult division, PrimExpr base) {
     DivisionResult res = division;
     if (const auto* op = division.inner.as<IterSplitExprNode>()) {
       res.inner = IterSumExpr({GetRef<IterSplitExpr>(op)}, base);
