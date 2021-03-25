@@ -1280,79 +1280,78 @@ class SubspaceDivider {
       // We will calculate all the splits of an IterMark's division form when we first
       // encounter one of them. If we encounter another later, we directly return the record.
       return it->second;
-    } else {
-      const Array<IterSplitExpr>& splits = collector_.mark2splits_.at(expr->source);
-      if (const auto* iter_ptr = expr->source->source.as<VarNode>()) {
-        // source is input_iter,
-        bool inner = sub_iters_.count(GetRef<Var>(iter_ptr));
-        for (const IterSplitExpr& split : splits) {
-          if (inner) {
-            // 0*E(split)+split
-            split_map_.emplace(split, DivisionResult::Inner(split, split->extent));
-          } else {
-            // split*1 + 0
-            split_map_.emplace(split, DivisionResult::Outer(split, split->extent));
-          }
-        }
-      } else if (const auto* iter_ptr = expr->source->source.as<IterSumExprNode>()) {
-        // source = Y*E+X
-        // splits = [s1, s2, ..., sn]
-        // we can divide if there exists i, such that extent(s1)extent(s2)...extent(si)=extent(Y)
-        //                                            extent(si+1)...extent(sn)=extent(X)
-        // For example, if source = Y*3+X \in [0, 12), Y \in [0, 4), X \in [0, 3)
-        // Case 1. splits = [s1, s2, s3] = [source / 6, (source / 3) % 2, source % 3],
-        //         where extent(s1) = 2, extent(s2) = 2, extent(s3) = 3.
-        //         Since extent(s1)extent(s2) = extent(Y), extent(s3) = extent(X), we have
-        //         s1 = (Y / 2)*1 + 0, s2 = (Y % 2)*1 + 0, s3 = 0*3 + X
-        // Case 2. splits = [s1, s2, s3] = [source / 4, (source / 2) % 2, source % 2],
-        //         where extent(s1) = 3, extent(s2) = 2, extent(s3) = 2.
-        //         It's impossible to rewrite s1, s2, s3 in the form of Y*E(X) + X.
-        DivisionResult mark_division =
-            DivideIterSumExpr(GetRef<IterSumExpr>(iter_ptr), expr->source->extent);
-        if (splits.size() == 1) {
-          return mark_division;
-        }
-        IterMark outer_mark(Downcast<IterSumExpr>(mark_division.outer), mark_division.outer_extent);
-        IterMark inner_mark(Downcast<IterSumExpr>(mark_division.inner), mark_division.inner_extent);
-        bool encountered_boundary = mark_division.IsOuter();
-        std::vector<bool> used(splits.size(), false);
-        std::vector<IterSplitExpr> inner_iters, outer_iters;
-        PrimExpr expected_lower_factor = make_const(expr->source->source->dtype, 1);
-        // find the boundary of outer and inner, like case 1 above
-        for (size_t i = 0; i < splits.size(); ++i) {
-          size_t j = 0;
-          for (; j < splits.size(); ++j) {
-            if (!used[j] && CanProveEqual(splits[j]->lower_factor, expected_lower_factor)) break;
-          }
-          if (j == splits.size()) return Fail();
-          used[j] = true;
-          if (!encountered_boundary) {
-            inner_iters.push_back(splits[j]);
-          } else {
-            outer_iters.push_back(splits[j]);
-          }
-          expected_lower_factor *= splits[j]->extent;
-          if (CanProveEqual(expected_lower_factor, mark_division.inner_extent))
-            encountered_boundary = true;
-        }
-        if (!encountered_boundary) return Fail();
-        for (const IterSplitExpr& inner_iter : inner_iters) {
-          IterSplitExpr new_iter = inner_iter;
-          new_iter.CopyOnWrite()->source = inner_mark;
-          split_map_.emplace(inner_iter, DivisionResult::Inner(new_iter, inner_iter->extent));
-        }
-        for (const IterSplitExpr& outer_iter : outer_iters) {
-          IterSplitExpr new_iter = outer_iter;
-          new_iter.CopyOnWrite()->source = outer_mark;
-          new_iter.CopyOnWrite()->lower_factor =
-              floordiv(outer_iter->lower_factor, outer_iters[0]->lower_factor);
-          split_map_.emplace(outer_iter, DivisionResult::Outer(new_iter, outer_iter->extent));
-        }
-      } else {
-        return Fail();
-      }
-      return split_map_.at(expr);
     }
+    const Array<IterSplitExpr>& splits = collector_.mark2splits_.at(expr->source);
+    if (const auto* iter_ptr = expr->source->source.as<VarNode>()) {
+      // source is input_iter,
+      bool inner = sub_iters_.count(GetRef<Var>(iter_ptr));
+      for (const IterSplitExpr& split : splits) {
+        if (inner) {
+          // 0*E(split)+split
+          split_map_.emplace(split, DivisionResult::Inner(split, split->extent));
+        } else {
+          // split*1 + 0
+          split_map_.emplace(split, DivisionResult::Outer(split, split->extent));
+        }
+      }
+    } else if (const auto* iter_ptr = expr->source->source.as<IterSumExprNode>()) {
+      // source = Y*E+X
+      // splits = [s1, s2, ..., sn]
+      // we can divide if there exists i, such that extent(s1)extent(s2)...extent(si)=extent(Y)
+      //                                            extent(si+1)...extent(sn)=extent(X)
+      // For example, if source = Y*3+X \in [0, 12), Y \in [0, 4), X \in [0, 3)
+      // Case 1. splits = [s1, s2, s3] = [source / 6, (source / 3) % 2, source % 3],
+      //         where extent(s1) = 2, extent(s2) = 2, extent(s3) = 3.
+      //         Since extent(s1)extent(s2) = extent(Y), extent(s3) = extent(X), we have
+      //         s1 = (Y / 2)*1 + 0, s2 = (Y % 2)*1 + 0, s3 = 0*3 + X
+      // Case 2. splits = [s1, s2, s3] = [source / 4, (source / 2) % 2, source % 2],
+      //         where extent(s1) = 3, extent(s2) = 2, extent(s3) = 2.
+      //         It's impossible to rewrite s1, s2, s3 in the form of Y*E(X) + X.
+      DivisionResult mark_division =
+          DivideIterSumExpr(GetRef<IterSumExpr>(iter_ptr), expr->source->extent);
+      if (splits.size() == 1) {
+        return mark_division;
+      }
+      IterMark outer_mark(Downcast<IterSumExpr>(mark_division.outer), mark_division.outer_extent);
+      IterMark inner_mark(Downcast<IterSumExpr>(mark_division.inner), mark_division.inner_extent);
+      bool encountered_boundary = mark_division.IsOuter();
+      std::vector<bool> used(splits.size(), false);
+      std::vector<IterSplitExpr> inner_iters, outer_iters;
+      PrimExpr expected_lower_factor = make_const(expr->source->source->dtype, 1);
+      // find the boundary of outer and inner, like case 1 above
+      for (size_t i = 0; i < splits.size(); ++i) {
+        size_t j = 0;
+        for (; j < splits.size(); ++j) {
+          if (!used[j] && CanProveEqual(splits[j]->lower_factor, expected_lower_factor)) break;
+        }
+        if (j == splits.size()) return Fail();
+        used[j] = true;
+        if (!encountered_boundary) {
+          inner_iters.push_back(splits[j]);
+        } else {
+          outer_iters.push_back(splits[j]);
+        }
+        expected_lower_factor *= splits[j]->extent;
+        if (CanProveEqual(expected_lower_factor, mark_division.inner_extent))
+          encountered_boundary = true;
+      }
+      if (!encountered_boundary) return Fail();
+      for (const IterSplitExpr& inner_iter : inner_iters) {
+        IterSplitExpr new_iter = inner_iter;
+        new_iter.CopyOnWrite()->source = inner_mark;
+        split_map_.emplace(inner_iter, DivisionResult::Inner(new_iter, inner_iter->extent));
+      }
+      for (const IterSplitExpr& outer_iter : outer_iters) {
+        IterSplitExpr new_iter = outer_iter;
+        new_iter.CopyOnWrite()->source = outer_mark;
+        new_iter.CopyOnWrite()->lower_factor =
+            floordiv(outer_iter->lower_factor, outer_iters[0]->lower_factor);
+        split_map_.emplace(outer_iter, DivisionResult::Outer(new_iter, outer_iter->extent));
+      }
+    } else {
+      return Fail();
+    }
+    return split_map_.at(expr);
   }
 
   bool CanProveEqual(const PrimExpr& lhs, const PrimExpr& rhs) {
