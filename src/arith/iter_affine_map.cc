@@ -337,6 +337,16 @@ class IterMapRewriter : public ExprMutator {
   // input iter marks
   std::vector<IterMark> input_marks_;
   // The map for sum that maps flattened form to IterMark with normal form and extent
+  // Example: expr = i*9 + j*2 + k, i in [0, 4) j in [0, 5) k in [0, 2)
+  //          predicate: j*2 + k < 9
+  // Then,    flattened form = IterSum(IterSplit(i, scale=9),
+  //                                   IterSplit(j, scale=2),
+  //                                   IterSplit(k, scale=1))
+  //          normal form    = IterSum(IterSplit(i, scale=9),
+  //                                   IterSplit(IterMark(IterSum(IterSplit(j, scale=2),
+  //                                                              IterSplit(k, scale=1)),
+  //                                                      extent=9)
+  //                                             scale=1))
   std::unordered_map<IterSumExpr, IterMark, IterSumHash, IterSumEqual> sum_fuse_map_;
   // The map for sum that maps normal form to flattened form
   std::unordered_map<IterSumExpr, IterSumExpr, IterSumHash, IterSumEqual> flattened_map_;
@@ -445,6 +455,8 @@ class IterMapRewriter : public ExprMutator {
       mark.CopyOnWrite()->extent = min(predicate_induced_extent, mark->extent);
       // update the bound of the lhs based on predicate_induced_extent
       sum_fuse_map_[flattened_form] = mark;
+      // we need to note down the flattened form of constrained iterators
+      // to check the validity of constraints, see also CheckConstraints()
       constrained_iters_flattened_.push_back(flattened_form);
       expr.CopyOnWrite()->args = Array<IterSplitExpr>({opt.value()});
       return expr;
@@ -544,6 +556,9 @@ class IterMapRewriter : public ExprMutator {
       }
       if (pred_to_match) {
         // match the predicate and mark the iterators in the pred_to_match as visited
+        // Example: expr = i*9 + j*2 + k, i in [0, 4) j in [0, 5) k in [0, 2)
+        //          predicate = j*2 + k < 9
+        //          then j*2 + k matches the lower two splits of expr
         for (auto it = pred_to_match.value()->args.rbegin();
              it != pred_to_match.value()->args.rend(); ++it) {
           size_t k = 0;
