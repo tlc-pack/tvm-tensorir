@@ -754,7 +754,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         // <bojian/TVM-SymbolicTuning>
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
           if (stage->origin_op->name.find(".local") != std::string::npos
-              // || stage->origin_op->name.find("shared") != std::string::npos
+              || stage->origin_op->name.find("shared") != std::string::npos
               ) {
             // blockidx_checker.has_blockIdx = false;
             // blockidx_checker(value);
