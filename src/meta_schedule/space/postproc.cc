@@ -191,6 +191,58 @@ Postproc RewriteCooperativeFetch() {
 
 /********** RewriteParallelizeVectorizeUnroll **********/
 
+class CoefficientExtractor : public tir::StmtExprVisitor {
+ public:
+  explicit CoefficientExtractor(const tir::Var& var) : var(var) {}
+
+  void VisitExpr_(const tir::MulNode* node) override {
+    StmtExprVisitor::VisitExpr_(node);
+
+    if (const auto* a = node->a.as<IntImmNode>()) {
+      if (strides.count(node->b)) {
+        strides[GetRef<tir::Mul>(node)] = strides[node->b] * a->value;
+      }
+    } else if (const auto* b = node->b.as<IntImmNode>()) {
+      if (strides.count(node->a)) {
+        strides[GetRef<tir::Mul>(node)] = strides[node->a] * b->value;
+      }
+    }
+  }
+
+  void VisitExpr_(const tir::AddNode* node) override {
+    StmtExprVisitor::VisitExpr_(node);
+    int stride_a, stride_b;
+    if (strides.count(node->a)) {
+      stride_a = strides[node->a];
+    } else {
+      stride_a = INT32_MAX;
+    }
+    if (strides.count(node->b)) {
+      stride_b = strides[node->b];
+    } else {
+      stride_b = INT32_MAX;
+    }
+    if (stride_a != INT32_MAX || stride_b != INT32_MAX) {
+      strides[GetRef<tir::Add>(node)] = std::min(stride_a, stride_b);
+    }
+  }
+
+  void VisitExpr_(const tir::VarNode* node) override {
+    if (node == var.get()) {
+      strides[GetRef<tir::Var>(node)] = 1;
+    }
+  }
+
+  static int64_t Extract(const PrimExpr& expr, const tir::Var& var) {
+    CoefficientExtractor extractor(var);
+    extractor.VisitExpr(expr);
+    return extractor.strides[expr];
+  }
+
+  const tir::Var& var;
+  std::unordered_map<PrimExpr, int, ObjectPtrHash, ObjectPtrEqual> strides;
+};
+
 class PostprocRewriteParallelizeVectorizeUnroll {
  public:
   struct Parsed {
@@ -266,12 +318,71 @@ class PostprocRewriteParallelizeVectorizeUnroll {
         loop_types.push_back(GetLoopIterType(sch->state(), loop_srefs.back()));
       }
     }
+
+    auto realize = tir::GetBlockRealize(block_sref);
+    Array<tir::BufferRegion> buffer_access(realize->block->reads);
+    buffer_access.insert(buffer_access.end(), realize->block->writes.begin(),
+                         realize->block->writes.end());
+    std::unordered_map<const tir::VarNode*, PrimExpr> binding_map;
+    for (size_t i = 0; i < realize->binding_values.size(); i++) {
+      binding_map[realize->block->iter_vars[i]->var.get()] = realize->binding_values[i];
+    }
+    int max_fusible = INT32_MAX;
+    // for each block read/write, get the stride of the loop vars and find the fusible axes
+    // (fusible means contiguous memory access)
+    for (const tir::BufferRegion& access : buffer_access) {
+      int fusible = 0;
+      std::vector<int> strides;
+      // get strides for each loop var
+      for (const tir::StmtSRef& loop_sref : loop_srefs) {
+        int stride = 0, buffer_stride = 1;
+        auto var = GetRef<tir::For>(static_cast<const tir::ForNode*>(loop_sref->stmt));
+        arith::Analyzer analyzer;
+        for (int i = access->region.size() - 1; i >= 0; i--) {
+          PrimExpr idx = analyzer.Simplify(tir::Substitute(access->region[i]->min, binding_map));
+          int64_t coef = CoefficientExtractor::Extract(idx, var->loop_var);
+          if (coef != 0) {
+            stride = coef * buffer_stride;
+            break;
+          }
+          buffer_stride *= access->buffer->shape[i].as<IntImmNode>()->value;
+        }
+        strides.push_back(stride);
+      }
+      int prev_used_iter = -1;
+      // check the number of fusible loops
+      for (int i = strides.size() - 1; i >= 0; i--) {
+        if (strides[i] == 0) {
+          // not used in the buffer access, safe to fuse
+          fusible++;
+          continue;
+        } else if (prev_used_iter == -1) {
+          // always be able to fuse the last axis
+          fusible++;
+          prev_used_iter = i;
+        } else {
+          // contiguous memory access
+          auto prev_loop =
+              GetRef<tir::For>(static_cast<const tir::ForNode*>(loop_srefs[prev_used_iter]->stmt));
+          int prev_used_iter_extent = prev_loop->extent.as<IntImmNode>()->value;
+          if (strides[i] == strides[prev_used_iter] * prev_used_iter_extent) {
+            fusible++;
+            prev_used_iter = i;
+          } else {
+            break;
+          }
+        }
+      }
+      max_fusible = std::min(max_fusible, fusible);
+    }
     // Calculate the parallelize extent
     if (parsed->max_parallel_extent != -1) {
       int max_extent = parsed->max_parallel_extent;
       int& num_fusible = parsed->num_parallel_loops = 0;
       int64_t prod_extent = 1;
-      for (int i = 0; i < n_loops && loop_types[i] == tir::IterVarType::kDataPar; ++i) {
+      for (int i = 0;
+           i < n_loops && loop_types[i] == tir::IterVarType::kDataPar && num_fusible < max_fusible;
+           ++i) {
         const tir::StmtSRef& loop_sref = loop_srefs[i];
         if (HasAnyAnn(loop_sref)) {
           break;
