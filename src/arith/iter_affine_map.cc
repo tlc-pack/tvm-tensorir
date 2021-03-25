@@ -193,7 +193,7 @@ class IterMapRewriter : public ExprMutator {
                       const Optional<PrimExpr>& predicate_induced_extent = NullOpt) {
     auto sum_expr = ToIterSumExpr(DirectMutate(expr));
     return predicate_induced_extent
-               ? NormalizeToIterWithExtent(sum_expr, predicate_induced_extent.value())
+               ? NormalizeToIterOnBoundExpr(sum_expr, predicate_induced_extent.value())
                : NormalizeToIterWithOffset(sum_expr);
   }
 
@@ -243,20 +243,21 @@ class IterMapRewriter : public ExprMutator {
    * \return whether the predicates are valid;
    */
   bool CheckPredicates() const {
-    // the pred_flattened_ are in the order of shorter to longer
+    // the pred_lhs_flattened_ are in the order of shorter to longer
     // since we visit the predicates in the order of size
-    for (size_t i = 0; i < pred_flattened_.size(); ++i) {
-      for (size_t j = i + 1; j < pred_flattened_.size(); ++j) {
+    for (size_t i = 0; i < pred_lhs_flattened_.size(); ++i) {
+      for (size_t j = i + 1; j < pred_lhs_flattened_.size(); ++j) {
         // state: 0(start), -1(no intersection), 1(inclusion)
         int state = 0;
-        for (const auto& arg1 : pred_flattened_[i]->args) {
+        for (const auto& arg1 : pred_lhs_flattened_[i]->args) {
           bool found = false;
-          for (const auto& arg2 : pred_flattened_[j]->args) {
+          for (const auto& arg2 : pred_lhs_flattened_[j]->args) {
             if (IterSplitEqual(arg1, arg2)) {
               found = true;
               break;
             }
           }
+          // Check either it is inclusion or intersection, but not both
           if (state == 0) {
             state = found ? 1 : -1;
           } else if ((state == -1 && found) || (state == 1 && !found)) {
@@ -335,7 +336,34 @@ class IterMapRewriter : public ExprMutator {
   // The map for sum that maps structured form to flattened form
   std::unordered_map<IterSumExpr, IterSumExpr, IterSumHash, IterSumEqual> flattened_map_;
   // The flattened forms of iters at the left hand side of predicates
-  std::vector<IterSumExpr> pred_flattened_;
+  std::vector<IterSumExpr> pred_lhs_flattened_;
+
+  /*!
+   * \brief Look for a split in splits that is not used such that its lower_factor is smallest.
+   *        Note that here we use division to compare lower_factor.
+   * \param splits the split array to search in.
+   * \param used the input used array.
+   * \param expected_lower_factor the skipped lower factor.
+   * \return the index of the expected split, split.size() if not found.
+   */
+  size_t SearchSkipLowerFactor(const std::vector<IterSplitExpr>& splits,
+                               const std::vector<bool>& used,
+                               const PrimExpr& expected_lower_factor) {
+    size_t res = splits.size();
+    for (size_t i = 0; i < splits.size(); ++i) {
+      if (used[i]) continue;
+      if (!used[i] && !CanProveDivisible(splits[i]->lower_factor, expected_lower_factor)) {
+        // all the remaining unused splits should have their lower factor divisible
+        return splits.size();
+      }
+      if (res == splits.size() ||
+          CanProveDivisible(splits[res]->lower_factor, splits[i]->lower_factor)) {
+        // note down the split with smaller lower factor
+        res = i;
+      }
+    }
+    return res;
+  }
 
   /*!
    * \brief If bijective is required, verify that splits fully covers mark in a non-overlapping
@@ -365,24 +393,22 @@ class IterMapRewriter : public ExprMutator {
         // we do not allow incomplete split if the bindings should be bijective
         if (require_bijective) return Array<IterSplitExpr>();
         // look for the next split skipping this lower factor
-        for (size_t k = 0; k < splits.size(); ++k) {
-          if (used[k]) continue;
-          if (!used[k] && !CanProveDivisible(splits[k]->lower_factor, expected_lower_factor)) {
-            // all the remaining unused splits should have their lower factor divisible
-            return Array<IterSplitExpr>();
-          }
-          if (j == splits.size() ||
-              CanProveDivisible(splits[j]->lower_factor, splits[k]->lower_factor)) {
-            // note down the split with smaller lower factor
-            j = k;
-          }
-        }
+        // For example, y \in [0, 24) has 3 splits [y / 6, (y / 2) % 6, y % 2]
+        // It is valid to only have [y / 6, y % 2] if bijective is not required
+        // We can skip (y / 2) % 6
+        j = SearchSkipLowerFactor(splits, used, expected_lower_factor);
+        // split not found
         if (j == splits.size()) return Array<IterSplitExpr>();
       }
       used[j] = true;
       iters.push_back(splits[j]);
       expected_lower_factor = splits[j]->lower_factor * splits[j]->extent;
     }
+    // Case 1. bijective is required.
+    //         We check the extent we calculate is consistent with the extent of the mark
+    // Case 2. bijective is not required.
+    //         We check the extent we calculate is a factor of the extent of the mark
+    //         For example, y \in [0, 24) [(y / 2) % 6, y % 2] is valid, but y \in [0, 25) is not.
     if ((require_bijective && !CanProveEqual(expected_lower_factor, mark->extent)) ||
         (!require_bijective && !CanProveDivisible(mark->extent, expected_lower_factor))) {
       return Array<IterSplitExpr>();
@@ -396,20 +422,25 @@ class IterMapRewriter : public ExprMutator {
    * \param predicate_induced_extent Extent from predicate.
    * \return The Normalized expression.
    */
-  IterSumExpr NormalizeToIterWithExtent(IterSumExpr expr,
-                                        const PrimExpr& predicate_induced_extent) {
+  IterSumExpr NormalizeToIterOnBoundExpr(IterSumExpr expr,
+                                         const PrimExpr& predicate_induced_extent) {
     // We are normalizing the left hand side of predicate(iter < predicate_induced_extent)
     auto opt = TryFuseIters(expr);
     // scale should be 1
     if (opt && is_one(opt.value()->scale)) {
-      // update the extent of the iter in the sum_fuse_map
-      const auto* sum = opt.value()->source->source.as<IterSumExprNode>();
-      ICHECK(sum);
-      IterSumExpr flattened_form = flattened_map_.at(GetRef<IterSumExpr>(sum));
-      IterMark mark = sum_fuse_map_.at(flattened_form);
+      IterSumExpr sum = Downcast<IterSumExpr>(opt.value()->source->source);
+      // get the flattened form
+      auto it = flattened_map_.find(sum);
+      ICHECK(it != flattened_map_.end());
+      IterSumExpr flattened_form = it->second;
+      // get the mark
+      auto it_mark = sum_fuse_map_.find(flattened_form);
+      ICHECK(it_mark != sum_fuse_map_.end());
+      IterMark mark = it_mark->second;
       mark.CopyOnWrite()->extent = min(predicate_induced_extent, mark->extent);
+      // update the bound of the lhs based on predicate_induced_extent
       sum_fuse_map_[flattened_form] = mark;
-      pred_flattened_.push_back(flattened_form);
+      pred_lhs_flattened_.push_back(flattened_form);
       expr.CopyOnWrite()->args = Array<IterSplitExpr>({opt.value()});
       return expr;
     }
@@ -470,7 +501,7 @@ class IterMapRewriter : public ExprMutator {
     if (expr->args.size() == 1) return expr->args[0];
     // select the iterators in order
     std::vector<bool> visited(expr->args.size(), false);
-    std::vector<IterSplitExpr> iters, sub_iters;
+    std::vector<IterSplitExpr> flattened_iters, grouped_iters;
     // canonicalize the expression into two different forms: flattened form and structured form
     // step0. check if find the base scale first
     Optional<IntImm> base_scale = NullOpt;
@@ -499,7 +530,7 @@ class IterMapRewriter : public ExprMutator {
       // We need to match the predicate in expr and adjust the expected scale,
       // otherwise we expect the scale of i to be 2*5=10
       Optional<IterSumExpr> pred_to_match;
-      for (const auto& it : pred_flattened_) {
+      for (const auto& it : pred_lhs_flattened_) {
         if (IterSplitEqual(expr->args[j], it->args.back(), false)) {
           // find a predicate started from expr->args[j]
           if (!pred_to_match || pred_to_match.value()->args.size() < it->args.size()) {
@@ -519,18 +550,20 @@ class IterMapRewriter : public ExprMutator {
           }
           if (k == expr->args.size()) return NullOpt;
           visited[k] = true;
-          iters.push_back(expr->args[k]);
+          flattened_iters.push_back(expr->args[k]);
         }
-        IterMark iter_matched = sum_fuse_map_[pred_to_match.value()];
-        sub_iters.emplace_back(iter_matched, expected_scale);
+        auto iter = sum_fuse_map_.find(pred_to_match.value());
+        ICHECK(iter != sum_fuse_map_.end());
+        IterMark iter_matched = iter->second;
+        grouped_iters.emplace_back(iter_matched, expected_scale);
         expected_scale *= iter_matched->extent;
         // move forward
         i += pred_to_match.value()->args.size();
       } else {
         // pred_to_match not found, skip this iterator
         visited[j] = true;
-        iters.push_back(expr->args[j]);
-        sub_iters.push_back(expr->args[j]);
+        flattened_iters.push_back(expr->args[j]);
+        grouped_iters.push_back(expr->args[j]);
         expected_scale *= expr->args[j]->extent;
         ++i;
       }
@@ -538,9 +571,10 @@ class IterMapRewriter : public ExprMutator {
     // Get the flattened form and structured form
     // both forms have splits from outermost to innermost
     IterSumExpr structured_form = expr, flattened_form = expr;
-    flattened_form.CopyOnWrite()->args = Array<IterSplitExpr>(iters.rbegin(), iters.rend());
+    flattened_form.CopyOnWrite()->args =
+        Array<IterSplitExpr>(flattened_iters.rbegin(), flattened_iters.rend());
     structured_form.CopyOnWrite()->args =
-        Array<IterSplitExpr>(sub_iters.rbegin(), sub_iters.rend());
+        Array<IterSplitExpr>(grouped_iters.rbegin(), grouped_iters.rend());
     auto it = sum_fuse_map_.find(flattened_form);
     if (it != sum_fuse_map_.end()) {
       // old iter
@@ -616,14 +650,14 @@ class IterMapRewriter : public ExprMutator {
   }
 };
 
-/*! \brief An internal struct to store the result of subspace division. */
+/*! \brief An internal struct to represent predicates. */
 struct Predicate {
-  size_t size;
-  PrimExpr lhs;
-  PrimExpr rhs;
+  PrimExpr iter;
+  PrimExpr upper_bound;
+  size_t expr_size = 0;
 
-  Predicate(size_t size, const PrimExpr& lhs, const PrimExpr& rhs)
-      : size(size), lhs(lhs), rhs(rhs) {}
+  Predicate(const PrimExpr& iter, const PrimExpr& upper_bound, size_t size)
+      : iter(iter), upper_bound(upper_bound), expr_size(size) {}
 };
 
 /*!
@@ -637,10 +671,10 @@ std::vector<Predicate> SplitPredicate(PrimExpr pred) {
   arith::PVar<PrimExpr> lhs, rhs, rest;
   for (;;) {
     if ((rest && (lhs < rhs)).Match(pred)) {
-      result.emplace_back(0, lhs.Eval(), rhs.Eval());
+      result.emplace_back(lhs.Eval(), rhs.Eval(), 0);
       pred = rest.Eval();
     } else if ((lhs < rhs).Match(pred)) {
-      result.emplace_back(0, lhs.Eval(), rhs.Eval());
+      result.emplace_back(lhs.Eval(), rhs.Eval(), 0);
       break;
     } else {
       return std::vector<Predicate>({});
@@ -684,16 +718,16 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   // expression of its successor, so we sort them by their sizes.
   PrimExprSizeCounter prim_expr_size_counter;
   for (auto& pred : predicates) {
-    pred.size = prim_expr_size_counter.Count(pred.lhs);
+    pred.expr_size = prim_expr_size_counter.Count(pred.iter);
   }
 
   std::sort(predicates.begin(), predicates.end(),
-            [](const Predicate& a, const Predicate& b) { return a.size < b.size; });
+            [](const Predicate& a, const Predicate& b) { return a.expr_size < b.expr_size; });
 
   IterMapRewriter rewriter(analyzer, input_iters);
   // Step0.0: rewrite predicates in the order from size-small ones to size-big ones
   for (const Predicate& pred : predicates) {
-    PrimExpr res = rewriter.Rewrite(pred.lhs, pred.rhs);
+    PrimExpr res = rewriter.Rewrite(pred.iter, pred.upper_bound);
     if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
   }
   if (!rewriter.CheckPredicates()) return Array<IterSumExpr>();
