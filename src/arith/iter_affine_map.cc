@@ -402,7 +402,8 @@ class IterMapRewriter : public ExprMutator {
       size_t j = 0;
       for (; j < splits.size(); ++j) {
         if (used[j]) continue;
-        if (!used[j] && CanProveEqual(splits[j]->lower_factor, expected_lower_factor)) break;
+        if (!used[j] && analyzer_->CanProveEqual(splits[j]->lower_factor, expected_lower_factor))
+          break;
       }
       if (j == splits.size()) {
         // we do not allow incomplete split if the bindings should be bijective
@@ -424,7 +425,7 @@ class IterMapRewriter : public ExprMutator {
     // Case 2. bijective is not required.
     //         We check the extent we calculate is a factor of the extent of the mark
     //         For example, y \in [0, 24) [(y / 2) % 6, y % 2] is valid, but y \in [0, 25) is not.
-    if ((require_bijective && !CanProveEqual(expected_lower_factor, mark->extent)) ||
+    if ((require_bijective && !analyzer_->CanProveEqual(expected_lower_factor, mark->extent)) ||
         (!require_bijective && !CanProveDivisible(mark->extent, expected_lower_factor))) {
       return Array<IterSplitExpr>();
     }
@@ -537,7 +538,7 @@ class IterMapRewriter : public ExprMutator {
       // find j such that expr->args[j] has expected scale
       size_t j = i == 0 ? base_index : 0;
       for (; j < expr->args.size(); ++j) {
-        if (!visited[j] && CanProveEqual(expr->args[j]->scale, expected_scale)) break;
+        if (!visited[j] && analyzer_->CanProveEqual(expr->args[j]->scale, expected_scale)) break;
       }
       if (j == expr->args.size()) return NullOpt;
       // look for the longest constrained iter started from expr->args[j]
@@ -565,7 +566,8 @@ class IterMapRewriter : public ExprMutator {
           size_t k = 0;
           for (; k < expr->args.size(); ++k) {
             if (!visited[k] && IterSplitEqual(expr->args[k], *it, false)) {
-              if (CanProveEqual((*it)->scale * expected_scale, expr->args[k]->scale)) break;
+              if (analyzer_->CanProveEqual((*it)->scale * expected_scale, expr->args[k]->scale))
+                break;
             }
           }
           if (k == expr->args.size()) return NullOpt;
@@ -608,15 +610,8 @@ class IterMapRewriter : public ExprMutator {
     }
   }
 
-  bool CanProveEqual(const PrimExpr& lhs, const PrimExpr& rhs) {
-    const auto* clhs = lhs.as<IntImmNode>();
-    const auto* crhs = rhs.as<IntImmNode>();
-    if (clhs && crhs) return clhs->value == crhs->value;
-    return analyzer_->CanProve(lhs - rhs == 0);
-  }
-
   bool CanProveDivisible(const PrimExpr& lhs, const PrimExpr& rhs) {
-    if (CanProveEqual(lhs, rhs)) return true;
+    if (analyzer_->CanProveEqual(lhs, rhs)) return true;
     const auto* clhs = lhs.as<IntImmNode>();
     const auto* crhs = rhs.as<IntImmNode>();
     if (clhs && crhs) return clhs->value % crhs->value == 0;
@@ -1217,7 +1212,7 @@ class SubspaceDivider {
       extent *= new_arg->extent;
     }
     if (!scale_is_one) return Fail();
-    bool need_predicate = !CanProveEqual(extent, mark_extent);
+    bool need_predicate = !analyzer_->CanProveEqual(extent, mark_extent);
     const IterMark& outer_mark = MarkFromArgsAndBase(outer_args, 0);
     const IterMark& inner_mark = MarkFromArgsAndBase(inner_args, expr->base);
     IterSumExpr outer_source = Downcast<IterSumExpr>(outer_mark->source);
@@ -1322,7 +1317,8 @@ class SubspaceDivider {
       for (size_t i = 0; i < splits.size(); ++i) {
         size_t j = 0;
         for (; j < splits.size(); ++j) {
-          if (!used[j] && CanProveEqual(splits[j]->lower_factor, expected_lower_factor)) break;
+          if (!used[j] && analyzer_->CanProveEqual(splits[j]->lower_factor, expected_lower_factor))
+            break;
         }
         if (j == splits.size()) return Fail();
         used[j] = true;
@@ -1332,7 +1328,7 @@ class SubspaceDivider {
           outer_iters.push_back(splits[j]);
         }
         expected_lower_factor *= splits[j]->extent;
-        if (CanProveEqual(expected_lower_factor, mark_division.inner_extent))
+        if (analyzer_->CanProveEqual(expected_lower_factor, mark_division.inner_extent))
           encountered_boundary = true;
       }
       if (!encountered_boundary) return Fail();
@@ -1352,13 +1348,6 @@ class SubspaceDivider {
       return Fail();
     }
     return split_map_.at(expr);
-  }
-
-  bool CanProveEqual(const PrimExpr& lhs, const PrimExpr& rhs) {
-    const auto* clhs = lhs.as<IntImmNode>();
-    const auto* crhs = rhs.as<IntImmNode>();
-    if (clhs && crhs) return clhs->value == crhs->value;
-    return analyzer_->CanProve(lhs - rhs == 0);
   }
 
   size_t unresolved_count_{0};

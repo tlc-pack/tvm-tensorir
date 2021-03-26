@@ -461,6 +461,11 @@ class TVM_DLL Analyzer {
   /*!
    * \brief Whether can we prove lhs == rhs.
    *
+   * \param lhs The input lhs.
+   * \param rhs The input rhs.
+   * \return Whether we can prove lhs == rhs.
+   *
+   * \note Analyzer will call into sub-analyzers to get the result.
    */
   bool CanProveEqual(const PrimExpr& lhs, const PrimExpr& rhs);
   /*!
