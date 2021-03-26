@@ -27,6 +27,8 @@
 #include <tvm/tir/expr_functor.h>
 #include <tvm/tir/op.h>
 
+#include <utility>
+
 #include "../support/utils.h"
 #include "const_fold.h"
 #include "pattern_match.h"
@@ -674,8 +676,8 @@ struct IterConstraint {
   // The size of the iter, which is the number of nodes
   size_t expr_size = 0;
 
-  IterConstraint(const PrimExpr& iter, const PrimExpr& upper_bound, size_t size)
-      : iter(iter), upper_bound(upper_bound), expr_size(size) {}
+  IterConstraint(PrimExpr iter, PrimExpr upper_bound, size_t size)
+      : iter(std::move(iter)), upper_bound(std::move(upper_bound)), expr_size(size) {}
 };
 
 /*!
@@ -1140,7 +1142,10 @@ class SubspaceDivider {
 
     DivisionResult(IterMapExpr outer, PrimExpr outer_extent, IterMapExpr inner,
                    PrimExpr inner_extent)
-        : outer(outer), inner(inner), outer_extent(outer_extent), inner_extent(inner_extent) {}
+        : outer(std::move(outer)),
+          inner(std::move(inner)),
+          outer_extent(std::move(outer_extent)),
+          inner_extent(std::move(inner_extent)) {}
 
     // whether the division result is totally in outer subspace
     bool IsOuter() const { return is_one(inner_extent); }
