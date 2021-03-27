@@ -69,12 +69,7 @@ class StmtSRefNode : public Object {
   static constexpr const char* _type_key = "tir.StmtSRef";
   TVM_DECLARE_FINAL_OBJECT_INFO(StmtSRefNode, Object);
 
-  /*!
-   * \brief Reset the object inplace
-   * \param stmt The new `StmtSRefNode::stmt`
-   * \param parent The new `StmtSRefNode::parent`
-   * \param seq_index The new `StmtSRefNode::seq_index`
-   */
+  /*! \brief Reset the object inplace to the invalid state */
   void Reset() {
     this->stmt = nullptr;
     this->parent = nullptr;
