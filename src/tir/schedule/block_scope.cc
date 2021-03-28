@@ -118,10 +118,8 @@ BlockScope::BlockScope(const Array<StmtSRef>& child_block_srefs) {
 /******** Dependency ********/
 
 Array<Dependency> BlockScopeNode::GetDepsBySrc(const StmtSRef& block_sref) const {
-  const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& deps =
-      this->src2deps;
-  auto iter = deps.find(block_sref);
-  if (iter != deps.end()) {
+  auto iter = this->src2deps.find(block_sref);
+  if (iter != this->src2deps.end()) {
     return iter->second;
   } else {
     return {};
@@ -129,10 +127,8 @@ Array<Dependency> BlockScopeNode::GetDepsBySrc(const StmtSRef& block_sref) const
 }
 
 Array<Dependency> BlockScopeNode::GetDepsByDst(const StmtSRef& block_sref) const {
-  const std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual>& deps =
-      this->dst2deps;
-  auto iter = deps.find(block_sref);
-  if (iter != deps.end()) {
+  auto iter = this->dst2deps.find(block_sref);
+  if (iter != this->dst2deps.end()) {
     return iter->second;
   } else {
     return {};

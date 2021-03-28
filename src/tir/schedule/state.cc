@@ -169,7 +169,7 @@ class StateCreator : private StmtVisitor {
     return sref;
   }
 
-  void MakeBlockInfo(const StmtSRef& scope_root) {
+  void MakeBlockInfo(StmtSRef scope_root) {
     // Calculate `BlockInfo::scope`
     Array<StmtSRef> child_block_srefs = std::move(block_frames_.back());
     BlockScope scope(child_block_srefs);
@@ -179,10 +179,10 @@ class StateCreator : private StmtVisitor {
     bool region_cover = false;
     // Set `BlockInfo::stage_pipeline`
     bool stage_pipeline = false;
-    self_->block_info.emplace(scope_root, BlockInfo(/*scope=*/std::move(scope),
-                                                    /*affine_binding=*/affine_binding,
-                                                    /*region_cover=*/region_cover,
-                                                    /*stage_pipeline=*/stage_pipeline));
+    self_->block_info.emplace(std::move(scope_root), BlockInfo(/*scope=*/std::move(scope),
+                                                               /*affine_binding=*/affine_binding,
+                                                               /*region_cover=*/region_cover,
+                                                               /*stage_pipeline=*/stage_pipeline));
   }
 
   void VisitStmt_(const ForNode* loop) final {

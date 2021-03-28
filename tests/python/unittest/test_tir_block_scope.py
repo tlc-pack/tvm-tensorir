@@ -15,10 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 # pylint: disable=missing-function-docstring,missing-module-docstring
-import pytest
 import tvm
 from tvm import tir
 from tvm.script import ty
+from tvm.tir.schedule import DepKind
 from tvm.tir.stmt_functor import post_order_visit
 
 # pylint: disable=no-member,invalid-name,unused-variable
@@ -85,42 +85,58 @@ def test_elementwise_dependency():
     root = _get_block(s, "root")
     block_b = _get_block(s, "B")
     block_c = _get_block(s, "C")
-    (predecessor_c,) = s.get_block_scope(root).get_deps_by_dst(block_b)
-    assert predecessor_c.src.same_as(block_b)
-    assert predecessor_c.kind == tir.schedule.DepKind.RAW
     # Check get_deps_by_src
-    (successor_b,) = s.get_block_scope(root).get_deps_by_src(block_b)
-    assert successor_b.dst.same_as(block_c)
-    assert predecessor_c.kind == tir.schedule.DepKind.RAW
+    (dep,) = s.get_block_scope(root).get_deps_by_src(block_b)
+    assert dep.src.same_as(block_b)
+    assert dep.dst.same_as(block_c)
+    assert dep.kind == DepKind.RAW
+    # Check get_deps_by_dst
+    (dep,) = s.get_block_scope(root).get_deps_by_dst(block_c)
+    assert dep.src.same_as(block_b)
+    assert dep.dst.same_as(block_c)
+    assert dep.kind == DepKind.RAW
 
 
 def test_matmul_dependency():
     s = tir.ScheduleState(matmul, debug_mode=True)
-    root = s.get_sref(s.get_block("root"))
-    init = s.get_sref(s.get_block("init"))
-    update = s.get_sref(s.get_block("update"))
-    # Check predecessors
-    p0, p1 = s.state.get_block_scope(root).get_deps_by_dst(update)
+    root = _get_block(s, "root")
+    init = _get_block(s, "init")
+    update = _get_block(s, "update")
+    # Check get_deps_by_src
+    p0, p1 = s.get_block_scope(root).get_deps_by_src(init)
     assert p0.src.same_as(init)
+    assert p0.dst.same_as(update)
     assert p1.src.same_as(init)
-    # WAW and RAW
-    assert (p0.kind == tir.schedule.DepKind.RAW and p1.kind == tir.schedule.DepKind.WAW) or (
-        p0.kind == tir.schedule.DepKind.WAW and p1.kind == tir.schedule.DepKind.RAW
+    assert p1.dst.same_as(update)
+    assert (p0.kind == DepKind.RAW and p1.kind == DepKind.WAW) or (
+        p0.kind == DepKind.WAW and p1.kind == DepKind.RAW
     )
-    # Check successors
-    p0, p1 = s.state.get_block_scope(root).get_deps_by_src(init)
-    assert p0.dst == update
-    assert p1.dst == update
-    # WAW and RAW
-    assert (p0.kind == tir.schedule.DepKind.RAW and p1.kind == tir.schedule.DepKind.WAW) or (
-        p0.kind == tir.schedule.DepKind.WAW and p1.kind == tir.schedule.DepKind.RAW
+    # Check get_deps_by_dst
+    p0, p1 = s.get_block_scope(root).get_deps_by_dst(update)
+    assert p0.src.same_as(init)
+    assert p0.dst.same_as(update)
+    assert p1.src.same_as(init)
+    assert p1.dst.same_as(update)
+    assert (p0.kind == DepKind.RAW and p1.kind == DepKind.WAW) or (
+        p0.kind == DepKind.WAW and p1.kind == DepKind.RAW
     )
 
 
 def test_war_dependency():
-    with pytest.raises(TypeError) as excinfo:
-        tir.ScheduleState(war_dependency, debug_mode=True)
-    assert "WAR dependency is not allowed" in str(excinfo.value)
+    s = tir.ScheduleState(war_dependency, debug_mode=True)
+    root = _get_block(s, "root")
+    block_c = _get_block(s, "C")
+    block_b = _get_block(s, "B")
+    # Check get_deps_by_src
+    (dep,) = s.get_block_scope(root).get_deps_by_src(block_c)
+    assert dep.src.same_as(block_c)
+    assert dep.dst.same_as(block_b)
+    assert dep.kind == DepKind.WAR
+    # Check get_deps_by_dst
+    (dep,) = s.get_block_scope(root).get_deps_by_dst(block_b)
+    assert dep.src.same_as(block_c)
+    assert dep.dst.same_as(block_b)
+    assert dep.kind == DepKind.WAR
 
 
 if __name__ == "__main__":
