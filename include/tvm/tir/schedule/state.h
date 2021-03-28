@@ -51,21 +51,13 @@ struct BlockInfo {
    * produced by its producers
    */
   bool region_cover{false};
-  /*!
-   * \brief Property of a block scope root at the block, indicaiting if the scope is an equivalence
-   * of a stage pipeline. Conditions:
-   * 1) The region cover property holds for every of its child blocks
-   * 2) No write-after-read dependency
-   */
-  bool stage_pipeline{false};
 
   BlockInfo() = default;
 
-  explicit BlockInfo(BlockScope scope, bool affine_binding, bool region_cover, bool stage_pipeline)
+  explicit BlockInfo(BlockScope scope, bool affine_binding = false, bool region_cover = false)
       : scope(std::move(scope)),         //
         affine_binding(affine_binding),  //
-        region_cover(region_cover),      //
-        stage_pipeline(stage_pipeline) {}
+        region_cover(region_cover) {}
 };
 
 /*!
@@ -187,7 +179,7 @@ class ScheduleStateNode : public Object {
    * \return The corresponding BlockScope
    */
   bool IsStagePipeline(const StmtSRef& scope_root) const {
-    return GetBlockInfo(scope_root).stage_pipeline;
+    return GetBlockScope(scope_root)->stage_pipeline;
   }
 };
 
@@ -213,8 +205,7 @@ class ScheduleState : public ObjectRef {
    */
   TVM_DLL explicit ScheduleState(PrimFunc func, int debug_mode = 0);
 
-  ScheduleStateNode* get() { return static_cast<ScheduleStateNode*>(data_.get()); }
-
+  /*! \return The mutable pointer to the ScheduleStateNode */
   ScheduleStateNode* get() const { return static_cast<ScheduleStateNode*>(data_.get()); }
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ScheduleState, ObjectRef, ScheduleStateNode);

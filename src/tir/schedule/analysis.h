@@ -21,33 +21,8 @@
 
 #include <tvm/tir/schedule/state.h>
 
-#include <unordered_set>
-
 namespace tvm {
 namespace tir {
-
-/******** ContainsVar ********/
-/*!
- * \brief Checks if an Expr or Stmt contains a list of specific Vars
- * \param stmt_or_expr The Stmt or Expr
- * \param vars The candidate variables to be checked
- * \return A boolean indicating if any var in the list is found in stmt/expr
- */
-bool ContainsVar(const ObjectRef& stmt_or_expr, const Array<Var>& vars);
-/*!
- * \brief Checks if an Expr or Stmt contains a list of specific Vars
- * \param stmt_or_expr The Stmt or Expr
- * \param vars The candidate variables to be checked
- * \return A boolean indicating if any var in the set is found in stmt/expr
- */
-bool ContainsVar(const ObjectRef& stmt_or_expr, const std::unordered_set<const VarNode*>& vars);
-/*!
- * \brief Checks if an Expr or Stmt contains a specific Var
- * \param stmt_or_expr The Stmt or Expr
- * \param var The candidate variable to be checked
- * \return A boolean indicating if the var is found in stmt/expr
- */
-bool ContainsVar(const ObjectRef& stmt_or_expr, const Var& var);
 
 /******** Verification ********/
 /*!

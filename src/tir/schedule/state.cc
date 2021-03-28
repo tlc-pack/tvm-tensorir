@@ -172,17 +172,15 @@ class StateCreator : private StmtVisitor {
   void MakeBlockInfo(StmtSRef scope_root) {
     // Calculate `BlockInfo::scope`
     Array<StmtSRef> child_block_srefs = std::move(block_frames_.back());
-    BlockScope scope(child_block_srefs);
-    // Set `BlockInfo::affine_binding`
-    bool affine_binding = false;
-    // Set `BlockInfo::region_cover`
-    bool region_cover = false;
-    // Set `BlockInfo::stage_pipeline`
-    bool stage_pipeline = false;
-    self_->block_info.emplace(std::move(scope_root), BlockInfo(/*scope=*/std::move(scope),
-                                                               /*affine_binding=*/affine_binding,
-                                                               /*region_cover=*/region_cover,
-                                                               /*stage_pipeline=*/stage_pipeline));
+    BlockInfo& info =
+        self_->block_info.emplace(std::move(scope_root), BlockInfo(BlockScope(child_block_srefs)))
+            .first->second;
+    // Set `affine_binding`
+    info.affine_binding = false;
+    // Set `region_cover`
+    info.region_cover = false;
+    // Set `stage_pipeline`
+    info.scope->stage_pipeline = false;
   }
 
   void VisitStmt_(const ForNode* loop) final {
@@ -510,21 +508,20 @@ class SRefUpdater : public StmtVisitor {
   void UpdateBlockInfo(const StmtSRef& block_sref) {
     using TIter = std::unordered_map<StmtSRef, BlockInfo, ObjectPtrHash, ObjectPtrEqual>::iterator;
     // The caller is responsible for correcting the flags
-    bool affine_binding = false;
-    bool region_cover = false;
-    bool stage_pipeline = false;
-    BlockInfo new_info(BlockScope(tir::GetChildBlocks(self_, block_sref)),  //
-                       affine_binding,                                      //
-                       region_cover,                                        //
-                       stage_pipeline);
+    BlockInfo new_info(BlockScope(GetChildBlocks(self_, block_sref)));
     std::pair<TIter, bool> insert_result = self_->block_info.emplace(block_sref, new_info);
-    if (!insert_result.second) {
-      // Insertion didn't take place, because the entry has been there before
+    bool inserted = insert_result.second;
+    BlockInfo& info = insert_result.first->second;
+    if (inserted) {
+      // Insertion has happened, update the flags accordingly
       BlockInfo& info = insert_result.first->second;
-      info.scope = std::move(new_info.scope);
-      // Other flags are not changed
+      info.affine_binding = false;
+      info.region_cover = false;
+      info.scope->stage_pipeline = false;
     } else {
-      // Insertion has happened, so no further action is needed
+      // Insertion didn't take place, because the entry has been there before.
+      // In this case, we assume that flags are still valid so intentionally keep them unchanged
+      info.scope = std::move(new_info.scope);
     }
   }
 

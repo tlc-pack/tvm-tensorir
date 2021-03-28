@@ -107,6 +107,7 @@ class StmtSRef : public ObjectRef {
    * -1 if the parent does not contain multiple children.
    */
   TVM_DLL explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index);
+
   /*! \return The mutable pointer to the StmtSRefNode */
   StmtSRefNode* get() const { return static_cast<StmtSRefNode*>(data_.get()); }
 
@@ -194,6 +195,13 @@ class BlockScopeNode : public Object {
   std::unordered_map<StmtSRef, Array<Dependency>, ObjectPtrHash, ObjectPtrEqual> dst2deps;
   /*! \brief The mapping from the buffer to the blocks who write it */
   std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_writers;
+  /*!
+   * \brief Property of a block scope root at the block, indicaiting if the scope is an equivalence
+   * of a stage pipeline. Conditions:
+   * 1) The region cover property holds for every of its child blocks
+   * 2) No write-after-read dependency
+   */
+  bool stage_pipeline{false};
 
   void VisitAttrs(AttrVisitor* v) {}
 
@@ -232,7 +240,7 @@ class BlockScope : public ObjectRef {
    */
   TVM_DLL BlockScope(const Array<StmtSRef>& child_block_srefs);
 
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BlockScope, ObjectRef, BlockScopeNode);
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(BlockScope, ObjectRef, BlockScopeNode);
 };
 
 }  // namespace tir
