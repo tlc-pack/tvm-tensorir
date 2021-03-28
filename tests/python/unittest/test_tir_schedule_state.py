@@ -141,11 +141,11 @@ def test_replace_direct_write0():
     old_hash = s.mod["main"].__hash__()
     sref = s.get_sref(s.mod["main"].body.block.body[1])
     s.replace(sref, target)
-    # There is no other reference so the AST node can be write directly
+    # There is no other reference so the AST node can be written directly
     assert old_hash == s.mod["main"].__hash__()
     # Check the replaced part is equal to the target
     tvm.ir.assert_structural_equal(s.mod["main"].body.block.body[1], target)
-    # The target reuse the stmt of the sref, so the sref won't be none
+    # The target reuse the stmt of the sref, so the sref won't be None
     assert sref.stmt is not None
 
 
@@ -155,12 +155,12 @@ def test_replace_direct_write1():
     hold_ref = s.mod["main"].body.block.body[1]
     sref = s.get_sref(s.mod["main"].body.block.body[1])
     s.replace(sref, target)
-    # There is no other reference so the AST node can be write directly
+    # There is no other reference so the AST node can be written directly
     assert old_hash == s.mod["main"].body.block.body.__hash__()
     assert not tvm.ir.structural_equal(hold_ref.body, target)
     # Check the replaced part is equal to the target
     tvm.ir.assert_structural_equal(s.mod["main"].body.block.body[1], target)
-    # The target reuse `sref.stmt`, so the sref won't be none
+    # The target reuse `sref.stmt`, so the sref won't be None
     assert sref.stmt is not None
 
 
@@ -189,10 +189,10 @@ def test_replace_partial_copy0():
     sref = s.get_sref(s.mod["main"].body.block.body[0].body)
     other_part_hash = s.mod["main"].body.block.body[1].__hash__()
     s.replace(sref, target)
-    # The hold stmt will not change but copy a new one
+    # The stmt is held by `hold_sref`, so it will be coped in copy-on-write because the ref count is not unique
     assert ref_old_hash != s.mod["main"].body.block.body[0].__hash__()
     assert not tvm.ir.structural_equal(hold_ref.body, target)
-    # The function and the other part stmt can be directly write
+    # The function and the other part stmt can be directly written
     assert func_old_hash == s.mod["main"].__hash__()
     assert other_part_hash == s.mod["main"].body.block.body[1].__hash__()
     # Check the replaced part is equal to the target
@@ -212,7 +212,7 @@ def test_replace_partial_copy1():
     # The parent stmt will change since there is only one reference
     assert stmt_old_hash == s.mod["main"].body.block.body[0].__hash__()
     assert not tvm.ir.structural_equal(hold_ref.body, target)
-    # The function and the other part stmt can be directly write
+    # The function and the other part stmt can be directly written
     assert func_old_hash == s.mod["main"].__hash__()
     assert other_part_hash == s.mod["main"].body.block.body[1].__hash__()
     # Check the replaced part is equal to the target
