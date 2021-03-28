@@ -537,17 +537,14 @@ class SRefUpdater : public StmtVisitor {
 };
 
 /*!
- * \brief A helper that
- * 1) returns a new copy of `child_sref->parent->stmt`,
- * where `child_sref->stmt` is replaced with `child_tgt_stmt`.
- * 2) Then it points `child_sref` to `child_tgt_stmt`.
- * 3) Finally it makes the subtree of the srefs pointing to the returned AST correct,
- * except for the root.
+ * \brief A helper that returns a new copy of `parent_stmt`,
+ * where the subtree `child_src_stmt` is replaced with the subtree `child_tgt_stmt`.
+ * \note The visitor assumes `child_src_stmt` is the child of `parent_stmt` in the sref tree.
  */
 class ChildReplacer : private StmtMutator {
  public:
-  static Stmt Mutate(const StmtNode* parent_stmt, const StmtNode* child_src_stmt,
-                     const Stmt& child_tgt_stmt, int seq_index, bool allow_copy_on_write) {
+  static Stmt Replace(const StmtNode* parent_stmt, const StmtNode* child_src_stmt,
+                      const Stmt& child_tgt_stmt, int seq_index, bool allow_copy_on_write) {
     // Check the invariant
     ICHECK(child_src_stmt->IsInstance<BlockNode>() ||  //
            child_src_stmt->IsInstance<ForNode>());
@@ -582,17 +579,18 @@ class ChildReplacer : private StmtMutator {
     if (0 <= i && i < n) {
       const Stmt& stmt = op->seq[i];
       Optional<Stmt> new_stmt = NullOpt;
-      // `stmt` can be Loop or BlockRealize
-      // `src_stmt` can be Loop or Block
+      const StmtNode* src_stmt = this->src_stmt_;
+      // `stmt` can be For or BlockRealize
+      // `src_stmt` can be For or Block
       // so the match from `stmt` to `src_stmt` can be
-      // 1) Loop -> Loop
+      // 1) For -> For
       // 2) BlockRealize -> Block
-      if (stmt.get() == this->src_stmt_) {
-        // Case 1. src_stmt is Loop, stmt is Loop
+      if (stmt.get() == src_stmt) {
+        // Case 1. src_stmt is For, stmt is For
         new_stmt = tgt_stmt_;
       } else if (const auto* realize = stmt.as<BlockRealizeNode>()) {
         // Case 2. stmt is BlockRealize, src_stmt is Block
-        if (realize->block.get() == src_stmt_) {
+        if (realize->block.get() == src_stmt) {
           const auto* tgt_block = TVM_TYPE_AS(tgt_block, tgt_stmt_, BlockNode);
           ObjectPtr<BlockRealizeNode> new_realize = make_object<BlockRealizeNode>(*realize);
           new_realize->block = GetRef<Block>(tgt_block);
@@ -747,9 +745,9 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     }
     // Step 2.2. Create `new_parent_stmt`, by mutating the body of `parent_stmt`,
     Stmt new_parent_stmt =
-        ChildReplacer::Mutate(parent_stmt, child_src_stmt, child_tgt_stmt,
-                              /*seq_index=*/child_sref->seq_index,
-                              /*allow_copy_on_write=*/can_directly_mutate_parent);
+        ChildReplacer::Replace(parent_stmt, child_src_stmt, child_tgt_stmt,
+                               /*seq_index=*/child_sref->seq_index,
+                               /*allow_copy_on_write=*/can_directly_mutate_parent);
     // Step 2.3. Go to next parent
     if (can_directly_mutate_parent) {
       // If the node can be directly mutated inplace,
