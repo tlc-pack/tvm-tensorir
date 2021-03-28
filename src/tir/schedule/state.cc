@@ -636,12 +636,7 @@ class ChildReplacer : private StmtMutator {
 
 void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_stmt,
                                 const Map<Block, Block>& _block_sref_reuse) {
-  std::unordered_map<const BlockNode*, const BlockNode*> block_sref_reuse;
-  block_sref_reuse.reserve(_block_sref_reuse.size() + 1);
-  for (const auto& kv : _block_sref_reuse) {
-    block_sref_reuse.emplace(kv.first.get(), kv.second.get());
-  }
-  {
+  if (this->debug_mode != 0) {
     const StmtNode* src_stmt = _src_sref->stmt;
     bool input_correct =
         (src_stmt->IsInstance<ForNode>() && tgt_stmt->IsInstance<ForNode>()) ||
@@ -652,11 +647,6 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
                  << ". tgt_stmt has type: " << tgt_stmt->GetTypeKey() << ".\nsrc_stmt:\n"
                  << GetRef<Stmt>(src_stmt) << "\ntgt_stmt:\n"
                  << tgt_stmt;
-    }
-    if (src_stmt->IsInstance<BlockNode>() && tgt_stmt->IsInstance<BlockNode>()) {
-      const auto* src_block = static_cast<const BlockNode*>(src_stmt);
-      const auto* tgt_block = static_cast<const BlockNode*>(tgt_stmt.get());
-      block_sref_reuse.emplace(src_block, tgt_block);
     }
   }
   // Rule out the case that no replacement happens
@@ -672,6 +662,12 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   // 2) all `seq_index`s are correct, except for the root
   // 3) all `stmt`s are correct, except for the root
   {
+    // Step 0. Setup block_sref_reuse
+    std::unordered_map<const BlockNode*, const BlockNode*> block_sref_reuse;
+    block_sref_reuse.reserve(_block_sref_reuse.size() + 1);
+    for (const auto& kv : _block_sref_reuse) {
+      block_sref_reuse.emplace(kv.first.get(), kv.second.get());
+    }
     // Step 1.1. Collect info for different kinds of reuses
     // 1) intact
     // 2) loop/block reuse

@@ -50,22 +50,53 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
+@tvm.script.tir
+def block_in_opaque_block(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128), "float32")
+    B = tir.match_buffer(b, (128, 128), "float32")
+    with tir.block([128], "B") as vi:
+        tir.reads([A[0:128, 0:128]])
+        tir.writes([B[0:128, 0:128]])
+        B[vi, 0] = A[vi, 0]
+        if A[vi, 0] == 0.0:
+            with tir.block([], "C"):
+                tir.reads([A[0:128, 0:128]])
+                tir.writes([B[0:128, 0:128]])
+                with tir.block([128], "D") as vj:
+                    B[vi, vj] = A[vi, vj] * 3.0
+        else:
+            with tir.block([], "E"):
+                tir.reads([A[0:128, 0:128]])
+                tir.writes([B[0:128, 0:128]])
+                with tir.block([128], "F") as vj:
+                    B[vi, vj] = A[vi, vj] * 2.0
+
+
 # pylint: enable=no-member,invalid-name,unused-variable
 
 
 def replace_ir_builder(deep_copy=False, realize=False):
-    func = elementwise
-    new_func = tvm.script.from_source(tvm.script.asscript(func))
+    new_func = tvm.script.from_source(tvm.script.asscript(elementwise))
     s = tir.ScheduleState(new_func, debug_mode=True)
-    # The target stmt
-    target = tvm.tir.Block([], [], [], [], {}, [], "", "target", s.mod["main"].body.block.body[1])
+    target = tvm.tir.Block(
+        iter_vars=[],
+        reads=[],
+        writes=[],
+        name_hint="target",
+        body=s.mod["main"].body.block.body[1],
+        init=None,
+        alloc_buffers=None,
+        match_buffers=None,
+        annotations=None,
+    )
     if realize:
-        target = tvm.tir.BlockRealize([], 1, target)
+        target = tvm.tir.BlockRealize(
+            iter_values=[],
+            predicate=True,
+            block=target,
+        )
     if deep_copy:
         target.__setstate__(target.__getstate__())
-
-    # It's important to collect garbage explicitly to make
-    # sure that there is only one reference of the function
     gc.collect()
     return s, target
 
@@ -75,34 +106,41 @@ def replace_ir_builder_module(deep_copy=False, realize=False):
     other_func = tvm.script.from_source(tvm.script.asscript(elementwise))
     mod = IRModule(functions={"main": new_func, "other": other_func})
     s = tir.ScheduleState(mod, debug_mode=True)
-    # The target stmt
-    target = tvm.tir.Block([], [], [], [], {}, [], "", "target", s.mod["main"].body.block.body[1])
+    target = tvm.tir.Block(
+        iter_vars=[],
+        reads=[],
+        writes=[],
+        name_hint="target",
+        body=s.mod["main"].body.block.body[1],
+        init=None,
+        alloc_buffers=None,
+        match_buffers=None,
+        annotations=None,
+    )
     if realize:
-        target = tvm.tir.BlockRealize([], 1, target)
+        target = tvm.tir.BlockRealize(
+            iter_values=[],
+            predicate=True,
+            block=target,
+        )
     if deep_copy:
         target.__setstate__(target.__getstate__())
-
-    # It's important to collect garbage explicitly to make
-    # sure that there is only one reference of the function
     gc.collect()
     return s, target
 
 
 def replace_ir_builder_with_opaque():
-    pass  # TODO
-    # func = tvm.script.from_source(tvm.script.asscript(util.block_in_opaque_block))
-    # s = tir.Schedule(func, debug_mode=True)
-    # gc.collect()
-    # return s
+    func = tvm.script.from_source(tvm.script.asscript(block_in_opaque_block))
+    s = tir.ScheduleState(func, debug_mode=True)
+    gc.collect()
+    return s
 
 
 def test_replace_direct_write0():
     s, target = replace_ir_builder(realize=True)
-
     old_hash = s.mod["main"].__hash__()
     sref = s.get_sref(s.mod["main"].body.block.body[1])
     s.replace(sref, target)
-
     # There is no other reference so the AST node can be write directly
     assert old_hash == s.mod["main"].__hash__()
     # Check the replaced part is equal to the target
@@ -113,12 +151,10 @@ def test_replace_direct_write0():
 
 def test_replace_direct_write1():
     s, target = replace_ir_builder(realize=True)
-
     old_hash = s.mod["main"].body.block.body.__hash__()
     hold_ref = s.mod["main"].body.block.body[1]
     sref = s.get_sref(s.mod["main"].body.block.body[1])
     s.replace(sref, target)
-
     # There is no other reference so the AST node can be write directly
     assert old_hash == s.mod["main"].body.block.body.__hash__()
     assert not tvm.ir.structural_equal(hold_ref.body, target)
@@ -130,13 +166,11 @@ def test_replace_direct_write1():
 
 def test_replace_copy():
     s, target = replace_ir_builder(deep_copy=True, realize=True)
-
     old_hash = s.mod["main"].__hash__()
     # We hold another reference of func
     old_func = s.mod["main"]
     sref = s.get_sref(s.mod["main"].body.block.body[0])
     s.replace(sref, target)
-
     # We need to copy the whole func to remain the old_func unchanged
     assert old_hash != s.mod["main"].__hash__()
     assert not tvm.ir.structural_equal(old_func.body, s.mod["main"].body)
@@ -149,14 +183,12 @@ def test_replace_copy():
 
 def test_replace_partial_copy0():
     s, target = replace_ir_builder(deep_copy=True, realize=True)
-
     func_old_hash = s.mod["main"].__hash__()
     hold_ref = s.mod["main"].body.block.body[0]
     ref_old_hash = hold_ref.__hash__()
     sref = s.get_sref(s.mod["main"].body.block.body[0].body)
     other_part_hash = s.mod["main"].body.block.body[1].__hash__()
     s.replace(sref, target)
-
     # The hold stmt will not change but copy a new one
     assert ref_old_hash != s.mod["main"].body.block.body[0].__hash__()
     assert not tvm.ir.structural_equal(hold_ref.body, target)
@@ -171,15 +203,13 @@ def test_replace_partial_copy0():
 
 def test_replace_partial_copy1():
     s, target = replace_ir_builder(deep_copy=True)
-
     func_old_hash = s.mod["main"].__hash__()
     hold_ref = s.mod["main"].body.block.body[0].body
     stmt_old_hash = s.mod["main"].body.block.body[0].__hash__()
     sref = s.get_sref(s.mod["main"].body.block.body[0].body.body.block)
     other_part_hash = s.mod["main"].body.block.body[1].__hash__()
     s.replace(sref, target)
-
-    # The father stmt will change since there is only one reference
+    # The parent stmt will change since there is only one reference
     assert stmt_old_hash == s.mod["main"].body.block.body[0].__hash__()
     assert not tvm.ir.structural_equal(hold_ref.body, target)
     # The function and the other part stmt can be directly write
@@ -193,7 +223,6 @@ def test_replace_partial_copy1():
 
 def test_replace_root_write():
     s, target = replace_ir_builder()
-
     old_hash = s.mod["main"].__hash__()
     sref = s.get_sref(s.mod["main"].body.block)
     s.replace(sref, target)
@@ -204,7 +233,6 @@ def test_replace_root_write():
 
 def test_replace_root_copy0():
     s, target = replace_ir_builder(deep_copy=True)
-
     old_hash = s.mod["main"].__hash__()
     func_ref = s.mod["main"]
     sref = s.get_sref(s.mod["main"].body.block)
@@ -219,7 +247,6 @@ def test_replace_root_copy0():
 
 def test_replace_root_copy1():
     s, target = replace_ir_builder(deep_copy=True, realize=True)
-
     old_hash = s.mod["main"].body.block.__hash__()
     func_ref = s.mod["main"].body.block
     sref = s.get_sref(s.mod["main"].body.block.body[0])
@@ -234,7 +261,6 @@ def test_replace_root_copy1():
 
 def test_replace_root_copy2():
     s, target = replace_ir_builder(deep_copy=True)
-
     old_hash = s.mod.functions.__hash__()
     func_ref = s.mod.functions
     sref = s.get_sref(s.mod["main"].body.block)
@@ -250,7 +276,6 @@ def test_replace_root_copy2():
 
 def test_replace_root_copy3():
     s, target = replace_ir_builder(deep_copy=True)
-
     old_hash = s.mod.__hash__()
     func_ref = s.mod
     sref = s.get_sref(s.mod["main"].body.block)
@@ -269,38 +294,37 @@ def test_replace_block_remap():
     # The target stmt
     target = matmul.body.block.body.body.body[0].block
     sref = s.get_sref(s.mod["main"].body.block.body[0].body.body.block)
-    s.state.replace(sref, target, {target: s.mod["main"].body.block.body[0].body.body.block})
-    sref_new = s.get_sref(s.get_block("init"))
+    s.replace(sref, target, {sref.stmt: target})
+    sref_new = s.get_sref(s.mod["main"].body.block.body[0].body.body.block)
     # Check the original sref has been remapped
     assert sref.__hash__() == sref_new.__hash__()
     tvm.ir.assert_structural_equal(sref.stmt, target)
 
 
 def test_replace_block_in_opaque_block():
-    pass  # TODO
-    # s = replace_ir_builder_with_opaque()
-    # root_hash = s.mod["main"].__hash__()
-    # for_loop = s.mod["main"].body.block.body.body.block.body[1].then_case.block.body
-    # sref = s.get_sref(for_loop)
-    # new_for_loop = tir.Loop(
-    #     loop_var=for_loop.loop_var,
-    #     min_val=0,
-    #     extent=128,
-    #     annotations=[],
-    #     body=tir.Evaluate(0),
-    # )
-    # s.replace(sref, new_for_loop)
-    # assert root_hash == s.mod["main"].__hash__()
-    # tvm.ir.assert_structural_equal(sref.stmt, new_for_loop)
+    s = replace_ir_builder_with_opaque()
+    root_hash = s.mod["main"].__hash__()
+    for_loop = s.mod["main"].body.block.body.body.block.body[1].then_case.block.body
+    sref = s.get_sref(for_loop)
+    new_for_loop = tir.For(
+        loop_var=for_loop.loop_var,
+        min_val=0,
+        extent=128,
+        kind=tir.ForKind.SERIAL,
+        body=tir.Evaluate(0),
+        thread_binding=None,
+        annotations=None,
+    )
+    s.replace(sref, new_for_loop)
+    assert root_hash == s.mod["main"].__hash__()
+    tvm.ir.assert_structural_equal(sref.stmt, new_for_loop)
 
 
 def test_replace_ir_module():
     s, target = replace_ir_builder_module(deep_copy=True)
-
     old_hash = s.mod["main"].__hash__()
     other_func_hash = s.mod["other"].__hash__()
     func_ref = s.mod["main"]
-
     sref = s.get_sref(s.mod["main"].body.block)
     s.replace(sref, target)
     # Check the new body equals to target
