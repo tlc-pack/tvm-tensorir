@@ -352,7 +352,7 @@ class MutatorParallel {
     Schedule sch(workload);
     std::set<int> extent_candidates;
     extent_candidates.insert(1);
-    for (int i = 0; i < trace->insts.size(); i++) {
+    for (size_t i = 0; i < trace->insts.size(); i++) {
       const Instruction& mark_inst = trace->insts[i];
       if (const auto* mark_attr = mark_inst->inst_attrs.as<MarkBlockAttrs>()) {
         ICHECK_EQ(mark_inst->inputs.size(), 2);
