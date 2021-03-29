@@ -334,16 +334,6 @@ TVM_DLL Stmt IRTransform(Stmt stmt, const runtime::PackedFunc& preorder,
                          Optional<Array<String>> only_enable = NullOpt);
 
 /*!
- * \brief Recursively visit the IR in pre DFS order node, apply fvisit.
- * If fvisit returns false, it stops visit the children of the current node.
- * \param stmt The ir to be visited.
- * \param fvisit The visitor function to be applied. If fvisit returns false, it stops visit the
- * children on that node.
- */
-TVM_DLL void PreOrderVisit(const ObjectRef& node,
-                           const std::function<bool(const ObjectRef&)>& fvisit);
-
-/*!
  * \brief Recursively visit the ir in post DFS order node, apply fvisit
  * Each node is guaranteed to be visited only once.
  * \param node The ir to be visited.
@@ -414,10 +404,12 @@ inline T Substitute(T input, const std::unordered_map<const VarNode*, PrimExpr>&
  * If fvisit returns false, it won't visit the children of the node.
  * \param stmt_or_expr The ir to be visited.
  * \param fvisit The visitor function to be applied. If fvisit returns false, it won't visit the
+ * \param visit_init_block Whether or not to visit the init block
  * children of the node
  */
 TVM_DLL void PreOrderVisit(const ObjectRef& stmt_or_expr,
-                           const std::function<bool(const ObjectRef&)>& fvisit);
+                           const std::function<bool(const ObjectRef&)>& fvisit,
+                           bool visit_init_block = true);
 }  // namespace tir
 }  // namespace tvm
 

@@ -37,7 +37,7 @@ logging.getLogger("meta_schedule").setLevel(logging.DEBUG)
 def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     X = tir.match_buffer(x, (1, 512, 7, 7), "float32")
     W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
-    X_padded = tir.buffer_allocate((1, 512, 9, 9), "float32")
+    X_padded = tir.alloc_buffer((1, 512, 9, 9), "float32")
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
         X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
@@ -74,8 +74,8 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
 def conv2d_relu(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     X = tir.match_buffer(x, (1, 512, 7, 7), "float32")
     W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
-    X_padded = tir.buffer_allocate((1, 512, 9, 9), "float32")
-    Y_i = tir.buffer_allocate((1, 512, 7, 7), "float32")
+    X_padded = tir.alloc_buffer((1, 512, 9, 9), "float32")
+    Y_i = tir.alloc_buffer((1, 512, 7, 7), "float32")
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
         X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
@@ -115,9 +115,9 @@ def conv2d_relu(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
 def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     X = tir.match_buffer(x, (1, 512, 7, 7), "float32")
     W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
-    X_padded = tir.buffer_allocate((1, 512, 9, 9), "float32")
-    Y_i = tir.buffer_allocate((1, 512, 7, 7), "float32")
-    Y_j = tir.buffer_allocate((1, 512, 7, 7), "float32")
+    X_padded = tir.alloc_buffer((1, 512, 9, 9), "float32")
+    Y_i = tir.alloc_buffer((1, 512, 7, 7), "float32")
+    Y_j = tir.alloc_buffer((1, 512, 7, 7), "float32")
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
         X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg

@@ -63,12 +63,12 @@ class BlockRealizeRewriter : public StmtExprMutator {
 
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
     auto v =
-        arith::IterMapSimplify(op->block->iter_vars, op->binding_values, loop_map_, op->predicate);
-    if (v.same_as(op->binding_values)) {
+        arith::IterMapSimplify(op->block->iter_vars, op->iter_values, loop_map_, op->predicate);
+    if (v.same_as(op->iter_values)) {
       return GetRef<Stmt>(op);
     } else {
       auto n = CopyOnWrite(op);
-      n->binding_values = std::move(v);
+      n->iter_values = std::move(v);
       block_updates_->insert(n->block.get());
       return Stmt(n);
     }

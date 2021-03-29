@@ -56,16 +56,19 @@ class PostprocRewriteTensorize {
   Optional<tir::StmtSRef> FindTensorized(const Schedule& sch) {
     Optional<tir::StmtSRef> result = NullOpt;
     tir::PrimFunc func = GetOnlyFunc(sch->mod());
-    tir::PreOrderVisit(func->body, [&result, &sch](const ObjectRef& obj) -> bool {
-      if (const auto* block = obj.as<tir::BlockNode>()) {
-        tir::StmtSRef block_sref = sch->GetSRef(block);
-        if (HasAnn(block_sref, tir::attr::auto_tensorize, "1")) {
-          result = block_sref;
-          return false;
-        }
-      }
-      return true;
-    });
+    tir::PreOrderVisit(
+        func->body,
+        [&result, &sch](const ObjectRef& obj) -> bool {
+          if (const auto* block = obj.as<tir::BlockNode>()) {
+            tir::StmtSRef block_sref = sch->GetSRef(block);
+            if (HasAnn(block_sref, tir::attr::auto_tensorize, "1")) {
+              result = block_sref;
+              return false;
+            }
+          }
+          return true;
+        },
+        /*visit_init_block=*/false);
     return result;
   }
 

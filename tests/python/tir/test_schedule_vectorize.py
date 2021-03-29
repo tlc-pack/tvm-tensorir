@@ -54,7 +54,7 @@ def predicate_unroll(b: ty.handle, c: ty.handle) -> None:
 def element_wise_compute_at(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (128, 128), "float32")
     A = tir.match_buffer(a, (128, 128), "float32")
-    B = tir.buffer_allocate((128, 128), "float32")
+    B = tir.alloc_buffer((128, 128), "float32")
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "B") as [vi, vj]:
             B[vi, vj] = (A[vi, vj] * tir.float32(2))
@@ -66,7 +66,7 @@ def element_wise_compute_at(a: ty.handle, c: ty.handle) -> None:
 def element_wise_compute_at_vectorize(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     C = tir.match_buffer(c, (128, 128), "float32")
-    B = tir.buffer_allocate((128, 128), "float32")
+    B = tir.alloc_buffer((128, 128), "float32")
     for i, j_outer in tir.grid(128, 32):
         for j_inner in tir.vectorized(0, 4):
             with tir.block([128, 128], "B") as [vi, vj]:

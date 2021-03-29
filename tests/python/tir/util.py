@@ -51,7 +51,7 @@ def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 def element_wise(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     C = tir.match_buffer(c, (128, 128), "float32")
-    B = tir.buffer_allocate((128, 128), "float32")
+    B = tir.alloc_buffer((128, 128), "float32")
 
     with tir.block([128, 128], "B") as [vi, vj]:
         B[vi, vj] = A[vi, vj] * 2.0

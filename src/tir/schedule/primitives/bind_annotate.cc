@@ -45,14 +45,14 @@ bool IsLoopVarParallelizable(const ScheduleState self, const Var& loop_var,
   // if (!self->stmt2ref.at(block)->affine) {
   //   return false;
   // }
-  CHECK_EQ(realize->binding_values.size(), block->iter_vars.size())
+  CHECK_EQ(realize->iter_values.size(), block->iter_vars.size())
       << "InternalError: BlockRealize is inconsistent with its Block";
-  int n = realize->binding_values.size();
+  int n = realize->iter_values.size();
   // Cond 2. For each iter var that is not data parallel, the binding does not involve loop_var
   std::string thread_tag = thread_binding.defined() ? thread_binding.value()->thread_tag : "";
   for (int i = 0; i < n; ++i) {
     const IterVar& iter_var = block->iter_vars[i];
-    const PrimExpr& binding = realize->binding_values[i];
+    const PrimExpr& binding = realize->iter_values[i];
     bool contains = StmtExprContainsVar(binding, loop_var);
     if (contains && iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
       return false;

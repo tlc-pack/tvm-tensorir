@@ -35,7 +35,7 @@ def plus_one_matmul(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
     D = tir.match_buffer(d, (1024, 1024), "float32")
-    C = tir.buffer_allocate((1024, 1024), "float32")
+    C = tir.alloc_buffer((1024, 1024), "float32")
     with tir.block([1024, 1024], "plus_one") as [vi, vj]:
         C[vi, vj] = A[vi, vj] + 1.0
     with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
@@ -53,7 +53,7 @@ def plus_one_matmul_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        C = tir.buffer_allocate([1024, 1024], elem_offset=0, align=128, offset_factor=1)
+        C = tir.alloc_buffer([1024, 1024], elem_offset=0, align=128, offset_factor=1)
         for i0 in range(0, 1024):
             for i1 in range(0, 1024):
                 for i2 in range(0, 1024):
@@ -155,7 +155,7 @@ def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        C = tir.buffer_allocate([1024, 1024], elem_offset=0, align=128, offset_factor=1)
+        C = tir.alloc_buffer([1024, 1024], elem_offset=0, align=128, offset_factor=1)
         for i0 in range(0, 1024):
             for i1 in range(0, 1024):
                 for i2 in range(0, 1024):
@@ -191,8 +191,8 @@ def matmul_cache_read(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        A_local = tir.buffer_allocate([1024, 1024], elem_offset=0, scope="local", align=128, offset_factor=1)
-        B_local = tir.buffer_allocate([1024, 1024], elem_offset=0, scope="local", align=128, offset_factor=1)
+        A_local = tir.alloc_buffer([1024, 1024], elem_offset=0, scope="local", align=128, offset_factor=1)
+        B_local = tir.alloc_buffer([1024, 1024], elem_offset=0, scope="local", align=128, offset_factor=1)
         for ax0 in range(0, 1024):
             for ax1 in range(0, 1024):
                 with tir.block([1024, 1024], "") as [v0, v1]:
@@ -234,7 +234,7 @@ def matmul_cache_write(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        C_local = tir.buffer_allocate([1024, 1024], elem_offset=0, scope="local", align=128, offset_factor=1)
+        C_local = tir.alloc_buffer([1024, 1024], elem_offset=0, scope="local", align=128, offset_factor=1)
         for i0 in range(0, 1024):
             for i1 in range(0, 1024):
                 for i2 in range(0, 1024):
@@ -264,7 +264,7 @@ def matmul_cache_write(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 @tvm.script.tir
 def elementwise(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
-    B = tir.buffer_allocate((1024, 1024), "float32")
+    B = tir.alloc_buffer((1024, 1024), "float32")
     C = tir.match_buffer(c, (1024, 1024), "float32")
     with tir.block([1024, 1024], "B") as [vi, vj]:
         B[vi, vj] = A[vi, vj] + 1.0

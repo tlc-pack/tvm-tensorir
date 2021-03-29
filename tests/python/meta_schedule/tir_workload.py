@@ -40,7 +40,7 @@ def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
     D = tir.match_buffer(d, (1024, 1024), "float32")
-    C = tir.buffer_allocate((1024, 1024), "float32")
+    C = tir.alloc_buffer((1024, 1024), "float32")
     with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
         with tir.init():
             C[vi, vj] = 0.0

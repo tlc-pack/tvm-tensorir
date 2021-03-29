@@ -72,7 +72,7 @@ bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& lo
   arith::Analyzer analyzer;
   Array<arith::IterSumExpr> results = arith::DetectIterMap(
       /*leaf_iters=*/realize->block->iter_vars,
-      /*bindings=*/realize->binding_values,
+      /*bindings=*/realize->iter_values,
       /*root_iters=*/loop_var_ranges,
       /*input_pred=*/realize->predicate, /*analyzer=*/&analyzer);
   if (results.empty()) {
@@ -609,11 +609,11 @@ IterVarType GetLoopIterType(const ScheduleState& self, const StmtSRef& loop_sref
     if (const auto* realize = obj.as<BlockRealizeNode>()) {
       const BlockNode* block = realize->block.get();
       // Number of block vars and their bindings
-      ICHECK_EQ(realize->binding_values.size(), block->iter_vars.size());
-      int n = realize->binding_values.size();
+      ICHECK_EQ(realize->iter_values.size(), block->iter_vars.size());
+      int n = realize->iter_values.size();
       for (int i = 0; i < n; ++i) {
         const IterVar& iter_var = block->iter_vars[i];
-        const PrimExpr& binding = realize->binding_values[i];
+        const PrimExpr& binding = realize->iter_values[i];
         // Categorize the current block var
         int* ref = nullptr;
         if (iter_var->iter_type == IterVarType::kDataPar) {

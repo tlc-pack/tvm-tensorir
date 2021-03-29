@@ -199,12 +199,6 @@ class TVM_DLL Object {
   inline int use_count() const;
 
   /*!
-   * \return Weather the cell has only one reference
-   * \note We use stl style naming to be consistent with known API in shared_ptr.
-   */
-  inline bool unique() const;
-
-  /*!
    * \brief Get the type key of the corresponding index from runtime.
    * \param tindex The type index.
    * \return the result.
@@ -873,8 +867,6 @@ inline bool Object::IsInstance() const {
     return false;
   }
 }
-
-inline bool Object::unique() const { return use_count() == 1; }
 
 template <typename ObjectType>
 inline const ObjectType* ObjectRef::as() const {

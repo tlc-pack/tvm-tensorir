@@ -237,7 +237,7 @@ class AllReduceTransformer : public StmtExprMutator {
     std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> reduction_relative_;
     for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
       const IterVar& block_var = block_op->iter_vars[i];
-      const PrimExpr& binding_value = op->binding_values[i];
+      const PrimExpr& binding_value = op->iter_values[i];
       ICHECK(block_var.as<IterVarNode>() != nullptr);
       ICHECK(binding_value.as<PrimExprNode>() != nullptr);
 
@@ -353,7 +353,6 @@ class AllReduceTransformer : public StmtExprMutator {
     allreduce_id++;
 
     std::string block_name = block_op->name_hint;
-    std::string exec_scope = block_op->exec_scope;
     if (need_normal_reduce) {
       // Step a. Mutate the original block if normal_reduce is needed.
       status = kMutatingBlock_nor_red;
@@ -401,16 +400,16 @@ class AllReduceTransformer : public StmtExprMutator {
       Stmt body0 = Evaluate(call);
       body0 = AttrStmt(GetRef<CommReducer>(reducer), tir::attr::reduce_scope,
                        make_zero(DataType::Handle()), body0);
-      body0 = Block({}, reads, writes, {}, {}, {}, "", red_tmp_name, body0, NullOpt);
+      body0 = Block({}, reads, writes, red_tmp_name, body0);
       body0 = BlockRealize({}, const_true(), GetRef<Block>(body0.as<BlockNode>()));
 
       // Step c. Create block/blockRealize: reduce_temp -> the original write buffer.
       std::vector<IterVar> iter_vars;
-      std::vector<PrimExpr> binding_values;
-      ICHECK_EQ(block_op->iter_vars.size(), op->binding_values.size());
+      std::vector<PrimExpr> iter_values;
+      ICHECK_EQ(block_op->iter_vars.size(), op->iter_values.size());
       for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
         const auto* iter_var = block_op->iter_vars[i].as<IterVarNode>();
-        const auto* value = op->binding_values[i].as<PrimExprNode>();
+        const auto* value = op->iter_values[i].as<PrimExprNode>();
         ICHECK(iter_var != nullptr);
         ICHECK(value != nullptr);
         if (iter_var->iter_type == kCommReduce) {
@@ -419,7 +418,7 @@ class AllReduceTransformer : public StmtExprMutator {
         ObjectPtr<IterVarNode> new_iter_var = CopyOnWrite(iter_var);
         new_iter_var->var = Var(CopyOnWrite(iter_var->var.as<VarNode>()));
         iter_vars.emplace_back(IterVar(new_iter_var));
-        binding_values.emplace_back(GetRef<PrimExpr>(value));
+        iter_values.emplace_back(GetRef<PrimExpr>(value));
       }
 
       reads = {BufferRegion(reduce_temp.value(), {Range(0, 1)})};
@@ -444,8 +443,8 @@ class AllReduceTransformer : public StmtExprMutator {
 
       Stmt body1 =
           BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}), update_body->indices);
-      body1 = Block(iter_vars, reads, writes, {}, {}, {}, exec_scope, block_name, body1, NullOpt);
-      body1 = BlockRealize(binding_values, predicate, GetRef<Block>(body1.as<BlockNode>()));
+      body1 = Block(iter_vars, reads, writes, block_name, body1);
+      body1 = BlockRealize(iter_values, predicate, GetRef<Block>(body1.as<BlockNode>()));
 
       // Step d. Append the stmts above to the list.
       std::vector<Stmt>& new_stmts_ = stmts_to_append_[par_stmt][red_loop];
@@ -486,11 +485,11 @@ class AllReduceTransformer : public StmtExprMutator {
 
       // Step b. Create block/blockRealize: reduce_temp -> the original write buffer.
       std::vector<IterVar> iter_vars;
-      std::vector<PrimExpr> binding_values;
-      ICHECK_EQ(block_op->iter_vars.size(), op->binding_values.size());
+      std::vector<PrimExpr> iter_values;
+      ICHECK_EQ(block_op->iter_vars.size(), op->iter_values.size());
       for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
         const auto* iter_var = block_op->iter_vars[i].as<IterVarNode>();
-        const auto* value = op->binding_values[i].as<PrimExprNode>();
+        const auto* value = op->iter_values[i].as<PrimExprNode>();
         ICHECK(iter_var != nullptr);
         ICHECK(value != nullptr);
         if (iter_var->iter_type == kCommReduce) {
@@ -499,7 +498,7 @@ class AllReduceTransformer : public StmtExprMutator {
         ObjectPtr<IterVarNode> new_iter_var = CopyOnWrite(iter_var);
         new_iter_var->var = Var(CopyOnWrite(iter_var->var.as<VarNode>()));
         iter_vars.emplace_back(IterVar(new_iter_var));
-        binding_values.emplace_back(GetRef<PrimExpr>(value));
+        iter_values.emplace_back(GetRef<PrimExpr>(value));
       }
 
       Array<BufferRegion> reads = {BufferRegion(reduce_temp.value(), {Range(0, 1)})};
@@ -520,8 +519,8 @@ class AllReduceTransformer : public StmtExprMutator {
 
       Stmt body =
           BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}), update_body->indices);
-      body = Block(iter_vars, reads, writes, {}, {}, {}, "", block_name, body, NullOpt);
-      body = BlockRealize(binding_values, predicate, GetRef<Block>(body.as<BlockNode>()));
+      body = Block(iter_vars, reads, writes, block_name, body);
+      body = BlockRealize(iter_values, predicate, GetRef<Block>(body.as<BlockNode>()));
 
       // Step c. Append the stmt above to the list.
       std::vector<Stmt>& new_stmts_ = stmts_to_append_[par_stmt][red_loop];
