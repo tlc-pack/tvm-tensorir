@@ -366,10 +366,9 @@ Instruction CacheWriteAttrs::Make(const BlockRV& block, int i, const String& sto
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction BlockizeAttrs::Make(const LoopRV& loop, const String& exec_scope,
+Instruction BlockizeAttrs::Make(const LoopRV& loop,
                                 const BlockRV& output) {
   ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
-  n->exec_scope = exec_scope;
   return Instruction(/*inputs=*/{loop},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
@@ -668,7 +667,7 @@ Array<ObjectRef> BlockizeAttrs::Apply(const Schedule& sch,  //
   ICHECK(!decision.defined());
   ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
-  return {sch->Blockize(loop, exec_scope)};
+  return {sch->Blockize(loop)};
 }
 
 Array<ObjectRef> DecomposeReductionAttrs::Apply(const Schedule& sch,
@@ -1022,7 +1021,6 @@ void BlockizeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                              const Optional<ObjectRef>& decision) const {
   PythonAPICall py("blockize");
   py.AddArgInput("loop", inputs[0]);
-  py.AddArgAttr("exec_scope", this->exec_scope);
   py.AddOutput(outputs[0]);
   py.Print(os);
 }
@@ -1159,7 +1157,6 @@ void CacheWriteAttrs::Serialize(Array<ObjectRef>* record,
 
 void BlockizeAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
-  record->push_back(this->exec_scope);
 }
 
 void TensorizeAttrs::Serialize(Array<ObjectRef>* record,
@@ -1256,7 +1253,6 @@ InstAttrs CacheWriteAttrs::Deserialize(const Array<ObjectRef>& record,
 InstAttrs BlockizeAttrs::Deserialize(const Array<ObjectRef>& record,
                                      Optional<ObjectRef>* decision) {
   ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
-  n->exec_scope = Downcast<String>(record[3]);
   return InstAttrs(std::move(n));
 }
 

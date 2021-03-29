@@ -234,6 +234,13 @@ class ScheduleNode : public runtime::Object {
 
  public:
   /******** Block/Loop relation ********/
+  /******** Schedule: blockize / tensorize ********/
+  /*!
+   * \brief Make subtree rooted by a specific loop into a block
+   * \param loop_rv The root of the subtree
+   * \return The new block
+   */
+  virtual BlockRV Blockize(const LoopRV& loop_rv) = 0;
   /*!
    * \brief Retrieve a block in a specific function with its name
    * \param name The name of the block to be retrieved

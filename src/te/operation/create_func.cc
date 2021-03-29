@@ -17,8 +17,10 @@
  * under the License.
  */
 
+#include <tvm/runtime/registry.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/analysis.h>
 
 #include "../schedule/graph.h"
 
@@ -147,21 +149,29 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
         // Add allocation
         allocations.push_back(buffer);
       }
+      Map<String, ObjectRef> annotations = op->attrs;
+      annotations.Set("script_detect_access", IntImm(DataType::Int(32), 3));
+      Block block(/*iter_vars=*/block_vars,
+                  /*reads=*/{}, /*writes=*/{}, /*name_hint=*/GetUniqueName(op->name, &name_map),
+                  /*body=*/body, /*init=*/init, /*alloc_buffers=*/{}, /*match_buffers=*/{},
+                  /*annotations=*/annotations);
 
-      Block block(block_vars, NullValue<Array<BufferRegion>>(), NullValue<Array<BufferRegion>>(),
-                  {}, op->attrs, {}, "", GetUniqueName(op->name, &name_map), body, init);
-      Array<PrimExpr> null_bindings;
-      for (size_t i = 0; i < block_vars.size(); i++) null_bindings.push_back(NullValue<PrimExpr>());
-      BlockRealize realize(null_bindings, Bool(true), block);
+      Array<PrimExpr> nan_bindings;
+      for (size_t i = 0; i < block_vars.size(); i++)
+        nan_bindings.push_back(FloatImm(DataType::Float(32), std::nan("")));
+      BlockRealize realize(nan_bindings, Bool(true), block);
       seq.push_back(realize);
     } else {
       LOG(FATAL) << "Unsupported OperationNode";
     }
   }
 
-  Stmt root = auto_complete(SeqStmt::Flatten(seq), allocations);
+  PrimFunc func = PrimFunc(parameters, SeqStmt::Flatten(seq), VoidType(), buffer_map);
 
-  return PrimFunc(parameters, root, VoidType(), buffer_map);
+  const auto* complete = runtime::Registry::Get("script.Complete");
+  ICHECK(complete);
+
+  return (*complete)(func, allocations);
 }
 
 TVM_REGISTER_GLOBAL("te.CreateFunc").set_body_typed([](const Array<te::Tensor>& tensors) {

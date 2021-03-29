@@ -113,14 +113,14 @@ def _matmul_sketch_0(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> No
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        C_local = tir.buffer_allocate([512, 512], elem_offset=0, scope="local", align=128, offset_factor=1)
-        B_shared = tir.buffer_allocate([512, 512], elem_offset=0, scope="shared", align=128, offset_factor=1)
-        A_shared = tir.buffer_allocate([512, 512], elem_offset=0, scope="shared", align=128, offset_factor=1)
+        C_local = tir.alloc_buffer([512, 512], elem_offset=0, scope="local", align=128, offset_factor=1)
+        B_shared = tir.alloc_buffer([512, 512], elem_offset=0, scope="shared", align=128, offset_factor=1)
+        A_shared = tir.alloc_buffer([512, 512], elem_offset=0, scope="shared", align=128, offset_factor=1)
         for i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused in tir.thread_binding(0, 32, thread="blockIdx.x"):
             for i0_outer_outer_outer_inner_i1_outer_outer_outer_inner_fused in tir.thread_binding(0, 1, thread="vthread"):
                 for i0_outer_outer_inner_i1_outer_outer_inner_fused in tir.thread_binding(0, 4, thread="threadIdx.x"):
                     for i2_outer_outer in range(0, 8):
-                        for ax0_ax1_fused_outer in range(0, 2048, annotation={"loop_type": "lazy_cooperative_fetch"}):
+                        for ax0_ax1_fused_outer in range(0, 2048, annotations={"loop_type": "lazy_cooperative_fetch"}):
                             for ax0_ax1_fused_inner in tir.vectorized(0, 4):
                                 with tir.block([512, 512], "A_shared") as [v0, v1]:
                                     tir.bind(v0, ((tir.floordiv(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused, 8)*128) + tir.floordiv(((ax0_ax1_fused_outer*4) + ax0_ax1_fused_inner), 64)))
@@ -128,7 +128,7 @@ def _matmul_sketch_0(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> No
                                     tir.reads([A[v0:(v0 + 1), v1:(v1 + 1)]])
                                     tir.writes([A_shared[v0:(v0 + 1), v1:(v1 + 1)]])
                                     A_shared[v0, v1] = A[v0, v1]
-                        for ax0_ax1_fused_outer_1 in range(0, 4096, annotation={"loop_type": "lazy_cooperative_fetch"}):
+                        for ax0_ax1_fused_outer_1 in range(0, 4096, annotations={"loop_type": "lazy_cooperative_fetch"}):
                             for ax0_ax1_fused_inner_1 in range(0, 1):
                                 with tir.block([512, 512], "B_shared") as [v0_1, v1_1]:
                                     tir.bind(v0_1, ((i2_outer_outer*64) + tir.floordiv(ax0_ax1_fused_outer_1, 64)))
@@ -181,7 +181,7 @@ def test_meta_schedule_sketch_cuda_matmul():
 
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable,unexpected-keyword-arg,misplaced-comparison-constant
-# fmt: off
+# fmt: offtest_meta_schedule_tensorize_rule.py
 
 @tvm.script.tir
 def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B: ty.handle, var_bn_scale: ty.handle, var_bn_offset: ty.handle, var_compute: ty.handle) -> None:
@@ -195,14 +195,14 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        compute_local = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, scope="local", align=128, offset_factor=1)
-        W_shared = tir.buffer_allocate([512, 512, 3, 3], elem_offset=0, scope="shared", align=128, offset_factor=1)
-        pad_temp_shared = tir.buffer_allocate([1, 512, 58, 58], elem_offset=0, scope="shared", align=128, offset_factor=1)
+        compute_local = tir.alloc_buffer([1, 512, 56, 56], elem_offset=0, scope="local", align=128, offset_factor=1)
+        W_shared = tir.alloc_buffer([512, 512, 3, 3], elem_offset=0, scope="shared", align=128, offset_factor=1)
+        pad_temp_shared = tir.alloc_buffer([1, 512, 58, 58], elem_offset=0, scope="shared", align=128, offset_factor=1)
         for i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused in tir.thread_binding(0, 4, thread="blockIdx.x"):
             for i0_outer_outer_outer_inner_i1_outer_outer_outer_inner_fused_i2_outer_outer_outer_inner_fused_i3_outer_outer_outer_inner_fused in tir.thread_binding(0, 16, thread="vthread"):
                 for i0_outer_outer_inner_i1_outer_outer_inner_fused_i2_outer_outer_inner_fused_i3_outer_outer_inner_fused in tir.thread_binding(0, 224, thread="threadIdx.x"):
                     for i4_outer_outer, i5_outer_outer, i6_outer_outer in tir.grid(1, 1, 1):
-                        for ax0_ax1_fused_ax2_fused_ax3_fused_outer in range(0, 430592, annotation={"loop_type": "lazy_cooperative_fetch"}):
+                        for ax0_ax1_fused_ax2_fused_ax3_fused_outer in range(0, 430592, annotations={"loop_type": "lazy_cooperative_fetch"}):
                             for ax0_ax1_fused_ax2_fused_ax3_fused_inner in tir.vectorized(0, 4):
                                 with tir.block([1, 512, 58, 58], "pad_temp_shared") as [v0, v1, v2, v3]:
                                     tir.bind(v0, 0)
@@ -212,7 +212,7 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B
                                     tir.reads([X[v0:(v0 + 1), v1:(v1 + 1), (v2 - 1):((v2 - 1) + 1), (v3 - 1):((v3 - 1) + 1)]])
                                     tir.writes([pad_temp_shared[v0:(v0 + 1), v1:(v1 + 1), v2:(v2 + 1), v3:(v3 + 1)]])
                                     pad_temp_shared[v0, v1, v2, v3] = tir.if_then_else(((((1 <= v2) and (v2 < 57)) and (1 <= v3)) and (v3 < 57)), X[v0, v1, (v2 - 1), (v3 - 1)], tir.float32(0), dtype="float32")
-                        for ax0_ax1_fused_ax2_fused_ax3_fused_outer_1 in range(0, 589824, annotation={"loop_type": "lazy_cooperative_fetch"}):
+                        for ax0_ax1_fused_ax2_fused_ax3_fused_outer_1 in range(0, 589824, annotations={"loop_type": "lazy_cooperative_fetch"}):
                             for ax0_ax1_fused_ax2_fused_ax3_fused_inner_1 in range(0, 1):
                                 with tir.block([512, 512, 3, 3], "W_shared") as [v0_1, v1_1, v2_1, v3_1]:
                                     tir.bind(v0_1, ((i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused*128) + tir.floordiv(ax0_ax1_fused_ax2_fused_ax3_fused_outer_1, 4608)))

@@ -75,14 +75,14 @@ class IRSubstituteInScope : public StmtExprMutator {
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
     arith::Analyzer analyzer;
     auto fmutate = [&](const PrimExpr& e) { return this->VisitExpr(e); };
-    Array<PrimExpr> v = op->binding_values;
+    Array<PrimExpr> v = op->iter_values;
     v.MutateByApply(fmutate);
     PrimExpr pred = this->VisitExpr(op->predicate);
-    if (v.same_as(op->binding_values) && pred.same_as(op->predicate)) {
+    if (v.same_as(op->iter_values) && pred.same_as(op->predicate)) {
       return GetRef<Stmt>(op);
     } else {
       auto n = CopyOnWrite(op);
-      n->binding_values = std::move(v);
+      n->iter_values = std::move(v);
       n->predicate = std::move(analyzer.Simplify(pred));
       return Stmt(n);
     }
@@ -272,7 +272,7 @@ std::function<BufferRegion(const BufferRegion)> RelaxGenerator(
 
   // Update block_var map
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
-    (*vmap)[block->iter_vars[i]->var.get()] = block_realize->binding_values[i];
+    (*vmap)[block->iter_vars[i]->var.get()] = block_realize->iter_values[i];
   }
 
   // Gather iteration domain
@@ -461,6 +461,100 @@ void UpdateAffineFlag(ScheduleState self, const StmtSRef& block_sref) {
   }
   ICHECK(self->block_info.count(block_sref));
   self->block_info[block_sref].affine_binding = ValidateBlockBinding(realize, loop_var_ranges);
+}
+
+Array<BufferRegion> BlockReadWriteCollector::reads() {
+  std::vector<BufferRegion> res;
+  for (size_t i = 0; i < read_regions_.size(); ++i) {
+    std::vector<Range> region;
+    for (const auto& range : read_regions_[i])
+      region.push_back(range.CoverRange(Range::FromMinExtent(0, 0)));
+    res.emplace_back(read_buffers_[i], region);
+  }
+  return res;
+}
+
+Array<BufferRegion> BlockReadWriteCollector::writes() {
+  std::vector<BufferRegion> res;
+  for (size_t i = 0; i < write_regions_.size(); ++i) {
+    std::vector<Range> region;
+    for (const auto& range : write_regions_[i])
+      region.push_back(range.CoverRange(Range::FromMinExtent(0, 0)));
+    res.emplace_back(writes_buffers_[i], region);
+  }
+  return res;
+}
+
+void BlockReadWriteCollector::VisitStmt_(const ForNode* op) {
+  Range range = Range::FromMinExtent(op->min, op->extent);
+  dom_map_[op->loop_var.get()] = arith::IntSet::FromRange(range);
+  StmtVisitor::VisitStmt_(op);
+  dom_map_.erase(op->loop_var.get());
+}
+
+void BlockReadWriteCollector::Update(std::vector<Buffer>* buffers,
+                                     std::vector<std::vector<arith::IntSet>>* regions,
+                                     const Buffer& buffer,
+                                     const std::vector<arith::IntSet>& region) {
+  if (inner_buffers_.find(buffer.get()) != inner_buffers_.end()) return;
+  bool find = false;
+  for (size_t i = 0; i < regions->size(); ++i)
+    if ((*buffers)[i].same_as(buffer)) {
+      find = true;
+      ICHECK_EQ((*regions)[i].size(), region.size()) << "Inconsistent buffer dimension";
+      for (size_t j = 0; j < region.size(); ++j) {
+        (*regions)[i][j] = arith::Union({(*regions)[i][j], region[j]});
+      }
+    }
+  if (!find) {
+    buffers->push_back(buffer);
+    regions->push_back(region);
+  }
+}
+
+void BlockReadWriteCollector::VisitExpr_(const BufferLoadNode* op) {
+  std::vector<arith::IntSet> relaxed_region;
+  for (size_t j = 0; j < op->indices.size(); ++j) {
+    relaxed_region.push_back(arith::EvalSet(op->indices[j], dom_map_));
+  }
+  Update(&read_buffers_, &read_regions_, op->buffer, relaxed_region);
+  ExprVisitor::VisitExpr_(op);
+}
+
+void BlockReadWriteCollector::VisitStmt_(const BufferStoreNode* op) {
+  std::vector<arith::IntSet> relaxed_region;
+  for (size_t j = 0; j < op->indices.size(); ++j) {
+    relaxed_region.push_back(arith::EvalSet(op->indices[j], dom_map_));
+  }
+  Update(&writes_buffers_, &write_regions_, op->buffer, relaxed_region);
+  StmtVisitor::VisitStmt_(op);
+}
+
+void BlockReadWriteCollector::VisitStmt_(const BlockRealizeNode* op) {
+  std::unordered_map<const VarNode*, PrimExpr> vmap;
+  for (size_t i = 0; i < op->block->iter_vars.size(); ++i) {
+    vmap[op->block->iter_vars[i]->var.get()] = op->iter_values[i];
+  }
+  for (const auto& read : op->block->reads) {
+    std::vector<arith::IntSet> relaxed_region;
+    for (const auto& range : read->region) {
+      relaxed_region.push_back(
+          arith::EvalSet(arith::IntSet::FromRange(Range::FromMinExtent(
+              Substitute(range->min, vmap), Substitute(range->extent, vmap))),
+                         dom_map_));
+    }
+    Update(&read_buffers_, &read_regions_, read->buffer, relaxed_region);
+  }
+  for (const auto& write : op->block->writes) {
+    std::vector<arith::IntSet> relaxed_region;
+    for (const auto& range : write->region) {
+      relaxed_region.push_back(
+          arith::EvalSet(arith::IntSet::FromRange(Range::FromMinExtent(
+              Substitute(range->min, vmap), Substitute(range->extent, vmap))),
+                         dom_map_));
+    }
+    Update(&writes_buffers_, &write_regions_, write->buffer, relaxed_region);
+  }
 }
 
 void PatternMatcher::VisitExpr_(const VarNode* op) {

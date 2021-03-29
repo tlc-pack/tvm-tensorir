@@ -29,7 +29,7 @@ import util
 def fused_element_wise(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128))
     C = tir.match_buffer(c, (128, 128))
-    B = tir.buffer_allocate((128, 128))
+    B = tir.alloc_buffer((128, 128))
 
     for i in range(0, 16384):
         with tir.block([128, 128], "B") as [vi, vj]:
@@ -48,7 +48,7 @@ def fused_element_wise(a: ty.handle, c: ty.handle) -> None:
 def split_element_wise(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128))
     C = tir.match_buffer(c, (128, 128))
-    B = tir.buffer_allocate((128, 128))
+    B = tir.alloc_buffer((128, 128))
 
     for io, ii, j in tir.grid(8, 16, 128):
         with tir.block([128, 128], "B") as [vi, vj]:
@@ -69,7 +69,7 @@ def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128))
     C = tir.match_buffer(c, (128, 128))
 
-    B = tir.buffer_allocate((128, 128))
+    B = tir.alloc_buffer((128, 128))
     for i in range(0, 128):
         for j in range(0, 128):
             with tir.block([128, 128], "B") as [vi, vj]:
@@ -84,7 +84,7 @@ def reverse_compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
     # function attr dict
     C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
-    B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
+    B = tir.alloc_buffer([128, 128], elem_offset=0, align=128, offset_factor=1)
 
     # body
     for i0_outer in range(0, 8):
@@ -143,7 +143,7 @@ def inline_element_wise(a: ty.handle, c: ty.handle) -> None:
 def blockize(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (128, 128), "float32")
     A = tir.match_buffer(a, (128, 128), "float32")
-    B = tir.buffer_allocate((128, 128), "float32")
+    B = tir.alloc_buffer((128, 128), "float32")
     for i, j in tir.grid(8, 8):
         with tir.block([8, 8], "blockized_B") as [vi, vj]:
             tir.bind(vi, i)
@@ -189,7 +189,7 @@ def compute_at_case(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     C = tir.match_buffer(c, (128, 128), "float32")
 
-    B = tir.buffer_allocate((128, 128))
+    B = tir.alloc_buffer((128, 128))
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "B0") as [vi, vj]:
             A[vi, vj] = 2.0
@@ -208,8 +208,8 @@ def compute_at_case(a: ty.handle, c: ty.handle) -> None:
 def test_func_cache_rw(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     C = tir.match_buffer(c, (128, 128), "float32")
-    B = tir.buffer_allocate((128, 128), "float32")
-    D = tir.buffer_allocate((128, 128), "float32")
+    B = tir.alloc_buffer((128, 128), "float32")
+    D = tir.alloc_buffer((128, 128), "float32")
 
     with tir.block([128, 128, tir.reduce_axis(0, 128)], "A") as [vi, vj, vk]:
         A[vi, vj] = A[vi, vj] + B[vi, vk] * C[vj, vk]
@@ -225,9 +225,9 @@ def test_func_cache_read(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
     # body
-    B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
-    D = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
-    A_local = tir.buffer_allocate(
+    B = tir.alloc_buffer([128, 128], elem_offset=0, align=128, offset_factor=1)
+    D = tir.alloc_buffer([128, 128], elem_offset=0, align=128, offset_factor=1)
+    A_local = tir.alloc_buffer(
         [128, 128], elem_offset=0, scope="local", align=128, offset_factor=1
     )
     with tir.block([128, 128, tir.reduce_axis(0, 128)], "A") as [vi, vj, vk]:
@@ -245,9 +245,9 @@ def test_func_cache_write(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
     # body
-    B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
-    D = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
-    A_local = tir.buffer_allocate(
+    B = tir.alloc_buffer([128, 128], elem_offset=0, align=128, offset_factor=1)
+    D = tir.alloc_buffer([128, 128], elem_offset=0, align=128, offset_factor=1)
+    A_local = tir.alloc_buffer(
         [128, 128], elem_offset=0, scope="local", align=128, offset_factor=1
     )
     with tir.block([128, 128, tir.reduce_axis(0, 128)], "A") as [vi, vj, vk]:
@@ -262,8 +262,8 @@ def test_func_cache_write(a: ty.handle, c: ty.handle) -> None:
 def cache_read(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (128, 128), "float32")
     A = tir.match_buffer(a, (128, 128), "float32")
-    B = tir.buffer_allocate((128, 128), "float32")
-    AA = tir.buffer_allocate((128, 128), "float32", scope="local")
+    B = tir.alloc_buffer((128, 128), "float32")
+    AA = tir.alloc_buffer((128, 128), "float32", scope="local")
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "AA") as [vi, vj]:
             AA[vi, vj] = A[vi, vj]
@@ -279,8 +279,8 @@ def cache_read(a: ty.handle, c: ty.handle) -> None:
 def cache_write(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (128, 128), "float32")
     A = tir.match_buffer(a, (128, 128), "float32")
-    B = tir.buffer_allocate((128, 128), "float32")
-    CC = tir.buffer_allocate((128, 128), "float32", scope="local")
+    B = tir.alloc_buffer((128, 128), "float32")
+    CC = tir.alloc_buffer((128, 128), "float32", scope="local")
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "B") as [vi, vj]:
             B[vi, vj] = A[vi, vj] * tir.float32(2)
@@ -300,7 +300,7 @@ def blockize_schedule_1(a: ty.handle, c: ty.handle) -> None:
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
+        B = tir.alloc_buffer([128, 128], elem_offset=0, align=128, offset_factor=1)
         for i0_outer in range(0, 8):
             for i1_outer in range(0, 8):
                 with tir.block([8, 8], "blockized_B") as [vio, vjo]:
@@ -339,7 +339,7 @@ def blockize_schedule_2(a: ty.handle, c: ty.handle) -> None:
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
+        B = tir.alloc_buffer([128, 128], elem_offset=0, align=128, offset_factor=1)
         for i0_outer in range(0, 4):
             for i1_outer in range(0, 4):
                 for ax0 in range(0, 2):
@@ -379,7 +379,7 @@ def matmul_pragma(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        for i0 in range(0, 128, annotation = {"pragma_auto_unroll_max_step":16, "pragma_unroll_explicit":False}):
+        for i0 in range(0, 128, annotations = {"pragma_auto_unroll_max_step":16, "pragma_unroll_explicit":False}):
             for i1 in range(0, 128):
                 for i2 in range(0, 128):
                     with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
@@ -397,7 +397,7 @@ def matmul_pragma(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 def element_wise_double_buffer(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128))
     C = tir.match_buffer(c, (128, 128))
-    B = tir.buffer_allocate((128, 128))
+    B = tir.alloc_buffer((128, 128))
 
     with tir.block([128, 128], "B") as [vi, vj]:
         tir.block_attr({"double_buffer_scope": 1})

@@ -96,8 +96,8 @@ def matmul_scale(a: ty.handle, b: ty.handle, e: ty.handle) -> None:
     B = tir.match_buffer(b, [128, 128])
     E = tir.match_buffer(e, [128, 128])
 
-    C = tir.buffer_allocate([128, 128])
-    D = tir.buffer_allocate([128, 128])
+    C = tir.alloc_buffer([128, 128])
+    D = tir.alloc_buffer([128, 128])
     with tir.block([128, 128], "D") as [vi, vj]:
         D[vi, vj] = A[vi, vj] * 2.0
 
@@ -116,7 +116,7 @@ def matmul_scale_inline(a: ty.handle, b: ty.handle, e: ty.handle) -> None:
     B = tir.match_buffer(b, [128, 128])
     E = tir.match_buffer(e, [128, 128])
 
-    C = tir.buffer_allocate([128, 128])
+    C = tir.alloc_buffer([128, 128])
     with tir.block([128, 128, tir.reduce_axis(0, 128)], "C") as [vi, vj, vk]:
         with tir.init():
             C[vi, vj] = 0.0
@@ -131,7 +131,7 @@ def matmul_rfactor(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [128, 128])
     B = tir.match_buffer(b, [128, 128])
     C = tir.match_buffer(c, [128, 128])
-    C_rf = tir.buffer_allocate([4, 128, 128])
+    C_rf = tir.alloc_buffer([4, 128, 128])
 
     for i2_inner_inner, i0, i1, i2_outer, i2_inner_outer in tir.grid(4, 128, 128, 4, 8):
         with tir.block([4, 128, 128, tir.reduce_axis(0, 4), tir.reduce_axis(0, 8)], "update_rf") as [vi2_inner_inner, vi, vj, vi2_outer, vi2_inner_outer]:
@@ -169,7 +169,7 @@ def square_sum(a: ty.handle, c: ty.handle) -> None:
 def square_sum_rfactor(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [16, 256, 256])
     C = tir.match_buffer(c, [16])
-    C_rf = tir.buffer_allocate([16, 256])
+    C_rf = tir.alloc_buffer([16, 256])
 
     for i2, i0, i1 in tir.grid(256, 16, 256):
         with tir.block([256, 16, tir.reduce_axis(0, 256)], "C_rf") as [vi2, b, i]:
@@ -193,7 +193,7 @@ def square_sum_rfactor(a: ty.handle, c: ty.handle) -> None:
 def square_sum_square_root(a: ty.handle, d: ty.handle) -> None:
     A = tir.match_buffer(a, [16, 256, 256])
     D = tir.match_buffer(d, [16])
-    C = tir.buffer_allocate([16])
+    C = tir.alloc_buffer([16])
 
     with tir.block([16, tir.reduce_axis(0, 256), tir.reduce_axis(0, 256)], "C") as [b, i, j]:
         with tir.init():
@@ -208,8 +208,8 @@ def square_sum_square_root(a: ty.handle, d: ty.handle) -> None:
 def square_sum_square_root_rfactor(a: ty.handle, d: ty.handle) -> None:
     A = tir.match_buffer(a, [16, 256, 256])
     D = tir.match_buffer(d, [16])
-    C = tir.buffer_allocate([16])
-    C_rf = tir.buffer_allocate([1, 16])
+    C = tir.alloc_buffer([16])
+    C_rf = tir.alloc_buffer([1, 16])
 
     for i1_i2_fused_inner, i0, i1_i2_fused_outer in tir.grid(1, 16, 65536):
         with tir.block([1, 16, tir.reduce_axis(0, 256), tir.reduce_axis(0, 256)], "C_rf") as [vi1_i2_fused_inner, b, i, j]:

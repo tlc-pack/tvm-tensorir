@@ -253,9 +253,9 @@ void ScheduleNode::MergeReduction(const BlockRV& init_block_rv, const BlockRV& u
 
 /******** Schedule: blockize / tensorize ********/
 
-BlockRV ScheduleNode::Blockize(const LoopRV& loop_rv, const String& exec_scope) {
-  BlockRV result = tir::ConcreteScheduleNode::Blockize(loop_rv, exec_scope);
-  this->trace->Append(BlockizeAttrs::Make(loop_rv, exec_scope, result));
+BlockRV ScheduleNode::Blockize(const LoopRV& loop_rv) {
+  BlockRV result = tir::ConcreteScheduleNode::Blockize(loop_rv);
+  this->trace->Append(BlockizeAttrs::Make(loop_rv, result));
   return result;
 }
 

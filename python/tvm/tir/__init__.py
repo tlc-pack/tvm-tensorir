@@ -29,11 +29,11 @@ from .expr import Call, CallEffectKind, Let, IterVar, Any, CommReducer
 
 from .stmt import Stmt, LetStmt, AssertStmt, ForKind, For
 from .stmt import BufferStore, BufferRealize, Store, ProducerStore, Allocate, AttrStmt
-from .stmt import ProducerRealize, SeqStmt, Annotation
+from .stmt import ProducerRealize, SeqStmt
 from .stmt import IfThenElse, Evaluate, Prefetch, stmt_seq, stmt_list
 from .stmt import BufferRegion, MatchBufferRegion, Block, BlockRealize
 
-from .function import PrimFunc
+from .function import PrimFunc, TensorIntrin
 
 from .op import call_packed, call_intrin, call_pure_extern, call_extern
 from .op import call_llvm_intrin, call_llvm_pure_intrin, ret, all, any, min_value, max_value, trace

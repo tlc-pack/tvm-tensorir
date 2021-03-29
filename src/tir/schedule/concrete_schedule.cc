@@ -184,6 +184,100 @@ BlockRV ConcreteScheduleNode::GetBlock(const String& name, const String& func_na
 
 Array<LoopRV> ConcreteScheduleNode::GetLoops(const BlockRV& block_rv) {
   return CreateRV<LoopRV>(tir::GetLoops(this->GetSRef(block_rv)));
+void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const IterVar& thread) {
+  schedule::Bind(state_, this->GetSRef(loop_rv), thread);
+  this->state_->DebugVerify();
+}
+
+void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread) {
+  IterVar iter_var(Range(nullptr),  //
+                   Var(thread),     //
+                   kThreadIndex,    //
+                   thread);
+  schedule::Bind(state_, this->GetSRef(loop_rv), iter_var);
+  this->state_->DebugVerify();
+}
+
+void ConcreteScheduleNode::DoubleBuffer(const BlockRV& block_rv) {
+  schedule::DoubleBuffer(state_, this->GetSRef(block_rv));
+  this->state_->DebugVerify();
+}
+
+void ConcreteScheduleNode::Pragma(const LoopRV& loop_rv, const String& pragma_type,
+                                  const ExprRV& pragma_value) {
+  schedule::Pragma(state_,                  //
+                   this->GetSRef(loop_rv),  //
+                   pragma_type,             //
+                   this->Get(pragma_value));
+  this->state_->DebugVerify();
+}
+
+/******** Schedule: cache read/write ********/
+
+BlockRV ConcreteScheduleNode::CacheRead(const BlockRV& block_rv, int i,
+                                        const String& storage_scope) {
+  StmtSRef result = schedule::CacheRead(state_,                   //
+                                        this->GetSRef(block_rv),  //
+                                        i,                        //
+                                        storage_scope);
+  this->state_->DebugVerify();
+  return SetRV<BlockRV>(result);
+}
+
+BlockRV ConcreteScheduleNode::CacheWrite(const BlockRV& block_rv, int i,
+                                         const String& storage_scope) {
+  StmtSRef result = schedule::CacheWrite(state_,                   //
+                                         this->GetSRef(block_rv),  //
+                                         i,                        //
+                                         storage_scope);
+  this->state_->DebugVerify();
+  return SetRV<BlockRV>(result);
+}
+
+/******** Schedule: reduction ********/
+
+BlockRV ConcreteScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
+  StmtSRef result = schedule::RFactor(state_, this->GetSRef(loop_rv), factor_axis);
+  this->state_->DebugVerify();
+  return SetRV<BlockRV>(result);
+}
+
+BlockRV ConcreteScheduleNode::DecomposeReduction(const BlockRV& block_rv,
+                                                 const Optional<LoopRV>& opt_loop_rv) {
+  Optional<StmtSRef> opt_loop_sref = opt_loop_rv.defined() ?                 //
+                                         this->GetSRef(opt_loop_rv.value())  //
+                                                           : Optional<StmtSRef>(NullOpt);
+  StmtSRef result = schedule::DecomposeReduction(state_,                   //
+                                                 this->GetSRef(block_rv),  //
+                                                 opt_loop_sref);
+  this->state_->DebugVerify();
+  return SetRV<BlockRV>(result);
+}
+
+void ConcreteScheduleNode::MergeReduction(const BlockRV& init_block_rv,
+                                          const BlockRV& update_block_rv) {
+  schedule::MergeReduction(state_,                        //
+                           this->GetSRef(init_block_rv),  //
+                           this->GetSRef(update_block_rv));
+  this->state_->DebugVerify();
+}
+
+/******** Schedule: blockize / tensorize ********/
+
+BlockRV ConcreteScheduleNode::Blockize(const LoopRV& loop_rv) {
+  StmtSRef result = schedule::Blockize(state_, this->GetSRef(loop_rv));
+  this->state_->DebugVerify();
+  return SetRV<BlockRV>(result);
+}
+
+void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) {
+  schedule::Tensorize(state_, this->GetSRef(loop_rv), intrin);
+  this->state_->DebugVerify();
+}
+
+void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin_name) {
+  schedule::Tensorize(state_, this->GetSRef(loop_rv), tir::TensorIntrin::Get(intrin_name));
+  this->state_->DebugVerify();
 }
 
 /******** FFI ********/

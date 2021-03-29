@@ -190,6 +190,7 @@ class StateCreator : private StmtVisitor {
             }
           }
         }
+      return true;
       }();
     }
     info.stage_pipeline = stage_pipeline;
