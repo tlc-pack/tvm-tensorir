@@ -175,6 +175,7 @@ class StateCreator : private StmtVisitor {
     BlockInfo& info =
         self_->block_info.emplace(std::move(scope_root), BlockInfo(BlockScope(child_block_srefs)))
             .first->second;
+    // TODO(@junrushao1994): calculate the flags
     // Set `affine_binding`
     info.affine_binding = false;
     // Set `region_cover`
@@ -233,6 +234,20 @@ ScheduleState::ScheduleState(PrimFunc func, int debug_mode)
     : ScheduleState(IRModule({{GlobalVar("main"), func}}), debug_mode) {}
 
 /**************** Replace ****************/
+
+/*
+ * The goal of the replacement algorithm is to substitute a subtree `src_stmt` of the AST to a new
+ * subtree `tgt_stmt`, and maintain the corresponding sref tree accordingly, with some srefs reused,
+ * so that the srefs users hold doesn't expire. For example, if we split a loop into 2, and the
+ * original loop has a child block, then the sref to the child block should be reused, so that users
+ * won't have to acquire that sref again.
+ *
+ * The workflow of the replacement algorithm is:
+ * 1) Detect all possible reuses in class ReuseInfo
+ * 2) Remove the expired srefs in class SRefTreePruner
+ * 3) Update the reused the sref, and create the srefs for new statements, in class SRefUpdater
+ * 4) Renew the ancestors of `src_stmt` to reflect the replacement
+ */
 
 /*!
  * \brief Record the different sref reuse types in the replacement
@@ -683,8 +698,8 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   //   we need to update those sref points from old ancestors to newly created ones
   // Variables:
   // 1) `num_copy_steps`. The maximum number of hops until we need to copy. To reach a node that
-  //   can be mutated in-place, it needs `num_copy_steps + 1` hops.
-  // 2) `need_module_copy`. If true, need to mutate the PrimFunc and IRModule the sref belongs to. 
+  //   can be mutated inplace, it needs `num_copy_steps + 1` hops.
+  // 2) `need_module_copy`. If true, need to mutate the PrimFunc and IRModule the sref belongs to.
   // 3) `g_var` and `g_func`. Indicate which GlobalVar and PrimFunc the sref corresponds to
   int num_copy_steps = -1;
   bool need_module_copy = false;
