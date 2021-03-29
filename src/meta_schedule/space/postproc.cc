@@ -414,6 +414,10 @@ class PostprocRewriteParallelizeVectorizeUnroll {
         if (HasAnyAnn(loop_sref)) {
           break;
         }
+        // Cannot parallelize reduce axis
+        if (GetLoopIterType(sch->state(), loop_sref) != tir::IterVarType::kDataPar) {
+          break;
+        }
         // Cannot fuse with a loop with multiple children
         if (!HasSingleChild(loop_sref)) {
           break;
@@ -443,13 +447,12 @@ class PostprocRewriteParallelizeVectorizeUnroll {
 
   bool Proc(const Schedule& sch) const {
     Parsed parsed;
-    while (Optional<tir::StmtSRef> opt_block_sref =
-               FindBlockSRef(sch->state(), MakeAnnParser(&parsed))) {
+    tir::StmtSRef root = sch->GetSRef(sch->GetBlock("root"));
+    MakeAnnParser (&parsed)(root->StmtAs<tir::BlockNode>());
+    RemoveParsedAnn(sch, root, parsed);
+    for (const auto& block_rv : sch->GetChildBlocks(sch->GetBlock("root"))) {
       // Extract block info
-      tir::StmtSRef block_sref = opt_block_sref.value();
-      RemoveParsedAnn(sch, block_sref, parsed);
-      const auto* block = block_sref->StmtAs<tir::BlockNode>();
-      BlockRV block_rv = sch->GetBlock(block->name_hint);
+      tir::StmtSRef block_sref = sch->GetSRef(block_rv);
       // Extract loop info
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();

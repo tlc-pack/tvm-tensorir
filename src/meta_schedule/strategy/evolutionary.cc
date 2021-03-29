@@ -230,24 +230,6 @@ class EvolutionaryNode : public SearchStrategyNode {
   }
 
   /*!
-   * \brief Given a set of decisions, keep only "SampleComputeLocation" and discard the rest
-   * \param decisions The decisions
-   * \return The new set of decisions only containing "SampleComputeLocation"
-   */
-  static Map<Instruction, ObjectRef> KeepComputeAtDecision(
-      const Map<Instruction, ObjectRef>& decisions) {
-    Map<Instruction, ObjectRef> result;
-    for (const auto& kv : decisions) {
-      const Instruction& inst = kv.first;
-      const ObjectRef& decision = kv.second;
-      if (inst->inst_attrs->IsInstance<SampleComputeLocationAttrs>()) {
-        result.Set(inst, decision);
-      }
-    }
-    return result;
-  }
-
-  /*!
    * \brief Create a sampler function that picks mutators according to the mass function
    * \param sampler The source of randomness
    * \return The sampler created
@@ -512,7 +494,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
       // Remove most of the decisions, i.e. random replay
       // N.B. We do not change the sampling result from `SampleComputeLocation`,
       // because it tends to fail quite frequently
-      Map<Instruction, ObjectRef> decisions = KeepComputeAtDecision(support_trace->decisions);
+      Map<Instruction, ObjectRef> decisions;
       if (Optional<Schedule> opt_sch =
               ReplayTrace(Trace(support_trace->insts, decisions), task, space, sampler)) {
         Schedule sch = opt_sch.value();
