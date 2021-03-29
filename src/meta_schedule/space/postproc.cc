@@ -450,15 +450,14 @@ class PostprocRewriteParallelizeVectorizeUnroll {
 
   bool Proc(const Schedule& sch) const {
     Parsed parsed;
-    tir::BlockRV root_rv = sch->GetBlock("root");
-    tir::StmtSRef root = sch->GetSRef(root_rv);
-    bool find_ann = MakeAnnParser(&parsed)(sch->Get(root_rv).get());
-    if (!find_ann) {
-      return true;
-    }
-    RemoveParsedAnn(sch, root, parsed);
-    for (const BlockRV& block_rv : sch->GetChildBlocks(root_rv)) {
-      tir::StmtSRef block_sref = sch->GetSRef(block_rv);
+    while (Optional<tir::StmtSRef> opt_block_sref =
+               FindBlockSRef(sch->state(), MakeAnnParser(&parsed))) {
+      // Extract block info
+      tir::StmtSRef block_sref = opt_block_sref.value();
+      RemoveParsedAnn(sch, block_sref, parsed);
+      const auto* block = block_sref->StmtAs<tir::BlockNode>();
+      BlockRV block_rv = sch->GetBlock(block->name_hint);
+      // Extract loop info
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
       if (n_loops == 0) {
