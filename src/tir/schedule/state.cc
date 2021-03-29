@@ -740,7 +740,7 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
       // Point `child_sref` to `child_tgt_stmt`
       UpdateSRef(this, child_sref, child_tgt_stmt.get());
     }
-    // Step 2.2. Create `new_parent_stmt`, by mutating the body of `parent_stmt`,
+    // Step 2.2. Create `new_parent_stmt`, by mutating the body of `parent_stmt`
     Stmt new_parent_stmt =
         ChildReplacer::Replace(parent_stmt, child_src_stmt, child_tgt_stmt,
                                /*seq_index=*/child_sref->seq_index,
