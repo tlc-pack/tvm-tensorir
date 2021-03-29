@@ -202,7 +202,7 @@ class CoefficientExtractor : public tir::StmtExprVisitor {
   }
 
  private:
-  void VisitExpr_(const tir::MulNode* node) override {
+  void VisitExpr_(const tir::MulNode* node) final {
     StmtExprVisitor::VisitExpr_(node);
 
     if (const auto* a = node->a.as<IntImmNode>()) {
@@ -216,7 +216,7 @@ class CoefficientExtractor : public tir::StmtExprVisitor {
     }
   }
 
-  void VisitExpr_(const tir::AddNode* node) override {
+  void VisitExpr_(const tir::AddNode* node) final {
     StmtExprVisitor::VisitExpr_(node);
     int64_t stride_a, stride_b;
     if (strides_.count(node->a)) {
@@ -234,7 +234,7 @@ class CoefficientExtractor : public tir::StmtExprVisitor {
     }
   }
 
-  void VisitExpr_(const tir::VarNode* node) override {
+  void VisitExpr_(const tir::VarNode* node) final {
     if (node == var_.get()) {
       strides_[GetRef<tir::Var>(node)] = 1;
     }
