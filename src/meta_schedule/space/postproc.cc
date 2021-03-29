@@ -193,8 +193,6 @@ Postproc RewriteCooperativeFetch() {
 
 class CoefficientExtractor : public tir::StmtExprVisitor {
  public:
-  explicit CoefficientExtractor(const tir::Var& var) : var_(var) {}
-
   static int64_t Extract(const PrimExpr& expr, const tir::Var& var) {
     CoefficientExtractor extractor(var);
     extractor.VisitExpr(expr);
@@ -202,6 +200,8 @@ class CoefficientExtractor : public tir::StmtExprVisitor {
   }
 
  private:
+  explicit CoefficientExtractor(const tir::Var& var) : var_(var) {}
+
   void VisitExpr_(const tir::MulNode* node) final {
     StmtExprVisitor::VisitExpr_(node);
 

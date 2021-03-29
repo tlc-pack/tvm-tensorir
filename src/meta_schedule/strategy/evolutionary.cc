@@ -486,7 +486,8 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   };
   support::parallel_persist_for(0, results.size(), f_proc_measured);
   // Pick unmeasured states
-  auto f_proc_unmeasured = [this, &results, &thread_samplers, &task, &space, &support](
+  std::atomic<int> fail_ct(0);
+  auto f_proc_unmeasured = [this, &results, &thread_samplers, &fail_ct, &task, &space, &support](
                                int thread_id, int i) -> void {
     Sampler* sampler = &thread_samplers[thread_id];
     for (;;) {
@@ -495,19 +496,26 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
       // N.B. We do not change the sampling result from `SampleComputeLocation`,
       // because it tends to fail quite frequently
       Map<Instruction, ObjectRef> decisions;
-      if (Optional<Schedule> opt_sch =
-              ReplayTrace(Trace(support_trace->insts, decisions), task, space, sampler)) {
-        Schedule sch = opt_sch.value();
-        Trace trace(sch->trace->insts, sch->trace->decisions);
-        this->AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
-        results[i] = std::move(trace);
-        break;
+      try {
+        if (Optional<Schedule> opt_sch =
+                ReplayTrace(Trace(support_trace->insts, decisions), task, space, sampler)) {
+          Schedule sch = opt_sch.value();
+          Trace trace(sch->trace->insts, sch->trace->decisions);
+          this->AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
+          results[i] = std::move(trace);
+          break;
+        } else {
+          fail_ct++;
+        }
+      } catch (const std::exception& exception) {
+        fail_ct++;
       }
     }
   };
   num_measured = results.size();
   results.resize(this->population, Trace(nullptr));
   support::parallel_persist_for(num_measured, this->population, f_proc_unmeasured);
+  LOG(INFO) << "fail count: " << fail_ct;
   return results;
 }
 
