@@ -507,7 +507,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
         } else {
           fail_ct++;
         }
-      } catch (const std::exception& exception) {
+      } catch (const dmlc::Error& e) {
         fail_ct++;
       }
     }
