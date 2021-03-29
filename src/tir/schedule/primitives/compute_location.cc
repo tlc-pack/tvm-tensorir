@@ -16,6 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
+#include <tvm/tir/analysis.h>
 #include "../../../arith/pattern_match.h"
 #include "../analysis.h"
 #include "../utils.h"
@@ -218,9 +220,9 @@ For RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int i
     // Add binding for each block var
     PrimExpr extent = analyzer.Simplify(domain.max() - domain.min() + 1);
     if (!is_one(extent)) {
-      realize->binding_values.Set(i, domain.min() + loop_vars[i]);
+      realize->iter_values.Set(i, domain.min() + loop_vars[i]);
     } else {
-      realize->binding_values.Set(i, domain.min());
+      realize->iter_values.Set(i, domain.min());
     }
   }
   // Step 3. Create loops above the BlockRealizeNode
@@ -320,25 +322,21 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
                                                             const StmtSRef& block_sref) {
   std::unordered_map<const VarNode*, Range> relax_var;
   const auto* block = block_sref->StmtAs<BlockNode>();
-  const String& exec_scope = block->exec_scope;
   StmtSRef sref = loop_sref;
 
-  auto update_for_gpu = [&block, &exec_scope](const ForNode* loop) -> bool {
+  auto update_for_gpu = [&block](const ForNode* loop) -> bool {
     CHECK_EQ(block->writes.size(), 1)
         << "ValueError: Only block with one write buffer can be compute_at";
     std::string write_scope = block->writes[0]->buffer->scope;
 
     std::string thread_tag =
         loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";
-    if (exec_scope == "gpu_thread" || exec_scope.empty()) {
-      if (write_scope == "shared" &&
-          (thread_tag.substr(0, 9) == "threadIdx" || thread_tag == "vthread")) {
-        return true;
-      } else if ((write_scope == "global" || write_scope.empty()) &&
-                 (thread_tag.substr(0, 9) == "threadIdx" ||
-                  thread_tag.substr(0, 9) == "blockIdx")) {
-        return true;
-      }
+    if (write_scope == "shared" &&
+        (thread_tag.substr(0, 9) == "threadIdx" || thread_tag == "vthread")) {
+      return true;
+    } else if ((write_scope == "global" || write_scope.empty()) &&
+               (thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 9) == "blockIdx")) {
+      return true;
     }
     return false;
   };
@@ -412,6 +410,7 @@ class StatementInliner : public StmtExprMutator {
       reads = op->reads;
     } else {
       // Update read region only for none-scope block
+      Map<Var, Buffer> var_map;
       BlockReadWriteCollector block_read_write_collector(alloc_buffers);
       block_read_write_collector(op->body);
       reads = block_read_write_collector.reads();

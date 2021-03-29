@@ -62,12 +62,12 @@ bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& oth
   const auto* rhs = other.as<BlockRealizeNode>();
   // Skip Compare binding values if the block is scope block (the outermost one).
   if (!is_scope_block) {
-    size_t offset = op->binding_values.size() - rhs->binding_values.size();
-    if (rhs->binding_values.size() > op->binding_values.size()) return false;
+    size_t offset = op->iter_values.size() - rhs->iter_values.size();
+    if (rhs->iter_values.size() > op->iter_values.size()) return false;
     if (is_inner_block) {
       // weak pattern matching for the inner block (the son of the scope block)
       // where the pattern is v + iter <=> expr + iter
-      for (size_t i = 0; i < rhs->binding_values.size(); ++i) {
+      for (size_t i = 0; i < rhs->iter_values.size(); ++i) {
         PrimExpr lhs_expr, rhs_expr;
         Optional<Var> lhs_iter, rhs_iter;
         auto detect = [](const PrimExpr& binding) -> std::pair<PrimExpr, Optional<Var>> {
@@ -83,8 +83,8 @@ bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& oth
             return std::make_pair(expr.Eval(), NullOpt);
           }
         };
-        std::tie(lhs_expr, lhs_iter) = detect(op->binding_values[i + offset]);
-        std::tie(rhs_expr, rhs_iter) = detect(rhs->binding_values[i]);
+        std::tie(lhs_expr, lhs_iter) = detect(op->iter_values[i + offset]);
+        std::tie(rhs_expr, rhs_iter) = detect(rhs->iter_values[i]);
         CHECK((lhs_iter && rhs_iter) || (!lhs_iter && !rhs_iter)) << "Incompatible binding";
         if (lhs_iter) VisitExpr(lhs_iter.value(), rhs_iter.value());
         if (is_zero(rhs_expr)) {
@@ -105,12 +105,12 @@ bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& oth
         }
       }
     } else {
-      for (size_t i = 0; i < rhs->binding_values.size(); ++i) {
-        if (!VisitExpr(op->binding_values[i + offset], rhs->binding_values[i])) return false;
+      for (size_t i = 0; i < rhs->iter_values.size(); ++i) {
+        if (!VisitExpr(op->iter_values[i + offset], rhs->iter_values[i])) return false;
       }
       const Block& block = op->block;
       for (size_t i = 0; i < offset; ++i) {
-        Var block_var = Downcast<Var>(op->binding_values[i]);
+        Var block_var = Downcast<Var>(op->iter_values[i]);
         auto it = equal_map_.find(block_var);
         equal_map_[block->iter_vars[i]->var] = (it == equal_map_.end() ? block_var : it->second);
       }
@@ -144,8 +144,6 @@ bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
       extra_block_vars_.push_back(op->iter_vars[i]);
     }
   }
-
-  if (op->exec_scope != rhs->exec_scope) return false;
 
   if (!is_scope_block) {
     if (!CompareArray(op->writes, rhs->writes, &TensorizeComparator::CompareBufferRegion)) {
@@ -384,7 +382,7 @@ Array<arith::DivisionForm> TrivialSubspaceDivision(const Array<IterVar>& iter_va
   return res;
 }
 
-StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& exec_scope) {
+StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   /*!
    * Check:
    *   - The sub AST is one-line with only one block
@@ -425,14 +423,14 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
     if (current_sref == loop_sref) inner = false;
   }
   arith::Analyzer analyzer;
-  auto division = arith::SubspaceDivision(block->iter_vars, block_realize->binding_values, iters,
+  auto division = arith::SubspaceDivision(block->iter_vars, block_realize->iter_values, iters,
                                           inner_iters, block_realize->predicate, &analyzer);
   if (division.empty()) {
     // It is possible to blockize if we can not do perfect subspace division if we can divide
     // the block var bindings into two categories
     // 1. The binding covers no inner loop var
     // 2. The binding covers only inner loop vars
-    division = TrivialSubspaceDivision(block->iter_vars, block_realize->binding_values, outer_iters,
+    division = TrivialSubspaceDivision(block->iter_vars, block_realize->iter_values, outer_iters,
                                        inner_iters, block_realize->predicate);
   }
   CHECK(!division.empty()) << "ValueError: The bindings of the block below can not be blockized";
@@ -471,7 +469,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
   inner_block.CopyOnWrite()->iter_vars = inner_block_vars;
   inner_block.CopyOnWrite()->init = NullOpt;
   BlockRealize inner_br = block_realize;
-  inner_br.CopyOnWrite()->binding_values = inner_bindings;
+  inner_br.CopyOnWrite()->iter_values = inner_bindings;
   inner_br.CopyOnWrite()->predicate = division.back()->inner_extent;
   inner_br.CopyOnWrite()->block = inner_block;
   // Regenerate inner_loops
@@ -516,10 +514,14 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
     for (size_t i = 0; i < init_block_vars.size(); ++i) {
       init_bindings.push_back(Substitute(inner_bindings[init_block_vars[i]], binding_replace_map));
     }
-    new_init =
-        Substitute(Block(init_block_vars_copy, {}, block->writes, {}, {}, {}, block->exec_scope,
-                         block->name_hint + "_init", block->init.value(), NullOpt),
-                   bv_replace_map);
+    new_init = Substitute(Block(/*iter_vars=*/init_block_vars_copy,        //
+                                /*reads=*/{},                              //
+                                /*writes=*/block->writes,                  //
+                                /*name_hint=*/block->name_hint + "_init",  //
+                                /*body=*/block->init.value(),              //
+                                /*init=*/NullOpt                           //
+                                ),
+                          bv_replace_map);
     new_init = BlockRealize(init_bindings, division.back()->inner_extent,
                             Downcast<Block>(new_init.value()));
     for (const auto& init_loop : init_loops) {
@@ -553,8 +555,13 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
   rewrite_region(&reads, block->reads);
   rewrite_region(&writes, block->writes);
   // Generate a new outer block
-  auto outer_block = Block(outer_block_vars, reads, writes, {}, {}, {}, exec_scope,
-                           "blockized_" + block->name_hint, body, new_init);
+  auto outer_block = Block(/*iter_vars=*/outer_block_vars,                 //
+                           /*reads=*/reads,                                //
+                           /*writes=*/writes,                              //
+                           /*name_hint=*/"blockized_" + block->name_hint,  //
+                           /*body=*/std::move(body),                       //
+                           /*init=*/new_init                               //
+  );
   auto outer_realize = BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
 
   self->Replace(loop_sref, outer_realize, {{block, inner_block}});
@@ -748,16 +755,16 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   const auto* loop = loop_sref->StmtAs<ForNode>();
   CHECK(loop) << "Only support tensorize a loop for now";
 
-  const auto* desc_block_realize = intrinsic->description->body.as<BlockRealizeNode>();
+  const auto* desc_block_realize = Downcast<BlockRealize>(intrinsic->description->body)->block->body.as<BlockRealizeNode>();
   const Block& desc_block = desc_block_realize->block;
-  const auto* impl_block_realize = intrinsic->implementation->body.as<BlockRealizeNode>();
+  const auto* impl_block_realize = Downcast<BlockRealize>(intrinsic->implementation->body)->block->body.as<BlockRealizeNode>();
   const Block& impl_block = impl_block_realize->block;
 
-  const StmtSRef& block_sref = Blockize(self, loop_sref, impl_block->exec_scope);
+  const StmtSRef& block_sref = Blockize(self, loop_sref);
   const BlockRealize& block_realize = GetBlockRealize(block_sref);
 
   TensorizeComparator comparator;
-  bool equal = comparator.VisitStmt(block_realize, intrinsic->description->body);
+  bool equal = comparator.VisitStmt(block_realize, GetRef<Stmt>(desc_block_realize));
   CHECK(equal) << "The AST subtree does not match intrinsic description";
   // Map from intrinsic func buffer to description func buffer
   std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> intrin_buffer_map;

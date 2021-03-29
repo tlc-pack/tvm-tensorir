@@ -156,6 +156,7 @@ class BufferAllocate(SpecialStmt):
         A = tir.buffer_allocate((128, 128), dtype="float32")
 
     """
+
     def __init__(self):
         def buffer_allocate(
             shape,
@@ -167,7 +168,7 @@ class BufferAllocate(SpecialStmt):
             align=-1,
             offset_factor=0,
             buffer_type="default",
-            span=None
+            span=None,
         ):
             assert isinstance(self.node, ast.Assign)
 
@@ -188,7 +189,7 @@ class BufferAllocate(SpecialStmt):
                 align,
                 offset_factor,
                 buffer_type,
-                span=span
+                span=span,
             )
             self.context.block_scope().alloc_buffers.append(buffer)
             self.context.update_symbol(self.node.lhs.id.name, buffer)
@@ -227,7 +228,8 @@ class BlockWrites(SpecialStmt):
 class BlockAttr(SpecialStmt):
     def __init__(self):
         def block_attr(attrs, span=None):
-            attrs = {key: tvm.tir.StringImm(val) if isinstance(val, str) else val
+            attrs = {
+                key: tvm.tir.StringImm(val) if isinstance(val, str) else val
                 for key, val in attrs.items()
             }
             self.context.block_scope().annotations = attrs

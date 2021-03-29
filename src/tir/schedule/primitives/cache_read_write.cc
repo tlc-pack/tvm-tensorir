@@ -54,12 +54,12 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
   // loop variables
   std::vector<Var> loop_vars;
   // bindings in block realize
-  std::vector<PrimExpr> binding_values;
+  std::vector<PrimExpr> iter_values;
   // Create loop vars and block vars' binding_value
   for (const Range& axis : cache_region->region) {
     Var loop_var("ax" + std::to_string(loop_vars.size()));
     loop_vars.push_back(loop_var);
-    binding_values.push_back(loop_var + axis->min);
+    iter_values.push_back(loop_var + axis->min);
   }
   // block variables
   std::vector<IterVar> block_vars;
@@ -84,16 +84,16 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
       /*iter_vars=*/block_vars,
       /*reads=*/{BufferRegion(info->read_buffer, access_region)},
       /*writes=*/{BufferRegion(info->write_buffer, access_region)},
-      /*alloc_buffers=*/{},
-      /*annotations=*/{},
-      /*match_buffers=*/{},
-      /*exec_scope=*/"",
       /*name_hint=*/cache_region->buffer->name + "_" + storage_scope,
       /*body=*/
       BufferStore(info->write_buffer, BufferLoad(info->read_buffer, copy_indices), copy_indices),
-      /*init=*/NullOpt);
+      /*init=*/NullOpt,
+      /*alloc_buffers=*/{},
+      /*match_buffers=*/{},
+      /*annotations=*/{}
+  );
   // Create the block realize node
-  Stmt body = BlockRealize(/*values=*/binding_values,
+  Stmt body = BlockRealize(/*values=*/iter_values,
                            /*predicate=*/Bool(true),
                            /*block=*/block);
   // Create surrounding loops
@@ -565,7 +565,7 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& _block_sref, int i,
     info.loc_sref = root;
     info.loc_pos = 0;
     scope_sref = root;
-    cache_region = BufferRegion(read_buffer);
+    cache_region = BufferRegion::FullRegion(read_buffer);
   }
   Block cache_read_stage = MakeCacheStage(/*cache_region=*/cache_region, /*info=*/&info,
                                           /*storage_scope=*/storage_scope);

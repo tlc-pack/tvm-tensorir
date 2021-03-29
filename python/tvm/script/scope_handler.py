@@ -275,7 +275,6 @@ class Block(WithScopeHandler):
                     )
 
             # create block read/write regions
-
             reads: List[BufferRegion] = (
                 [buffer_slice_to_region(read) for read in block_info.reads]
                 if block_info.reads

@@ -30,9 +30,9 @@ def replace_ir_builder(deep_copy=False, realize=False):
     new_func = tvm.script.from_source(tvm.script.asscript(func))
     s = tir.ScheduleState(new_func, debug_mode=1)
     # The target stmt
-    target = tvm.tir.Block([], [], [], [], {}, [], "", "target", s.mod["main"].body.block.body[1])
+    target = tvm.tir.Block([], [], [], "target", s.mod["main"].body.block.body[1])
     if realize:
-        target = tvm.tir.BlockRealize([], 1, target)
+        target = tvm.tir.BlockRealize([], tir.const(True), target)
     if deep_copy:
         target.__setstate__(target.__getstate__())
 
@@ -49,9 +49,9 @@ def replace_ir_builder_module(deep_copy=False, realize=False):
     mod = IRModule(functions={"main": new_func, "other": other_func})
     s = tir.ScheduleState(mod, debug_mode=1)
     # The target stmt
-    target = tvm.tir.Block([], [], [], [], {}, [], "", "target", s.mod["main"].body.block.body[1])
+    target = tvm.tir.Block([], [], [], "target", s.mod["main"].body.block.body[1])
     if realize:
-        target = tvm.tir.BlockRealize([], 1, target)
+        target = tvm.tir.BlockRealize([], tir.const(True), target)
     if deep_copy:
         target.__setstate__(target.__getstate__())
 

@@ -511,19 +511,16 @@ struct CacheWriteAttrs : public InstAttrsNode {
 
 /*! \brief Attrs of the instruction that applies blockize */
 struct BlockizeAttrs : public InstAttrsNode {
-  /*! \brief The execution scope of the instruction blockize */
-  String exec_scope;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("exec_scope", &exec_scope); }
+  void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param loop The loop to be blockized
-   * \param exec_scope The execution scope
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction Make(const LoopRV& block, const String& exec_scope, const BlockRV& output);
+  static Instruction Make(const LoopRV& block, const BlockRV& output);
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(BlockizeAttrs,                        //
                                       "meta_schedule.attrs.BlockizeAttrs",  //

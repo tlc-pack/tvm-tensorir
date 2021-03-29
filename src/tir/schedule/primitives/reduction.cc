@@ -74,7 +74,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
       // For each block var of type kCommReduce, check its binding
       const IterVar& iter_var = block->iter_vars[i];
-      const PrimExpr& binding = realize->binding_values[i];
+      const PrimExpr& binding = realize->iter_values[i];
       if (iter_var->iter_type != IterVarType::kCommReduce) {
         continue;
       }
@@ -94,7 +94,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     ObjectPtr<BlockNode> init_block = make_object<BlockNode>();
     ObjectPtr<BlockRealizeNode> init_realize = make_object<BlockRealizeNode>();
     init_block->name_hint = block->name_hint + "_init";
-    init_realize->binding_values = {};
+    init_realize->iter_values = {};
     init_realize->predicate = realize->predicate;
     init_realize->block = Block(init_block);
     // Step 1. Create new block vars and their bindings
@@ -102,7 +102,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     std::unordered_map<const VarNode*, const VarNode*> block_var_map;
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
       const IterVar& iter_var = block->iter_vars[i];
-      const PrimExpr& binding = realize->binding_values[i];
+      const PrimExpr& binding = realize->iter_values[i];
       // Only process data parallel block vars
       if (iter_var->iter_type != IterVarType::kDataPar) {
         continue;
@@ -114,7 +114,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
                            /*thread_tag=*/iter_var->thread_tag);
       // Add a block var and its binding
       init_block->iter_vars.push_back(new_iter_var);
-      init_realize->binding_values.push_back(binding);
+      init_realize->iter_values.push_back(binding);
       // Add a mapping from old block vars to new block vars
       block_var_map[iter_var->var.get()] = new_iter_var->var.get();
     }
@@ -127,7 +127,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     Stmt body = BlockRealize(init_realize);
     for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
       const auto* higher_loop = loops[i]->StmtAs<ForNode>();
-      for (const PrimExpr& expr : init_realize->binding_values) {
+      for (const PrimExpr& expr : init_realize->iter_values) {
         // Skip irrelevant loops
         if (!StmtExprContainsVar(expr, higher_loop->loop_var)) {
           continue;
@@ -285,7 +285,7 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
       const Var& loop_var = higher_loop->StmtAs<ForNode>()->loop_var;
       for (int i = 0, n = update->iter_vars.size(); i < n; ++i) {
         const IterVar& iter_var = update->iter_vars[i];
-        const PrimExpr& binding = update_realize->binding_values[i];
+        const PrimExpr& binding = update_realize->iter_values[i];
         if (iter_var->iter_type != IterVarType::kCommReduce) {
           continue;
         }
@@ -357,7 +357,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
       set = &reduce_iters;
     }
     if (set != nullptr) {
-      PreOrderVisit(block_realize->binding_values[i],
+      PreOrderVisit(block_realize->iter_values[i],
                     [set, loop, &touch_rfactor_loop, &i](const ObjectRef& node) {
                       if (const auto* var = node.as<VarNode>()) {
                         set->insert(var);
@@ -428,13 +428,13 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
         new_block_var.CopyOnWrite()->dom =
             Range::FromMinExtent(block->iter_vars[i]->dom->min, block->iter_vars[i]->dom->extent);
         rf_block_iters.push_back(new_block_var);
-        rf_bindings.push_back(block_realize->binding_values[i]);
+        rf_bindings.push_back(block_realize->iter_values[i]);
       }
     } else {
       ICHECK(block->iter_vars[i]->iter_type == kCommReduce);
       if (touch_rfactor_loop.find(i) != touch_rfactor_loop.end()) {
         // This block var touches the rfactor loop.
-        const PrimExpr& binding = block_realize->binding_values[i];
+        const PrimExpr& binding = block_realize->iter_values[i];
         PreOrderVisit(
             binding, [&loop_vars, &iter_map, &rf_block_iters, &rf_bindings](const ObjectRef& node) {
               if (const auto* var = node.as<VarNode>()) {
@@ -467,7 +467,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
         new_block_var.CopyOnWrite()->dom =
             Range::FromMinExtent(block->iter_vars[i]->dom->min, block->iter_vars[i]->dom->extent);
         rf_block_iters.push_back(new_block_var);
-        rf_bindings.push_back(block_realize->binding_values[i]);
+        rf_bindings.push_back(block_realize->iter_values[i]);
       }
     }
   }
@@ -514,7 +514,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
       Substitute(static_cast<Stmt>(BufferStore(rf_buf, init->value, rf_indices)), var_map);
   rf_block.CopyOnWrite()->name_hint = rf_block->name_hint + "_rf";
   rf_block_realize.CopyOnWrite()->block = rf_block;
-  rf_block_realize.CopyOnWrite()->binding_values = rf_bindings;
+  rf_block_realize.CopyOnWrite()->iter_values = rf_bindings;
   // Finish constructing the rfactor block.
 
   // Start constructing the write back block.
@@ -529,7 +529,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
       wb_block_iters.emplace_back(block->iter_vars[i]->dom,
                                   block->iter_vars[i]->var.copy_with_suffix(""),
                                   block->iter_vars[i]->iter_type);
-      wb_bindings.push_back(block_realize->binding_values[i]);
+      wb_bindings.push_back(block_realize->iter_values[i]);
       var_map[block->iter_vars[i]->var.get()] = wb_block_iters.back();
     }
   }
@@ -560,7 +560,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   wb_block.CopyOnWrite()->iter_vars = wb_block_iters;
   wb_block.CopyOnWrite()->init = BufferStore(wb_update->buffer, init->value, wb_update->indices);
   wb_block_realize.CopyOnWrite()->block = wb_block;
-  wb_block_realize.CopyOnWrite()->binding_values = wb_bindings;
+  wb_block_realize.CopyOnWrite()->iter_values = wb_bindings;
   // Finish constructing the write back block.
 
   // Create loops outside the write back block and rfactor block.

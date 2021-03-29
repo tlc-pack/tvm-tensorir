@@ -43,7 +43,7 @@ def split_ewise(a: ty.handle, b: ty.handle) -> None:
 def many_ewise(x: ty.handle, y: ty.handle) -> None:
     X = tir.match_buffer(x, (128, 128))
     Y = tir.match_buffer(y, (128, 128))
-    A = tir.buffer_allocate((128, 128))
+    A = tir.alloc_buffer((128, 128))
     with tir.block([128, 128], "A") as [vi, vj]:
         A[vi, vj] = X[vi, vj] * 2.0
     with tir.block([128, 128], "Y") as [vi, vj]:

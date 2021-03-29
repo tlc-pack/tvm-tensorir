@@ -98,7 +98,7 @@ def element_wise(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (m, n), "float32")
     C = tir.match_buffer(c, (m, n), "float32")
 
-    B = tir.buffer_allocate((m, n), "float32")
+    B = tir.alloc_buffer((m, n), "float32")
 
     with tir.block([m, n], "B") as [vi, vj]:
         B[vi, vj] = A[vi, vj] * 2.0
@@ -111,7 +111,7 @@ def element_wise(a: ty.handle, c: ty.handle) -> None:
 def element_wise_128_64(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 64), "float32")
     C = tir.match_buffer(c, (128, 64), "float32")
-    B = tir.buffer_allocate((128, 64), "float32")
+    B = tir.alloc_buffer((128, 64), "float32")
 
     with tir.block([128, 64], "B") as [vi, vj]:
         B[vi, vj] = A[vi, vj] * 2.0
@@ -125,7 +125,7 @@ def element_wise_128_n(a: ty.handle, c: ty.handle) -> None:
     n = tir.var("int32")
     A = tir.match_buffer(a, (128, n), "float32")
     C = tir.match_buffer(c, (128, n), "float32")
-    B = tir.buffer_allocate((128, n), "float32")
+    B = tir.alloc_buffer((128, n), "float32")
 
     with tir.block([128, n], "B") as [vi, vj]:
         B[vi, vj] = A[vi, vj] * 2.0

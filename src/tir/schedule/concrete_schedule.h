@@ -128,7 +128,6 @@ class ConcreteScheduleNode : public ScheduleNode {
   inline void RemoveFromSymbolTable(const ObjectRef& rv);
 };
 
-// implementations
 
 /******** Lookup random variables ********/
 

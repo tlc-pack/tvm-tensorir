@@ -271,7 +271,7 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * \param loop_rv the subtree root
    * \return the loop_rv of new block
    */
-  BlockRV Blockize(const LoopRV& loop_rv, const String& exec_scope) final;
+  BlockRV Blockize(const LoopRV& loop_rv) final;
   /*!
    * \brief Tensorize the computation enclosed by loop with tensor_intrin
    * \param loop_rv the loop/block to be tensorized

@@ -569,7 +569,7 @@ class RuleRandomComputeLocation {
         return false;
       }
     }
-    Array<PrimExpr> binds = tir::GetBlockRealize(block_sref)->binding_values;
+    Array<PrimExpr> binds = tir::GetBlockRealize(block_sref)->iter_values;
     for (const PrimExpr& bind : binds) {
       if (!bind->IsInstance<IntImmNode>() && !bind->IsInstance<tir::VarNode>()) {
         return false;
@@ -775,7 +775,7 @@ class RuleMarkTensorize {
     sch->Reorder(reorder_list);
     // Do blockize
     if (!reorder_suffix.empty()) {
-      sch->Blockize(reorder_suffix[0], "");
+      sch->Blockize(reorder_suffix[0]);
     }
     // Annotate the block
     sch->MarkBlock(block_rv, tir::attr::auto_tensorize, Integer(1));
@@ -838,8 +838,8 @@ class RuleSimplifyComputeWithConstTensor {
       const auto& var_name = block->iter_vars[i]->var->name_hint;
       // only consider simple bindings
       if (std::find(const_indices.begin(), const_indices.end(), var_name) != const_indices.end() &&
-          block_realize->binding_values[i].as<tir::VarNode>()) {
-        unrolled_loop_vars.insert(block_realize->binding_values[i].as<tir::VarNode>());
+          block_realize->iter_values[i].as<tir::VarNode>()) {
+        unrolled_loop_vars.insert(block_realize->iter_values[i].as<tir::VarNode>());
       }
     }
 

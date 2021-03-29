@@ -31,7 +31,7 @@ bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
   Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
-  const Array<PrimExpr>& bindings = realize->binding_values;
+  const Array<PrimExpr>& bindings = realize->iter_values;
   if (loops.size() != bindings.size()) {
     return false;
   }
@@ -431,7 +431,8 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
       }
       return true;
     };
-    const auto* desc_body = desc_func->body.as<tir::BlockRealizeNode>();
+    const auto* desc_body =
+        Downcast<tir::BlockRealize>(desc_func->body)->block->body.as<tir::BlockRealizeNode>();
     ICHECK(desc_body);
     tir::PostOrderVisit(desc_body->block->body, f_visit);
     std::reverse(desc_loops.begin(), desc_loops.end());
@@ -461,8 +462,8 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
   }
   // Step 4. Map from block loops to desc block loops
   ObjectPtr<TensorizeInfoNode> ret = make_object<TensorizeInfoNode>();
-  int n_block_vars = block->binding_values.size();
-  int n_desc_vars = desc_block->binding_values.size();
+  int n_block_vars = block->iter_values.size();
+  int n_desc_vars = desc_block->iter_values.size();
   int offset = n_block_vars - n_desc_vars;
   if (offset < 0) {
     return NullOpt;
@@ -474,8 +475,8 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
   //                    ^ i_desc
   for (int i_desc = 0, i_block = offset; i_desc < n_desc_vars; ++i_desc, ++i_block) {
     // For each block var binding, we find
-    const PrimExpr& block_bind = block->binding_values[i_block];
-    const PrimExpr& desc_bind = desc_block->binding_values[i_desc];
+    const PrimExpr& block_bind = block->iter_values[i_block];
+    const PrimExpr& desc_bind = desc_block->iter_values[i_desc];
     // Step 4.1. Find the corresponding loop of the i-th block var of block
     const tir::ForNode* block_loop = nullptr;
     for (int i = 0, n = block_loops.size(); i < n; ++i) {
