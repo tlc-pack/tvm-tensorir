@@ -542,8 +542,8 @@ void ConcreteScheduleNode::MergeReduction(const BlockRV& init_block_rv,
 
 /******** Schedule: blockize / tensorize ********/
 
-BlockRV ConcreteScheduleNode::Blockize(const LoopRV& loop_rv, const String& exec_scope) {
-  StmtSRef result = schedule::Blockize(state_, this->GetSRef(loop_rv), exec_scope);
+BlockRV ConcreteScheduleNode::Blockize(const LoopRV& loop_rv) {
+  StmtSRef result = schedule::Blockize(state_, this->GetSRef(loop_rv));
   this->state_->DebugVerify();
   return SetRV<BlockRV>(result);
 }

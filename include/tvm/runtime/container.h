@@ -2995,7 +2995,14 @@ class Map : public ObjectRef {
   iterator end() const { return iterator(GetMapNode()->end()); }
   /*! \return find the key and returns the associated iterator */
   iterator find(const K& key) const { return iterator(GetMapNode()->find(key)); }
-
+  /*! \return The value associated with the key, NullOpt if not found */
+  Optional<V> Get(const K& key) const {
+    MapNode::iterator iter = GetMapNode()->find(key);
+    if (iter == GetMapNode()->end()) {
+      return NullOptType{};
+    }
+    return DowncastNoCheck<V>(iter->second);
+  }
   void erase(const K& key) { CopyOnWrite()->erase(key); }
 
   /*!

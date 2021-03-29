@@ -52,7 +52,7 @@ def conv(a: ty.handle, w: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (2, 14, 14, 2, 16, 16), "float16")
     W = tir.match_buffer(w, (3, 3, 2, 4, 16, 16), "float16")
 
-    Apad = tir.buffer_allocate([2, 16, 16, 2, 16, 16], "float16")
+    Apad = tir.alloc_buffer([2, 16, 16, 2, 16, 16], "float16")
     with tir.block([2, 16, 16, 2, 16, 16], "A_pad") as [n, h, w, i, nn, ii]:
         Apad[n, h, w, i, nn, ii] = tir.if_then_else(1 <= h and h < 15 and 1 <= w and w < 15,
                                                     A[n, h - 1, w - 1, i, nn, ii], tir.float16(0),
@@ -74,7 +74,7 @@ def gemm_desc(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=1,
                          scope="wmma.accumulator")
 
-    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root", exec_scope="gpu_warp") as [vi, vj, vk]:
+    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
@@ -94,7 +94,7 @@ def gemm_intrin(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="wmma.accumulator")
 
-    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root", exec_scope="gpu_warp") as [vi, vj, vk]:
+    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
@@ -112,7 +112,7 @@ def fill_desc(c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="wmma.accumulator")
 
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -127,7 +127,7 @@ def fill_intrin(c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="wmma.accumulator")
 
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads([])
@@ -143,7 +143,7 @@ def store_desc(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="global")
 
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -160,7 +160,7 @@ def store_intrin(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="global")
 
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads(A[0: 16, 0: 16])
@@ -177,7 +177,7 @@ def load_a_desc(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256,
                          scope="wmma.matrix_a")
 
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -194,7 +194,7 @@ def load_a_intrin(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256,
                          scope="wmma.matrix_a")
 
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads(A[0: 16, 0: 16])
@@ -211,7 +211,7 @@ def load_b_desc(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256,
                          scope="wmma.matrix_b")
 
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -228,7 +228,7 @@ def load_b_intrin(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256,
                          scope="wmma.matrix_b")
 
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads(A[0: 16, 0: 16])

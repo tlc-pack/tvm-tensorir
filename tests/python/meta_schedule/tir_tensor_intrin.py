@@ -110,7 +110,7 @@ def wmma_sync_desc(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.match_buffer(b, (16, 16), "float16", align=128, offset_factor=1, scope="wmma.matrix_b")
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=1, scope="wmma.accumulator")
 
-    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root", exec_scope="gpu_warp") as [vi, vj, vk]:
+    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
@@ -130,7 +130,7 @@ def wmma_sync_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="wmma.accumulator")
 
-    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root", exec_scope="gpu_warp") as [vi, vj, vk]:
+    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
@@ -150,7 +150,7 @@ def wmma_load_a_desc(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256,
                          scope="wmma.matrix_a")
 
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -165,7 +165,7 @@ def wmma_load_a_impl(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float16", align=128, offset_factor=256, scope="shared")
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256, scope="wmma.matrix_a")
 
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads(A[0: 16, 0: 16])
@@ -179,7 +179,7 @@ def wmma_load_a_impl(a: ty.handle, c: ty.handle) -> None:
 def wmma_load_b_desc(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float16", align=128, offset_factor=256, scope="shared")
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256, scope="wmma.matrix_b")
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -193,7 +193,7 @@ def wmma_load_b_desc(a: ty.handle, c: ty.handle) -> None:
 def wmma_load_b_impl(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float16", align=128, offset_factor=256, scope="shared")
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256, scope="wmma.matrix_b")
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads(A[0: 16, 0: 16])
@@ -206,7 +206,7 @@ def wmma_load_b_impl(a: ty.handle, c: ty.handle) -> None:
 @tvm.script.tir
 def wmma_fill_desc(c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="wmma.accumulator")
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -219,7 +219,7 @@ def wmma_fill_desc(c: ty.handle) -> None:
 @tvm.script.tir
 def wmma_fill_impl(c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="wmma.accumulator")
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads([])
@@ -231,7 +231,7 @@ def wmma_fill_impl(c: ty.handle) -> None:
 def wmma_store_desc(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32", align=128, offset_factor=256, scope="wmma.accumulator")
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="local")
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -245,7 +245,7 @@ def wmma_store_desc(a: ty.handle, c: ty.handle) -> None:
 def wmma_store_impl(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32", align=128, offset_factor=256, scope="wmma.accumulator")
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="local")
-    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
+    with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads(A[0: 16, 0: 16])

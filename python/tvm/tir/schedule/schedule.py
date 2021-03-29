@@ -272,9 +272,9 @@ class Schedule(Object):
 
     ########## Schedule: blockize / tensorize ##########
 
-    def blockize(self, loop: LoopRV, exec_scope: str = "") -> BlockRV:
+    def blockize(self, loop: LoopRV) -> BlockRV:
         return _ffi_api_schedule.ScheduleBlockize(  # pylint: disable=no-member
-            self, loop, exec_scope
+            self, loop
         )
 
     def tensorize(self, loop: LoopRV, intrin: Union[str, TensorIntrin]) -> None:

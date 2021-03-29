@@ -390,7 +390,7 @@ class ScheduleNode : public runtime::Object {
    * \param loop_rv The root of the subtree
    * \return The new block
    */
-  virtual BlockRV Blockize(const LoopRV& loop_rv, const String& exec_scope) = 0;
+  virtual BlockRV Blockize(const LoopRV& loop_rv) = 0;
   /*!
    * \brief Tensorize the computation enclosed by loop with tensor_intrin
    * \param loop_rv the loop/block to be tensorized

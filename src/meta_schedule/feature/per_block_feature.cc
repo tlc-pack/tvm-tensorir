@@ -682,11 +682,11 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
     // Step 2.2. Substitute block vars to its binding
     {
-      ICHECK_EQ(realize->binding_values.size(), realize->block->iter_vars.size());
-      int n = realize->binding_values.size();
+      ICHECK_EQ(realize->iter_values.size(), realize->block->iter_vars.size());
+      int n = realize->iter_values.size();
       for (int i = 0; i < n; ++i) {
         const tir::Var& lhs = realize->block->iter_vars[i]->var;
-        const PrimExpr& rhs = realize->binding_values[i];
+        const PrimExpr& rhs = realize->iter_values[i];
         var_substitutes[lhs.get()] = f_substitute(rhs);
       }
     }

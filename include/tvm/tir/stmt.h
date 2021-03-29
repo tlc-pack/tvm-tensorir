@@ -324,6 +324,7 @@ class BufferStore : public Stmt {
                                Span span = Span());
 
   TVM_DEFINE_OBJECT_REF_METHODS(BufferStore, Stmt, BufferStoreNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(BufferStoreNode)
 };
 
 /*!
@@ -859,6 +860,7 @@ class For : public Stmt {
               Map<String, ObjectRef> annotations = Map<String, ObjectRef>(), Span span = Span());
 
   TVM_DEFINE_OBJECT_REF_METHODS(For, Stmt, ForNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(ForNode);
 };
 
 /*!
@@ -998,6 +1000,7 @@ class BufferRegion : public ObjectRef {
   TVM_DLL static BufferRegion FullRegion(Buffer buffer);
 
   TVM_DEFINE_OBJECT_REF_METHODS(BufferRegion, ObjectRef, BufferRegionNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(BufferRegionNode);
 };
 
 /*!
@@ -1357,13 +1360,6 @@ TVM_DLL PrimExpr TypeAnnotation(DataType dtype, Span span = Span());
 
 // overload printing of for type.
 TVM_DLL std::ostream& operator<<(std::ostream& os, ForKind kind);
-
-/*!
- * \brief Auto Complete helper for TIR blocks
- * \param body The body stmt
- * \return root_allocates The allocations under root block
- */
-TVM_DLL Stmt auto_complete(const Stmt& body, const Array<BufferAllocate>& root_allocates);
 
 }  // namespace tir
 }  // namespace tvm

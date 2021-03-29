@@ -180,7 +180,7 @@ TVM_DLL void MergeReduction(ScheduleState self, const StmtSRef& init_sref,
  * \param loop_sref the subtree root
  * \return the loop_sref of new block
  */
-TVM_DLL StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& exec_scope);
+TVM_DLL StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref);
 
 /*!
  * \brief Tensorize the computation enclosed by loop with tensor_intrin

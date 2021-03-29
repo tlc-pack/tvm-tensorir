@@ -181,7 +181,7 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   /******** Schedule: blockize / tensorize ********/
 
-  BlockRV Blockize(const LoopRV& loop_rv, const String& exec_scope) override;
+  BlockRV Blockize(const LoopRV& loop_rv) override;
 
   void Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) override;
 

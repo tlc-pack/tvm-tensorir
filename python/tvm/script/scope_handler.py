@@ -271,7 +271,6 @@ class Block(WithScopeHandler):
                     )
 
             # create block read/write regions
-
             reads: List[BufferRegion] = (
                 [buffer_slice_to_region(read) for read in block_info.reads]
                 if block_info.reads
@@ -282,6 +281,12 @@ class Block(WithScopeHandler):
                 if block_info.writes
                 else []
             )
+
+            region_detect_mask: int = (block_info.reads is None) | ((block_info.reads is None) << 1)
+            annotations = {} if block_info.annotations is None else block_info.annotations
+            if region_detect_mask != 0:
+                annotations["script_detect_access"] = region_detect_mask
+
             inner = tvm.tir.Block(
                 block_iters,
                 reads,
@@ -291,7 +296,7 @@ class Block(WithScopeHandler):
                 block_info.init,
                 block_info.alloc_buffers,
                 block_info.match_buffers,
-                block_info.annotations,
+                annotations,
                 span,
             )
             # create block var iter binding

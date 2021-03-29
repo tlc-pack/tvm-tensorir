@@ -71,15 +71,13 @@ TensorIntrin::TensorIntrin(PrimFunc desc_func, PrimFunc intrin_func) {
   CHECK_EQ(desc_func->buffer_map.size(), intrin_func->buffer_map.size());
 
   // check both functions' bodies are directly block
-  const auto* desc_realize = desc_func->body.as<BlockRealizeNode>();
-  const auto* intrin_realize = intrin_func->body.as<BlockRealizeNode>();
+  const auto* desc_realize = Downcast<BlockRealize>(desc_func->body)->block->body.as<BlockRealizeNode>();
+  const auto* intrin_realize = Downcast<BlockRealize>(intrin_func->body)->block->body.as<BlockRealizeNode>();
   CHECK(desc_realize != nullptr) << "description function's body expect a directly block";
   CHECK(intrin_realize != nullptr) << "intrinsic function's body expect a directly block";
 
   const Block& desc_block = desc_realize->block;
   const Block& intrin_block = intrin_realize->block;
-  CHECK_EQ(desc_block->exec_scope, intrin_block->exec_scope)
-      << "Exec_scope of both description and intrinsic block should be the same";
 
   // check block var number and iter type
   CHECK_EQ(desc_block->iter_vars.size(), intrin_block->iter_vars.size())

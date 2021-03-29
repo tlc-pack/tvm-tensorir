@@ -46,7 +46,7 @@ def sparse_dense_bsr(
     W_indices = tir.match_buffer(indices, [num_blocks], "int32")
     W_indptr = tir.match_buffer(indptr, [N_blocks + 1], "int32")
     BSRmm = tir.match_buffer(bsrmm, [M, N_blocks * bs_r], "float32")
-    BSRmm_block = tir.buffer_allocate([M, N_blocks, bs_r], "float32")
+    BSRmm_block = tir.alloc_buffer([M, N_blocks, bs_r], "float32")
     for ax0, ax1, ax2 in tir.grid(M, N_blocks, bs_r):
         with tir.block([M, N_blocks, bs_r], "bsr_par") as [i, nb_j, j]:
             with tir.init():

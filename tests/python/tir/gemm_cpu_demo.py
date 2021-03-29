@@ -168,7 +168,7 @@ def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.match_buffer(b, (1024, 1024), "float32")
     C = tir.match_buffer(c, (1024, 1024), "float32")
 
-    packedB = tir.buffer_allocate((1024 // 32, 1024, 32))
+    packedB = tir.alloc_buffer((1024 // 32, 1024, 32))
     with tir.block([1024 // 32, 1024, 32], "packed") as [vi, vj, vk]:
         packedB[vi, vj, vk] = B[vj, vi * 32 + vk]
 

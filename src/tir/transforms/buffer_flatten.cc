@@ -332,19 +332,19 @@ class BufferAllocator : public StmtExprMutator {
     // Step 4. Add allocation
     Array<Buffer> alloc_buffers = AllocBufferUnderLoop(GetRef<For>(loop));
     if (!alloc_buffers.empty()) {
-      body = BlockRealize(/*binding_values=*/{},
+      body = BlockRealize(/*iter_values=*/{},
                           /*predicate=*/const_true(),
                           /*block=*/
                           Block(/*iter_vars=*/{},                            //
                                 /*reads=*/{},                                //
                                 /*writes=*/{},                               //
-                                /*alloc_buffers=*/std::move(alloc_buffers),  //
-                                /*annotations=*/{},                          //
-                                /*match_buffers=*/{},                        //
-                                /*exec_scope=*/"",                           //
                                 /*name_hint=*/"alloc",                       //
                                 /*body=*/std::move(body),                    //
-                                /*init=*/NullOpt));
+                                /*init=*/NullOpt,                            //
+                                /*alloc_buffers=*/std::move(alloc_buffers),  //
+                                /*match_buffers=*/{},                        //
+                                /*annotations=*/{}                           //
+                                ));
     }
     // Step 5. Make the new loop
     if (loop->kind == ForKind::kThreadBinding && reduction_loop_vars_.count(loop->loop_var)) {
@@ -365,10 +365,10 @@ class BufferAllocator : public StmtExprMutator {
     const auto* block = realize->block.get();
     ICHECK(!block->init.defined());
     // Step 1. Update "block vars => loop vars" for substitution, add reduction loop vars
-    ICHECK_EQ(block->iter_vars.size(), realize->binding_values.size());
+    ICHECK_EQ(block->iter_vars.size(), realize->iter_values.size());
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
       IterVar block_var = block->iter_vars[i];
-      PrimExpr v = this->VisitExpr(realize->binding_values[i]);
+      PrimExpr v = this->VisitExpr(realize->iter_values[i]);
       var_substitutes_.emplace(block_var->var, v);
       if (block_var->iter_type == kCommReduce) {
         for (const VarNode* var : Vars(v)) {
@@ -389,19 +389,19 @@ class BufferAllocator : public StmtExprMutator {
     Array<Buffer> alloc_buffers =
         (block_nest_depth_ == 0) ? AllocBufferUnderLoop(NullOpt) : Array<Buffer>{};
     // Step 6. Create new blocks
-    return BlockRealize(/*binding_values=*/{},
+    return BlockRealize(/*iter_values=*/{},
                         /*predicate=*/std::move(predicate),
                         /*block=*/
                         Block(/*iter_vars=*/{},                            //
                               /*reads=*/std::move(reads),                  //
                               /*writes=*/std::move(writes),                //
-                              /*alloc_buffers=*/std::move(alloc_buffers),  //
-                              /*annotations=*/block->annotations,          //
-                              /*match_buffers=*/block->match_buffers,      //
-                              /*exec_scope=*/block->exec_scope,            //
                               /*name_hint=*/block->name_hint,              //
                               /*body=*/std::move(body),                    //
-                              /*init=*/NullOpt));
+                              /*init=*/NullOpt,                            //
+                              /*alloc_buffers=*/std::move(alloc_buffers),  //
+                              /*match_buffers=*/block->match_buffers,      //
+                              /*annotations=*/block->annotations           //
+                              ));
   }
 
   PrimExpr VisitExpr_(const VarNode* var) final {
@@ -540,7 +540,7 @@ class BufferFlattener : public StmtExprMutator {
 
  private:
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
-    ICHECK(realize->binding_values.empty());
+    ICHECK(realize->iter_values.empty());
     // Step 1. Visit the body
     Block new_block = Downcast<Block>(this->VisitStmt(realize->block));
     PrimExpr predicate = this->VisitExpr(realize->predicate);
@@ -660,8 +660,6 @@ class BufferFlattener : public StmtExprMutator {
 
 PrimFunc BufferFlatten(PrimFunc f) {
   PrimFuncNode* fptr = f.CopyOnWrite();
-  // Step 0. Check memory and execution hierarchy
-  VerifyExecScope(f);
   // Step 1. Transform the reduction calls to BufferStore
   fptr->body = ReductionTransformer::Transform(f);
   // Step 2. Recalculate the buffer region
