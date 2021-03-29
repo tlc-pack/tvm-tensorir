@@ -683,9 +683,9 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   //   we need to update those sref points from old ancestors to newly created ones
   // Variables:
   // 1) `num_copy_steps`. The maximum number of hops until we need to copy. To reach a node that
-  // can be mutated in-place, it needs `num_copy_steps + 1` hops. 2) `need_module_copy`. If
-  // true, need to mutate the PrimFunc and IRModule the sref belongs to. 3) `g_var` and
-  // `g_func`. Indicate which GlobalVar and PrimFunc the sref corresponds to
+  //   can be mutated in-place, it needs `num_copy_steps + 1` hops.
+  // 2) `need_module_copy`. If true, need to mutate the PrimFunc and IRModule the sref belongs to. 
+  // 3) `g_var` and `g_func`. Indicate which GlobalVar and PrimFunc the sref corresponds to
   int num_copy_steps = -1;
   bool need_module_copy = false;
   const PrimFuncNode* g_func = nullptr;
