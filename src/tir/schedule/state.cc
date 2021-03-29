@@ -720,7 +720,7 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   // 5) `tgt_stmt` is of type Loop, Block or BlockRealize
   //
   // During step `i`:
-  // 1) Create `parent_stmt` that corresponds to `child_sref->parent
+  // 1) Create `parent_stmt` that corresponds to `child_sref->parent`
   // 2) Point `child_sref` to `child_tgt_stmt`
   // 3) `tgt_stmt` is of type Loop or Block
   StmtSRefNode* child_sref = src_sref.get();
