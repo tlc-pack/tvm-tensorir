@@ -96,7 +96,8 @@ class PostprocRewriteTensorize {
       // Remove the annotation
       DelAnn(sch->state(), block_sref, tir::attr::auto_tensorize);
       // Get the surrounding loops
-      Array<tir::StmtSRef> loop_srefs = tir::GetLoops(block_sref);
+      // Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
+      auto loops = sch->GetLoops(sch->GetBlock(block_sref->StmtAs<tir::BlockNode>()->name_hint));
       // Decompose Reduction
       {
         // (TODO) bohan
@@ -104,7 +105,8 @@ class PostprocRewriteTensorize {
       // Tensorize
       for (const tir::TensorIntrin& intrin : tensor_intrins) {
         if (CanTensorize(sch, block_sref, intrin)) {
-          tir::Tensorize(sch->state(), loop_srefs[0], intrin);
+          sch->Tensorize(loops[0], "matmul4x4");
+          // tir::schedule::Tensorize(sch->state(), loop_srefs[0], intrin);
           return true;
         }
       }
@@ -196,7 +198,7 @@ class PostprocRewriteCooperativeFetchTensorCore {
     return [sch, idx](const tir::BlockNode* block) -> bool {
       const tir::StmtSRefNode* sref = sch->GetSRef(block)->parent;
       for (int& i = *idx = 0; sref != nullptr; sref = sref->parent, ++i) {
-        const tir::ForNode* loop = sref->GetStmt<tir::ForNode>();
+        const tir::ForNode* loop = sref->StmtAs<tir::ForNode>();
         if (!loop) {
           break;
         }
@@ -211,23 +213,37 @@ class PostprocRewriteCooperativeFetchTensorCore {
   bool Proc(const Schedule& sch) const {
     int idx = 0;
     while (Optional<tir::StmtSRef> opt_block_sref =
-        FindBlockSRef(sch->state, MakeBlockFinder(sch, &idx))) {
+        FindBlockSRef(sch->state(), MakeBlockFinder(sch, &idx))) {
       // Extract block info
       tir::StmtSRef block_sref = opt_block_sref.value();
-      const auto* block = block_sref->GetStmt<tir::BlockNode>();
+      const auto* block = block_sref->StmtAs<tir::BlockNode>();
       BlockRV block_rv = sch->GetBlock(block->name_hint);
       // Extract loop info
-      Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+      Array<LoopRV> loop_rvs = sch->GetLoops(block_rv);
       int n_loops = loop_rvs.size();
       CHECK_LT(idx, n_loops);
       LoopRV loop_rv = loop_rvs[n_loops - 1 - idx];
       tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
       // Remove the annotation
-      DelAnn(sch->state, loop_sref, tir::attr::loop_type);
+      DelAnn(sch->state(), loop_sref, tir::attr::loop_type);
+      // Find the threadIdx.y binding
+      PrimExpr thread_idy_extent{nullptr};
+      for (const tir::StmtSRefNode* sref = loop_sref->parent;; sref = sref->parent) {
+        ICHECK(sref) << "ValueError: Cannot find loops above with threadIdx.y";
+        if (const tir::ForNode* loop = sref->StmtAs<tir::ForNode>()) {
+          if (HasBinding(GetRef<tir::StmtSRef>(sref), "threadIdx.y")) {
+            ICHECK(tir::is_zero(loop->min))
+                << "ValueError: Expect loops to start from 0, but gets: " << GetRef<tir::For>(loop);
+            thread_idy_extent = loop->extent;
+            break;
+          }
+        }
+      }
       // Split the loop
-      Array<LoopRV> split = sch->Split(loop_rv, {NullOpt, Integer(32)});
-      ICHECK_EQ(split.size(), 2);
-      sch->Bind(split[1], "threadIdx.x");
+      Array<LoopRV> split = sch->Split(loop_rv, {NullOpt, thread_idy_extent, Integer(32)});
+      ICHECK_EQ(split.size(), 3);
+      sch->Bind(split[1], "threadIdx.y");
+      sch->Bind(split[2], "threadIdx.x");
     }
     return true;
   }

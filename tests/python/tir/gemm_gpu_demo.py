@@ -19,7 +19,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 n = 2048
 device = "cuda"
-ctx = tvm.context(device, 0)
+ctx = tvm.device(device, 0)
 mod = tvm.script.create_module({"matmul": matmul})
 
 original_func = mod["matmul"]

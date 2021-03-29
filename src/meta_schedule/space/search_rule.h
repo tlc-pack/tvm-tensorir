@@ -121,6 +121,31 @@ TVM_DLL SearchRule MultiLevelTiling(String structure, int max_innermost_factor,
                                     Optional<Array<String>> tile_binds);
 
 /*!
+ * \brief Create a rule that does multi-level tiling if there is sufficient amount of data reuse.
+ * Optionally add read cache and write cache, do fusion if possible
+ * \param structure The tiling structure
+ * \param max_innermost_factor The maximum size of the innermost factor
+ * \param must_cache_read Add cache_read before the multi-level tiling
+ * \param can_cache_write Add cache_write after the multi-level tiling
+ * \param must_cache_write Must add cache_write after the multi-level tiling
+ * \param fusion_levels The possible tile levels that a single elementwise consumer is fused at
+ * \param compute_intrin The tensor intrinsinc for doing computation
+ * \param load_intrin_A The corresponding data load intrinsic for compute_intrin
+ * \param load_intrin_B The corresponding data load intrinsic for compute_intrin
+ * \param store_intrin The corresponing data store instrinsic for compute_intrin
+ * \param vector_load_max_len For cache_read, if vectorized load is used, the max length of the
+ * vectorized load
+ * \param tile_binds The marks to be used on each tile
+ * \return The rule created
+ */
+TVM_DLL SearchRule MultiLevelTilingWithTensorCore(
+    String structure, int max_innermost_factor, bool must_cache_read, String cache_read_scope,
+    bool can_cache_write, bool must_cache_write, String cache_write_scope,
+    bool consumer_inline_strict, Array<Integer> fusion_levels, tir::TensorIntrin compute_intrin,
+    tir::TensorIntrin load_intrin_A, tir::TensorIntrin load_intrin_B, tir::TensorIntrin store_intrin,
+    Optional<Integer> vector_load_max_len, Optional<Array<String>> tile_binds);
+
+/*!
  * \brief A rule that randomly select a compute-at location for a free block
  * \return The rule created
  */
@@ -142,17 +167,11 @@ TVM_DLL SearchRule ParallelizeVectorizeUnroll(int max_jobs_per_core, int max_vec
                                               bool unroll_explicit);
 
 /*!
- * \brief Rewrite block and its surrounding loops to match the tensor intrinsics if possible
- * \param tensor_intrins The tensor intrinsics to be matched
- * \return The rule created
- */
-TVM_DLL SearchRule MarkTensorize(Array<tir::TensorIntrin> tensor_intrins);
-
-/*!
  * \brief Add rfactor to some blocks if needed
  * \return The rule created
  */
 TVM_DLL SearchRule AddRFactor(int max_jobs_per_core, int max_innermost_factor);
+
 /*!
  * \brief Handle special cases in Winograd transformation for GPU. We need to change the compute
  * location of the producers of compute ops that perform "fake reduction" with const tensors.

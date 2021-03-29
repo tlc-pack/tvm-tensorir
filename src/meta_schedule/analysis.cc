@@ -41,8 +41,9 @@ bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block
   int n = loops.size();
   for (int i = 0; i < n; ++i) {
     const PrimExpr& bind = bindings[i];
-    const ForNode* loop = TVM_SREF_TO_FOR(loop, loops[i]);
-    if (bind.as<tir::VarNode>() != loop->loop_var.get()) {
+    const auto* loop = TVM_SREF_TO_FOR(loop, loops[i]);
+    if (bind.as<tir::VarNode>() != loop->loop_var.get() && 
+        !(tir::is_one(loop->extent) && tir::is_zero(loop->min) && tir::is_zero(bind))) {
       return false;
     }
   }

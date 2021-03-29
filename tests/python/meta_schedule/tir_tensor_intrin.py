@@ -103,6 +103,7 @@ def dot_product_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             B.data, B.elem_offset,
             dtype="int32",
         ))
+        
 
 @tvm.script.tir
 def wmma_sync_desc(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
@@ -230,7 +231,7 @@ def wmma_fill_impl(c: ty.handle) -> None:
 @tvm.script.tir
 def wmma_store_desc(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32", align=128, offset_factor=256, scope="wmma.accumulator")
-    C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="local")
+    C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="global")
     with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
@@ -244,7 +245,7 @@ def wmma_store_desc(a: ty.handle, c: ty.handle) -> None:
 @tvm.script.tir
 def wmma_store_impl(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32", align=128, offset_factor=256, scope="wmma.accumulator")
-    C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="local")
+    C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="global")
     with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
@@ -294,7 +295,7 @@ WMMA_FILL = tir.TensorIntrin.register(
     wmma_fill_impl,
 )
 
-WMMA_FILL = tir.TensorIntrin.register(
+WMMA_STORE = tir.TensorIntrin.register(
     "wmma_store",
     wmma_store_desc,
     wmma_store_impl,

@@ -50,7 +50,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 M, N, K = 1024, 1024, 1024
 target = "llvm"
-ctx = tvm.context(target, 0)
+ctx = tvm.device(target, 0)
 
 original_func = matmul
 

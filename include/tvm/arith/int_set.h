@@ -72,7 +72,7 @@ class IntSet : public ObjectRef {
    * \param max_range The range to be covered.
    * \return The covering range.
    */
-  Range CoverRange(Range max_range) const;
+  Range CoverRange(Optional<Range> max_range = NullOpt) const;
   /*! \return Lower bound of the set */
   PrimExpr min() const;
   /*! \return upper bound of the set */

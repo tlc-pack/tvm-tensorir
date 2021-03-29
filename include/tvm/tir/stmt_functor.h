@@ -408,6 +408,23 @@ inline T Substitute(T input, const std::unordered_map<const VarNode*, PrimExpr>&
 }
 
 /*!
+ * \brief Sugar for substitute via a given map.
+ * \param input The input to be updated.
+ * \param value_map The map of new values.
+ * \return The result.
+ * \tparam T the input type, can be PrimExpr or Stmt.
+ */
+template <typename T>
+inline T Substitute(T input, const std::unordered_map<const VarNode*, const VarNode*>& value_map) {
+  auto vmap = [&](const Var& var) -> Optional<PrimExpr> {
+    auto it = value_map.find(var.get());
+    if (it != value_map.end()) return GetRef<Var>((*it).second);
+    return Optional<PrimExpr>(nullptr);
+  };
+  return Substitute(std::move(input), vmap);
+}
+
+/*!
  * \brief Recursively visit the IR in pre DFS order node, apply fvisit.
  * If fvisit returns false, it won't visit the children of the node.
  * \param stmt_or_expr The ir to be visited.

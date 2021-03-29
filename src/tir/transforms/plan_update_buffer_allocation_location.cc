@@ -73,8 +73,6 @@ class BufferAllocationLocator : public StmtExprMutator {
 
   Stmt VisitStmt_(const BlockNode* op) final {
     ICHECK(!op->init.defined());
-    bool is_root = is_root_;
-    is_root_ = false;
     Array<Buffer> alloc_buffers;
     auto it = alloc_buffers_.find(op);
     if (it != alloc_buffers_.end()) {
@@ -96,11 +94,8 @@ class BufferAllocationLocator : public StmtExprMutator {
 
     ObjectPtr<BlockNode> n = CopyOnWrite(op);
     n->alloc_buffers = std::move(alloc_buffers);
-    // The read/write regions of root block are always empty.
-    if (!is_root) {
-      // Recalculate block access region
-      CollectReadWrite(GetRef<Block>(op), &n->reads, &n->writes);
-    }
+    // Correct block access region
+    RemoveReadWrite(GetRef<Block>(op), &n->reads, &n->writes);
 
     return Stmt(n);
   }
@@ -136,12 +131,23 @@ class BufferAllocationLocator : public StmtExprMutator {
     }
   }
 
+  void RemoveReadWrite(const Block& block, Array<BufferRegion>* reads,
+                        Array<BufferRegion>* writes) {
+    std::vector<BufferRegion> reads_removed, writes_removed;
+    for (const auto& read : (*reads)) {
+      if (buffer_data_to_buffer_.count(read->buffer->data)) reads_removed.push_back(read);
+    }
+    for (const auto& write : (*writes)) {
+      if (buffer_data_to_buffer_.count(write->buffer->data)) writes_removed.push_back(write);
+    }
+    *reads = Array<BufferRegion>(reads_removed);
+    *writes = Array<BufferRegion>(writes_removed);
+  }
+
   /*! \brief The map from stmt to the buffers to be allocated under it. */
   std::unordered_map<const StmtNode*, Array<Buffer>> alloc_buffers_;
   /*! \brief The buffer already allocated during recursive visiting. */
   Map<Var, Buffer> buffer_data_to_buffer_;
-  /*! \brief indicate the whether the block is root. */
-  bool is_root_{true};
 };
 
 PrimFunc PlanAndUpdateBufferAllocationLocation(PrimFunc func) {

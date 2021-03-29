@@ -199,6 +199,78 @@ def multi_level_tiling(
     )
 
 
+def multi_level_tiling_with_tensor_core(
+    structure: str,
+    must_cache_read: bool,
+    cache_read_scope: str,
+    can_cache_write: bool,
+    must_cache_write: bool,
+    cache_write_scope: str,
+    consumer_inline_strict: bool,
+    fusion_levels: List[int],
+    compute_intrin : TensorIntrin,
+    load_intrin_A : TensorIntrin,
+    load_intrin_B : TensorIntrin,
+    store_intrin : TensorIntrin,
+    max_innermost_factor: int = 64,
+    vector_load_max_len: Optional[int] = None,
+    tile_binds: Optional[List[str]] = None,
+) -> SearchRule:
+    """Create a rule that does multi-level tiling if there is sufficient amount of data reuse.
+    Optionally add read cache and write cache, do fusion if possible.
+
+    Parameters
+    ----------
+    structure : str
+        Structure of tiling. On CPU, recommended to use 'SSRSRS';
+        On GPU, recommended to use 'SSSRRSRS'
+    max_innermost_factor : int
+        The maximum size of the innermost factor
+    must_cache_read : bool
+        Add cache_read before the multi-level tiling
+    can_cache_write : bool
+        Add cache_write after the multi-level tiling
+    must_cache_write : bool
+        Must add cache_write after the multi-level tiling
+    fusion_levels : List[int]
+        The possible tile levels that a single elementwise consumer is fused at
+    compute_intrin : TensorIntrin
+        The tensor intrinsinc for doing computation
+    load_intrin_A : TensorIntrin
+        The corresponding data load intrinsic for compute_intrin
+    load_intrin_B : TensorIntrin
+        The corresponding data load intrinsic for compute_intrin
+    store_intrin : TensorIntrin
+        The corresponing data store instrinsic for compute_intrin
+    vector_load_max_len : Optional[int]
+        For cache_read, if vectorized load is used, the max length of the vectorized load
+    tile_binds : Optional[List[str]]
+        The marks to be used on each tile
+
+    Returns
+    ----------
+    rule: SearchRule
+        The rule created
+    """
+    return _ffi_api_search_rule.MultiLevelTilingWithTensorCore(  # pylint: disable=no-member
+        structure,
+        max_innermost_factor,
+        must_cache_read,
+        cache_read_scope,
+        can_cache_write,
+        must_cache_write,
+        cache_write_scope,
+        consumer_inline_strict,
+        fusion_levels,
+        compute_intrin,
+        load_intrin_A,
+        load_intrin_B,
+        store_intrin,
+        vector_load_max_len,
+        tile_binds,
+    )
+
+
 def random_compute_location() -> SearchRule:
     """A rule that randomly select a compute-at location for a free block
 
@@ -246,22 +318,6 @@ def parallelize_vectorize_unroll(
         unroll_max_steps,
         unroll_explicit,
     )
-
-
-def mark_tensorize(tensor_intrins: List[TensorIntrin]) -> SearchRule:
-    """Rewrite block and its surrounding loops to match the tensor intrinsics if possible
-
-    Parameters
-    ----------
-    tensor_intrins : List[TensorIntrin]
-        The tensor intrinsics to be matched
-
-    Returns
-    -------
-    rule: SearchRule
-        The rule created
-    """
-    return _ffi_api_search_rule.MarkTensorize(tensor_intrins)  # pylint: disable=no-member
 
 
 def simplify_compute_with_const_tensor(max_innermost_factor: int = 64) -> SearchRule:

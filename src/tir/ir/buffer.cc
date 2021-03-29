@@ -438,7 +438,8 @@ Buffer::Buffer(Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<BufferNode>([](const ObjectRef& node, ReprPrinter* p) {
       auto* op = static_cast<const BufferNode*>(node.get());
-      p->stream << "buffer(" << op->name << ", " << op << ")";
+      p->stream << "buffer(" << op->name << ", " << op << ", " << op->data << ", " << op->shape
+                << ", " << op->strides << ")";
     });
 
 TVM_REGISTER_NODE_TYPE(BufferNode);

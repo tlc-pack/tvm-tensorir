@@ -377,6 +377,50 @@ Array<Array<arith::IterMark>> TrivialSubspaceDivision(const Array<IterVar>& iter
       return {};
     }
   }
+  res.push_back({arith::IterMark(arith::IterSumExpr({}, 0), Bool(true)), 
+                 arith::IterMark(arith::IterSumExpr({}, 0), Bool(true))});
+  return res;
+}
+
+Array<MatchBufferRegion> RemapReadWriteRegion(const Array<BufferRegion>& read,
+                                              const Array<BufferRegion>& write) {
+  std::unordered_map<Buffer, BufferRegion, ObjectPtrHash, ObjectPtrEqual> buffer_io_map;
+  // Collect input buffer regions
+  for (const BufferRegion& buffer_region : read) {
+    CHECK_EQ(buffer_io_map.count(buffer_region->buffer), 0);
+    buffer_io_map[buffer_region->buffer] = buffer_region;
+  }
+  // Collect output buffer regions
+  for (const BufferRegion& buffer_region : write) {
+    auto it = buffer_io_map.find(buffer_region->buffer);
+    if (it == buffer_io_map.end()) {
+      // if the buffer doesn't appear in input buffer regions
+      buffer_io_map[buffer_region->buffer] = buffer_region;
+    } else {
+      // if the buffer appear in input buffer regions
+      arith::Analyzer analyzer;
+      std::vector<Range> union_region;
+      CHECK_EQ(buffer_region->region.size(), it->second->region.size());
+      for (size_t i = 0; i < it->second->region.size(); ++i) {
+        // Calculate the union of
+        arith::IntSet int_set = arith::Union({arith::IntSet::FromRange(buffer_region->region[i]),
+                                              arith::IntSet::FromRange(it->second->region[i])});
+        union_region.push_back(int_set.CoverRange(Range::FromMinExtent(0, 0)));
+      }
+      buffer_io_map[buffer_region->buffer] = BufferRegion(buffer_region->buffer, union_region);
+    }
+  }
+
+  std::vector<MatchBufferRegion> res;
+  for (const auto& it : buffer_io_map) {
+    std::vector<PrimExpr> begins;
+    std::vector<PrimExpr> extents;
+    for (const Range& range : it.second->region) {
+      begins.push_back(range->min);
+      extents.push_back(range->extent);
+    }
+    res.emplace_back(it.first.MakeSlice(begins, extents), it.second);
+  }
   return res;
 }
 
@@ -561,6 +605,8 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   };
   rewrite_region(&reads, block->reads);
   rewrite_region(&writes, block->writes);
+  // Array<MatchBufferRegion> match_buffer = RemapReadWriteRegion(reads, writes);
+  Array<MatchBufferRegion> match_buffer = {};
   // Generate a new outer block
   auto outer_block = Block(/*iter_vars=*/outer_block_vars,                 //
                            /*reads=*/reads,                                //

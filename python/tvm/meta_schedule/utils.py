@@ -631,10 +631,10 @@ def rpc_runner_worker(
                 _, remote = request_remote(key, host, port, priority, timeout)
                 remote.upload(build_result.filename)
                 func = remote.load_module(os.path.split(build_result.filename)[1])
-                ctx = remote.device(measure_input.task.target.kind.name, 0)
+                dev = remote.device(measure_input.task.target.kind.name, 0)
                 time_f = func.time_evaluator(
                     func_name=func.entry_name,
-                    ctx=ctx,
+                    dev=dev,
                     number=number,
                     repeat=repeat,
                     min_repeat_ms=min_repeat_ms,
@@ -653,13 +653,13 @@ def rpc_runner_worker(
                 else:
                     rpc_eval_repeat = 1
                 if f_create_args is not None:
-                    args_set = [f_create_args(ctx) for _ in range(rpc_eval_repeat)]
+                    args_set = [f_create_args(dev) for _ in range(rpc_eval_repeat)]
                 else:
                     args_set = [
-                        realize_arguments(remote, ctx, measure_input.sch.mod["main"])
+                        realize_arguments(remote, dev, measure_input.sch.mod["main"])
                         for _ in range(rpc_eval_repeat)
                     ]
-                ctx.sync()
+                dev.sync()
                 costs = sum([time_f(*args).results for args in args_set], ())
                 # clean up remote files
                 remote.remove(build_result.filename)

@@ -74,10 +74,6 @@ def test_integration_matmul():
         sch.bind(vthread, "vthread")
         sch.bind(thread_idx, "threadIdx.x")
 
-        block_write_c = sch.cache_write(block_outer, 0, "local")
-        block_outer, block_write_c = block_write_c, block_outer
-        sch.reverse_compute_at(block_write_c, thread_idx)
-
         def fetch_to_shared(block, idx, ndim):
             block_read = sch.cache_read(block, idx, "shared")
             sch.compute_at(block_read, k0)

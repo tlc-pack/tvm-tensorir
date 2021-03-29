@@ -36,14 +36,14 @@ class Replay(SearchStrategy):
 
     Parameters
     ----------
-    batch_size : int
-        Size of a batch for measurement
     num_trials : int
         Number of iterations of replaying
+    batch_size : int
+        Size of a batch for measurement
     """
 
-    batch_size: int
     num_trials: int
+    batch_size: int
 
     def __init__(
         self,

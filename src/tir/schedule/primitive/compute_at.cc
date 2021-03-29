@@ -17,6 +17,8 @@
  * under the License.
  */
 
+#include <tvm/tir/analysis.h>
+
 #include "../../../arith/pattern_match.h"
 #include "../utils.h"
 

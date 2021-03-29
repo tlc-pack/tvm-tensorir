@@ -503,7 +503,7 @@ IntSet IntSetAnalyzer::operator()(const PrimExpr& expr, const Map<Var, IntSet>& 
 
 // Quickly adapt to IntSet interface
 // TODO(tqchen): revisit IntSet interface as well.
-Range IntSet::CoverRange(Range max_range) const {
+Range IntSet::CoverRange(Optional<Range> max_range) const {
   IntSet temp;
   Analyzer analyzer;
   const IntervalSetNode* s_int = (*this).as<IntervalSetNode>();
@@ -512,7 +512,8 @@ Range IntSet::CoverRange(Range max_range) const {
     return Range::FromMinExtent(s_int->min_value,
                                 analyzer.Simplify(s_int->max_value + 1 - s_int->min_value));
   }
-  return max_range;
+  CHECK(max_range.defined());
+  return max_range.value();
 }
 
 PrimExpr IntSet::min() const {

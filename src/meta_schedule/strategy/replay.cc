@@ -113,7 +113,23 @@ Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace&
                                        thread_measure_inputs.begin() + count};
     measurer->BatchMeasure(measure_inputs, count, verbose);
   }
-  return measurer->GetBest(task);
+  Optional<Schedule> res_opt = measurer->GetBest(task);
+  if (!res_opt.defined()) return NullOpt;
+  Schedule res = res_opt.value();
+  Optional<Trace> trace_opt = res->trace();
+  if (trace_opt.defined()) {
+    // Check if the result schedule needs postprocing
+    Trace trace = trace_opt.value();
+    bool need_postproc = true;
+    for (const Inst& inst : trace->insts) {
+      if (inst->kind.same_as(InstKind::Get("EnterPostProc"))) {
+        need_postproc = false;
+        break;
+      }
+    }
+    if (need_postproc) space->Postprocess(task, res, sampler);
+  }
+  return res;
 }
 
 /********** FFI **********/
