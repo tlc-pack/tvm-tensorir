@@ -58,6 +58,8 @@ class SearchTask(Object):
         target: TargetType = "llvm",
         target_host: TargetType = "llvm",
         log_file: Optional[str] = None,
+        shape_vars = None,
+        shape_freq = None,
     ):
         if task_name is None:
             if hasattr(workload, "__qualname__"):
@@ -68,6 +70,7 @@ class SearchTask(Object):
             target = Target(target)
         if not isinstance(target_host, Target):
             target_host = Target(target_host)
+
         self.__init_handle_by_constructor__(
             _ffi_api.SearchTask,  # pylint: disable=no-member
             workload,
@@ -75,6 +78,8 @@ class SearchTask(Object):
             target,
             target_host,
             log_file,
+            shape_vars,
+            shape_freq
         )
 
 

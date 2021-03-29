@@ -35,7 +35,7 @@ from tvm.contrib import ndk as build_func_ndk
 from tvm.contrib import tar as build_func_tar
 from tvm.driver import build as tvm_build
 from tvm.runtime import NDArray, TVMContext, ndarray
-from tvm.tir import FloatImm, IntImm, PrimFunc
+from tvm.tir import Var, FloatImm, IntImm, PrimFunc
 
 from .measure_record import BuildResult, MeasureErrorNo, MeasureInput, MeasureResult
 
@@ -280,10 +280,11 @@ def check_remote(key: str, host: str, port: int, priority: int = 100, timeout: i
 def realize_arguments(
     remote: rpc.RPCSession,
     ctx: TVMContext,
-    func: PrimFunc,
+    func,
+    binds=None,
 ) -> List[NDArray]:
     """
-    Check the availability of a remote device.
+    Ctir.expr.heck the availability of a remote device.
 
     Parameters
     ----------
@@ -299,13 +300,26 @@ def realize_arguments(
     args: List[NDArray]
         A list of arguments fed to the TVM runtime module built
     """
+    print("realize_arguments")
+    def realize_shape(shape, binds):
+        ret = []
+        for s in shape:
+            if isinstance(s, Var):
+                ret.append(binds[s.name])
+            else:
+                ret.append(s)
+        return ret
+
     args = []
     ndarrays = []
 
     for arg in func.params:
-        if arg.dtype == "handle":
+        if binds is not None and arg.name in binds:
+            args.append(binds[arg.name])
+        elif arg.dtype == "handle":
             buffer = func.buffer_map[arg]
-            array = ndarray.empty(shape=buffer.shape, dtype=buffer.dtype, ctx=ctx)
+            shape = realize_shape(buffer.shape, binds)
+            array = ndarray.empty(shape=shape, dtype=buffer.dtype, ctx=ctx)
             args.append(array)
             ndarrays.append(array)
         else:
@@ -572,6 +586,7 @@ def rpc_runner_run(
         verbose,
     )
 
+    print('rpc runner run')
     assert len(measure_inputs) == len(
         build_results
     ), "Measure input size should be equal to build results"
@@ -652,15 +667,28 @@ def rpc_runner_worker(
                     rpc_eval_repeat = 3
                 else:
                     rpc_eval_repeat = 1
+                num_workloads = 1
+                if measure_input.task.shape_freq is not None:
+                    num_workloads = len(measure_input.task.shape_freq)
                 if f_create_args is not None:
                     args_set = [f_create_args(ctx) for _ in range(rpc_eval_repeat)]
+                    ctx.sync()
+                    costs = sum([time_f(*args).results for args in args_set], ())
                 else:
-                    args_set = [
-                        realize_arguments(remote, ctx, measure_input.sch.mod["main"])
-                        for _ in range(rpc_eval_repeat)
-                    ]
-                ctx.sync()
-                costs = sum([time_f(*args).results for args in args_set], ())
+                    args_set = []
+                    shape_vars = measure_input.task.shape_vars
+                    shape_freq = measure_input.task.shape_freq
+                    for i in range(num_workloads):
+                        binds = {
+                            shape_vars[k]: shape_freq[i][k].value
+                            for k in range(len(shape_vars))
+                        }
+                        args_set = [
+                            realize_arguments(remote, ctx, measure_input.task.workload, binds)
+                            for _ in range(rpc_eval_repeat)
+                        ]
+                        ctx.sync()
+                        costs = sum([time_f(*args).results for args in args_set], ())
                 # clean up remote files
                 remote.remove(build_result.filename)
                 remote.remove(os.path.splitext(build_result.filename)[0] + ".so")
