@@ -193,54 +193,55 @@ Postproc RewriteCooperativeFetch() {
 
 class CoefficientExtractor : public tir::StmtExprVisitor {
  public:
-  explicit CoefficientExtractor(const tir::Var& var) : var(var) {}
+  explicit CoefficientExtractor(const tir::Var& var) : var_(var) {}
 
+  static int64_t Extract(const PrimExpr& expr, const tir::Var& var) {
+    CoefficientExtractor extractor(var);
+    extractor.VisitExpr(expr);
+    return extractor.strides_[expr];
+  }
+
+ private:
   void VisitExpr_(const tir::MulNode* node) override {
     StmtExprVisitor::VisitExpr_(node);
 
     if (const auto* a = node->a.as<IntImmNode>()) {
-      if (strides.count(node->b)) {
-        strides[GetRef<tir::Mul>(node)] = strides[node->b] * a->value;
+      if (strides_.count(node->b)) {
+        strides_[GetRef<tir::Mul>(node)] = strides_[node->b] * a->value;
       }
     } else if (const auto* b = node->b.as<IntImmNode>()) {
-      if (strides.count(node->a)) {
-        strides[GetRef<tir::Mul>(node)] = strides[node->a] * b->value;
+      if (strides_.count(node->a)) {
+        strides_[GetRef<tir::Mul>(node)] = strides_[node->a] * b->value;
       }
     }
   }
 
   void VisitExpr_(const tir::AddNode* node) override {
     StmtExprVisitor::VisitExpr_(node);
-    int stride_a, stride_b;
-    if (strides.count(node->a)) {
-      stride_a = strides[node->a];
+    int64_t stride_a, stride_b;
+    if (strides_.count(node->a)) {
+      stride_a = strides_[node->a];
     } else {
-      stride_a = INT32_MAX;
+      stride_a = INT64_MAX;
     }
-    if (strides.count(node->b)) {
-      stride_b = strides[node->b];
+    if (strides_.count(node->b)) {
+      stride_b = strides_[node->b];
     } else {
-      stride_b = INT32_MAX;
+      stride_b = INT64_MAX;
     }
-    if (stride_a != INT32_MAX || stride_b != INT32_MAX) {
-      strides[GetRef<tir::Add>(node)] = std::min(stride_a, stride_b);
+    if (stride_a != INT64_MAX || stride_b != INT64_MAX) {
+      strides_[GetRef<tir::Add>(node)] = std::min(stride_a, stride_b);
     }
   }
 
   void VisitExpr_(const tir::VarNode* node) override {
-    if (node == var.get()) {
-      strides[GetRef<tir::Var>(node)] = 1;
+    if (node == var_.get()) {
+      strides_[GetRef<tir::Var>(node)] = 1;
     }
   }
 
-  static int64_t Extract(const PrimExpr& expr, const tir::Var& var) {
-    CoefficientExtractor extractor(var);
-    extractor.VisitExpr(expr);
-    return extractor.strides[expr];
-  }
-
-  const tir::Var& var;
-  std::unordered_map<PrimExpr, int, ObjectPtrHash, ObjectPtrEqual> strides;
+  const tir::Var& var_;
+  std::unordered_map<PrimExpr, int64_t, ObjectPtrHash, ObjectPtrEqual> strides_;
 };
 
 class PostprocRewriteParallelizeVectorizeUnroll {
@@ -319,7 +320,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       }
     }
 
-    auto realize = tir::GetBlockRealize(block_sref);
+    tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
     Array<tir::BufferRegion> buffer_access(realize->block->reads);
     buffer_access.insert(buffer_access.end(), realize->block->writes.begin(),
                          realize->block->writes.end());
@@ -328,15 +329,15 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       binding_map[realize->block->iter_vars[i]->var.get()] = realize->binding_values[i];
     }
     int max_fusible = INT32_MAX;
-    // for each block read/write, get the stride of the loop vars and find the fusible axes
+    // for each block read/write, get the strides of the loop vars and find the fusible axes
     // (fusible means contiguous memory access)
     for (const tir::BufferRegion& access : buffer_access) {
       int fusible = 0;
-      std::vector<int> strides;
+      std::vector<int64_t> strides;
       // get strides for each loop var
       for (const tir::StmtSRef& loop_sref : loop_srefs) {
-        int stride = 0, buffer_stride = 1;
-        auto var = GetRef<tir::For>(static_cast<const tir::ForNode*>(loop_sref->stmt));
+        int64_t stride = 0, buffer_stride = 1;
+        const auto* var = loop_sref->StmtAs<tir::ForNode>();
         arith::Analyzer analyzer;
         for (int i = access->region.size() - 1; i >= 0; i--) {
           PrimExpr idx = analyzer.Simplify(tir::Substitute(access->region[i]->min, binding_map));
@@ -362,9 +363,8 @@ class PostprocRewriteParallelizeVectorizeUnroll {
           prev_used_iter = i;
         } else {
           // contiguous memory access
-          auto prev_loop =
-              GetRef<tir::For>(static_cast<const tir::ForNode*>(loop_srefs[prev_used_iter]->stmt));
-          int prev_used_iter_extent = prev_loop->extent.as<IntImmNode>()->value;
+          const auto* prev_loop = loop_srefs[prev_used_iter]->StmtAs<tir::ForNode>();
+          int64_t prev_used_iter_extent = prev_loop->extent.as<IntImmNode>()->value;
           if (strides[i] == strides[prev_used_iter] * prev_used_iter_extent) {
             fusible++;
             prev_used_iter = i;
@@ -450,7 +450,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     tir::StmtSRef root = sch->GetSRef(sch->GetBlock("root"));
     MakeAnnParser (&parsed)(root->StmtAs<tir::BlockNode>());
     RemoveParsedAnn(sch, root, parsed);
-    for (const auto& block_rv : sch->GetChildBlocks(sch->GetBlock("root"))) {
+    for (const BlockRV& block_rv : sch->GetChildBlocks(sch->GetBlock("root"))) {
       // Extract block info
       tir::StmtSRef block_sref = sch->GetSRef(block_rv);
       // Extract loop info
