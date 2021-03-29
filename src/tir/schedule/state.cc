@@ -727,7 +727,7 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   Stmt child_tgt_stmt = std::move(tgt_stmt);
   for (int i = 0; (need_module_copy || i <= num_copy_steps) && child_sref->parent != nullptr; ++i) {
     bool can_directly_mutate_parent = !need_module_copy && i == num_copy_steps;
-    // replacing `child_sref->stmt` to `child_tgt_stmt`.
+    // Replace `child_sref->stmt` to `child_tgt_stmt`.
     const StmtNode* parent_stmt = child_sref->parent->stmt;
     const StmtNode* child_src_stmt = child_sref->stmt;
     // Step 2.1. Link `child_sref` to `child_tgt_stmt`
