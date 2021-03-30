@@ -268,18 +268,44 @@ BufferRegionMap GatherRequirements(const Array<BufferRegion>& produced_regions,
   }
   // For each consumer's reading region
   for (const StmtSRef& block_sref : consumer_blocks) {
+    /*! \brief Collect the BufferRegions that `block_sref` will access under `lca_loop_sref`. */
     std::vector<BufferRegion> relaxed;
+    /*! \brief Collect the BufferRegions that `block_sref` will access in the whole block scope. */
+    std::vector<BufferRegion> deep_relaxed;
     if (gather_read) {
       RelaxRegion(block_sref, lca_loop_sref, &relaxed, nullptr, relax_vars);
+      RelaxRegion(block_sref, GetScopeRoot(lca_loop_sref), &deep_relaxed, nullptr, relax_vars);
     } else {
       RelaxRegion(block_sref, lca_loop_sref, nullptr, &relaxed, relax_vars);
+      RelaxRegion(block_sref, GetScopeRoot(lca_loop_sref), nullptr, &deep_relaxed, relax_vars);
     }
-    for (const BufferRegion& region : relaxed) {
-      if (produced_region_reads.count(region->buffer)) {
+    ICHECK_EQ(relaxed.size(), deep_relaxed.size());
+    for (int i = 0; i < static_cast<int>(relaxed.size()); ++i) {
+      ICHECK(relaxed[i]->buffer.same_as(deep_relaxed[i]->buffer));
+      if (produced_region_reads.count(relaxed[i]->buffer)) {
         // Accumulate the read range into its corresponding buffer
-        for (size_t i = 0; i < region->region.size(); ++i) {
-          arith::IntSet& iset = produced_region_reads[region->buffer][i];
-          iset = arith::Union({iset, arith::IntSet::FromRange(region->region[i])});
+        for (int d = 0; d < static_cast<int>(relaxed[i]->region.size()); ++d) {
+          arith::IntSet& iset = produced_region_reads[relaxed[i]->buffer][d];
+          iset = arith::Union({iset, arith::IntSet::FromRange(relaxed[i]->region[d])});
+          // If we can prove that the ultimate access range is fully covered by the buffer's range
+          // at this dimension, then we don't have to intersect the union result with the original
+          // buffer range. Otherwise, we should take the intersection of the union result and the
+          // original buffer range so that the result range doesn't exceed the original buffer
+          // range.
+          arith::Analyzer ana;
+          arith::IntSet ultimate_access_range =
+              arith::IntSet::FromRange(deep_relaxed[i]->region[d]);
+          arith::IntSet original_buffer_range =
+              arith::IntSet::FromRange(Range::FromMinExtent(0, relaxed[i]->buffer->shape[d]));
+          if (!(ana.CanProveGreaterEqual(original_buffer_range.max() - ultimate_access_range.max(),
+                                         0) &&
+                ana.CanProveGreaterEqual(ultimate_access_range.min() - original_buffer_range.min(),
+                                         0))) {
+            // In this case, we cannot prove that the original buffer range covers the ultimate
+            // access range. Thus we take the intersection of the result range and the original
+            // buffer range.
+            iset = arith::Intersect({iset, original_buffer_range});
+          }
         }
       }
     }
