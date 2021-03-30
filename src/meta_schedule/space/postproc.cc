@@ -319,7 +319,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
         loop_types.push_back(GetLoopIterType(sch->state(), loop_srefs.back()));
       }
     }
-
+    // check the maximal number of axes that are vectorizable (contiguous memory access)
     tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
     Array<tir::BufferRegion> buffer_access(realize->block->reads);
     buffer_access.insert(buffer_access.end(), realize->block->writes.begin(),
@@ -329,8 +329,8 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       binding_map[realize->block->iter_vars[i]->var.get()] = realize->binding_values[i];
     }
     int max_fusible = INT32_MAX;
-    // for each block read/write, get the strides of the loop vars and find the fusible axes
-    // (fusible means contiguous memory access)
+    // for each block read/write, get the strides of the loop vars and find the fusible
+    // (vectorizable) axes
     for (const tir::BufferRegion& access : buffer_access) {
       int fusible = 0;
       std::vector<int64_t> strides;
@@ -380,9 +380,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       int max_extent = parsed->max_parallel_extent;
       int& num_fusible = parsed->num_parallel_loops = 0;
       int64_t prod_extent = 1;
-      for (int i = 0;
-           i < n_loops && loop_types[i] == tir::IterVarType::kDataPar && num_fusible < max_fusible;
-           ++i) {
+      for (int i = 0; i < n_loops && loop_types[i] == tir::IterVarType::kDataPar; ++i) {
         const tir::StmtSRef& loop_sref = loop_srefs[i];
         if (HasAnyAnn(loop_sref)) {
           break;
@@ -409,7 +407,9 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       int max_extent = parsed->max_vectorize_extent;
       int& num_fusible = parsed->num_vectorize_loops = 0;
       int64_t prod_extent = 1;
-      for (int i = n_loops - 1; i >= 0 && loop_types[i] == tir::IterVarType::kDataPar; --i) {
+      for (int i = n_loops - 1;
+           i >= 0 && loop_types[i] == tir::IterVarType::kDataPar && num_fusible < max_fusible;
+           --i) {
         const tir::StmtSRef& loop_sref = loop_srefs[i];
         if (HasAnyAnn(loop_sref)) {
           break;
