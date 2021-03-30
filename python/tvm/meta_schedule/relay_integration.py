@@ -88,7 +88,7 @@ def extract_tasks(mod, params, target, target_host=None):
         build_thread.start()
         build_thread.join()
     workload_registry = env.funcs
-    return env.funcs.values();
+    return env.funcs;
 
 
 def is_meta_schedule_enabled():

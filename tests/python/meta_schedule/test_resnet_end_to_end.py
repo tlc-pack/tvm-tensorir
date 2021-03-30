@@ -117,6 +117,7 @@ SPACE = ms.space.PostOrderApply(
             cache_write_scope="global",
             consumer_inline_strict=True,
             fusion_levels=[1, 2],
+            max_innermost_factor=64
         ),
         ms.rule.parallelize_vectorize_unroll(
             max_jobs_per_core=16,
@@ -146,7 +147,7 @@ def test_end_to_end_resnet(log):
 
     tir_funcs = ms.extract_tasks(mod["main"], params, target, TARGET_HOST)
     print("func num:", len(tir_funcs))
-    for func in tir_funcs:
+    for func in tir_funcs.values():
         sch = ms.autotune(
             task=ms.SearchTask(
                 workload=func,
@@ -160,7 +161,7 @@ def test_end_to_end_resnet(log):
                 num_measures_per_iter=64,
                 population=2048,
                 init_measured_ratio=0.2,
-                genetic_algo_iters=10,
+                genetic_algo_iters=4,
                 p_mutate=0.85,
                 mutator_probs={
                     ms.mutator.mutate_tile_size(): 0.90,
@@ -168,7 +169,7 @@ def test_end_to_end_resnet(log):
                     ms.mutator.mutate_auto_unroll(): 0.03,
                     ms.mutator.mutate_parallel(max_jobs_per_core=16): 0.02
                 },
-                cost_model=ms.XGBModel(),
+                cost_model=ms.XGBModel(xgb_eta=0.2),
                 eps_greedy=0.25,
             ),
             measurer=ms.ProgramMeasurer(
@@ -202,24 +203,23 @@ def test_end_to_end_resnet(log):
             tmp = tempdir()
             filename = "net.tar"
             lib.export_library(tmp.relpath(filename))
-            for _ in range(3):
-                # Upload module to device
-                print("Upload...")
-                remote = auto_scheduler.utils.request_remote(RPC_KEY, "172.16.2.241", 4445, timeout=10000)
-                remote.upload(tmp.relpath(filename))
-                rlib = remote.load_module(filename)
+            # Upload module to device
+            print("Upload...")
+            remote = auto_scheduler.utils.request_remote(RPC_KEY, "172.16.2.241", 4445, timeout=10000)
+            remote.upload(tmp.relpath(filename))
+            rlib = remote.load_module(filename)
 
-                # Create graph runtime
-                ctx = remote.cpu()
-                module = runtime.GraphModule(rlib["default"](ctx))
-                module.set_input("data", data)
-                # Evaluate
-                print("Evaluate inference time cost...")
-                ftimer = module.module.time_evaluator("run", ctx, repeat=3, min_repeat_ms=500)
-                prof_res = np.array(ftimer().results) * 1e3  # convert to millisecond
-                print(
-                    "Mean inference time (std dev): %.2f ms (%.2f ms)" % (np.mean(prof_res), np.std(prof_res))
-                )
+            # Create graph runtime
+            ctx = remote.cpu()
+            module = runtime.GraphModule(rlib["default"](ctx))
+            module.set_input("data", data)
+            # Evaluate
+            print("Evaluate inference time cost...")
+            ftimer = module.module.time_evaluator("run", ctx, repeat=3, min_repeat_ms=500)
+            prof_res = np.array(ftimer().results) * 1e3  # convert to millisecond
+            print(
+                "Mean inference time (std dev): %.2f ms (%.2f ms)" % (np.mean(prof_res), np.std(prof_res))
+            )
 
             module.run()
             return module.get_output(0)
@@ -231,4 +231,4 @@ def test_end_to_end_resnet(log):
 
 
 if __name__ == "__main__":
-    test_end_to_end_resnet("resnet_ms_rewrite_arm.json")
+    test_end_to_end_resnet("resnet.json")

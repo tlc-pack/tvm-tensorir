@@ -650,7 +650,7 @@ def rpc_runner_worker(
                 # TODO(@junrushao1994): remove the hardcode
                 mtriple = str(measure_input.task.target.attrs.get("mtriple", ""))
                 if mtriple in ["aarch64-linux-gnu", "armv8l-linux-gnueabihf"]:
-                    rpc_eval_repeat = 5
+                    rpc_eval_repeat = 3
                 else:
                     rpc_eval_repeat = 1
                 if f_create_args is not None:
