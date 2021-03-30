@@ -751,7 +751,7 @@ class PostProcRewriteLayout {
     IterVarMapCollector(Array<arith::IterSplitExpr>& splitexprs) : splitexprs(splitexprs) {}
 
     void CollectIterSplitExpr(const arith::IterSplitExpr& expr) {
-      if (const auto* op = expr->source->source.as<tir::VarNode>()) {
+      if (expr->source->source.as<tir::VarNode>()) {
         splitexprs.push_back(
             arith::IterSplitExpr(expr->source, expr->lower_factor, expr->extent, expr->scale));
       } else if (const auto& op = expr->source->source.as<arith::IterSumExprNode>()) {
@@ -788,7 +788,7 @@ class PostProcRewriteLayout {
 
     void VisitStmt_(const tir::BlockRealizeNode* op) {
       realize = GetRef<tir::BlockRealize>(op);
-      for (int i = 0; i < realize->binding_values.size(); i++) {
+      for (size_t i = 0; i < realize->binding_values.size(); i++) {
         binding_map.Set(realize->block->iter_vars[i]->var, realize->binding_values[i]);
       }
       VisitStmt(op->block->body);
@@ -818,7 +818,7 @@ class PostProcRewriteLayout {
         visited = true;
         PrimExpr sum = 0;
         PrimExpr flatten_shape = 1;
-        for (int i = 0; i < op->indices.size(); i++) {
+        for (size_t i = 0; i < op->indices.size(); i++) {
           sum *= op->buffer->shape[i];
           flatten_shape *= op->buffer->shape[i];
           tir::Var var = Downcast<tir::Var>(op->indices[i]);
@@ -831,7 +831,7 @@ class PostProcRewriteLayout {
         auto loops = sch->GetAxes(sch->GetBlock(realize->block->name_hint));
         std::unordered_map<tir::Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_vars;
         std::unordered_map<tir::Var, int, ObjectPtrHash, ObjectPtrEqual> loop_order;
-        for (int i = 0; i < loops.size(); i++) {
+        for (size_t i = 0; i < loops.size(); i++) {
           tir::For loop = sch->Get(loops[i]);
           loop_vars.emplace(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
           loop_order.emplace(loop->loop_var, i);
@@ -843,7 +843,7 @@ class PostProcRewriteLayout {
             Array<PrimExpr>{analyzer.Simplify(sum)}, loop_vars, realize->predicate, &analyzer);
         Array<arith::IterSplitExpr> splitexprs;
         IterVarMapCollector collector(splitexprs);
-        for (int i = 0; i < results.size(); i++) {
+        for (size_t i = 0; i < results.size(); i++) {
           collector.Collect(results[i]);
         }
         for (const auto& splitexpr : splitexprs) {
@@ -855,7 +855,7 @@ class PostProcRewriteLayout {
           }
         }
         hint.reorder.resize(hint.extents.size());
-        for (int i = 0; i < hint.extents.size(); i++) {
+        for (size_t i = 0; i < hint.extents.size(); i++) {
           int idx = 0;
           for (const auto& other : splitexprs) {
             if (compare(other, splitexprs[i], loop_order)) {
@@ -882,8 +882,8 @@ class PostProcRewriteLayout {
   class IndexRewriter : public tir::StmtExprMutator {
     const LayoutRewriteHint& hint;
     const tir::Buffer& buffer_to_rewrite;
-    const tir::Buffer& new_buffer;
     const tir::Block& block;
+    const tir::Buffer& new_buffer;
 
    public:
     IndexRewriter(const LayoutRewriteHint& hint, const tir::Buffer& buffer_to_rewrite,
@@ -907,7 +907,7 @@ class PostProcRewriteLayout {
     PrimExpr VisitExpr_(const tir::BufferLoadNode* op) final {
       if (op->buffer.same_as(buffer_to_rewrite)) {
         PrimExpr sum = 0;
-        for (int i = 0; i < op->indices.size(); i++) {
+        for (size_t i = 0; i < op->indices.size(); i++) {
           sum *= op->buffer->shape[i];
           sum += op->indices[i];
         }
@@ -919,7 +919,7 @@ class PostProcRewriteLayout {
         }
         Array<PrimExpr> new_indices(r_new_indices.rbegin(), r_new_indices.rend());
         Array<PrimExpr> reordered_indices;
-        for (int i = 0; i < hint.extents.size(); i++) {
+        for (size_t i = 0; i < hint.extents.size(); i++) {
           reordered_indices.push_back(new_indices[hint.reorder[i]]);
         }
 
@@ -941,7 +941,7 @@ class PostProcRewriteLayout {
       const tir::Stmt& body = func->body;
       tir::Block block = resolver.getBufferIterInfo(body);
       Array<PrimExpr> new_shape;
-      for (int i = 0; i < hint.extents.size(); i++) {
+      for (size_t i = 0; i < hint.extents.size(); i++) {
         new_shape.push_back(hint.extents[hint.reorder[i]]);
       }
       tir::Buffer new_buffer(buffer->data, buffer->dtype, new_shape, Array<PrimExpr>(),

@@ -1433,7 +1433,7 @@ inline Tensor layout_transform(const Tensor& src, const std::string& src_layout,
 inline void getNewShape(const Array<Integer>& extents, const Array<Integer>& reorder,
                         Array<PrimExpr>& new_shape) {
   new_shape.clear();
-  for (int i = 0; i < extents.size(); i++) {
+  for (size_t i = 0; i < extents.size(); i++) {
     new_shape.push_back(extents[reorder[i]]);
   }
 }
@@ -1466,7 +1466,7 @@ inline Tensor meta_schedule_layout_transform(const Tensor& src, const Array<Inte
           reorder_buf[reorder[i]] = dst_indices[i];
         }
         PrimExpr sum = 0;
-        for (int i = 0; i < dst_indices.size(); i++) {
+        for (size_t i = 0; i < dst_indices.size(); i++) {
           sum *= extents[i];
           sum += reorder_buf[i];
         }
