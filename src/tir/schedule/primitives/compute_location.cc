@@ -258,7 +258,7 @@ BufferRegionMap GatherRequirements(const Array<BufferRegion>& produced_regions,
                                    const std::vector<StmtSRef>& consumer_blocks,
                                    const std::unordered_map<const VarNode*, Range>& relax_vars,
                                    bool gather_read) {
-  // For write domain in produce_regions, initiate an empty IntSet for it
+  // For access domain in produce_regions, initiate an empty IntSet for it
   std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>
       produced_region_reads;
   for (const BufferRegion& region : produced_regions) {
@@ -266,11 +266,11 @@ BufferRegionMap GatherRequirements(const Array<BufferRegion>& produced_regions,
                                                     arith::IntSet::Nothing());
     produced_region_reads[region->buffer] = std::move(produced_region_read);
   }
-  // For each consumer's reading region
+  // For each consumer's access region
   for (const StmtSRef& block_sref : consumer_blocks) {
-    /*! \brief Collect the BufferRegions that `block_sref` will access under `lca_loop_sref`. */
+    /*! \brief Collect the BufferRegions that the block accesses under `lca_loop_sref`. */
     std::vector<BufferRegion> relaxed;
-    /*! \brief Collect the BufferRegions that `block_sref` will access in the whole block scope. */
+    /*! \brief Collect the BufferRegions that the block accesses in the whole block scope. */
     std::vector<BufferRegion> deep_relaxed;
     if (gather_read) {
       RelaxRegion(block_sref, lca_loop_sref, &relaxed, nullptr, relax_vars);
@@ -283,15 +283,16 @@ BufferRegionMap GatherRequirements(const Array<BufferRegion>& produced_regions,
     for (int i = 0; i < static_cast<int>(relaxed.size()); ++i) {
       ICHECK(relaxed[i]->buffer.same_as(deep_relaxed[i]->buffer));
       if (produced_region_reads.count(relaxed[i]->buffer)) {
-        // Accumulate the read range into its corresponding buffer
+        // Accumulate the access range into its corresponding buffer
         for (int d = 0; d < static_cast<int>(relaxed[i]->region.size()); ++d) {
           arith::IntSet& iset = produced_region_reads[relaxed[i]->buffer][d];
           iset = arith::Union({iset, arith::IntSet::FromRange(relaxed[i]->region[d])});
-          // If we can prove that the ultimate access range is fully covered by the buffer's range
-          // at this dimension, then we don't have to intersect the union result with the original
-          // buffer range. Otherwise, we should take the intersection of the union result and the
-          // original buffer range so that the result range doesn't exceed the original buffer
-          // range.
+          // Let "ultimate access range" be the region that the block accesses in the whole block
+          // scope. If we can prove that the ultimate access range is fully covered by the buffer's
+          // original range at this dimension, then we don't have to intersect the union result
+          // with the original buffer range. Otherwise, we should take the intersection of the union
+          // result and the original buffer range so that the result range doesn't exceed the
+          // original buffer range.
           arith::Analyzer ana;
           arith::IntSet ultimate_access_range =
               arith::IntSet::FromRange(deep_relaxed[i]->region[d]);
@@ -618,6 +619,10 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   Array<Dependency> edges_to_succ = scope->GetDepsBySrc(block_sref);
   Array<StmtSRef> producers = GetProducersFromDependency(edges_to_pred);
   Array<StmtSRef> consumers = GetConsumersFromDependency(edges_to_succ);
+  for (const StmtSRef& consumer : consumers) {
+    const auto* consumer_block = TVM_SREF_TO_BLOCK(consumer_block, consumer);
+    LOG(INFO) << "consumer:\n" << GetRef<Block>(consumer_block);
+  }
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'compute_at' expects 'block' and 'loop' be in the same block";
@@ -675,6 +680,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
                                     /*gather_read=*/true),
                  true),
       preserve_trivial_loop);
+  LOG(INFO) << "new_loop is\n" << new_loop;
   // Remove leaf
   StmtSRef root = GetSRefTreeRoot(block_sref);
   std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, root);
