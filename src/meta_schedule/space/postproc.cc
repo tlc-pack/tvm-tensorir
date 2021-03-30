@@ -828,11 +828,11 @@ class PostProcRewriteLayout {
           sum += bind.value();
         }
         arith::Analyzer analyzer;
-        auto loops = sch->GetAxes(sch->state()->stmt2ref.at(realize->block.get()));
+        auto loops = sch->GetAxes(sch->GetBlock(realize->block->name_hint));
         std::unordered_map<tir::Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_vars;
         std::unordered_map<tir::Var, int, ObjectPtrHash, ObjectPtrEqual> loop_order;
         for (int i = 0; i < loops.size(); i++) {
-          const auto* loop = loops[i]->GetStmt<tir::ForNode>();
+          tir::For loop = sch->Get(loops[i]);
           loop_vars.emplace(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
           loop_order.emplace(loop->loop_var, i);
         }
@@ -931,15 +931,15 @@ class PostProcRewriteLayout {
 
  public:
   bool Proc(Schedule& sch, SearchTask& task) const {
-    auto buffer_to_rewrite =
-        sch->sch->state->func->GetAttr("layout_free_placeholders", Array<tir::Var>());
+    tir::PrimFunc func = GetOnlyFunc(sch->mod());
+    auto buffer_to_rewrite = func->GetAttr("layout_free_placeholders", Array<tir::Var>());
     for (const auto& input_var : buffer_to_rewrite.value()) {
       //      LOG(INFO) << "doing layout rewrite for task: " << task->task_name;
-      tir::Buffer buffer = sch->sch->state->func->buffer_map.Get(input_var).value();
+      tir::Buffer buffer = func->buffer_map.Get(input_var).value();
       LayoutRewriteHint hint;
       IterVarResolver resolver(sch, buffer, hint);
-      const tir::Stmt& body = sch->sch->state->func->body;
-      auto block = resolver.getBufferIterInfo(body);
+      const tir::Stmt& body = func->body;
+      tir::Block block = resolver.getBufferIterInfo(body);
       Array<PrimExpr> new_shape;
       for (int i = 0; i < hint.extents.size(); i++) {
         new_shape.push_back(hint.extents[hint.reorder[i]]);
@@ -948,13 +948,12 @@ class PostProcRewriteLayout {
                              buffer->elem_offset, buffer->name, buffer->scope,
                              buffer->data_alignment, buffer->offset_factor, buffer->buffer_type);
       IndexRewriter rewriter(hint, buffer, block, new_buffer);
-      sch->sch->state->Replace(sch->sch->state->stmt2ref.at(block.get()), rewriter.Rewrite(block),
-                               {});
-      auto new_buffer_map = Map<tir::Var, tir::Buffer>(sch->sch->state->func->buffer_map);
+      sch->state()->Replace(sch->GetSRef(block), rewriter.Rewrite(block), {});
+      auto new_buffer_map = Map<tir::Var, tir::Buffer>(func->buffer_map);
       new_buffer_map.Set(input_var, new_buffer);
-      sch->sch->state->func = tir::PrimFunc(
-          sch->sch->state->func->params, sch->sch->state->func->body,
-          sch->sch->state->func->ret_type, new_buffer_map, sch->sch->state->func->attrs);
+      auto new_func = func.CopyOnWrite();
+      new_func->buffer_map = std::move(new_buffer_map);
+      sch->state() = tir::ScheduleState(GetRef<tir::PrimFunc>(new_func));
       std::lock_guard<std::mutex> lock(::tvm::relay::MetaSchedulerLayoutRewriter::mutex);
 
       ::tvm::relay::MetaSchedulerLayoutRewriter::global_layout_rewrite_queue.push_back(hint);
