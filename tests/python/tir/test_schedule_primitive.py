@@ -407,6 +407,90 @@ def element_wise_double_buffer(a: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = B[vi, vj] + 1.0
 
 
+@tvm.script.tir
+def predicate_consumer_block(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [1])
+    B = tir.buffer_allocate([1])
+    C = tir.match_buffer(c, [1])
+
+    for i0 in tir.serial(0, 1):
+        with tir.block([1], "B") as [i]:
+            tir.bind(i, i0)
+            B[i] = A[i]
+
+    for i1_outer, i1_inner in tir.grid(1, 32):
+        with tir.block([1], "C") as [i_1]:
+            tir.where((((i1_outer*32) + i1_inner) < 1))
+            tir.bind(i_1, i1_inner)
+            C[i_1] = B[i_1]
+
+
+@tvm.script.tir
+def predicate_producer_block(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [1])
+    B = tir.buffer_allocate([1])
+    C = tir.match_buffer(c, [1])
+
+    for i0_outer, i0_inner in tir.grid(1, 32):
+        with tir.block([1], "B") as [i]:
+            tir.where((((i0_outer*32) + i0_inner) < 1))
+            tir.bind(i, i0_inner)
+            B[i] = A[i]
+
+    for i1 in tir.serial(0, 1):
+        with tir.block([1], "C") as [i_1]:
+            tir.bind(i_1, i1)
+            C[i_1] = B[i_1]
+
+
+@tvm.script.tir
+def compute_at_with_consumer_predicate(a: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [1], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [1], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        B = tir.buffer_allocate([1], elem_offset=0, align=128, offset_factor=1)
+        for i1_outer in tir.serial(0, 1):
+            with tir.block([1], "B") as [i]:
+                tir.bind(i, 0)
+                tir.reads([A[i:(i + 1)]])
+                tir.writes([B[i:(i + 1)]])
+                B[i] = A[i]
+            for i1_inner in tir.serial(0, 32):
+                with tir.block([1], "C") as [i_1]:
+                    tir.where((((i1_outer*32) + i1_inner) < 1))
+                    tir.bind(i_1, i1_inner)
+                    tir.reads([B[i_1:(i_1 + 1)]])
+                    tir.writes([C[i_1:(i_1 + 1)]])
+                    C[i_1] = B[i_1]
+
+
+@tvm.script.tir
+def reverse_compute_at_with_producer_predicate(a: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [1], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [1], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        B = tir.buffer_allocate([1], elem_offset=0, align=128, offset_factor=1)
+        for i0_outer in tir.serial(0, 1):
+            for i0_inner in tir.serial(0, 32):
+                with tir.block([1], "B") as [i]:
+                    tir.where((((i0_outer*32) + i0_inner) < 1))
+                    tir.bind(i, i0_inner)
+                    tir.reads([A[i:(i + 1)]])
+                    tir.writes([B[i:(i + 1)]])
+                    B[i] = A[i]
+            with tir.block([1], "C") as [i_1]:
+                tir.bind(i_1, 0)
+                tir.reads([B[i_1:(i_1 + 1)]])
+                tir.writes([C[i_1:(i_1 + 1)]])
+                C[i_1] = B[i_1]
+
+
 # pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
 # fmt: on
 
@@ -468,6 +552,28 @@ def test_reverse_compute_at():
     s.reorder(i1, j1, i2, j2)
     s.reverse_compute_at(C, i2)
     tvm.ir.assert_structural_equal(reverse_compute_at_element_wise, s.mod["main"])
+
+
+def test_compute_at_with_consumer_predicate():
+    func = predicate_consumer_block
+    # schedule
+    s = tir.Schedule(func, debug_mode=True)
+    B = s.get_block("B")
+    C = s.get_block("C")
+    i1_o, i1_i = s.get_axes(C)
+    s.compute_at(B, i1_o)
+    tvm.ir.assert_structural_equal(compute_at_with_consumer_predicate, s.mod["main"])
+
+
+def test_reverse_compute_at_with_producer_predicate():
+    func = predicate_producer_block
+    # schedule
+    s = tir.Schedule(func, debug_mode=True)
+    B = s.get_block("B")
+    C = s.get_block("C")
+    i0_o, i0_i = s.get_axes(B)
+    s.reverse_compute_at(C, i0_o)
+    tvm.ir.assert_structural_equal(reverse_compute_at_with_producer_predicate, s.mod["main"])
 
 
 def test_fuse_loop_sref():
@@ -681,6 +787,8 @@ if __name__ == "__main__":
     test_reorder_normal()
     test_compute_at()
     test_reverse_compute_at()
+    test_compute_at_with_consumer_predicate()
+    test_reverse_compute_at_with_producer_predicate()
     test_compute_inline()
     test_reverse_compute_inline()
     test_compute_at_fail()
