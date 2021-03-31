@@ -29,8 +29,10 @@ namespace meta_schedule {
 /********** Constructor **********/
 
 SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, Target target_host,
-                       Optional<String> log_file, Optional<Array<ObjectRef>> shape_vars,
-                       Optional<Array<ObjectRef>> shape_freq) {
+                       Optional<String> log_file,
+                       Optional<Array<String>> shape_vars,
+                       Optional<Array<ObjectRef>> shape_variants,
+                       Optional<Array<FloatImm>> shape_freq) {
   ObjectPtr<SearchTaskNode> n = make_object<SearchTaskNode>();
   if (task_name == "") {
     n->task_name = "func" + std::to_string(StructuralHash()(workload));
@@ -44,6 +46,7 @@ SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, 
   // n->flop_ct = CountFlop(n->workload);
   n->flop_ct = -1;
   n->shape_vars = std::move(shape_vars);
+  n->shape_variants = std::move(shape_variants);
   n->shape_freq = std::move(shape_freq);
   data_ = std::move(n);
 }
@@ -99,10 +102,11 @@ struct Internal {
    */
   static SearchTask SearchTaskNew(tir::PrimFunc func, String task_name, Target target,
                                   Target target_host, Optional<String> log_file,
-                                  Optional<Array<ObjectRef>> shape_vars,
-                                  Optional<Array<ObjectRef>> shape_freq) {
+                                  Optional<Array<String>> shape_vars,
+                                  Optional<Array<ObjectRef>> shape_variants,
+                                  Optional<Array<FloatImm>> shape_freq) {
     return SearchTask(func, task_name, target, target_host, log_file,
-                      shape_vars, shape_freq);
+                      shape_vars, shape_variants, shape_freq);
   }
   /*!
    * \brief Apply postprocessors onto the schedule

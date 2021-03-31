@@ -90,10 +90,9 @@ Array<MeasureInput> SampleVariants(Array<MeasureInput> inputs) {
   for (size_t i = 0; i < inputs.size(); ++i) {
     MeasureInput inp = inputs[i];
     if (inp->task->shape_vars.defined()) {
-      Array<ObjectRef> shape_freq = inp->task->shape_freq.value();
-      for (size_t j = 0; j < shape_freq.size(); ++j) {
-        Array<ObjectRef> workload = Downcast<Array<ObjectRef>>(shape_freq[j]);
-        Array<ObjectRef> variant(workload.begin(), workload.end() - 1);
+      Array<ObjectRef> variants = inp->task->shape_variants.value();
+      for (size_t j = 0; j < variants.size(); ++j) {
+        Array<ObjectRef> variant = Downcast<Array<ObjectRef>>(variants[j]);
         ret.push_back(MeasureInput(inp->task, inp->sch, variant));
       }
     } else {

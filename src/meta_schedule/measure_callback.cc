@@ -71,10 +71,12 @@ void RecordToFileNode::Callback(const Array<MeasureInput>& inputs,
         this->task_name,                         // record[0]
         this->target,                            // record[1]
         this->target_host,                       // record[2]
-        measure_result->costs,                   // record[3]
-        measure_input->sch->trace->Serialize(),  // record[4]
-        String(kLogVersion),                     // record[5]
-        this->prim_func_b64,                     // record[6]
+        measure_input->task->shape_vars,         // record[3]
+        measure_input->variant,                  // record[4]
+        measure_result->costs,                   // record[5]
+        measure_input->sch->trace->Serialize(),  // record[6]
+        String(kLogVersion),                     // record[7]
+        this->prim_func_b64,                     // record[8]
     };
     String record = (*f_serialize)(result);
     ofs << record << std::endl;
