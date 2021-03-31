@@ -410,7 +410,7 @@ def element_wise_double_buffer(a: ty.handle, c: ty.handle) -> None:
 @tvm.script.tir
 def predicate_consumer_block(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [1])
-    B = tir.buffer_allocate([1])
+    B = tir.alloc_buffer([1])
     C = tir.match_buffer(c, [1])
 
     for i0 in tir.serial(0, 1):
@@ -428,7 +428,7 @@ def predicate_consumer_block(a: ty.handle, c: ty.handle) -> None:
 @tvm.script.tir
 def predicate_producer_block(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [1])
-    B = tir.buffer_allocate([1])
+    B = tir.alloc_buffer([1])
     C = tir.match_buffer(c, [1])
 
     for i0_outer, i0_inner in tir.grid(1, 32):
@@ -451,7 +451,7 @@ def compute_at_with_consumer_predicate(a: ty.handle, c: ty.handle) -> None:
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        B = tir.buffer_allocate([1], elem_offset=0, align=128, offset_factor=1)
+        B = tir.alloc_buffer([1], elem_offset=0, align=128, offset_factor=1)
         for i1_outer in tir.serial(0, 1):
             with tir.block([1], "B") as [i]:
                 tir.bind(i, 0)
@@ -475,7 +475,7 @@ def reverse_compute_at_with_producer_predicate(a: ty.handle, c: ty.handle) -> No
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        B = tir.buffer_allocate([1], elem_offset=0, align=128, offset_factor=1)
+        B = tir.alloc_buffer([1], elem_offset=0, align=128, offset_factor=1)
         for i0_outer in tir.serial(0, 1):
             for i0_inner in tir.serial(0, 32):
                 with tir.block([1], "B") as [i]:
