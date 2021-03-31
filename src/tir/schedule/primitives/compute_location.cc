@@ -619,10 +619,6 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   Array<Dependency> edges_to_succ = scope->GetDepsBySrc(block_sref);
   Array<StmtSRef> producers = GetProducersFromDependency(edges_to_pred);
   Array<StmtSRef> consumers = GetConsumersFromDependency(edges_to_succ);
-  for (const StmtSRef& consumer : consumers) {
-    const auto* consumer_block = TVM_SREF_TO_BLOCK(consumer_block, consumer);
-    LOG(INFO) << "consumer:\n" << GetRef<Block>(consumer_block);
-  }
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
       << "ValueError: 'compute_at' expects 'block' and 'loop' be in the same block";
@@ -680,7 +676,6 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
                                     /*gather_read=*/true),
                  true),
       preserve_trivial_loop);
-  LOG(INFO) << "new_loop is\n" << new_loop;
   // Remove leaf
   StmtSRef root = GetSRefTreeRoot(block_sref);
   std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, root);
