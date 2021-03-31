@@ -150,7 +150,7 @@ bool CanMergeReduction(const ScheduleState& self, const StmtSRef& init_block_sre
  * \param self The schedule state
  * \param consumer_block_sref The consumer block to be checked
  * \param scope_root The sref to the scope root where `consumer_block_sref` is in
- * \return A boolean flag indicating if the read regions of the specifc
+ * \return A boolean flag indicating if the read regions of the specific
  * consumer are fully covered by its predecessors
  */
 bool RegionCoveredConsumer(const ScheduleState& self, const StmtSRef& consumer_block_sref,
