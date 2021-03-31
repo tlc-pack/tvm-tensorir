@@ -222,14 +222,14 @@ class BufferAccessRewriter : public StmtExprMutator {
     BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(_op));
     BufferStoreNode* op = store.CopyOnWrite();
     f_rewrite_(&op->buffer, &op->indices);
-    return store;
+    return std::move(store);
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* _op) final {
     BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_op));
     BufferLoadNode* op = load.CopyOnWrite();
     f_rewrite_(&op->buffer, &op->indices);
-    return load;
+    return std::move(load);
   }
 
   Stmt VisitStmt_(const BlockNode* _op) final {
@@ -247,7 +247,7 @@ class BufferAccessRewriter : public StmtExprMutator {
       BufferRegionNode* p = buffer_region.CopyOnWrite();
       f_rewrite_(&p->buffer, nullptr);
     }
-    return block;
+    return std::move(block);
   }
 
   const FRewriteBufferAccess& f_rewrite_;
