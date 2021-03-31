@@ -57,38 +57,45 @@ def test_dynamic_matmul_schedule():
 
 def test_dynamic_matmul_autotune():
     os.environ["TVM_TRACKER_KEY"] = "local"
+    shape_vars = ('M', 'N')
+    shape_variants = [
+        (256, 256),
+        (512, 512)
+    ]
+    shape_freq = (0.5, 0.5)
     task=ms.SearchTask(workload=dyn_mm,
-                       log_file='matmul_dynamic.log')
+                       log_file='matmul_dynamic.log',
+                       shape_vars=shape_vars, 
+                       shape_variants=shape_variants, 
+                       shape_freq=shape_freq, 
+                       )
+    print(task)
+    print(task.shape_vars)
+    print(task.shape_variants)
+    print(task.shape_freq)
     space = ms.space.PostOrderApply(
         stages=[
             micro_kernel,
-            # ms.rule.parallelize_vectorize_unroll(
-            #     max_jobs_per_core=16,
-            #     max_vectorize_extent=32,
-            #     unroll_max_steps=[0, 16, 64, 512],
-            #     unroll_explicit=True,
-            # ),
-            # ms.rule.random_compute_location(),
-
+            ms.rule.inline_pure_spatial(strict_mode=True),
+            ms.rule.parallelize_vectorize_unroll(
+                max_jobs_per_core=16,
+                max_vectorize_extent=32,
+                unroll_max_steps=[0, 16, 64, 512],
+                unroll_explicit=True,
+            ),
+            ms.rule.random_compute_location(),
         ],
         postprocs=[
-            # ms.postproc.rewrite_parallel_vectorize_unroll(),
-            # ms.postproc.rewrite_reduction_block(),
+            ms.postproc.rewrite_parallel_vectorize_unroll(),
+            ms.postproc.rewrite_reduction_block(),
         ],
     )
-    # dict: inputs -> freq
-    # ref_inputs = {
-    #    (*random_inputs(256, 256), 256, 256): 0.33,
-    #    (*random_inputs(512, 512), 512, 512): 0.33,
-    #    (*random_inputs(800, 800), 800, 800): 0.33,
-    # }
     sch = ms.autotune(
         task=task,
         space=space,
         strategy="replay",
         measurer=create_measurer(),
     )
-    raise ValueError
 
 # test_dynamic_matmul_schedule()
 test_dynamic_matmul_autotune()
