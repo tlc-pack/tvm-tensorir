@@ -29,10 +29,11 @@ namespace meta_schedule {
 
 /********** Constructors **********/
 
-MeasureInput::MeasureInput(SearchTask task, Schedule sch) {
+MeasureInput::MeasureInput(SearchTask task, Schedule sch, Optional<Array<ObjectRef>> variant) {
   ObjectPtr<MeasureInputNode> n = make_object<MeasureInputNode>();
   n->task = std::move(task);
   n->sch = std::move(sch);
+  n->variant = std::move(variant);
   data_ = std::move(n);
 }
 
@@ -62,6 +63,7 @@ MeasureInput MeasureInputNode::Copy() const {
   ObjectPtr<MeasureInputNode> n = make_object<MeasureInputNode>();
   n->task = task;
   n->sch = sch;
+  n->variant = variant;
   return MeasureInput(n);
 }
 
@@ -126,8 +128,9 @@ struct Internal {
    * \return The MeasureInput constructed
    * \sa MeasureInput::MeasureInput
    */
-  static MeasureInput MeasureInputNew(SearchTask task, Schedule sch) {
-    return MeasureInput(task, sch);
+  static MeasureInput MeasureInputNew(SearchTask task, Schedule sch,
+                                      Optional<Array<ObjectRef>> variant = NullOpt) {
+    return MeasureInput(task, sch, variant);
   }
   /*!
    * \brief Constructor of BuildResult

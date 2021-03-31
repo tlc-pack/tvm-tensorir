@@ -24,6 +24,7 @@ import signal
 import tempfile
 import time
 import traceback
+import itertools
 from threading import Thread
 from typing import Any, Callable, List, Tuple
 
@@ -300,7 +301,6 @@ def realize_arguments(
     args: List[NDArray]
         A list of arguments fed to the TVM runtime module built
     """
-    print("realize_arguments")
     def realize_shape(shape, binds):
         ret = []
         for s in shape:
@@ -617,7 +617,7 @@ def rpc_runner_worker(
     enable_cpu_cache_flush: bool,
     f_create_args: Callable[[TVMContext], List[NDArray]],
     verbose: int,
-) -> MeasureResult.TYPE:
+    ) -> List[MeasureResult]:
     """ RPC worker for ProgramRunner """
     measure_input = measure_inputs[index]
     build_result = build_results[index]
@@ -667,9 +667,6 @@ def rpc_runner_worker(
                     rpc_eval_repeat = 3
                 else:
                     rpc_eval_repeat = 1
-                num_workloads = 1
-                if measure_input.task.shape_freq is not None:
-                    num_workloads = len(measure_input.task.shape_freq)
                 if f_create_args is not None:
                     args_set = [f_create_args(ctx) for _ in range(rpc_eval_repeat)]
                     ctx.sync()
@@ -677,18 +674,17 @@ def rpc_runner_worker(
                 else:
                     args_set = []
                     shape_vars = measure_input.task.shape_vars
-                    shape_freq = measure_input.task.shape_freq
-                    for i in range(num_workloads):
-                        binds = {
-                            shape_vars[k]: shape_freq[i][k].value
-                            for k in range(len(shape_vars))
-                        }
-                        args_set = [
-                            realize_arguments(remote, ctx, measure_input.task.workload, binds)
-                            for _ in range(rpc_eval_repeat)
-                        ]
-                        ctx.sync()
-                        costs = sum([time_f(*args).results for args in args_set], ())
+                    variant = measure_input.variant
+                    binds = {
+                        shape_vars[k]: variant[k].value
+                        for k in range(len(shape_vars))
+                    }
+                    args_set = [
+                        realize_arguments(remote, ctx, measure_input.task.workload, binds)
+                        for _ in range(rpc_eval_repeat)
+                    ]
+                    ctx.sync()
+                    costs = sum([time_f(*args).results for args in args_set], ())
                 # clean up remote files
                 remote.remove(build_result.filename)
                 remote.remove(os.path.splitext(build_result.filename)[0] + ".so")
@@ -706,7 +702,7 @@ def rpc_runner_worker(
         timestamp = time.time()
         all_cost = timestamp - tic + build_result.time_cost
         time.sleep(cooldown_interval)
-        return costs, error_no, error_msg, all_cost, timestamp
+        return (costs, error_no, error_msg, all_cost, timestamp)
 
     try:
         return call_func_with_timeout(timeout, timed_func)

@@ -85,6 +85,24 @@ Replay::Replay(int batch_size, int num_trials) {
 
 /********** Search **********/
 
+Array<MeasureInput> SampleVariants(Array<MeasureInput> inputs) {
+  Array<MeasureInput> ret;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    MeasureInput inp = inputs[i];
+    if (inp->task->shape_vars.defined()) {
+      Array<ObjectRef> shape_freq = inp->task->shape_freq.value();
+      for (size_t j = 0; j < shape_freq.size(); ++j) {
+        Array<ObjectRef> workload = Downcast<Array<ObjectRef>>(shape_freq[j]);
+        Array<ObjectRef> variant(workload.begin(), workload.end() - 1);
+        ret.push_back(MeasureInput(inp->task, inp->sch, variant));
+      }
+    } else {
+        ret.push_back(MeasureInput(inp->task, inp->sch));
+    }
+  }
+  return ret;
+}
+
 Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
                                       const ProgramMeasurer& measurer, Sampler* sampler,
                                       int verbose) {
@@ -111,7 +129,9 @@ Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace&
     support::parallel_persist_for(0, count, worker);
     Array<MeasureInput> measure_inputs{thread_measure_inputs.begin(),
                                        thread_measure_inputs.begin() + count};
-    measurer->BatchMeasure(measure_inputs, count, verbose);
+    // expand with variant
+    measure_inputs = SampleVariants(measure_inputs);
+    measurer->BatchMeasure(measure_inputs, measure_inputs.size(), verbose);
   }
   return measurer->GetBest(task);
 }
