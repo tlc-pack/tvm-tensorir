@@ -325,8 +325,8 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     buffer_access.insert(buffer_access.end(), realize->block->writes.begin(),
                          realize->block->writes.end());
     std::unordered_map<const tir::VarNode*, PrimExpr> binding_map;
-    for (size_t i = 0; i < realize->binding_values.size(); i++) {
-      binding_map[realize->block->iter_vars[i]->var.get()] = realize->binding_values[i];
+    for (size_t i = 0; i < realize->iter_values.size(); i++) {
+      binding_map[realize->block->iter_vars[i]->var.get()] = realize->iter_values[i];
     }
     int max_fusible = INT32_MAX;
     // for each block read/write, get the strides of the loop vars and find the fusible
