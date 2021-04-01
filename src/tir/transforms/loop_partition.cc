@@ -35,6 +35,11 @@
 #include "../../runtime/thread_storage_scope.h"
 #include "ir_utils.h"
 
+
+// <bojian/TVM-SymbolicTuning>
+// #include <tvm/tir/dynamic_axis_functor.h>
+
+
 namespace tvm {
 namespace tir {
 
@@ -569,7 +574,12 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
     if (!analyzer_.CanProve(middle_interval.max() == max)) {
       // require the extent to be non-negative
       PrimExpr cond = (max - post_doubt_begin + 1 >= 0);
+
+      // <bojian/TVM-SymbolicTuning>
       if (!analyzer_.CanProve(cond)) {
+      // if (!canProveForAllDyAxes(analyzer_, cond)) {
+
+
         LOG(WARNING) << "Cannot prove: " << cond << ", when generating the post doubt loop";
         post_doubt_begin = Min(post_doubt_begin, max + 1);
         // stop recursing on this interval if we can't prove it has non-negative length
@@ -659,7 +669,12 @@ Pass LoopPartition() {
     if (!cfg.defined()) {
       cfg = AttrsWithDefaultValues<LoopPartitionConfig>();
     }
-    n->body = LoopPartition(std::move(n->body), cfg.value()->partition_const_loop,
+    n->body = LoopPartition(std::move(n->body),
+    
+                            // <bojian/TVM-SymbolicTuning>
+                            // cfg.value()->partition_const_loop,
+                            (bool)(dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0) == 1),
+
                             cfg.value()->no_unroll_loop_with_extent_one);
     return f;
   };
