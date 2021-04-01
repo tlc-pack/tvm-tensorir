@@ -576,5 +576,35 @@ def array(arr, device=cpu(0)):
     return empty(arr.shape, arr.dtype, device).copyfrom(arr)
 
 
+# <bojian/TVM-SymbolicTuning>
+def emptyExt(shape, dtype, shape_tile, ctx):
+    shape = c_array(tvm_shape_index_t, shape)
+    shape_tile = c_array(tvm_shape_index_t, shape_tile)
+    ndim = ctypes.c_int(len(shape))
+    handle = TVMArrayHandle()
+    dtype = DataType(dtype)
+    check_call(
+        _LIB.TVMArrayAllocExt(
+            shape,
+            shape_tile,
+            ndim,
+            ctypes.c_int(dtype.type_code),
+            ctypes.c_int(dtype.bits),
+            ctypes.c_int(dtype.lanes),
+            ctx.device_type,
+            ctx.device_id,
+            ctypes.byref(handle),
+        )
+    )
+    return _make_array(handle, False, False)
+
+
+def arrayExt(arr, shape_tile, ctx=cpu(0)):
+    if not isinstance(arr, (np.ndarray, NDArray)):
+        arr = np.array(arr)
+    assert len(arr.shape) == len(shape_tile)
+    return emptyExt(arr.shape, arr.dtype, shape_tile, ctx).copyfrom(arr)
+
+
 # Register back to FFI
 _set_class_ndarray(NDArray)

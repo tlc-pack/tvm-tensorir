@@ -390,6 +390,13 @@ TVM_DLL int TVMFuncRemoveGlobal(const char* name);
 TVM_DLL int TVMArrayAlloc(const tvm_index_t* shape, int ndim, int dtype_code, int dtype_bits,
                           int dtype_lanes, int device_type, int device_id, TVMArrayHandle* out);
 
+
+// <bojian/TVM-SymbolicTuning>
+TVM_DLL int TVMArrayAllocExt(const tvm_index_t* shape, const tvm_index_t* shape_tile, int ndim,
+                             int dtype_code, int dtype_bits, int dtype_lanes,
+                             int device_type, int device_id, TVMArrayHandle* out);
+
+
 /*!
  * \brief Free the TVM Array.
  * \param handle The array handle to be freed.
