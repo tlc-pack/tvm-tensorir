@@ -1119,7 +1119,7 @@ class RuleCrossThreadReduction {
         // Todo: modify comments below
         // If the target stage does not have split step,
         // it must be a simple stage without reduce iters.
-        // We then should do a split for it.
+        // We then should do a split for it so that this block is bound to threadIdx. Todo: is it true?
 
         const tir::StmtSRef& target_block_sref = tmp_sch->GetSRef(target_block_rv);
         CHECK(!ReductionBlock(tmp_sch->state(), target_block_sref, GetScopeRoot(target_block_sref)));
@@ -1135,20 +1135,20 @@ class RuleCrossThreadReduction {
       CHECK_EQ(split_insts.size(), 1); // Todo: CHECK or ICHECK?
 
       Array<LoopRV> target_block_loops = tmp_sch->GetAxes(target_block_rv);
-      ICHECK_GE(target_block_loops.size(), num_common_axes);
+      ICHECK_GT(target_block_loops.size(), num_common_axes);
       const LoopRV& target_loop = target_block_loops[num_common_axes - 1];
 
       tmp_sch->ComputeAt(block_rv, target_loop, true);
 
       // Reorder the loop axes if reduction loops are not innermost.
       // After the reordering, fuse all the reduction loops.
-      int num_spatial_loops;
+      int num_spatial_loops; // This int variable is only used for passing argument.
       LoopRV fused_reduce_loop;
       ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
 
-      Array<Optional<PrimExpr> > factor;
-      for (auto it = split_insts[0]->inputs.begin() + 1; it != split_insts[0]->inputs.end(); ++it) {
-        factor.push_back(Downcast<Optional<PrimExpr> >(*it));
+      Array<Optional<PrimExpr>> factor;
+      for (auto it = split_insts[0]->inputs.begin() + 1; it != split_insts[0]->inputs.end(); ++it) { // Todo: use auto?
+        factor.push_back(Downcast<Optional<PrimExpr>>(*it));
       }
       Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, factor);
       ICHECK_EQ(split_res.size(), 2);
@@ -1164,8 +1164,8 @@ class RuleCrossThreadReduction {
       tmp_sch->Bind(split_res[1], "threadIdx.x");
     }
 
-//    return {tmp_sch, sch}; // Todo: return the original schedule
-    return {tmp_sch};
+    return {tmp_sch, sch}; // Todo: return the original schedule
+//    return {tmp_sch};
   }
 };
 
