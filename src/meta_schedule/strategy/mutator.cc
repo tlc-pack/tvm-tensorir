@@ -360,8 +360,8 @@ class MutatorParallel {
             !mark_inst->inputs[1]->IsInstance<IntImmNode>()) {
           continue;
         }
-        for (const auto& block_rv : sch->GetChildBlocks(sch->GetBlock("root"))) {
-          tir::StmtSRef block_sref = sch->GetSRef(block_rv);
+        tir::StmtSRef root_sref = tir::GetBlocks(sch->state(), "root")[0];
+        for (const auto& block_sref : tir::GetChildBlocks(sch->state(), root_sref)) {
           Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
           std::vector<int> loop_types;
           for (const tir::StmtSRef& loop_sref : loop_srefs) {
