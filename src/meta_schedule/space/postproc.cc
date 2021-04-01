@@ -602,17 +602,26 @@ Postproc RewriteUnboundBlocks() {
 
 class PostprocRewriteReductionBlock {
  public:
-
   /*!
    * \brief An auxiliary class to help find reduction blocks whose init block is going to be
    *        decomposed.
    */
   class Finder : public tir::StmtVisitor {
    public:
+    static const tir::BlockNode* Find(const tir::Stmt& stmt) {
+      Finder finder;
+      finder.CollectBoundLoops(stmt);
+      finder.VisitStmt(stmt);
+      ICHECK(finder.result_ == nullptr || (finder.result_->init.defined() &&
+                                           finder.AllReductionIterVarAreUnbound(finder.result_)));
+      return finder.result_;
+    }
+
+   private:
     Finder() : bound_loop_vars_(), stack_(), result_(nullptr) {}
 
     /*!
-     * \brief Collect all the loops inside `stmt` that are bound to threadIdx.
+     * \brief Collect all the loops inside `stmt` that are bound to threadIdx or blockIdx.
      * \param stmt The stmt to be inspected.
      */
     void CollectBoundLoops(const tir::Stmt& stmt) {
@@ -620,9 +629,10 @@ class PostprocRewriteReductionBlock {
         if (const auto* loop = node.as<tir::ForNode>()) {
           std::string thread_tag =
               loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";
-          if (thread_tag.substr(0, 9) == "threadIdx") {
+          if (thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 8) == "blockIdx") {
             ICHECK(thread_tag == "threadIdx.x" || thread_tag == "threadIdx.y" ||
-                   thread_tag == "threadIdx.z");
+                   thread_tag == "threadIdx.z" || thread_tag == "blockIdx.x" ||
+                   thread_tag == "blockIdx.y" || thread_tag == "blockIdx.z");
             bound_loop_vars_.insert(loop->loop_var.get());
           }
         }
@@ -644,40 +654,16 @@ class PostprocRewriteReductionBlock {
              "the block.";
       const tir::BlockRealize& block_realize = GetRef<tir::BlockRealize>(stack_.back());
       ICHECK_EQ(block_realize->iter_values.size(), block->iter_vars.size());
-      for (const tir::IterVar& var : block->iter_vars) {
-        if (var->iter_type == tir::kCommReduce) {
-          has_reduction_var = true;
-          bool is_bound = false;
-          tir::PreOrderVisit(block_realize, [this, &is_bound] (const ObjectRef& node) {
-            if (is_bound) {
-              return false;
-            }
-            if (const auto* var = node.as<tir::VarNode>()) {
-              if (bound_loop_vars_.count(var)) {
-                is_bound = true;
-              }
-              return false;
-            }
-            return true;
-          });
-          if (is_bound) {
-            return false;
-          }
+      for (int i = 0; i < static_cast<int>(block->iter_vars.size()); ++i) {
+        const tir::IterVar& var = block->iter_vars[i];
+        const PrimExpr& binding = block_realize->iter_values[i];
+        if (ContainsVar(binding, bound_loop_vars_)) {
+          return false;
         }
       }
       return has_reduction_var;
     }
 
-    static const tir::BlockNode* Find(const tir::Stmt& stmt) {
-      Finder finder;
-      finder.CollectBoundLoops(stmt);
-      finder.VisitStmt(stmt);
-      ICHECK(finder.result_ == nullptr || (finder.result_->init.defined() &&
-                                           finder.AllReductionIterVarAreUnbound(finder.result_)));
-      return finder.result_;
-    }
-
-   private:
     void VisitStmt_(const tir::BlockNode* block) override {
       if (result_ != nullptr) {
         return;
@@ -704,7 +690,6 @@ class PostprocRewriteReductionBlock {
       stack_.pop_back();
     }
 
-   private:
     /*! \brief A map recording all the bound loop vars. */
     std::unordered_set<const tir::VarNode*> bound_loop_vars_;
     /*! \brief A stack recording all the BlockRealizes along the visiting path. */
