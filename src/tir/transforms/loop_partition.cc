@@ -487,7 +487,14 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
   finder(body);
 
   hint_map_.erase(var.get());
-  if (finder.partitions.empty()) return Stmt();
+  if (finder.partitions.empty()) {
+
+
+    // <bojian/TVM-SymbolicTuning>
+    LOG(INFO) << "Cannot find a valid partition for " << var;
+
+    return Stmt();
+  }
 
   arith::IntervalSet for_interval(min, max);
   bool cond_value;
@@ -501,16 +508,28 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
     // conditions on var are false
     std::tie(middle_interval, cond_set) =
         GetIntervalAndCondset(finder.partitions, for_interval, false);
-    if (middle_interval.IsNothing())
+    if (middle_interval.IsNothing()) {
       // we couldn't find an interval in which the conditions are provably true or false
       // Therefore, we can't partition the loop based on those conds
+
+
+      // <bojian/TVM-SymbolicTuning>
+      LOG(INFO) << "Cannot find a valid partition for " << var;
+
+
       return Stmt();
+    }
     cond_value = false;
   } else {
     cond_value = true;
   }
 
   IntervalSet middle_interval_i = Downcast<IntervalSet>(middle_interval);
+
+
+  // <bojian/TVM-SymbolicTuning>
+  LOG(INFO) << "Partitioning interval " << middle_interval_i;
+
   // middle_interval is the subrange of the loop variable range for which a
   // set of conditions are true (or false resp.)
   // The part of the loop variable range that is before (after resp.) that
