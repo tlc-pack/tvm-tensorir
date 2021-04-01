@@ -1122,9 +1122,7 @@ class RuleCrossThreadReduction {
         // We then should do a split for it.
 
         const tir::StmtSRef& target_block_sref = tmp_sch->GetSRef(target_block_rv);
-        CHECK(!tmp_sch->state()
-                  ->scopes.at(GetScopeRoot(target_block_sref))
-                  ->IsReduction(target_block_sref));
+        CHECK(!ReductionBlock(tmp_sch->state(), target_block_sref, GetScopeRoot(target_block_sref)));
         const LoopRV& loop_to_split = tmp_sch->GetAxes(target_block_rv).back();
         Array<LoopRV> split_res = tmp_sch->Split(loop_to_split, {NullOpt, Integer(warp_size)});
         const Instruction& split_inst = tmp_sch->trace->insts.back();

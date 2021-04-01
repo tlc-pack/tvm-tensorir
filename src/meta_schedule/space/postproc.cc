@@ -643,7 +643,7 @@ class PostprocRewriteReductionBlock {
           << "ValueError: the block has outer BlockRealize or the outer BlockRealize doesn't match "
              "the block.";
       const tir::BlockRealize& block_realize = GetRef<tir::BlockRealize>(stack_.back());
-      ICHECK_EQ(block_realize->binding_values.size(), block->iter_vars.size());
+      ICHECK_EQ(block_realize->iter_values.size(), block->iter_vars.size());
       for (const tir::IterVar& var : block->iter_vars) {
         if (var->iter_type == tir::kCommReduce) {
           has_reduction_var = true;
