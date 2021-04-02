@@ -39,19 +39,19 @@ def buffer_laod_store_func(a: ty.handle, b: ty.handle, c: ty.handle, d: ty.handl
 
 
 @tvm.script.tir
-def buffer_opaque_access(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, [16, 16], "float32")
+def buffer_opaque_access(b: ty.handle, c: ty.handle) -> None:
     B = tir.match_buffer(b, [16, 16], "float32")
     C = tir.match_buffer(c, [16, 16], "float32")
 
     with tir.block([]):
-        tir.reads(A[0:16, 0:16])
+        tir.reads([])
         tir.writes(B[0:16, 0:16])
+        A = tir.allocate([256], "float32", "global")
         for i, j in tir.grid(16, 16):
-            tir.store(A.data, i * 16 + j, 1)
+            tir.store(A, i * 16 + j, 1)
         for i in range(0, 16):
             for j in range(0, 16):
-                tir.evaluate(tir.load("float32", A.data, i * 16 + j))
+                tir.evaluate(tir.load("float32", A, i * 16 + j))
             for j in range(0, 16):
                 tir.evaluate(
                     tir.tvm_fill_fragment(B.data, 16, 16, 16, 0, tir.float32(0), dtype="handle")
@@ -88,23 +88,19 @@ def test_buffer_laod_store():
 
 def test_opaque_access():
     func = buffer_opaque_access
-    A, B, C = [func.buffer_map[x] for x in func.params]
+    B, C = [func.buffer_map[x] for x in func.params]
     lca = tir.analysis.detect_buffer_access_lca(func)
+
+    # Cannot detect buffer A since it is define by low-level Allocate
 
     # LCA of Buffer B is root
     root_block = func.body.block
     assert lca[B] == func.body.block
-
-    # LCA of Buffer A is the opaque block
-    opaque_block = root_block.body[0].block
-    print(opaque_block)
-    print(lca[A])
-    assert lca[A] == opaque_block
 
     # LCA of Buffer C is the correspond block
     assert lca[C] == root_block.body[1].body.body.block
 
 
 if __name__ == "__main__":
-    # test_buffer_laod_store()
+    test_buffer_laod_store()
     test_opaque_access()
