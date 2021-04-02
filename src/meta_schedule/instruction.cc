@@ -293,15 +293,19 @@ Instruction ReorderAttrs::Make(const Array<LoopRV>& after_axes) {
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction ComputeAtAttrs::Make(const BlockRV& block, const LoopRV& loop) {
+Instruction ComputeAtAttrs::Make(const BlockRV& block, const LoopRV& loop,
+                                 bool preserve_unit_loop) {
   ObjectPtr<ComputeAtAttrs> n = make_object<ComputeAtAttrs>();
+  n->preserve_unit_loop = preserve_unit_loop;
   return Instruction(/*inputs=*/{block, loop},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction ReverseComputeAtAttrs::Make(const BlockRV& block, const LoopRV& loop) {
+Instruction ReverseComputeAtAttrs::Make(const BlockRV& block, const LoopRV& loop,
+                                        bool preserve_unit_loop) {
   ObjectPtr<ReverseComputeAtAttrs> n = make_object<ReverseComputeAtAttrs>();
+  n->preserve_unit_loop = preserve_unit_loop;
   return Instruction(/*inputs=*/{block, loop},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
@@ -608,7 +612,7 @@ Array<ObjectRef> ComputeAtAttrs::Apply(const Schedule& sch,
   ICHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
-  sch->ComputeAt(block, loop, true);
+  sch->ComputeAt(block, loop, this->preserve_unit_loop);
   return {};
 }
 
@@ -619,7 +623,7 @@ Array<ObjectRef> ReverseComputeAtAttrs::Apply(const Schedule& sch,
   ICHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
-  sch->ReverseComputeAt(block, loop, true);
+  sch->ReverseComputeAt(block, loop, this->preserve_unit_loop);
   return {};
 }
 
@@ -966,6 +970,7 @@ void ComputeAtAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
   PythonAPICall py("compute_at");
   py.AddArgInput("block", inputs[0]);
   py.AddArgInput("loop", inputs[1]);
+  py.AddArgAttr("preserve_unit_loop", this->preserve_unit_loop);
   py.Print(os);
 }
 
@@ -975,6 +980,7 @@ void ReverseComputeAtAttrs::AsPython(std::ostream& os, const Array<String>& inpu
   PythonAPICall py("reverse_compute_at");
   py.AddArgInput("block", inputs[0]);
   py.AddArgInput("loop", inputs[1]);
+  py.AddArgAttr("preserve_unit_loop", this->preserve_unit_loop);
   py.Print(os);
 }
 
@@ -1141,6 +1147,16 @@ void MarkBlockAttrs::Serialize(Array<ObjectRef>* record,
   record->push_back(this->ann_key);
 }
 
+void ComputeAtAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+  ICHECK(!decision.defined());
+  record->push_back(Bool(this->preserve_unit_loop));
+}
+
+void ReverseComputeAtAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+  ICHECK(!decision.defined());
+  record->push_back(Bool(this->preserve_unit_loop));
+}
+
 void CacheReadAttrs::Serialize(Array<ObjectRef>* record,
                                const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
@@ -1234,6 +1250,19 @@ InstAttrs MarkBlockAttrs::Deserialize(const Array<ObjectRef>& record,
   return InstAttrs(std::move(n));
 }
 
+InstAttrs ComputeAtAttrs::Deserialize(const Array<ObjectRef>& record,
+                                     Optional<ObjectRef>* decision) {
+  ObjectPtr<ComputeAtAttrs> n = make_object<ComputeAtAttrs>();
+  n->preserve_unit_loop = Downcast<Bool>(record[3]);
+  return InstAttrs(std::move(n));
+}
+
+InstAttrs ReverseComputeAtAttrs::Deserialize(const Array<ObjectRef>& record,
+                                      Optional<ObjectRef>* decision) {
+  ObjectPtr<ReverseComputeAtAttrs> n = make_object<ReverseComputeAtAttrs>();
+  n->preserve_unit_loop = Downcast<Bool>(record[3]);
+  return InstAttrs(std::move(n));
+}
 InstAttrs CacheReadAttrs::Deserialize(const Array<ObjectRef>& record,
                                       Optional<ObjectRef>* decision) {
   ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
@@ -1293,8 +1322,6 @@ TVM_META_SCHEDULE_INST_IO_EMPTY(GetAxesAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(FuseAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(SplitAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(ReorderAttrs);
-TVM_META_SCHEDULE_INST_IO_EMPTY(ComputeAtAttrs);
-TVM_META_SCHEDULE_INST_IO_EMPTY(ReverseComputeAtAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(ComputeInlineAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(ReverseComputeInlineAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(DecomposeReductionAttrs);
