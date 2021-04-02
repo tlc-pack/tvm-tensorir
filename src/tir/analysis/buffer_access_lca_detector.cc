@@ -100,14 +100,6 @@ class LCADetector : public StmtExprVisitor {
     VisitExpr(op->buffer_var);
   }
 
-  void VisitStmt_(const AllocateNode* op) final {
-    LOG(FATAL) << "Internal Error: AllocateNode is not allowed.";
-  }
-
-  void VisitStmt_(const BufferRealizeNode* op) final {
-    LOG(FATAL) << "Internal Error: BufferRealizeNode is not allowed.";
-  }
-
   void UpdateBufferLCA(const BufferNode* buffer) {
     const StmtNode*& lca = buffer_lca_[buffer];
     lca = LowestCommonAncestor(lca, ancestor_scopes_.back());
