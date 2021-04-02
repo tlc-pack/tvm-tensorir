@@ -162,13 +162,13 @@ void ScheduleNode::Reorder(const Array<LoopRV>& order) {
 void ScheduleNode::ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
                              bool preserve_unit_loop) {
   tir::ConcreteScheduleNode::ComputeAt(block_rv, loop_rv, preserve_unit_loop);
-  this->trace->Append(ComputeAtAttrs::Make(block_rv, loop_rv));
+  this->trace->Append(ComputeAtAttrs::Make(block_rv, loop_rv, preserve_unit_loop));
 }
 
 void ScheduleNode::ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
                                     bool preserve_unit_loop) {
   tir::ConcreteScheduleNode::ReverseComputeAt(block_rv, loop_rv, preserve_unit_loop);
-  this->trace->Append(ReverseComputeAtAttrs::Make(block_rv, loop_rv));
+  this->trace->Append(ReverseComputeAtAttrs::Make(block_rv, loop_rv, preserve_unit_loop));
 }
 
 void ScheduleNode::ComputeInline(const BlockRV& block_rv) {
