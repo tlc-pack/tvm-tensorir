@@ -389,6 +389,9 @@ struct ReorderAttrs : public InstAttrsNode {
 
 /*! \brief Attrs of the instruction that applies reverse_compute_at */
 struct ComputeAtAttrs : public InstAttrsNode {
+  /*! \brief If true, keep the trivial loops whose extent is 1 */
+  bool preserve_unit_loop;
+
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
@@ -397,7 +400,7 @@ struct ComputeAtAttrs : public InstAttrsNode {
    * \param loop The loop to be moved to
    * \return The instruction created
    */
-  static Instruction Make(const BlockRV& block, const LoopRV& loop);
+  static Instruction Make(const BlockRV& block, const LoopRV& loop, bool preserve_unit_loop);
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ComputeAtAttrs,                        //
                                       "meta_schedule.attrs.ComputeAtAttrs",  //
@@ -406,6 +409,9 @@ struct ComputeAtAttrs : public InstAttrsNode {
 
 /*! \brief Attrs of the instruction that applies reverse_compute_at */
 struct ReverseComputeAtAttrs : public InstAttrsNode {
+  /*! \brief If true, keep the trivial loops whose extent is 1 */
+  bool preserve_unit_loop;
+
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
@@ -414,7 +420,7 @@ struct ReverseComputeAtAttrs : public InstAttrsNode {
    * \param loop The loop to be moved to
    * \return The instruction created
    */
-  static Instruction Make(const BlockRV& block, const LoopRV& loop);
+  static Instruction Make(const BlockRV& block, const LoopRV& loop, bool preserve_unit_loop);
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ReverseComputeAtAttrs,                        //
                                       "meta_schedule.attrs.ReverseComputeAtAttrs",  //
