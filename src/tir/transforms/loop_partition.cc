@@ -246,6 +246,13 @@ class PartitionFinder : public StmtExprVisitor {
 
   void VisitExpr_(const CallNode* op) final {
     if (op->op.same_as(builtin::likely())) {
+
+      // <bojian/TVM-SymbolicTuning>
+      if (current_var_->name_hint == "blockIdx.x") {
+        LOG(WARNING) << "Neglecting the partitioning in blockIdx.x";
+        StmtExprVisitor::VisitExpr_(op);
+      }
+
       PrimExpr cond = op->args[0];
       if (ExprUseVars(cond, std::unordered_set<const VarNode*>({current_var_.get()}))) {
         // For cond, find out the interval, if exists, in which we can prove that cond is
@@ -545,7 +552,7 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
 
 
   // <bojian/TVM-SymbolicTuning>
-  LOG(INFO) << "Partitioning interval " << middle_interval_i;
+  LOG(INFO) << "Partitioning interval " << middle_interval_i << " of var " << var;
 
   // middle_interval is the subrange of the loop variable range for which a
   // set of conditions are true (or false resp.)
