@@ -293,15 +293,19 @@ Instruction ReorderAttrs::Make(const Array<LoopRV>& after_axes) {
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction ComputeAtAttrs::Make(const BlockRV& block, const LoopRV& loop) {
+Instruction ComputeAtAttrs::Make(const BlockRV& block, const LoopRV& loop,
+                                 bool preserve_unit_loop) {
   ObjectPtr<ComputeAtAttrs> n = make_object<ComputeAtAttrs>();
+  n->preserve_unit_loop = preserve_unit_loop;
   return Instruction(/*inputs=*/{block, loop},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction ReverseComputeAtAttrs::Make(const BlockRV& block, const LoopRV& loop) {
+Instruction ReverseComputeAtAttrs::Make(const BlockRV& block, const LoopRV& loop,
+                                        bool preserve_unit_loop) {
   ObjectPtr<ReverseComputeAtAttrs> n = make_object<ReverseComputeAtAttrs>();
+  n->preserve_unit_loop = preserve_unit_loop;
   return Instruction(/*inputs=*/{block, loop},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
@@ -608,7 +612,7 @@ Array<ObjectRef> ComputeAtAttrs::Apply(const Schedule& sch,
   ICHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
-  sch->ComputeAt(block, loop, true);
+  sch->ComputeAt(block, loop, this->preserve_unit_loop);
   return {};
 }
 
@@ -619,7 +623,7 @@ Array<ObjectRef> ReverseComputeAtAttrs::Apply(const Schedule& sch,
   ICHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
-  sch->ReverseComputeAt(block, loop, true);
+  sch->ReverseComputeAt(block, loop, this->preserve_unit_loop);
   return {};
 }
 
@@ -966,6 +970,7 @@ void ComputeAtAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
   PythonAPICall py("compute_at");
   py.AddArgInput("block", inputs[0]);
   py.AddArgInput("loop", inputs[1]);
+  py.AddArgAttr("preserve_unit_loop", this->preserve_unit_loop);
   py.Print(os);
 }
 
@@ -975,6 +980,7 @@ void ReverseComputeAtAttrs::AsPython(std::ostream& os, const Array<String>& inpu
   PythonAPICall py("reverse_compute_at");
   py.AddArgInput("block", inputs[0]);
   py.AddArgInput("loop", inputs[1]);
+  py.AddArgAttr("preserve_unit_loop", this->preserve_unit_loop);
   py.Print(os);
 }
 
