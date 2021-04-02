@@ -547,6 +547,40 @@ def PlanAndUpdateBufferAllocationLocation():
     return _ffi_api.PlanAndUpdateBufferAllocationLocation()
 
 
+def NarrowBufferRegion():
+    """Narrow the buffer access region.
+
+    Example
+    -------
+    Before narrowing, the buffer contains full likely access region.
+    .. code-block:: python
+
+        for i in range(0, 16):
+            with tir.block([]):
+                B = tir.alloc_buffer(16, 16)
+                for j in range(0, 16):
+                    B[i, j] = A[i, j] + 1
+                for j in range(0, 16):
+                    C[i, j] = B[i, j] + 1
+    After the narrowing, we can only alloc necessary region and try to reuse the buffer.
+    .. code-block:: python
+
+        for i in range(0, 16):
+            with tir.block([]):
+                B = tir.alloc_buffer(1, 16)
+                for j in range(0, 16):
+                    B[0, j] = A[i, j] + 1
+                for j in range(0, 16):
+                    C[i, j] = B[0, j] + 1
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.NarrowBufferRegion()
+
+
 # pylint: disable=no-else-return,inconsistent-return-statements
 def HoistIfThenElse(variant=None):
     """Hoist loop-invariant IfThenElse nodes to outside the elligible loops.

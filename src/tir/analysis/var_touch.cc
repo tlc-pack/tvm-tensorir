@@ -60,5 +60,17 @@ bool ExprUseVar(const PrimExpr& e, std::function<bool(const VarNode*)> var_set) 
   return visitor.use_var_;
 }
 
+Array<Var> Vars(const ObjectRef& stmt_or_expr) {
+  ICHECK(stmt_or_expr.as<StmtNode>() || stmt_or_expr.as<PrimExprNode>());
+  Array<Var> result;
+  auto f_visit = [&result](const ObjectRef& obj) -> void {
+    if (const auto* var = obj.as<VarNode>()) {
+      result.push_back(GetRef<Var>(var));
+    }
+  };
+  PostOrderVisit(stmt_or_expr, f_visit);
+  return result;
+}
+
 }  // namespace tir
 }  // namespace tvm
