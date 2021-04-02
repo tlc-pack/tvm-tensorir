@@ -556,16 +556,47 @@ bool IsRangeSame(const Range input_1, const Range input_2) {
 }
 
 // <bojian/TVM-SymbolicTuning>
-class ContainsBlockIdx : public ExprVisitor {
- public:
-  bool has_blockIdx = false;
- protected:
-  void VisitExpr_(const VarNode* op) override {
-    if (op->name_hint == "blockIdx.x") {
-      has_blockIdx = true;
+// class ContainsBlockIdx : public ExprVisitor {
+//  public:
+//   bool has_blockIdx = false;
+//  protected:
+//   void VisitExpr_(const VarNode* op) override {
+//     if (op->name_hint == "blockIdx.x") {
+//       has_blockIdx = true;
+//     }
+//   }
+// };
+
+
+class ContainsBlockIdxDiv : public ExprVisitor {
+public:
+  const FloorDivNode *floor_div = nullptr;
+protected:
+  void VisitExpr_(const FloorDivNode* op) override {
+    if (const VarNode *const var = op->a.as<VarNode>()) {
+      if (var->name_hint == "blockIdx.x") {
+        LOG(INFO) << "blockIdx.x / spotted";
+        this->floor_div = op;
+      }
     }
   }
 };
+
+
+class ContainsBlockIdxMod : public ExprVisitor {
+public:
+  const FloorModNode *floor_mod = nullptr;
+protected:
+  void VisitExpr_(const FloorModNode* op) override {
+    if (const VarNode *const var = op->a.as<VarNode>()) {
+      if (var->name_hint == "blockIdx.x") {
+        LOG(INFO) << "blockIdx.x % spotted";
+        this->floor_mod = op;
+      }
+    }
+  }
+};
+
 
 std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Range>& dom_map,
                                      const std::unordered_map<IterVar, PrimExpr>& value_map,
@@ -688,6 +719,22 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
                     << ") for " << stage;
         }
 
+        // ContainsBlockIdxDiv blockIdx_div;
+        // ContainsBlockIdxMod blockIdx_mod;
+        // blockIdx_div(value);
+        // blockIdx_mod(value);
+        // if (blockIdx_div.floor_div) {
+        //   LOG(INFO) << "Preparing predicate " << (blockIdx_div.floor_div->a) << " < floor(blockIdx.x, "
+        //                                       << (blockIdx_div.floor_div->b) << ")";
+        // } else if (blockIdx_mod.floor_mod) {
+        //   LOG(INFO) << "Preparing predicate " << (blockIdx_mod.floor_mod->a == blockIdx_mod.floor_mod->b - 1);
+        // }
+        // LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent 
+        //           << ") for " << stage;
+
+        // LOG(INFO) <<  "all_iter_vars=" << exprs_tostr(stage->all_iter_vars) << ", "
+        //           << "root_iter_vars=" << exprs_tostr(stage->op->root_iter_vars());
+
       }
     }
   }
@@ -769,10 +816,14 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
             //   LOG(WARNING) << "The predicate (" << value << "<" << iv->dom->extent
             //                << ")is preserved";
             // }
-            LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
-                            "Assuming it is a cache write whose boundary check "
-                            "(" << value << "<" << iv->dom->extent << ") can be neglected.";
-            continue;
+            if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT_NO_LOCAL_PADDING", 0)) {
+              LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
+                              "Assuming it is a cache write whose boundary check "
+                              "(" << value << "<" << iv->dom->extent << ") can be neglected.";
+              continue;
+            } else {
+              LOG(WARNING) << "Local padding has been disabled";
+            }
           }
         }
 

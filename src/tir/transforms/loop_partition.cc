@@ -133,7 +133,19 @@ class CandidateSelector final : public StmtExprVisitor {
       ICHECK(iv);
       Var var = iv->var;
       runtime::ThreadScope scope = runtime::ThreadScope::Create(iv->thread_tag);
+
+
+      // <bojian/TVM-SymbolicTuning>
+      // LOG(INFO) << "Partitioning thread extent " << GetRef<AttrStmt>(op);
+      // if (iv->var->name_hint == "blockIdx.x") {
+      //   LOG(INFO) << "Partitioning blockIdx.x";
+      // }
+
+
       if ((scope.rank == 0) && (!is_const_int(op->value) || partition_const_loop_)) {
+
+        // LOG(INFO) << "Partitioning thread extent " << GetRef<AttrStmt>(op);
+
         record_.insert({var.get(), false});
         StmtExprVisitor::VisitStmt_(op);
         if (record_.at(var.get()) && !no_split_) {
