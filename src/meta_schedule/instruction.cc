@@ -1147,6 +1147,16 @@ void MarkBlockAttrs::Serialize(Array<ObjectRef>* record,
   record->push_back(this->ann_key);
 }
 
+void ComputeAtAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+  ICHECK(!decision.defined());
+  record->push_back(Bool(this->preserve_unit_loop));
+}
+
+void ReverseComputeAtAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+  ICHECK(!decision.defined());
+  record->push_back(Bool(this->preserve_unit_loop));
+}
+
 void CacheReadAttrs::Serialize(Array<ObjectRef>* record,
                                const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
@@ -1240,6 +1250,19 @@ InstAttrs MarkBlockAttrs::Deserialize(const Array<ObjectRef>& record,
   return InstAttrs(std::move(n));
 }
 
+InstAttrs ComputeAtAttrs::Deserialize(const Array<ObjectRef>& record,
+                                     Optional<ObjectRef>* decision) {
+  ObjectPtr<ComputeAtAttrs> n = make_object<ComputeAtAttrs>();
+  n->preserve_unit_loop = Downcast<Bool>(record[3]);
+  return InstAttrs(std::move(n));
+}
+
+InstAttrs ReverseComputeAtAttrs::Deserialize(const Array<ObjectRef>& record,
+                                      Optional<ObjectRef>* decision) {
+  ObjectPtr<ReverseComputeAtAttrs> n = make_object<ReverseComputeAtAttrs>();
+  n->preserve_unit_loop = Downcast<Bool>(record[3]);
+  return InstAttrs(std::move(n));
+}
 InstAttrs CacheReadAttrs::Deserialize(const Array<ObjectRef>& record,
                                       Optional<ObjectRef>* decision) {
   ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
@@ -1299,8 +1322,6 @@ TVM_META_SCHEDULE_INST_IO_EMPTY(GetAxesAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(FuseAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(SplitAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(ReorderAttrs);
-TVM_META_SCHEDULE_INST_IO_EMPTY(ComputeAtAttrs);
-TVM_META_SCHEDULE_INST_IO_EMPTY(ReverseComputeAtAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(ComputeInlineAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(ReverseComputeInlineAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(DecomposeReductionAttrs);
