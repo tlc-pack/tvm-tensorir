@@ -252,7 +252,7 @@ class PartitionFinder : public StmtExprVisitor {
         // <bojian/TVM-SymbolicTuning>
         if (current_var_->name_hint == "blockIdx.x") {
           LOG(INFO) << "Partitioning blockIdx.x for cond=" << cond;
-          LOG(INFO) << "blockIdx.x ∈ [" << "0, " << hint_map_[current_var_.get()].max() << ")";
+          LOG(INFO) << "blockIdx.x ∈ [" << "0, " << hint_map_[current_var_.get()].max() << "]";
 
           BlockIdxDivFinder blockIdx_div_finder;
           BlockIdxModFinder blockIdx_mod_finder;
@@ -628,7 +628,7 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
                                              finder.blockIdx_mod_pred);
     Stmt new_kernel_body = blockIdx_partitioner(stmt);
     LOG(INFO) << "After blockIdx partitioning: " << new_kernel_body;
-    return Stmt();
+    return new_kernel_body;
   }
 
 
