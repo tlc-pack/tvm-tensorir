@@ -553,6 +553,12 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
 
   // <bojian/TVM-SymbolicTuning>
   LOG(INFO) << "Partitioning interval " << middle_interval_i << " of var " << var;
+  std::string var_name = var->name_hint;
+  if (var_name.find(".inner") != std::string::npos) {
+    LOG(INFO) << "Skipping inner loop tiles";
+    return Stmt();
+  }
+
 
   // middle_interval is the subrange of the loop variable range for which a
   // set of conditions are true (or false resp.)
