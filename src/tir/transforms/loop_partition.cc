@@ -37,7 +37,7 @@
 
 
 // <bojian/TVM-SymbolicTuning>
-// #include <tvm/tir/dynamic_axis_functor.h>
+#include <tvm/tir/dynamic_axis_functor.h>
 
 
 namespace tvm {
@@ -253,7 +253,24 @@ class PartitionFinder : public StmtExprVisitor {
         if (current_var_->name_hint == "blockIdx.x") {
           LOG(INFO) << "Partitioning blockIdx.x for cond=" << cond;
           LOG(INFO) << "blockIdx.x ∈ [" << "0, " << hint_map_[current_var_.get()] << ")";
-          // StmtExprVisitor::VisitExpr_(op);
+
+          ContainsBlockIdxDiv blockIdx_div_finder;
+          ContainsBlockIdxMod blockIdx_mod_finder;
+
+          blockIdx_div_finder(cond);
+          blockIdx_mod_finder(cond);
+          if (const FloorDivNode *floor_div = blockIdx_div_finder.floor_div) {
+            blockIdx_div_pred =
+                GetRef<FloorDiv>(floor_div) ==
+                analyzer_.Simplify(FloorDiv(hint_map_[current_var_.get()].max(), floor_div->b));
+            LOG(INFO) << "Preparing FloorDiv pred=" << blockIdx_div_pred;
+          }
+          if (const FloorModNode *floor_mod = blockIdx_mod_finder.floor_mod) {
+            blockIdx_mod_pred = GetRef<FloorMod>(floor_mod) == (floor_mod->b - 1);
+            LOG(INFO) << "Preparing FloorMod pred=" << blockIdx_mod_pred;
+          }
+
+          return StmtExprVisitor::VisitExpr_(op);
         }
 
 
@@ -278,6 +295,15 @@ class PartitionFinder : public StmtExprVisitor {
       StmtExprVisitor::VisitExpr_(op);
     }
   }
+
+
+  // <bojian/TVM-SymbolicTuning>
+ private:
+  arith::Analyzer analyzer_;
+ public:
+  PrimExpr blockIdx_div_pred;
+  PrimExpr blockIdx_mod_pred;
+
 
   Partition partitions;
 
@@ -457,6 +483,26 @@ std::pair<IntSet, ExpressionSet> LoopPartitioner::GetIntervalAndCondset(
   return std::make_pair(interval, cond_set);
 }
 
+
+// <bojian/TVM-SymbolicTuning>
+class KernelBodyFinder : public StmtVisitor {
+public:
+  Stmt body;
+protected:
+  void VisitStmt_(const AttrStmtNode* op) override {
+    if (op->attr_key == attr::thread_extent) {
+      const IterVarNode* iv = op->node.as<IterVarNode>();
+      Var var = iv->var;
+      if (var->name_hint == "threadIdx.x") {
+        body = op->body;
+      }
+      return;
+    }
+    StmtVisitor::VisitStmt_(op);
+  }
+};
+
+
 /*
  * Tries to recursively partition the range of the variable (given by var) of
  * the for loop (given by node and stmt) into a
@@ -512,12 +558,22 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
   PartitionFinder finder(var, hint_map_, relax_map_);
   finder(body);
 
+  // <bojian/TVM-SymbolicTuning>
+  if (var->name_hint == "blockIdx.x") {
+    KernelBodyFinder kernel_body_finder;
+    kernel_body_finder(stmt);
+    Stmt kernel_body = kernel_body_finder.body;
+    CHECK(kernel_body.defined());
+    LOG(INFO) << "Kernel Body: " << kernel_body;
+  }
+
+
   hint_map_.erase(var.get());
   if (finder.partitions.empty()) {
 
 
     // <bojian/TVM-SymbolicTuning>
-    LOG(INFO) << "Cannot find a valid partition for " << var;
+    // LOG(INFO) << "Cannot find a valid partition for " << var;
 
     return Stmt();
   }
@@ -540,7 +596,7 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
 
 
       // <bojian/TVM-SymbolicTuning>
-      LOG(INFO) << "Cannot find a valid partition for " << var;
+      // LOG(INFO) << "Cannot find a valid partition for " << var;
 
 
       return Stmt();

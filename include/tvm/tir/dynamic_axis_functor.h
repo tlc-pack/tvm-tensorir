@@ -56,5 +56,35 @@ class DyAxisFinder : public ExprVisitor {
 bool canProveForAllDyAxes(arith::Analyzer& analyzer, PrimExpr predicate);
 
 
+class ContainsBlockIdxDiv : public ExprVisitor {
+public:
+  const FloorDivNode *floor_div = nullptr;
+protected:
+  void VisitExpr_(const FloorDivNode* op) override {
+    if (const VarNode *const var = op->a.as<VarNode>()) {
+      if (var->name_hint == "blockIdx.x") {
+        // LOG(INFO) << "blockIdx.x / spotted";
+        this->floor_div = op;
+      }
+    }
+  }
+};
+
+
+class ContainsBlockIdxMod : public ExprVisitor {
+public:
+  const FloorModNode *floor_mod = nullptr;
+protected:
+  void VisitExpr_(const FloorModNode* op) override {
+    if (const VarNode *const var = op->a.as<VarNode>()) {
+      if (var->name_hint == "blockIdx.x") {
+        // LOG(INFO) << "blockIdx.x % spotted";
+        this->floor_mod = op;
+      }
+    }
+  }
+};
+
+
 }  // namespace tir
 }  // namespace tvm

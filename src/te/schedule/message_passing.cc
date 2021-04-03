@@ -568,36 +568,6 @@ bool IsRangeSame(const Range input_1, const Range input_2) {
 // };
 
 
-class ContainsBlockIdxDiv : public ExprVisitor {
-public:
-  const FloorDivNode *floor_div = nullptr;
-protected:
-  void VisitExpr_(const FloorDivNode* op) override {
-    if (const VarNode *const var = op->a.as<VarNode>()) {
-      if (var->name_hint == "blockIdx.x") {
-        // LOG(INFO) << "blockIdx.x / spotted";
-        this->floor_div = op;
-      }
-    }
-  }
-};
-
-
-class ContainsBlockIdxMod : public ExprVisitor {
-public:
-  const FloorModNode *floor_mod = nullptr;
-protected:
-  void VisitExpr_(const FloorModNode* op) override {
-    if (const VarNode *const var = op->a.as<VarNode>()) {
-      if (var->name_hint == "blockIdx.x") {
-        // LOG(INFO) << "blockIdx.x % spotted";
-        this->floor_mod = op;
-      }
-    }
-  }
-};
-
-
 std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Range>& dom_map,
                                      const std::unordered_map<IterVar, PrimExpr>& value_map,
                                      bool skip_ivar_domain,
