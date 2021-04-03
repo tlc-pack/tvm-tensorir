@@ -252,7 +252,7 @@ class PartitionFinder : public StmtExprVisitor {
         // <bojian/TVM-SymbolicTuning>
         if (current_var_->name_hint == "blockIdx.x") {
           LOG(INFO) << "Partitioning blockIdx.x for cond=" << cond;
-          LOG(INFO) << "blockIdx.x ∈ [" << "0, " << hint_map_[current_var_.get()] << ")";
+          LOG(INFO) << "blockIdx.x ∈ [" << "0, " << hint_map_[current_var_.get()].max() << ")";
 
           BlockIdxDivFinder blockIdx_div_finder;
           BlockIdxModFinder blockIdx_mod_finder;
@@ -490,7 +490,13 @@ protected:
   Stmt VisitStmt_(const IfThenElseNode *op) override {
     BlockIdxDivFinder blockIdx_div_finder;
     blockIdx_div_finder(op->condition);
+
+    LOG(INFO) << "Verifying condition " << op->condition;
+
     if (blockIdx_div_finder.floor_div) {
+
+      LOG(ERROR) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
+
       return op->then_case;
     }
     return StmtExprMutator::VisitStmt_(op);
@@ -503,7 +509,13 @@ protected:
   Stmt VisitStmt_(const IfThenElseNode *op) override {
     BlockIdxModFinder blockIdx_mod_finder;
     blockIdx_mod_finder(op->condition);
+
+    LOG(INFO) << "Verifying condition " << op->condition;
+
     if (blockIdx_mod_finder.floor_mod) {
+
+      LOG(ERROR) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
+
       return op->then_case;
     }
     return StmtExprMutator::VisitStmt_(op);
@@ -614,8 +626,9 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
   if (var->name_hint == "blockIdx.x") {
     BlockIdxPartitioner blockIdx_partitioner(finder.blockIdx_div_pred,
                                              finder.blockIdx_mod_pred);
-    LOG(INFO) << "After blockIdx partitioning: " << blockIdx_partitioner(stmt);
-
+    Stmt new_kernel_body = blockIdx_partitioner(stmt);
+    LOG(INFO) << "After blockIdx partitioning: " << new_kernel_body;
+    return Stmt();
   }
 
 
@@ -791,6 +804,10 @@ Stmt LoopPartition(Stmt stmt, bool partition_const_loop, bool no_unroll_loop_wit
   stmt = LoopPartitioner(partition_const_loop, no_unroll_loop_with_extent_one)
              .VisitAndMutate(std::move(stmt));
   stmt = RemoveLikelyTags()(std::move(stmt));
+
+  // <bojian/TVM-SymbolicTuning>
+  LOG(INFO) << "LoopPartition: " << stmt;
+
   return stmt;
 }
 
