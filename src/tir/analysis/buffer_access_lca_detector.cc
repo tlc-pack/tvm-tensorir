@@ -145,7 +145,7 @@ class LCADetector : public StmtExprVisitor {
     int depth;
   };
 
-  /*! \brief The ancestor scope stacks (Block and For), initializing with Null */
+  /*! \brief The ancestor scope stacks (Block and For), initialized with Null */
   std::vector<const StmtNode*> ancestor_scopes_ = {nullptr};
   /*! \brief The parent and depth info of each for Node */
   std::unordered_map<const StmtNode*, ScopeInfo> scope_info_ = {};
