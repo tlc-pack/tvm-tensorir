@@ -58,7 +58,13 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
     for (size_t i = 0; i < seq.size(); ++i) {
       const StmtEntry& s = seq[i];
       // check if sync before statement is needed.
-      bool sync_before_stmt = (syncs_inserted_.count(s.stmt) != 0);
+
+
+      // <bojian/TVM-SymbolicTuning>
+      // bool sync_before_stmt = (syncs_inserted_.count(s.stmt) != 0);
+      bool sync_before_stmt = true;
+
+
       // Apply the syncs added already.
       if (sync_before_stmt) {
         reads.clear();
@@ -107,7 +113,13 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         const StmtEntry& s = seq[i];
         if (syncs_inserted_.count(s.stmt) != 0) break;
         if (reads.empty() && writes.empty()) break;
-        bool sync_before_stmt = false;
+        
+        
+        // <bojian/TVM-SymbolicTuning>
+        // bool sync_before_stmt = false;
+        bool sync_before_stmt = true;
+        
+        
         for (const AccessEntry& acc : s.access) {
           if (acc.type == kRead) {
             if (FindConflict(writes, acc, true)) {
