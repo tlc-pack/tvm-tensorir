@@ -117,8 +117,8 @@ class LCADetector : public StmtExprVisitor {
     while (lhs != root_ && rhs != root_ && lhs != rhs) {
       auto it_l = scope_info_.find(lhs);
       auto it_r = scope_info_.find(rhs);
-      ICHECK(it_l != scope_info_.end()) << GetRef<Stmt>(lhs);
-      ICHECK(it_r != scope_info_.end()) << GetRef<Stmt>(rhs);
+      ICHECK(it_l != scope_info_.end());
+      ICHECK(it_r != scope_info_.end());
       const ScopeInfo& l = it_l->second;
       const ScopeInfo& r = it_r->second;
       if (l.depth == r.depth) {
@@ -133,10 +133,15 @@ class LCADetector : public StmtExprVisitor {
     if (lhs == root_ || rhs == root_) {
       return root_;
     }
+    ICHECK(lhs == rhs);
     return lhs;
   }
 
-  /*! \brief The AST node information for querying LCA */
+  /*!
+   * \brief The AST node information for querying LCA.
+   * \note Only BlockNode and ForNode are considered, since they are the only position where the
+   *       body can be a SeqStmt (The LCA of buffer access) in TensorIR.
+   */
   struct ScopeInfo {
     ScopeInfo(const StmtNode* parent, int depth) : parent_scope(parent), depth(depth) {}
     // The parent scope node
@@ -145,15 +150,15 @@ class LCADetector : public StmtExprVisitor {
     int depth;
   };
 
-  /*! \brief The ancestor scope stacks (Block and For), initialized with Null */
+  /*! \brief The ancestor scope stacks (Block and For), initialized with Null. */
   std::vector<const StmtNode*> ancestor_scopes_ = {nullptr};
-  /*! \brief The parent and depth info of each for Node */
+  /*! \brief The parent and depth info of each for Node. */
   std::unordered_map<const StmtNode*, ScopeInfo> scope_info_ = {};
-  /*! \brief The map from Buffer to its LCA for nodes */
+  /*! \brief The map from Buffer to its LCA for nodes. */
   std::unordered_map<const BufferNode*, const StmtNode*> buffer_lca_ = {};
-  /*! \brief The map from Buffer data to the Buffer */
+  /*! \brief The map from Buffer data to the Buffer. */
   std::unordered_map<const VarNode*, const BufferNode*> buffer_var_map_ = {};
-  /*! \brief The root block of the func */
+  /*! \brief The root block of the func. */
   const BlockNode* root_;
 };
 
