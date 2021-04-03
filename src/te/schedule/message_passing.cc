@@ -682,8 +682,8 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
           // }
           bool can_ignore_bound_check = false;
           for (const PrimExpr &pred : preds) {
-            ContainsBlockIdxDiv blockIdx_div_i, blockIdx_div_ii;
-            ContainsBlockIdxMod blockIdx_mod_i, blockIdx_mod_ii;
+            BlockIdxDivFinder blockIdx_div_i, blockIdx_div_ii;
+            BlockIdxModFinder blockIdx_mod_i, blockIdx_mod_ii;
             blockIdx_div_i(pred); blockIdx_div_ii(value);
             blockIdx_mod_i(pred); blockIdx_mod_ii(value);
             if (blockIdx_div_i.floor_div != nullptr && blockIdx_div_ii.floor_div != nullptr) {

@@ -56,7 +56,7 @@ class DyAxisFinder : public ExprVisitor {
 bool canProveForAllDyAxes(arith::Analyzer& analyzer, PrimExpr predicate);
 
 
-class ContainsBlockIdxDiv : public ExprVisitor {
+class BlockIdxDivFinder : public ExprVisitor {
 public:
   const FloorDivNode *floor_div = nullptr;
 protected:
@@ -71,7 +71,7 @@ protected:
 };
 
 
-class ContainsBlockIdxMod : public ExprVisitor {
+class BlockIdxModFinder : public ExprVisitor {
 public:
   const FloorModNode *floor_mod = nullptr;
 protected:

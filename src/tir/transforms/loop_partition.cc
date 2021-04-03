@@ -254,8 +254,8 @@ class PartitionFinder : public StmtExprVisitor {
           LOG(INFO) << "Partitioning blockIdx.x for cond=" << cond;
           LOG(INFO) << "blockIdx.x ∈ [" << "0, " << hint_map_[current_var_.get()] << ")";
 
-          ContainsBlockIdxDiv blockIdx_div_finder;
-          ContainsBlockIdxMod blockIdx_mod_finder;
+          BlockIdxDivFinder blockIdx_div_finder;
+          BlockIdxModFinder blockIdx_mod_finder;
 
           blockIdx_div_finder(cond);
           blockIdx_mod_finder(cond);
@@ -485,20 +485,74 @@ std::pair<IntSet, ExpressionSet> LoopPartitioner::GetIntervalAndCondset(
 
 
 // <bojian/TVM-SymbolicTuning>
-class KernelBodyFinder : public StmtVisitor {
-public:
-  Stmt body;
+class BlockIdxDivEliminator : public StmtExprMutator {
 protected:
-  void VisitStmt_(const AttrStmtNode* op) override {
-    if (op->attr_key == attr::thread_extent) {
-      const IterVarNode* iv = op->node.as<IterVarNode>();
-      Var var = iv->var;
-      if (var->name_hint == "threadIdx.x") {
-        body = op->body;
-        return;
+  Stmt VisitStmt_(const IfThenElseNode *op) override {
+    BlockIdxDivFinder blockIdx_div_finder;
+    blockIdx_div_finder(op->condition);
+    if (blockIdx_div_finder.floor_div) {
+      return op->then_case;
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+};
+
+
+class BlockIdxModEliminator : public StmtExprMutator {
+protected:
+  Stmt VisitStmt_(const IfThenElseNode *op) override {
+    BlockIdxModFinder blockIdx_mod_finder;
+    blockIdx_mod_finder(op->condition);
+    if (blockIdx_mod_finder.floor_mod) {
+      return op->then_case;
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+};
+
+
+class BlockIdxPartitioner : public StmtExprMutator {
+private:
+  PrimExpr blockIdx_div_pred_, blockIdx_mod_pred_;
+  // bool kernel_body_start_ = false;
+  BlockIdxDivEliminator blockIdx_div_elim;
+  BlockIdxModEliminator blockIdx_mod_elim;
+public:
+  BlockIdxPartitioner(PrimExpr blockIdx_div_pred, PrimExpr blockIdx_mod_pred)
+      : blockIdx_div_pred_(blockIdx_div_pred),
+        blockIdx_mod_pred_(blockIdx_mod_pred) {}
+protected:
+  Stmt VisitStmt_(const AttrStmtNode* op) override {
+    // if (op->attr_key == attr::thread_extent) {
+    //   const IterVarNode* iv = op->node.as<IterVarNode>();
+    //   Var var = iv->var;
+    //   if (var->name_hint == "threadIdx.x" && !kernel_body_start_) {
+    //     kernel_body_start_ = true;
+    //   }
+    // }
+    if (op->attr_key == "pragma_unroll_explicit") {
+      if (blockIdx_div_pred_.defined() && blockIdx_mod_pred_.defined()) {
+
+        return IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
+                          blockIdx_div_elim(blockIdx_mod_elim(op->body)),
+                          IfThenElse(!blockIdx_div_pred_,
+                                     blockIdx_div_elim(op->body),
+                                     IfThenElse(!blockIdx_mod_pred_,
+                                                blockIdx_mod_elim(op->body),
+                                                op->body
+                                                )
+                                     )
+                          );
+
+      } else if (blockIdx_div_pred_.defined()) {
+        return IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
+                          op->body);
+      } else if (blockIdx_mod_pred_.defined()) {
+        return IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
+                          op->body);
       }
     }
-    StmtVisitor::VisitStmt_(op);
+    return StmtExprMutator::VisitStmt_(op);
   }
 };
 
@@ -565,6 +619,17 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
     Stmt kernel_body = kernel_body_finder.body;
     CHECK(kernel_body.defined());
     LOG(INFO) << "Kernel Body: " << kernel_body;
+
+    if (finder.blockIdx_div_pred.defined() &&
+        finder.blockIdx_mod_pred.defined()) {
+      return Stmt();
+    } else if (finder.blockIdx_div_pred.defined()) {
+
+      return 
+
+    } else if (finder.blockIdx_mod_pred.defined()) {
+    }
+    return Stmt();
   }
 
 
