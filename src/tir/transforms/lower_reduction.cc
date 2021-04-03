@@ -32,7 +32,7 @@ class ReductionTransformer : public StmtMutator {
  public:
   ReductionTransformer() = default;
  private:
-  Stmt VisitStmt_(const BlockNode* block) override {
+  Stmt VisitStmt_(const BlockNode* block) final {
     if (!block->init.defined()) {
       return StmtMutator::VisitStmt_(block);
     }
