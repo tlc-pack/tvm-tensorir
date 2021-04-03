@@ -526,7 +526,7 @@ protected:
 class BlockIdxPartitioner : public StmtExprMutator {
 private:
   PrimExpr blockIdx_div_pred_, blockIdx_mod_pred_;
-  // bool kernel_body_start_ = false;
+  bool kernel_body_start_ = false;
   BlockIdxDivEliminator blockIdx_div_elim;
   BlockIdxModEliminator blockIdx_mod_elim;
 public:
@@ -535,44 +535,43 @@ public:
         blockIdx_mod_pred_(blockIdx_mod_pred) {}
 protected:
   Stmt VisitStmt_(const AttrStmtNode* op) override {
-    // if (op->attr_key == attr::thread_extent) {
-    //   const IterVarNode* iv = op->node.as<IterVarNode>();
-    //   Var var = iv->var;
-    //   if (var->name_hint == "threadIdx.x" && !kernel_body_start_) {
-    //     kernel_body_start_ = true;
-    //   }
-    // }
+    if (op->attr_key == attr::thread_extent) {
+      const IterVarNode* iv = op->node.as<IterVarNode>();
+      Var var = iv->var;
+      if (var->name_hint == "threadIdx.x" && !kernel_body_start_) {
+        kernel_body_start_ = true;
 
-    if (op->attr_key == "pragma_unroll_explicit") {
+        LOG(INFO) << "**************************************************************";
+        LOG(INFO) << "* Raw";
+        LOG(INFO) << "**************************************************************";
+        LOG(INFO) << op->body;
+        LOG(INFO) << "**************************************************************";
+        LOG(INFO) << "* blockIdxDiv";
+        LOG(INFO) << "**************************************************************";
+        LOG(INFO) << blockIdx_mod_elim(op->body);
 
-      LOG(INFO) << "**************************************************************";
-      LOG(INFO) << "* Raw";
-      LOG(INFO) << "**************************************************************";
-      LOG(INFO) << op->body;
-      LOG(INFO) << "**************************************************************";
-      LOG(INFO) << "* blockIdxDiv";
-      LOG(INFO) << "**************************************************************";
-      LOG(INFO) << blockIdx_mod_elim(op->body);
-
-      if (blockIdx_div_pred_.defined() && blockIdx_mod_pred_.defined()) {
-        return IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
-                          blockIdx_div_elim(blockIdx_mod_elim(op->body)),
-                          IfThenElse(!blockIdx_div_pred_,
-                                     blockIdx_div_elim(op->body),
-                                     IfThenElse(!blockIdx_mod_pred_,
-                                                blockIdx_mod_elim(op->body),
-                                                op->body
-                                                )
-                                     )
-                          );
-      } else if (blockIdx_div_pred_.defined()) {
-        return IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
-                          op->body);
-      } else if (blockIdx_mod_pred_.defined()) {
-        return IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
-                          op->body);
+        if (blockIdx_div_pred_.defined() && blockIdx_mod_pred_.defined()) {
+          return IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
+                            blockIdx_div_elim(blockIdx_mod_elim(op->body)),
+                            IfThenElse(!blockIdx_div_pred_,
+                                       blockIdx_div_elim(op->body),
+                                       IfThenElse(!blockIdx_mod_pred_,
+                                                  blockIdx_mod_elim(op->body),
+                                                  op->body
+                                                  )
+                                       )
+                            );
+        } else if (blockIdx_div_pred_.defined()) {
+          return IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
+                            op->body);
+        } else if (blockIdx_mod_pred_.defined()) {
+          return IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
+                            op->body);
+        }
       }
     }
+
+
     return StmtExprMutator::VisitStmt_(op);
   }
 };
