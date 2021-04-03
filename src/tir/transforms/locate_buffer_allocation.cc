@@ -20,7 +20,7 @@
 /*!
  * \brief Detecting the LCA of buffer access points and
  *        where the buffer should be allocated
- * \file detect_alloc_site.cc
+ * \file locate_buffer_allocation.cc
  */
 
 #include <tvm/tir/analysis.h>
@@ -30,9 +30,9 @@
 namespace tvm {
 namespace tir {
 
-class BufferAllocator : public StmtMutator {
+class BufferAllocationLocator : public StmtExprMutator {
  public:
-  explicit BufferAllocator(const PrimFunc& func) {
+  explicit BufferAllocationLocator(const PrimFunc& func) {
     Map<Buffer, Stmt> buffer_lac = DetectBufferAccessLCA(func);
     for (const auto& pair : buffer_lac) {
       const Buffer& buffer = pair.first;
@@ -49,6 +49,9 @@ class BufferAllocator : public StmtMutator {
  private:
   Stmt VisitStmt_(const ForNode* op) final {
     auto it = alloc_buffers_.find(op);
+    Stmt stmt = StmtMutator::VisitStmt_(op);
+    op = stmt.as<ForNode>();
+    ICHECK(op != nullptr);
     if (it != alloc_buffers_.end()) {
       Stmt body = InjectOpaqueBlock(op->body, it->second);
       auto n = CopyOnWrite(op);
@@ -60,16 +63,16 @@ class BufferAllocator : public StmtMutator {
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
-    Array<Buffer> alloc_buffers = op->alloc_buffers;
+    Array<Buffer> alloc_buffers;
     auto it = alloc_buffers_.find(op);
     if (it != alloc_buffers_.end()) {
-      // push back buffers into block alloc_buffers.
-      for (const Buffer& buf : it->second) {
-        if (!std::none_of(alloc_buffers.begin(), alloc_buffers.end(),
-                          [&buf](const Buffer& alloc_buf) { return alloc_buf.same_as(buf); }))
-          alloc_buffers.push_back(buf);
-      }
+      alloc_buffers = it->second;
+    } else {
+      alloc_buffers = {};
     }
+    Stmt stmt = StmtMutator::VisitStmt_(op);
+    op = stmt.as<BlockNode>();
+    ICHECK(op != nullptr);
     if (alloc_buffers.same_as(op->alloc_buffers)) {
       return GetRef<Stmt>(op);
     } else {
@@ -77,6 +80,11 @@ class BufferAllocator : public StmtMutator {
       n->alloc_buffers = std::move(alloc_buffers);
       return Stmt(n);
     }
+  }
+
+  Stmt VisitStmt_(const BufferRealizeNode* op) final {
+    ICHECK(false) << "Internal Error: BufferRealizeNode is not allowed in TensorIR.";
+    return StmtMutator::VisitStmt_(op);
   }
 
   static Stmt InjectOpaqueBlock(const Stmt& body, const std::vector<Buffer>& alloc_buffers) {
@@ -98,7 +106,8 @@ class BufferAllocator : public StmtMutator {
 
 PrimFunc LocateBufferAllocation(PrimFunc func) {
   auto fptr = func.CopyOnWrite();
-  fptr->body = BufferAllocator(func)(std::move(fptr->body));
+  BufferAllocationLocator locator(func);
+  fptr->body = locator(fptr->body);
   return func;
 }
 

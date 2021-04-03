@@ -355,6 +355,14 @@ TVM_DLL Pass AllreduceTransform();
 TVM_DLL Pass BufferFlatten();
 
 /*!
+ * \brief Locate the buffer allocation to the exact position (usually is
+ *        the lca of buffer access). This pass will inject opaque block
+ *        with alloc_buffers at the allocation site.
+ * \return The pass.
+ */
+TVM_DLL Pass LocateBufferAllocation();
+
+/*!
  * \brief Hoist loop-invariant IfThenElse nodes to
  * outside the elligible loops.
  *
