@@ -575,7 +575,7 @@ protected:
   void VisitExpr_(const FloorDivNode* op) override {
     if (const VarNode *const var = op->a.as<VarNode>()) {
       if (var->name_hint == "blockIdx.x") {
-        LOG(INFO) << "blockIdx.x / spotted";
+        // LOG(INFO) << "blockIdx.x / spotted";
         this->floor_div = op;
       }
     }
@@ -590,7 +590,7 @@ protected:
   void VisitExpr_(const FloorModNode* op) override {
     if (const VarNode *const var = op->a.as<VarNode>()) {
       if (var->name_hint == "blockIdx.x") {
-        LOG(INFO) << "blockIdx.x % spotted";
+        // LOG(INFO) << "blockIdx.x % spotted";
         this->floor_mod = op;
       }
     }
@@ -635,7 +635,11 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
 
   // <bojian/TVM-SymbolicTuning>
   // #if defined(SYMTUNE_SCHED_OPT_NO_DUP_IF_CHECKS)
-  PrimExpr prev_predicate;
+  
+  
+  // PrimExpr prev_predicate;
+
+
   // ContainsBlockIdx blockidx_checker;
   // DyAxisMaxReplacer dyaxis_max_replacer;
   // DyAxisMinReplacer dyaxis_min_replacer;
@@ -699,11 +703,27 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
 
       if (vmax.dtype() != value.dtype() || !can_ignore_bound_check) {
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
-          if (prev_predicate.defined()) {
-            LOG(WARNING) << "Predicate (" << value << "<" << dom->extent << ") "
-                         << "is assumed to be a subset of "
-                         << "(" << prev_predicate << ") in stage "
-                         << stage->origin_op->name;
+          // if (prev_predicate.defined()) {
+          //   LOG(WARNING) << "Predicate (" << value << "<" << dom->extent << ") "
+          //                << "is assumed to be a subset of "
+          //                << "(" << prev_predicate << ") in stage "
+          //                << stage->origin_op->name;
+          //   continue;
+          // }
+          bool can_ignore_bound_check = false;
+          for (const PrimExpr &pred : preds) {
+            ContainsBlockIdxDiv blockIdx_div_i, blockIdx_div_ii;
+            ContainsBlockIdxMod blockIdx_mod_i, blockIdx_mod_ii;
+            blockIdx_div_i(pred); blockIdx_div_ii(value);
+            blockIdx_mod_i(pred); blockIdx_mod_ii(value);
+            if (blockIdx_div_i.floor_div != nullptr && blockIdx_div_ii.floor_div != nullptr) {
+              can_ignore_bound_check = true;
+            }
+            if (blockIdx_mod_i.floor_mod != nullptr && blockIdx_mod_ii.floor_mod != nullptr) {
+              can_ignore_bound_check = true;
+            }
+          }
+          if (can_ignore_bound_check) {
             continue;
           }
         }
@@ -711,9 +731,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         preds.emplace_back(value < dom->extent);
 
         // <bojian/TVM-SymbolicTuning>
-        if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
-          prev_predicate = preds.back();
-        }
+        // if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
+        //   prev_predicate = preds.back();
+        // }
         if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
           LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent 
                     << ") for " << stage;

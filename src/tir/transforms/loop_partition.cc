@@ -246,15 +246,17 @@ class PartitionFinder : public StmtExprVisitor {
 
   void VisitExpr_(const CallNode* op) final {
     if (op->op.same_as(builtin::likely())) {
-
-      // <bojian/TVM-SymbolicTuning>
-      if (current_var_->name_hint == "blockIdx.x") {
-        LOG(WARNING) << "Neglecting the partitioning in blockIdx.x";
-        StmtExprVisitor::VisitExpr_(op);
-      }
-
       PrimExpr cond = op->args[0];
       if (ExprUseVars(cond, std::unordered_set<const VarNode*>({current_var_.get()}))) {
+
+        // <bojian/TVM-SymbolicTuning>
+        if (current_var_->name_hint == "blockIdx.x") {
+          LOG(INFO) << "Partitioning blockIdx.x for cond=" << cond;
+          LOG(INFO) << "blockIdx.x ∈ [" << "0, " << hint_map_[current_var_.get()] << ")";
+          // StmtExprVisitor::VisitExpr_(op);
+        }
+
+
         // For cond, find out the interval, if exists, in which we can prove that cond is
         // true. Also find the interval, if exists, in which we can prove that cond is
         // false.
