@@ -148,6 +148,6 @@ def detect_buffer_access_lca(func: PrimFunc) -> Mapping[Buffer, Stmt]:
     Returns
     -------
     result : Mapping[Buffer, Stmt]
-        Map from buffer to its LCA stmt.
+        Map from buffer to the LCA of all access to it.
     """
     return _ffi_api.detect_buffer_access_lca(func)  # pylint: disable=no-member
