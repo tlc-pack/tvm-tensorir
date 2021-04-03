@@ -61,8 +61,8 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
 
 
       // <bojian/TVM-SymbolicTuning>
-      // bool sync_before_stmt = (syncs_inserted_.count(s.stmt) != 0);
-      bool sync_before_stmt = true;
+      bool sync_before_stmt = (syncs_inserted_.count(s.stmt) != 0);
+      // bool sync_before_stmt = true;
 
 
       // Apply the syncs added already.
@@ -116,8 +116,8 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         
         
         // <bojian/TVM-SymbolicTuning>
-        // bool sync_before_stmt = false;
-        bool sync_before_stmt = true;
+        bool sync_before_stmt = false;
+        // bool sync_before_stmt = true;
         
         
         for (const AccessEntry& acc : s.access) {
@@ -146,7 +146,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
     }
 
     // <bojian/TVM-SymbolicTuning>
-    LOG(INFO) << "ATTENTION!!! Number of syncs inserted: " << syncs_inserted_.size();
+    // LOG(INFO) << "ATTENTION!!! Number of syncs inserted: " << syncs_inserted_.size();
 
 
     // return the exposed entries, remove unecessary ones.
@@ -193,7 +193,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
     }
 
     // <bojian/TVM-SymbolicTuning>
-    LOG(INFO) << "ATTENTION!!! Number of syncs after optimization: " << sync_count;
+    // LOG(INFO) << "ATTENTION!!! Number of syncs after optimization: " << sync_count;
 
 
     return head;
