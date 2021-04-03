@@ -20,11 +20,11 @@ from tvm.script import ty
 
 
 @tvm.script.tir
-def buffer_laod_store_func(a: ty.handle, b: ty.handle, c: ty.handle, d: ty.handle) -> None:
+def buffer_laod_store_func(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     B = tir.match_buffer(b, (128, 128), "float32")
-    C = tir.match_buffer(c, (128, 128), "float32")
-    D = tir.match_buffer(d, (128, 128), "float32")
+    C = tir.alloc_buffer((128, 128), "float32")
+    D = tir.alloc_buffer((128, 128), "float32")
     with tir.block([128, 128]) as [i, j]:
         A[i, j] = tir.float32(0)
     with tir.block([32, 32, tir.reduce_axis(0, 32)]) as [i, j, k]:
@@ -66,7 +66,8 @@ def buffer_opaque_access(b: ty.handle, c: ty.handle) -> None:
 
 def test_buffer_laod_store():
     func = buffer_laod_store_func
-    A, B, C, D = [func.buffer_map[x] for x in func.params]
+    A, B = [func.buffer_map[x] for x in func.params]
+    C, D = func.body.block.alloc_buffers
     lca = tir.analysis.detect_buffer_access_lca(func)
 
     # LCA of Buffer A is root

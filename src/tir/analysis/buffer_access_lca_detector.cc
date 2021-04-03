@@ -36,10 +36,8 @@ class LCADetector : public StmtExprVisitor {
  public:
   static Map<Buffer, Stmt> Detect(const PrimFunc& func) {
     LCADetector detector;
-    // Buffers, who appear as arguments, do not have allocation sites
     for (const auto& kv : func->buffer_map) {
       const Buffer& buffer = kv.second;
-      detector.buffer_lca_.emplace(buffer.get(), nullptr);
       detector.buffer_var_map_.emplace(buffer->data.get(), buffer.get());
     }
     detector.root_ = Downcast<BlockRealize>(func->body)->block.get();
@@ -65,6 +63,9 @@ class LCADetector : public StmtExprVisitor {
 
   void VisitStmt_(const BlockNode* op) final {
     int n = ancestor_scopes_.size();
+    for (const Buffer& buf : op->alloc_buffers) {
+      buffer_var_map_.emplace(buf->data.get(), buf.get());
+    }
     scope_info_.emplace(op, ScopeInfo{ancestor_scopes_.back(), n});
     ancestor_scopes_.push_back(op);
     StmtExprVisitor::VisitStmt_(op);
@@ -78,6 +79,11 @@ class LCADetector : public StmtExprVisitor {
 
   void VisitStmt_(const BufferStoreNode* op) final {
     UpdateBufferLCA(op->buffer.get());
+    StmtExprVisitor::VisitStmt_(op);
+  }
+
+  void VisitStmt_(const BufferRealizeNode* op) final {
+    buffer_var_map_.emplace(op->buffer->data.get(), op->buffer.get());
     StmtExprVisitor::VisitStmt_(op);
   }
 
@@ -151,9 +157,7 @@ class LCADetector : public StmtExprVisitor {
   const BlockNode* root_;
 };
 
-Map<Buffer, Stmt> DetectBufferAccessLCA(const PrimFunc& func) {
-  return LCADetector::Detect(func);
-}
+Map<Buffer, Stmt> DetectBufferAccessLCA(const PrimFunc& func) { return LCADetector::Detect(func); }
 
 TVM_REGISTER_GLOBAL("tir.analysis.detect_buffer_access_lca").set_body_typed(DetectBufferAccessLCA);
 }  // namespace tir
