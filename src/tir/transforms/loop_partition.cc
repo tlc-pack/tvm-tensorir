@@ -495,8 +495,8 @@ protected:
       Var var = iv->var;
       if (var->name_hint == "threadIdx.x") {
         body = op->body;
+        return;
       }
-      return;
     }
     StmtVisitor::VisitStmt_(op);
   }
