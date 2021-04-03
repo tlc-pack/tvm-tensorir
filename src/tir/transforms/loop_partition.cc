@@ -539,7 +539,7 @@ protected:
       const IterVarNode* iv = op->node.as<IterVarNode>();
       Var var = iv->var;
       if (var->name_hint == "blockIdx.x") {
-        kernel_body_start_ = true;
+        // kernel_body_start_ = true;
 
         LOG(INFO) << "**************************************************************";
         LOG(INFO) << "* Raw";
@@ -825,7 +825,7 @@ Stmt LoopPartition(Stmt stmt, bool partition_const_loop, bool no_unroll_loop_wit
   stmt = RemoveLikelyTags()(std::move(stmt));
 
   // <bojian/TVM-SymbolicTuning>
-  // LOG(INFO) << "LoopPartition: " << stmt;
+  LOG(INFO) << "LoopPartition: " << stmt;
 
   return stmt;
 }

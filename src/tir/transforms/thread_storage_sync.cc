@@ -132,6 +132,11 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         }
       }
     }
+
+    // <bojian/TVM-SymbolicTuning>
+    LOG(INFO) << "ATTENTION!!! Number of syncs inserted: " << syncs_inserted_.size();
+
+
     // return the exposed entries, remove unecessary ones.
     int sync_count = 0;
     // head are before first sync, tail are after last sync
@@ -174,6 +179,11 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         e.double_buffer_write = false;
       }
     }
+
+    // <bojian/TVM-SymbolicTuning>
+    LOG(INFO) << "ATTENTION!!! Number of syncs after optimization: " << sync_count;
+
+
     return head;
   }
 
