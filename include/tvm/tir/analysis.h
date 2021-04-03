@@ -176,7 +176,7 @@ Array<Array<BufferRegion>> GetBlockAccessRegion(const Block& block,
  * \brief Detect the LCA of buffer access, including both high-level access(BufferLoad, BufferStore)
  *        and low-level access(Load, Store and opaque access). The LCA may be a For loop or a Block.
  * \param func The PrimFunc to be detected.
- * \return The Map from buffer to its LCA stmt.
+ * \return The Map from buffer to the LCA of all access to it.
  */
 Map<Buffer, Stmt> DetectBufferAccessLCA(const PrimFunc& func);
 
