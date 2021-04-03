@@ -526,7 +526,7 @@ protected:
 class BlockIdxPartitioner : public StmtExprMutator {
 private:
   PrimExpr blockIdx_div_pred_, blockIdx_mod_pred_;
-  bool kernel_body_start_ = false;
+  // bool kernel_body_start_ = false;
   BlockIdxDivEliminator blockIdx_div_elim;
   BlockIdxModEliminator blockIdx_mod_elim;
 public:
@@ -538,7 +538,7 @@ protected:
     if (op->attr_key == attr::thread_extent) {
       const IterVarNode* iv = op->node.as<IterVarNode>();
       Var var = iv->var;
-      if (var->name_hint == "threadIdx.x" && !kernel_body_start_) {
+      if (var->name_hint == "blockIdx.x") {
         kernel_body_start_ = true;
 
         LOG(INFO) << "**************************************************************";
@@ -550,8 +550,11 @@ protected:
         LOG(INFO) << "**************************************************************";
         LOG(INFO) << blockIdx_mod_elim(op->body);
 
+        Stmt stmt;
+
         if (blockIdx_div_pred_.defined() && blockIdx_mod_pred_.defined()) {
-          return IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
+
+          stmt = IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
                             blockIdx_div_elim(blockIdx_mod_elim(op->body)),
                             IfThenElse(!blockIdx_div_pred_,
                                        blockIdx_div_elim(op->body),
@@ -561,13 +564,19 @@ protected:
                                                   )
                                        )
                             );
+
         } else if (blockIdx_div_pred_.defined()) {
-          return IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
+          stmt = IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
                             op->body);
         } else if (blockIdx_mod_pred_.defined()) {
-          return IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
+          stmt = IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
                             op->body);
         }
+
+        if (stmt.defined()) {
+          return AttrStmt(op->node, op->attr_key, op->value, stmt);
+        }
+
       }
     }
 
@@ -816,7 +825,7 @@ Stmt LoopPartition(Stmt stmt, bool partition_const_loop, bool no_unroll_loop_wit
   stmt = RemoveLikelyTags()(std::move(stmt));
 
   // <bojian/TVM-SymbolicTuning>
-  LOG(INFO) << "LoopPartition: " << stmt;
+  // LOG(INFO) << "LoopPartition: " << stmt;
 
   return stmt;
 }
