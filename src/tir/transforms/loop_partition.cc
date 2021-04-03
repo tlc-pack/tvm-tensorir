@@ -495,7 +495,7 @@ protected:
 
     if (blockIdx_div_finder.floor_div) {
 
-      LOG(ERROR) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
+      LOG(INFO) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
 
       return op->then_case;
     }
@@ -514,7 +514,7 @@ protected:
 
     if (blockIdx_mod_finder.floor_mod) {
 
-      LOG(ERROR) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
+      LOG(INFO) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
 
       return op->then_case;
     }
@@ -542,7 +542,18 @@ protected:
     //     kernel_body_start_ = true;
     //   }
     // }
+
     if (op->attr_key == "pragma_unroll_explicit") {
+
+      LOG(INFO) << "**************************************************************";
+      LOG(INFO) << "* Raw";
+      LOG(INFO) << "**************************************************************";
+      LOG(INFO) << op->body;
+      LOG(INFO) << "**************************************************************";
+      LOG(INFO) << "* blockIdxDiv";
+      LOG(INFO) << "**************************************************************";
+      LOG(INFO) << blockIdx_mod_elim(op->body);
+
       if (blockIdx_div_pred_.defined() && blockIdx_mod_pred_.defined()) {
         return IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
                           blockIdx_div_elim(blockIdx_mod_elim(op->body)),
@@ -627,7 +638,7 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
     BlockIdxPartitioner blockIdx_partitioner(finder.blockIdx_div_pred,
                                              finder.blockIdx_mod_pred);
     Stmt new_kernel_body = blockIdx_partitioner(stmt);
-    LOG(INFO) << "After blockIdx partitioning: " << new_kernel_body;
+    // LOG(INFO) << "After blockIdx partitioning: " << new_kernel_body;
     return new_kernel_body;
   }
 

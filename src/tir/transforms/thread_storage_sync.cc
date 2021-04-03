@@ -97,7 +97,8 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         }
       }
       if (sync_before_stmt) {
-        ICHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition";
+        // <bojian/TVM-SymbolicTuning> Ignored the check on conditions.
+        // ICHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition";
         syncs_inserted_.insert(s.stmt);
       }
     }
@@ -124,7 +125,8 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           }
         }
         if (sync_before_stmt) {
-          ICHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition";
+          // <bojian/TVM-SymbolicTuning> Ignored the check on conditions.
+          // ICHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition";
           syncs_inserted_.insert(s.stmt);
           break;
         }
