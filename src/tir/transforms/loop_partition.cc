@@ -532,7 +532,6 @@ protected:
     // }
     if (op->attr_key == "pragma_unroll_explicit") {
       if (blockIdx_div_pred_.defined() && blockIdx_mod_pred_.defined()) {
-
         return IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
                           blockIdx_div_elim(blockIdx_mod_elim(op->body)),
                           IfThenElse(!blockIdx_div_pred_,
@@ -543,7 +542,6 @@ protected:
                                                 )
                                      )
                           );
-
       } else if (blockIdx_div_pred_.defined()) {
         return IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
                           op->body);
@@ -614,22 +612,10 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
 
   // <bojian/TVM-SymbolicTuning>
   if (var->name_hint == "blockIdx.x") {
-    KernelBodyFinder kernel_body_finder;
-    kernel_body_finder(stmt);
-    Stmt kernel_body = kernel_body_finder.body;
-    CHECK(kernel_body.defined());
-    LOG(INFO) << "Kernel Body: " << kernel_body;
+    BlockIdxPartitioner blockIdx_partitioner(finder.blockIdx_div_pred,
+                                             finder.blockIdx_mod_pred);
+    LOG(INFO) << "After blockIdx partitioning: " << blockIdx_partitioner(stmt);
 
-    if (finder.blockIdx_div_pred.defined() &&
-        finder.blockIdx_mod_pred.defined()) {
-      return Stmt();
-    } else if (finder.blockIdx_div_pred.defined()) {
-
-      return 
-
-    } else if (finder.blockIdx_mod_pred.defined()) {
-    }
-    return Stmt();
   }
 
 
