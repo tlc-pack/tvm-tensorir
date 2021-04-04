@@ -539,7 +539,7 @@ protected:
     //   const IterVarNode* iv = op->node.as<IterVarNode>();
     //   Var var = iv->var;
     std::string var_name = op->buffer_var->name_hint;
-    if (var_name.find("_local") != std::string::npos &&
+    if (var_name.find(".local") != std::string::npos &&
         !kernel_body_start_) {
       kernel_body_start_ = true;
       // LOG(INFO) << "**************************************************************";
