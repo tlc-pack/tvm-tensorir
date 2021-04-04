@@ -51,8 +51,6 @@ class LCADetector : public StmtExprVisitor {
   }
 
  private:
-  LCADetector() = default;
-
   void VisitStmt_(const ForNode* op) final {
     int n = ancestor_scopes_.size();
     scope_info_.emplace(op, ScopeInfo{ancestor_scopes_.back(), n});
