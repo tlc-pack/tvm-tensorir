@@ -698,6 +698,23 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
           }
         }
 
+
+        // <bojian/TVM-SymbolicTuning>
+        if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
+          if (stage->origin_op->name.find("shared") != std::string::npos
+              ) {
+            if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT_NO_LOCAL_PADDING", 0)) {
+              LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
+                              "Assuming it is a cache write whose boundary check "
+                              "(" << value << "<" << iv->dom->extent << ") can be neglected.";
+              continue;
+            } else {
+              LOG(WARNING) << "Local padding has been disabled";
+            }
+          }
+        }
+
+
         preds.emplace_back(value < dom->extent);
 
         // <bojian/TVM-SymbolicTuning>
