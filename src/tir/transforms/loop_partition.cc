@@ -576,7 +576,8 @@ protected:
 
       if (stmt.defined()) {
         // return AttrStmt(op->node, op->attr_key, op->value, stmt);
-        return Allocate(op->buffer_var, op->dtype, op->extents, stmt);
+        return Allocate(op->buffer_var, op->dtype, op->extents, op->condition,
+                        stmt);
       }
     }
     // }
