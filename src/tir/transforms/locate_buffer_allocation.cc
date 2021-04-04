@@ -49,10 +49,18 @@ class BufferAllocationLocator : public StmtExprMutator {
  private:
   Stmt VisitStmt_(const ForNode* op) final {
     auto it = alloc_buffers_.find(op);
+    if (it != alloc_buffers_.end()) {
+      for (const Buffer& buf : it->second) {
+        buffer_alloc_outer_.Set(buf->data, buf);
+      }
+    }
     Stmt stmt = StmtMutator::VisitStmt_(op);
     op = stmt.as<ForNode>();
     ICHECK(op != nullptr);
     if (it != alloc_buffers_.end()) {
+      for (const Buffer& buf : it->second) {
+        buffer_alloc_outer_.erase(buf->data);
+      }
       Stmt body = InjectOpaqueBlock(op->body, it->second);
       auto n = CopyOnWrite(op);
       n->body = std::move(body);
@@ -67,17 +75,39 @@ class BufferAllocationLocator : public StmtExprMutator {
     auto it = alloc_buffers_.find(op);
     if (it != alloc_buffers_.end()) {
       alloc_buffers = it->second;
+      for (const Buffer& buf : it->second) {
+        buffer_alloc_outer_.Set(buf->data, buf);
+      }
     } else {
       alloc_buffers = {};
     }
     Stmt stmt = StmtMutator::VisitStmt_(op);
     op = stmt.as<BlockNode>();
     ICHECK(op != nullptr);
+
+    // Ignore buffer allocated inside the block when getting access region.
+    if (it != alloc_buffers_.end()) {
+      for (const Buffer& buf : it->second) {
+        buffer_alloc_outer_.erase(buf->data);
+      }
+    }
+
     if (alloc_buffers.same_as(op->alloc_buffers)) {
       return GetRef<Stmt>(op);
     } else {
+      // Recalculate block access region
+      auto access = GetBlockAccessRegion(GetRef<Block>(op), buffer_alloc_outer_);
+      auto reads = access[0];
+      auto writes = access[1];
+      for (const auto& opaque_access : access[2]) {
+        reads.push_back(opaque_access);
+        writes.push_back(opaque_access);
+      }
+
       auto n = CopyOnWrite(op);
       n->alloc_buffers = std::move(alloc_buffers);
+      n->reads = std::move(reads);
+      n->writes = std::move(writes);
       return Stmt(n);
     }
   }
@@ -87,9 +117,8 @@ class BufferAllocationLocator : public StmtExprMutator {
     return StmtMutator::VisitStmt_(op);
   }
 
-  static Stmt InjectOpaqueBlock(const Stmt& body, const std::vector<Buffer>& alloc_buffers) {
+  Stmt InjectOpaqueBlock(const Stmt& body, const std::vector<Buffer>& alloc_buffers) {
     ICHECK(!alloc_buffers.empty());
-    // TODO(Siyuan): complete block access region for opaque block
     Block opaque_block(/*iter_vars=*/{},
                        /*reads=*/{},
                        /*writes=*/{},
@@ -97,11 +126,20 @@ class BufferAllocationLocator : public StmtExprMutator {
                        /*body=*/body,
                        /*init=*/NullOpt,
                        /*alloc_buffers=*/alloc_buffers);
-    BlockRealize realize({}, Bool(true), opaque_block);
+    auto access = GetBlockAccessRegion(opaque_block, buffer_alloc_outer_);
+    auto n = CopyOnWrite(opaque_block.get());
+    n->reads = access[0];
+    n->writes = access[1];
+    for (const auto& opaque_access : access[2]) {
+      n->reads.push_back(opaque_access);
+      n->writes.push_back(opaque_access);
+    }
+    BlockRealize realize({}, Bool(true), Block(n));
     return std::move(realize);
   }
 
   std::map<const StmtNode*, std::vector<Buffer>> alloc_buffers_;
+  Map<Var, Buffer> buffer_alloc_outer_;
 };
 
 PrimFunc LocateBufferAllocation(PrimFunc func) {
