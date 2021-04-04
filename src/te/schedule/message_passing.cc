@@ -789,33 +789,33 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       if (vmax.dtype() != value.dtype() || !can_ignore_upper_bound_check) {
 
         // <bojian/TVM-SymbolicTuning>
-        // if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
-        //   if (stage->origin_op->name.find(".local") != std::string::npos
-        //       // Uncommenting the following line might give you better performance,
-        //       // but it can also potentially bring illegal memory accesses.
-        //       || stage->origin_op->name.find("shared") != std::string::npos
-        //       ) {
-        //     // blockidx_checker.has_blockIdx = false;
-        //     // blockidx_checker(value);
-        //     // if (blockidx_checker.has_blockIdx) {
-        //     //   LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
-        //     //                   "Assuming it is a cache write whose boundary check "
-        //     //                   "(" << value << "<" << iv->dom->extent << ") can be neglected.";
-        //     //   continue;
-        //     // } else {
-        //     //   LOG(WARNING) << "The predicate (" << value << "<" << iv->dom->extent
-        //     //                << ")is preserved";
-        //     // }
-        //     if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT_NO_LOCAL_PADDING", 0)) {
-        //       LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
-        //                       "Assuming it is a cache write whose boundary check "
-        //                       "(" << value << "<" << iv->dom->extent << ") can be neglected.";
-        //       continue;
-        //     } else {
-        //       LOG(WARNING) << "Local padding has been disabled";
-        //     }
-        //   }
-        // }
+        if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
+          if (stage->origin_op->name.find(".local") != std::string::npos
+              // Uncommenting the following line might give you better performance,
+              // but it can also potentially bring illegal memory accesses.
+              || stage->origin_op->name.find("shared") != std::string::npos
+              ) {
+            // blockidx_checker.has_blockIdx = false;
+            // blockidx_checker(value);
+            // if (blockidx_checker.has_blockIdx) {
+            //   LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
+            //                   "Assuming it is a cache write whose boundary check "
+            //                   "(" << value << "<" << iv->dom->extent << ") can be neglected.";
+            //   continue;
+            // } else {
+            //   LOG(WARNING) << "The predicate (" << value << "<" << iv->dom->extent
+            //                << ")is preserved";
+            // }
+            if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT_NO_LOCAL_PADDING", 0)) {
+              LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
+                              "Assuming it is a cache write whose boundary check "
+                              "(" << value << "<" << iv->dom->extent << ") can be neglected.";
+              continue;
+            } else {
+              LOG(WARNING) << "Local padding has been disabled";
+            }
+          }
+        }
 
         preds.emplace_back(value < iv->dom->extent);
 
