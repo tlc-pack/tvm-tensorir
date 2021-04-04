@@ -526,7 +526,7 @@ protected:
 class BlockIdxPartitioner : public StmtExprMutator {
 private:
   PrimExpr blockIdx_div_pred_, blockIdx_mod_pred_;
-  // bool kernel_body_start_ = false;
+  bool kernel_body_start_ = false;
   BlockIdxDivEliminator blockIdx_div_elim;
   BlockIdxModEliminator blockIdx_mod_elim;
 public:
@@ -534,53 +534,52 @@ public:
       : blockIdx_div_pred_(blockIdx_div_pred),
         blockIdx_mod_pred_(blockIdx_mod_pred) {}
 protected:
-  Stmt VisitStmt_(const AttrStmtNode* op) override {
-    if (op->attr_key == attr::thread_extent) {
-      const IterVarNode* iv = op->node.as<IterVarNode>();
-      Var var = iv->var;
-      if (var->name_hint == "blockIdx.x") {
-        // kernel_body_start_ = true;
+  Stmt VisitStmt_(const AllocateNode* op) override {
+    // if (op->attr_key == attr::thread_extent) {
+    //   const IterVarNode* iv = op->node.as<IterVarNode>();
+    //   Var var = iv->var;
+    std::string var_name = op->buffer_var->name_hint;
+    if (var_name.find("_local") != std::string::npos &&
+        !kernel_body_start_) {
+      kernel_body_start_ = true;
+      // LOG(INFO) << "**************************************************************";
+      // LOG(INFO) << "* Raw";
+      // LOG(INFO) << "**************************************************************";
+      // LOG(INFO) << op->body;
+      // LOG(INFO) << "**************************************************************";
+      // LOG(INFO) << "* blockIdxDiv";
+      // LOG(INFO) << "**************************************************************";
+      // LOG(INFO) << blockIdx_mod_elim(op->body);
 
-        LOG(INFO) << "**************************************************************";
-        LOG(INFO) << "* Raw";
-        LOG(INFO) << "**************************************************************";
-        LOG(INFO) << op->body;
-        LOG(INFO) << "**************************************************************";
-        LOG(INFO) << "* blockIdxDiv";
-        LOG(INFO) << "**************************************************************";
-        LOG(INFO) << blockIdx_mod_elim(op->body);
+      Stmt stmt;
 
-        Stmt stmt;
+      if (blockIdx_div_pred_.defined() && blockIdx_mod_pred_.defined()) {
 
-        if (blockIdx_div_pred_.defined() && blockIdx_mod_pred_.defined()) {
+        stmt = IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
+                          blockIdx_div_elim(blockIdx_mod_elim(op->body)),
+                          IfThenElse(!blockIdx_div_pred_,
+                                     blockIdx_div_elim(op->body),
+                                     IfThenElse(!blockIdx_mod_pred_,
+                                                blockIdx_mod_elim(op->body),
+                                                op->body
+                                                )
+                                     )
+                          );
 
-          stmt = IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
-                            blockIdx_div_elim(blockIdx_mod_elim(op->body)),
-                            IfThenElse(!blockIdx_div_pred_,
-                                       blockIdx_div_elim(op->body),
-                                       IfThenElse(!blockIdx_mod_pred_,
-                                                  blockIdx_mod_elim(op->body),
-                                                  op->body
-                                                  )
-                                       )
-                            );
+      } else if (blockIdx_div_pred_.defined()) {
+        stmt = IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
+                          op->body);
+      } else if (blockIdx_mod_pred_.defined()) {
+        stmt = IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
+                          op->body);
+      }
 
-        } else if (blockIdx_div_pred_.defined()) {
-          stmt = IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
-                            op->body);
-        } else if (blockIdx_mod_pred_.defined()) {
-          stmt = IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
-                            op->body);
-        }
-
-        if (stmt.defined()) {
-          return AttrStmt(op->node, op->attr_key, op->value, stmt);
-        }
-
+      if (stmt.defined()) {
+        // return AttrStmt(op->node, op->attr_key, op->value, stmt);
+        return Allocate(op->buffer_var, op->dtype, op->extents, stmt);
       }
     }
-
-
+    // }
     return StmtExprMutator::VisitStmt_(op);
   }
 };
