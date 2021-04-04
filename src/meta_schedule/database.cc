@@ -292,7 +292,7 @@ tir::PrimFunc ApplyTrace(Trace trace, SearchTask task, SearchSpace space) {
   if (!space->Postprocess(task, sch, nullptr)) {
     LOG(FATAL) << "ValueError: The best schedule cannot be postprocessed all of a sudden";
   }
-  return sch->sch->state->func;
+  return GetOnlyFunc(sch->mod());
 }
 
 TVM_REGISTER_NODE_TYPE(InMemoryDBNode);

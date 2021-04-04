@@ -657,7 +657,7 @@ def rpc_runner_worker(
                     args_set = [f_create_args(ctx) for _ in range(rpc_eval_repeat)]
                 else:
                     args_set = [
-                        realize_arguments(remote, ctx, measure_input.sch.sch.module)
+                        realize_arguments(remote, ctx, measure_input.sch.mod["main"])
                         for _ in range(rpc_eval_repeat)
                     ]
                 ctx.sync()
