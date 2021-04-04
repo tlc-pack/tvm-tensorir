@@ -490,13 +490,9 @@ protected:
   Stmt VisitStmt_(const IfThenElseNode *op) override {
     BlockIdxDivFinder blockIdx_div_finder;
     blockIdx_div_finder(op->condition);
-
-    LOG(INFO) << "Verifying condition " << op->condition;
-
+    // LOG(INFO) << "Verifying condition " << op->condition;
     if (blockIdx_div_finder.floor_div) {
-
-      LOG(INFO) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
-
+      // LOG(INFO) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
       return op->then_case;
     }
     return StmtExprMutator::VisitStmt_(op);
@@ -509,13 +505,9 @@ protected:
   Stmt VisitStmt_(const IfThenElseNode *op) override {
     BlockIdxModFinder blockIdx_mod_finder;
     blockIdx_mod_finder(op->condition);
-
-    LOG(INFO) << "Verifying condition " << op->condition;
-
+    // LOG(INFO) << "Verifying condition " << op->condition;
     if (blockIdx_mod_finder.floor_mod) {
-
-      LOG(INFO) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
-
+      // LOG(INFO) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
       return op->then_case;
     }
     return StmtExprMutator::VisitStmt_(op);
