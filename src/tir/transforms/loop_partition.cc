@@ -821,7 +821,7 @@ Stmt LoopPartition(Stmt stmt, bool partition_const_loop, bool no_unroll_loop_wit
   stmt = RemoveLikelyTags()(std::move(stmt));
 
   // <bojian/TVM-SymbolicTuning>
-  LOG(INFO) << "LoopPartition: " << stmt;
+  // LOG(INFO) << "LoopPartition: " << stmt;
 
   return stmt;
 }

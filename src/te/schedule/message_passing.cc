@@ -706,7 +706,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
             if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT_NO_LOCAL_PADDING", 0)) {
               LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
                               "Assuming it is a cache write whose boundary check "
-                              "(" << value << "<" << iv->dom->extent << ") can be neglected.";
+                              "(" << value << "<" << dom->extent << ") can be neglected.";
               continue;
             } else {
               LOG(WARNING) << "Local padding has been disabled";
