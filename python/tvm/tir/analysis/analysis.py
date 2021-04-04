@@ -17,7 +17,7 @@
 """Wrapping existing analysis utils."""
 # pylint: disable=invalid-name
 from __future__ import annotations
-from typing import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING, Dict
 from . import _ffi_api
 
 if TYPE_CHECKING:

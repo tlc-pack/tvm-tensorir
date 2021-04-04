@@ -159,7 +159,7 @@ class LCADetector : public StmtExprVisitor {
   /*! \brief The map from Buffer data to the Buffer. */
   std::unordered_map<const VarNode*, const BufferNode*> buffer_var_map_ = {};
   /*! \brief The root block of the func. */
-  const BlockNode* root_;
+  const BlockNode* root_ = nullptr;
 };
 
 Map<Buffer, Stmt> DetectBufferAccessLCA(const PrimFunc& func) { return LCADetector::Detect(func); }
