@@ -634,8 +634,10 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
   finder(body);
 
   // <bojian/TVM-SymbolicTuning>
-  if (dmlc::GetEnv("SYMTUNE_SCHED_OPT_BLOCKIDX_PARTITION", 0) &&
-      var->name_hint == "blockIdx.x") {
+  if (var->name_hint == "blockIdx.x") {
+    if (dmlc::GetEnv("SYMTUNE_SCHED_OPT_NO_BLOCKIDX_PARTITION", 0)) {
+      return Stmt();
+    }
     LOG(INFO) << "Doing blockIdx.x partitioning";
     BlockIdxPartitioner blockIdx_partitioner(finder.blockIdx_div_pred,
                                              finder.blockIdx_mod_pred);
