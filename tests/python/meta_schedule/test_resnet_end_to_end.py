@@ -17,7 +17,6 @@
 """End to end resnet-18 CPU test"""
 # pylint: disable=missing-function-docstring
 import os
-import sys
 
 import numpy as np
 import pytest
@@ -146,7 +145,6 @@ def test_end_to_end_resnet(log):
     lib_std = relay.build_module.build(mod, target, params=params)
 
     tir_funcs = ms.extract_tasks(mod["main"], params, target)
-    print("func num:", len(tir_funcs))
     for func in tir_funcs.values():
         sch = ms.autotune(
             task=ms.SearchTask(
@@ -157,8 +155,8 @@ def test_end_to_end_resnet(log):
             ),
             space=SPACE,
             strategy=ms.strategy.Evolutionary(
-                total_measures=1500,
-                num_measures_per_iter=64,
+                total_measures=16,
+                num_measures_per_iter=16,
                 population=2048,
                 init_measured_ratio=0.2,
                 genetic_algo_iters=4,
@@ -191,7 +189,6 @@ def test_end_to_end_resnet(log):
             print("Evaluate inference time cost...")
             ftimer = module.module.time_evaluator("run", ctx, number=10, repeat=100, min_repeat_ms=50)
             prof_res = np.array(ftimer().results) * 1000  # convert to millisecond
-            print(prof_res)
             print(
                 "Mean inference time (std dev): %.2f ms (%.2f ms)"
                 % (np.mean(prof_res), np.std(prof_res))

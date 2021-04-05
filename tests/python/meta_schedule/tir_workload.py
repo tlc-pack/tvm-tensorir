@@ -26,7 +26,6 @@ from tvm.script import ty
 
 @tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    tir.func_attr({"layout_free_placeholders": [b]})
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
     C = tir.match_buffer(c, (1024, 1024), "float32")

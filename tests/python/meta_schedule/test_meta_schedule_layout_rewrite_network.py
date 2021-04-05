@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""End to end resnet-18 CPU test"""
+"""Test layout rewrite support for whole neural networks"""
 # pylint: disable=missing-function-docstring
 import os
 
@@ -137,10 +137,9 @@ def tune_and_check(log, mod, data, weight):
     os.environ["TVM_TRACKER_KEY"] = RPC_KEY
 
     lib_std = relay.build_module.build(mod, TARGET, params={"weight": weight})
-    print("std build over")
 
-    tir_funcs = ms.extract_tasks(mod["main"], {"weight": weight}, TARGET, TARGET_HOST)
-    for func in tir_funcs:
+    tir_funcs = ms.extract_tasks(mod["main"], {"weight": weight}, TARGET)
+    for func in tir_funcs.values():
         sch = ms.autotune(
             task=ms.SearchTask(
                 workload=func,
@@ -154,7 +153,7 @@ def tune_and_check(log, mod, data, weight):
                 num_measures_per_iter=64,
                 population=2048,
                 init_measured_ratio=0.2,
-                genetic_algo_iters=10,
+                genetic_algo_iters=4,
                 p_mutate=0.85,
                 mutator_probs={
                     ms.mutator.mutate_tile_size(): 0.90,
@@ -175,9 +174,8 @@ def tune_and_check(log, mod, data, weight):
         with tvm.transform.PassContext(opt_level=3, config={"relay.with_tir_schedule": True,
                                                             "relay.backend.use_meta_schedule": True}):
             lib = relay.build_module.build(mod, TARGET, params={"weight": weight}, tune_result={})
-    use_ndk = False
 
-    def run_module(lib, use_arm=False):
+    def run_module(lib, use_arm):
         if not use_arm:
             ctx = tvm.context("llvm", 0)
             module = graph_runtime.GraphModule(lib["default"](ctx))
@@ -185,7 +183,6 @@ def tune_and_check(log, mod, data, weight):
             print("Evaluate inference time cost...")
             ftimer = module.module.time_evaluator("run", ctx, number=10, repeat=100, min_repeat_ms=50)
             prof_res = np.array(ftimer().results) * 1000  # convert to millisecond
-            print(prof_res)
             print(
                 "Mean inference time (std dev): %.2f ms (%.2f ms)"
                 % (np.mean(prof_res), np.std(prof_res))
@@ -195,38 +192,25 @@ def tune_and_check(log, mod, data, weight):
         else:
             # Export library
             tmp = tempdir()
-            if use_ndk:
-                from tvm.contrib import ndk
-
-                filename = "net.so"
-                lib.export_library(tmp.relpath(filename), ndk.create_shared)
-            else:
-                filename = "net.tar"
-                lib.export_library(tmp.relpath(filename))
-
+            filename = "net.tar"
+            lib.export_library(tmp.relpath(filename))
             # Upload module to device
-            for _ in range(3):
-                print("Upload...")
-                remote = auto_scheduler.utils.request_remote(RPC_KEY, "172.16.2.241", 4445, timeout=10000)
-                remote.upload(tmp.relpath(filename))
-                rlib = remote.load_module(filename)
+            print("Upload...")
+            remote = auto_scheduler.utils.request_remote(RPC_KEY, "172.16.2.241", 4445, timeout=10000)
+            remote.upload(tmp.relpath(filename))
+            rlib = remote.load_module(filename)
 
-                # Create graph runtime
-                ctx = remote.cpu()
-                module = graph_runtime.GraphModule(rlib["default"](ctx))
-                res = []
-
-                module.set_input("data", data)
-
-                # Evaluate
-                print("Evaluate inference time cost...")
-                ftimer = module.module.time_evaluator("run", ctx, repeat=10, min_repeat_ms=50)
-                ftimer()
-                res += ftimer().results
-                prof_res = np.array(res) * 1e3  # convert to millisecond
-                print(
-                    "Mean inference time (std dev): %.2f ms (%.2f ms)" % (np.mean(prof_res), np.std(prof_res))
-                )
+            # Create graph runtime
+            ctx = remote.cpu()
+            module = graph_runtime.GraphModule(rlib["default"](ctx))
+            module.set_input("data", data)
+            # Evaluate
+            print("Evaluate inference time cost...")
+            ftimer = module.module.time_evaluator("run", ctx, repeat=3, min_repeat_ms=500)
+            prof_res = np.array(ftimer().results) * 1e3  # convert to millisecond
+            print(
+                "Mean inference time (std dev): %.2f ms (%.2f ms)" % (np.mean(prof_res), np.std(prof_res))
+            )
 
             module.run()
             return module.get_output(0)
@@ -238,12 +222,12 @@ def tune_and_check(log, mod, data, weight):
 
 def test_conv2d():
     mod, data, weight = get_relay_conv2d()
-    tune_and_check("conv2d_ms_rewrite_arm.json", mod, data, weight)
+    tune_and_check("conv2d.json", mod, data, weight)
 
 
 def test_conv2d_winograd():
     mod, data, weight = get_relay_conv2d(outc=128, inc=128)
-    tune_and_check("conv2d_winograd_ms_rewrite_arm.json", mod, data, weight)
+    tune_and_check("conv2d_winograd.json", mod, data, weight)
 
 
 def test_dense():
@@ -253,11 +237,11 @@ def test_dense():
 
 def test_batch_matmul():
     mod, data, weight = get_relay_batchmm()
-    tune_and_check("batchmm_ms_rewrite_arm.json", mod, data, weight)
+    tune_and_check("batch_matmul.json", mod, data, weight)
 
 
 if __name__ == "__main__":
-    # test_conv2d()
+    test_conv2d()
     test_conv2d_winograd()
-    # test_dense()
-    # test_batch_matmul()
+    test_dense()
+    test_batch_matmul()
