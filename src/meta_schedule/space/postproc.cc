@@ -945,6 +945,9 @@ class PostProcRewriteLayout {
   bool Proc(Schedule& sch, SearchTask& task) const {
     tir::PrimFunc func = GetOnlyFunc(sch->mod());
     auto buffer_to_rewrite = func->GetAttr("layout_free_placeholders", Array<tir::Var>());
+    if (!buffer_to_rewrite.defined()) {
+      return true;
+    }
     // for each buffer with the annotation" layout_free_placeholders", do layout rewrite
     for (const auto& input_var : buffer_to_rewrite.value()) {
       tir::Buffer buffer = func->buffer_map.Get(input_var).value();
