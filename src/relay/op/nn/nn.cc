@@ -913,7 +913,7 @@ bool BatchMatmulRel(const Array<Type>& types, int num_inputs, const Attrs& attrs
   if (param->auto_scheduler_rewritten_layout.size() != 0) {
     y_shape = auto_scheduler::GetShapeFromRewrittenLayout(param->auto_scheduler_rewritten_layout,
                                                           {"b", "j", "k"});
-  } else if (param->meta_schedule_layout_rewrite_extents.size() != 0) {
+  } else if (param->meta_schedule_original_shape.size() != 0) {
     y_shape = param->meta_schedule_original_shape;
   } else {
     y_shape = y->shape;

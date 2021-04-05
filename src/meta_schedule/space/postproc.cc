@@ -945,7 +945,6 @@ class PostProcRewriteLayout {
     tir::PrimFunc func = GetOnlyFunc(sch->mod());
     auto buffer_to_rewrite = func->GetAttr("layout_free_placeholders", Array<tir::Var>());
     for (const auto& input_var : buffer_to_rewrite.value()) {
-      //      LOG(INFO) << "doing layout rewrite for task: " << task->task_name;
       tir::Buffer buffer = func->buffer_map.Get(input_var).value();
       LayoutRewriteHint hint;
       IterVarResolver resolver(sch, buffer, hint);

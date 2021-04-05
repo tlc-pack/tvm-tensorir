@@ -49,11 +49,8 @@ std::deque<meta_schedule::LayoutRewriteHint>
 
 // Copy an Attrs but with a new meta_schedule_rewritten_layout filed.
 template <typename T>
-Attrs CopyAttrsWithNewLayout(const T* ptr, const Array<Integer>& extents,
-                             const Array<Integer>& reorder, const Array<PrimExpr>& original_shape) {
+Attrs CopyAttrsWithNewLayout(const T* ptr, const Array<PrimExpr>& original_shape) {
   auto n = make_object<T>(*ptr);
-  n->meta_schedule_layout_rewrite_extents = extents;
-  n->meta_schedule_layout_rewrite_reorder = reorder;
   n->meta_schedule_original_shape = original_shape;
   return Attrs(n);
 }
@@ -93,13 +90,13 @@ class MetaScheduleFuncMutator : public ExprMutator {
       // Update the attrs
       Attrs updated_attrs;
       if (auto pattr = call->attrs.as<Conv2DAttrs>()) {
-        updated_attrs = CopyAttrsWithNewLayout(pattr, extents, reorder, type->shape);
+        updated_attrs = CopyAttrsWithNewLayout(pattr, type->shape);
       } else if (auto pattr = call->attrs.as<DenseAttrs>()) {
-        updated_attrs = CopyAttrsWithNewLayout(pattr, extents, reorder, type->shape);
+        updated_attrs = CopyAttrsWithNewLayout(pattr, type->shape);
       } else if (auto pattr = call->attrs.as<BatchMatmulAttrs>()) {
-        updated_attrs = CopyAttrsWithNewLayout(pattr, extents, reorder, type->shape);
+        updated_attrs = CopyAttrsWithNewLayout(pattr, type->shape);
       } else if (auto pattr = call->attrs.as<Conv2DWinogradAttrs>()) {
-        updated_attrs = CopyAttrsWithNewLayout(pattr, extents, reorder, type->shape);
+        updated_attrs = CopyAttrsWithNewLayout(pattr, type->shape);
       } else {
         LOG(FATAL) << "Unhandled attribute: " << call->attrs;
       }
@@ -155,19 +152,6 @@ Pass MetaSchedulerLayoutRewrite() {
 
 TVM_REGISTER_GLOBAL("relay._transform.MetaSchedulerLayoutRewrite")
     .set_body_typed(MetaSchedulerLayoutRewrite);
-
-// TVM_REGISTER_GLOBAL("relay.attrs.get_meta_schedule_rewritten_layout")
-//    .set_body_typed([](const Attrs& attrs) {
-//      if (attrs->IsInstance<Conv2DAttrs>()) {
-//        Array<Array<Integer>> ret;
-//        ret.push_back(attrs.as<Conv2DAttrs>()->meta_schedule_layout_rewrite_extents);
-//        ret.push_back(attrs.as<Conv2DAttrs>()->meta_schedule_layout_rewrite_reorder);
-//        return ret;
-//      } else {
-//        LOG(FATAL) << "Unhandled attribute: " << attrs;
-//      }
-//      return Array<Array<Integer>>();
-//    });
 
 TVM_REGISTER_GLOBAL("relay.attrs.get_meta_schedule_original_layout")
     .set_body_typed([](const Attrs& attrs) {

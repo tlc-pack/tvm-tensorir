@@ -376,8 +376,14 @@ struct MetaSchedulerLayoutTransformAttrs
 
   TVM_DECLARE_ATTRS(MetaSchedulerLayoutTransformAttrs,
                     "relay.attrs.MetaSchedulerLayoutTransformAttrs") {
-    TVM_ATTR_FIELD(extents).describe("The extents of the new layout");
-    TVM_ATTR_FIELD(reorder).describe("The order of the extents");
+    TVM_ATTR_FIELD(extents).describe("The extents of the new layout (not in the actual order)");
+    TVM_ATTR_FIELD(reorder).describe(
+        "The order of the extents, for example, "
+        "let extents = [2, 3, 4], reorder = [0, 2, 1], and the shape of buffer A is (4, 6)"
+        "then A[i, j] will be first rewritten to "
+        "A[(6 * i + j) / 12, (6 * i + j) / 4 % 3 , (6 * i + j) % 4] according to the `extents`,"
+        "and then reordered to A[(6 * i + j) / 12, (6 * i + j) % 4 , (6 * i + j) / 4 % 3]"
+        "according to `reorder`");
   }
 };
 
