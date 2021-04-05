@@ -264,7 +264,7 @@ class XGBModel(PyCostModel):
             xgb_max_depth: int = 10,
             xgb_gamma: float = 0.001,
             xgb_min_child_weight: float = 0,
-            xgb_eta: float = 0.1,
+            xgb_eta: float = 0.2,
             xgb_seed: int = 43,
             # serialization-related
             path: Optional[str] = None,

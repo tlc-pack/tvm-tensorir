@@ -36,7 +36,6 @@ from tvm.contrib import tar as build_func_tar
 from tvm.driver import build as tvm_build
 from tvm.runtime import NDArray, TVMContext, ndarray
 from tvm.tir import FloatImm, IntImm, PrimFunc
-import tvm
 
 from .measure_record import BuildResult, MeasureErrorNo, MeasureInput, MeasureResult
 

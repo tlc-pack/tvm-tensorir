@@ -34,12 +34,11 @@ def default_schedule(outs, auto_inline):
     return s
 
 
-def default_tir_schedule(outs, meta_schedule_rewrite_layout_extents=[], meta_scheudle_rewrite_layout_reorder=[]):
+def default_tir_schedule(outs):
     """Default tir schedule for llvm."""
     target = tvm.target.Target.current(allow_none=False)
     if target.kind.name not in ("llvm", "c"):
         raise RuntimeError("schedule not registered for '%s'" % target)
     func = te.create_func(outs)
-    # if len(meta_schedule_rewrite_layout_extents)!=0:
 
     return func
