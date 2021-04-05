@@ -82,7 +82,7 @@ Optional<Array<ObjectRef>> LoadTuningRecords(const String& path) {
  */
 Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask& task) {
   const auto* record = record_obj.as<ArrayNode>();
-  ICHECK_EQ(record->size(), 6);
+  ICHECK_EQ(record->size(), 7);
   String task_name = Downcast<String>(record->at(0));
   Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record->at(1));
   Map<String, ObjectRef> target_host = Downcast<Map<String, ObjectRef>>(record->at(2));
@@ -91,21 +91,17 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask& task) {
   String log_version = Downcast<String>(record->at(5));
 
   tir::PrimFunc orig_func{nullptr};
-  //  {
-  //    std::string prim_func_b64 = Downcast<String>(record->at(6));
-  //    dmlc::MemoryStringStream m_stream(&prim_func_b64);
-  //    support::Base64InStream b64strm(&m_stream);
-  //    std::string parsed;
-  //    b64strm.InitPosition();
-  //    dmlc::Stream* strm = &b64strm;
-  //    strm->Read(&parsed);
-  //    orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
-  //  }
-  auto fget_workload = runtime::Registry::Get("meta_schedule.relay_integration.get_workload");
-  orig_func = (*fget_workload)(task_name);
-  //  if (!StructuralEqual()(orig_func, task->workload)) {
-  //    return Database::Entry{NullOpt, String(""), {}};
-  //  }
+  {
+    std::string prim_func_b64 = Downcast<String>(record->at(6));
+    dmlc::MemoryStringStream m_stream(&prim_func_b64);
+    support::Base64InStream b64strm(&m_stream);
+    std::string parsed;
+    b64strm.InitPosition();
+    dmlc::Stream* strm = &b64strm;
+    strm->Read(&parsed);
+    orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
+  }
+
   task = SearchTask(orig_func, task_name, Target(target), Target(target_host), NullOpt);
   Schedule sch(orig_func);
   TraceNode::Deserialize(trace_obj, sch);
@@ -279,32 +275,20 @@ class InMemoryDB : public Database {
   explicit InMemoryDB(const Optional<String>& path) {
     ObjectPtr<InMemoryDBNode> n = make_object<InMemoryDBNode>();
     n->path = path;
-    //    n->best = Database::Entry{NullOpt, String(""), {}};
     data_ = std::move(n);
   }
 
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(InMemoryDB, Database, InMemoryDBNode);
 };
 
-tir::PrimFunc ApplyTrace(Trace trace, SearchTask task, SearchSpace space) {
-  Schedule sch(task->workload);
-  trace->Apply(sch);
-  if (!space->Postprocess(task, sch, nullptr)) {
-    LOG(FATAL) << "ValueError: The best schedule cannot be postprocessed all of a sudden";
-  }
-  return GetOnlyFunc(sch->mod());
-}
-
 TVM_REGISTER_NODE_TYPE(InMemoryDBNode);
 TVM_REGISTER_GLOBAL("meta_schedule.GetBest").set_body_typed([](InMemoryDB self, SearchTask task) {
   if (self->best.count(task)) {
     return self->best.at(task).trace;
   } else {
-    LOG(INFO) << "can't find task in database";
     return Optional<Trace>(NullOpt);
   }
 });
-TVM_REGISTER_GLOBAL("meta_schedule.ApplyTrace").set_body_typed(ApplyTrace);
 }  // namespace in_memory_db
 
 Database InMemoryDB(Optional<String> path) { return in_memory_db::InMemoryDB(path); }
@@ -313,7 +297,15 @@ Database InitMemoryDB(String path) {
   db->Init();
   return db;
 }
-
+tir::PrimFunc ApplyTrace(Trace trace, SearchTask task, SearchSpace space) {
+  Schedule sch(task->workload);
+  trace->Apply(sch);
+  if (!space->Postprocess(task, sch, nullptr)) {
+    LOG(FATAL) << "ValueError: The best schedule cannot be postprocessed all of a sudden";
+  }
+  return GetOnlyFunc(sch->mod());
+}
+TVM_REGISTER_GLOBAL("meta_schedule.ApplyTrace").set_body_typed(ApplyTrace);
 TVM_REGISTER_OBJECT_TYPE(DatabaseNode);
 TVM_REGISTER_GLOBAL("meta_schedule.GetInMemoryDB").set_body_typed(InitMemoryDB);
 

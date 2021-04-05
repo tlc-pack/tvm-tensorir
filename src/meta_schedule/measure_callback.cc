@@ -74,6 +74,7 @@ void RecordToFileNode::Callback(const Array<MeasureInput>& inputs,
         measure_result->costs,                   // record[3]
         measure_input->sch->trace->Serialize(),  // record[4]
         String(kLogVersion),                     // record[5]
+        this->prim_func_b64,                     // record[6]
     };
     String record = (*f_serialize)(result);
     ofs << record << std::endl;
