@@ -1,3 +1,27 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# pylint: disable=unused-variable,invalid-name
+
+"""
+Integrate meta schedule into relay. It implements the following items:
+1. Extract search tasks from a relay program
+2. Get scheduled function from dispatcher context for compile_engine.
+"""
+
 import tvm
 from .search import SearchTask
 from .dispatcher import DispatchContext
@@ -5,14 +29,11 @@ from tvm.ir.transform import PassContext
 from tvm import meta_schedule as ms
 from tvm import autotvm, transform
 from . import _ffi_api
-from tvm import auto_scheduler
 import threading
-from tvm import tir
-from tvm.script import ty
 
 
-@tvm._ffi.register_func("meta_schedule.relay_integration.auto_schedule_primfunc")
-def auto_schedule_primfunc(func):
+@tvm._ffi.register_func("meta_schedule.relay_integration.get_func_from_dispatcher")
+def get_func_from_dispatcher(func):
     env = TaskExtractionTracingEnvironment.current
     if env is None:
         target = tvm.target.Target.current()
@@ -29,7 +50,7 @@ def auto_schedule_primfunc(func):
 
 
 def call_all_topi_funcs(mod, params, target):
-    """Call all TOPI compute to extract auto_scheduler tasks in a Relay program"""
+    """Call all TOPI compute to extract meta schedule tasks in a Relay program"""
     # pylint: disable=import-outside-toplevel
     from tvm import relay
     from tvm.relay.backend import graph_runtime_codegen
@@ -73,12 +94,10 @@ def get_workload(key):
     return workload_registry[key]
 
 
-def extract_tasks(mod, params, target, target_host=None):
+def extract_tasks(mod, params, target):
     global workload_registry
     if isinstance(target, str):
         target = tvm.target.Target(target)
-    if isinstance(target_host, str):
-        target_host = tvm.target.Target(target_host)
     env = TaskExtractionTracingEnvironment()
 
     with env:

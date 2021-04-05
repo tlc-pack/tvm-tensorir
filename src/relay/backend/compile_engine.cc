@@ -171,9 +171,9 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
 
       if (use_meta_schedule_) {
         const auto* fmeta_schedule =
-            runtime::Registry::Get("meta_schedule.relay_integration.auto_schedule_primfunc");
+            runtime::Registry::Get("meta_schedule.relay_integration.get_func_from_dispatcher");
         ICHECK(fmeta_schedule != nullptr)
-            << "meta_schedule.relay_integration.auto_schedule_primfunc is not registered";
+            << "meta_schedule.relay_integration.get_func_from_dispatcher is not registered";
         const auto* fcreate_func = runtime::Registry::Get("te.CreateFunc");
         ObjectRef func = (*fcreate_func)(tensor_outs);
         ObjectRef obj = (*fmeta_schedule)(func);

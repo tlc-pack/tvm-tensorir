@@ -145,7 +145,7 @@ def test_end_to_end_resnet(log):
 
     lib_std = relay.build_module.build(mod, target, params=params)
 
-    tir_funcs = ms.extract_tasks(mod["main"], params, target, TARGET_HOST)
+    tir_funcs = ms.extract_tasks(mod["main"], params, target)
     print("func num:", len(tir_funcs))
     for func in tir_funcs.values():
         sch = ms.autotune(
