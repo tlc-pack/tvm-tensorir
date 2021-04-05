@@ -3121,12 +3121,12 @@ RELAY_REGISTER_OP("auto_scheduler_layout_transform")
 
 // relay._contrib_reverse_reshape
 // relay.meta_schedule_layout_transform
-TVM_REGISTER_NODE_TYPE(MetaSchedulerLayoutTransformAttrs);
+TVM_REGISTER_NODE_TYPE(MetaScheduleLayoutTransformAttrs);
 
 Array<te::Tensor> MetaSchedulerLayoutTransformCompute(const Attrs& attrs,
                                                       const Array<te::Tensor>& inputs,
                                                       const Type& out_type) {
-  const auto* param = attrs.as<MetaSchedulerLayoutTransformAttrs>();
+  const auto* param = attrs.as<MetaScheduleLayoutTransformAttrs>();
   CHECK(param != nullptr);
   return Array<te::Tensor>{
       topi::meta_schedule_layout_transform(inputs[0], param->extents, param->reorder)};
@@ -3136,7 +3136,7 @@ bool MetaSchedulerLayoutTransformRel(const Array<Type>& types, int num_inputs, c
                                      const TypeReporter& reporter) {
   const auto* data = types[0].as<TensorTypeNode>();
   CHECK(data != nullptr);
-  const MetaSchedulerLayoutTransformAttrs* params = attrs.as<MetaSchedulerLayoutTransformAttrs>();
+  const MetaScheduleLayoutTransformAttrs* params = attrs.as<MetaScheduleLayoutTransformAttrs>();
 
   Array<IndexExpr> new_shape;
 
@@ -3147,7 +3147,7 @@ bool MetaSchedulerLayoutTransformRel(const Array<Type>& types, int num_inputs, c
 }
 
 Expr MakeMetaSchedulerLayoutTransform(Expr data, Array<Integer> extents, Array<Integer> reorder) {
-  auto attrs = make_object<MetaSchedulerLayoutTransformAttrs>();
+  auto attrs = make_object<MetaScheduleLayoutTransformAttrs>();
   attrs->extents = std::move(extents);
   attrs->reorder = std::move(reorder);
   static const Op& op = Op::Get("meta_schedule_layout_transform");
@@ -3160,7 +3160,7 @@ TVM_REGISTER_GLOBAL("relay.op._make.meta_schedule_layout_transform")
 RELAY_REGISTER_OP("meta_schedule_layout_transform")
     .describe(R"code(Transform the input kernel layout.
 )code" TVM_ADD_FILELINE)
-    .set_attrs_type<MetaSchedulerLayoutTransformAttrs>()
+    .set_attrs_type<MetaScheduleLayoutTransformAttrs>()
     .set_num_inputs(1)
     .add_argument("data", "Tensor", "The input tensor.")
     .add_type_rel("meta_schedule_layout_transform", MetaSchedulerLayoutTransformRel)

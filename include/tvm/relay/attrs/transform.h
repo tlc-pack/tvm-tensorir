@@ -369,13 +369,12 @@ struct AutoSchedulerLayoutTransformAttrs
 };
 
 /*! \brief Attributes for MetaScheduleLayoutTransform operator */
-struct MetaSchedulerLayoutTransformAttrs
-    : public tvm::AttrsNode<MetaSchedulerLayoutTransformAttrs> {
+struct MetaScheduleLayoutTransformAttrs : public tvm::AttrsNode<MetaScheduleLayoutTransformAttrs> {
   Array<Integer> extents;
   Array<Integer> reorder;
 
-  TVM_DECLARE_ATTRS(MetaSchedulerLayoutTransformAttrs,
-                    "relay.attrs.MetaSchedulerLayoutTransformAttrs") {
+  TVM_DECLARE_ATTRS(MetaScheduleLayoutTransformAttrs,
+                    "relay.attrs.MetaScheduleLayoutTransformAttrs") {
     TVM_ATTR_FIELD(extents).describe("The extents of the new layout (not in the actual order)");
     TVM_ATTR_FIELD(reorder).describe(
         "The order of the extents, for example, "

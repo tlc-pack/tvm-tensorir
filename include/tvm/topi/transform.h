@@ -1439,14 +1439,14 @@ inline void getNewShape(const Array<Integer>& extents, const Array<Integer>& reo
 }
 
 /*!
- * \brief Transform the auto-scheduler generated layout according to
- *        \p extents and\p layout
+ * \brief Transform the meta-schedule generated layout according to
+ *        \p extents and\p reorder
  * \param src the source input.
  * \param extents the new layout extents.
  * \param reorder the new layout order.
  * \param name output tensor name.
  * \param tag output tensor tag.
- * \return A tensor with shape in \p dst_layout
+ * \return A tensor with shape rewritten
  */
 inline Tensor meta_schedule_layout_transform(const Tensor& src, const Array<Integer>& extents,
                                              const Array<Integer>& reorder,
