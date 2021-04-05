@@ -132,7 +132,6 @@ Expr AutoSchedulerLayoutRewriter::VisitExpr_(const CallNode* n) {
 
       // Mutate the called function
       if (!global_ori_layouts_queue.empty() && !global_new_layouts_queue.empty()) {
-        LOG(INFO) << "auto schedule layout rewrite";
         auto ret = FuncMutator(global_ori_layouts_queue, global_new_layouts_queue).VisitExpr(new_n);
         return ret;
       }

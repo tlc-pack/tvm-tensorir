@@ -455,8 +455,11 @@ class PostprocRewriteParallelizeVectorizeUnroll {
                FindBlockSRef(sch->state(), MakeAnnParser(&parsed))) {
     tir::BlockRV root_rv = sch->GetBlock("root");
     tir::StmtSRef root = sch->GetSRef(root_rv);
-    MakeAnnParser (&parsed)(root->StmtAs<tir::BlockNode>());
-    RemoveParsedAnn(sch, root, parsed);
+    Optional<tir::StmtSRef> opt_block_sref = FindBlockSRef(sch->state(), MakeAnnParser(&parsed));
+    if (!opt_block_sref.defined()) {
+      return true;
+    }
+    RemoveParsedAnn(sch, opt_block_sref.value(), parsed);
     for (const BlockRV& block_rv : sch->GetChildBlocks(root_rv)) {
       // Extract block info
       tir::StmtSRef block_sref = opt_block_sref.value();
@@ -499,6 +502,8 @@ class PostprocRewriteParallelizeVectorizeUnroll {
         }
       }
     }
+    //    LOG(INFO)<<tir::Repr(sch);
+
     return true;
   }
 };
