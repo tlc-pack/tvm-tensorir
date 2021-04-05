@@ -71,7 +71,6 @@ class MetaScheduleFuncMutator : public ExprMutator {
          target_ops_.end()) &&
         !layout_rewrite_queue_.empty()) {
       // Pop a new layout from the queue
-      LOG(INFO) << n->op.as<OpNode>()->name;
       const meta_schedule::LayoutRewriteHint hint = layout_rewrite_queue_.front();
       layout_rewrite_queue_.pop_front();
 
@@ -80,8 +79,7 @@ class MetaScheduleFuncMutator : public ExprMutator {
       Array<Integer> reorder(hint.reorder);
       auto var = call->args[1].as<VarNode>();
       auto type = var->type_annotation.as<TensorTypeNode>();
-      LOG(INFO) << "extents:" << extents;
-      LOG(INFO) << "reorder:" << reorder;
+
       // Insert a new op to do layout transform. (This will be simplified by FoldConstant later).
       Expr updated_kernel = MakeMetaScheduleLayoutTransform(call->args[1], extents, reorder);
       Array<Expr> updated_args = {call->args[0], updated_kernel};
