@@ -3119,21 +3119,20 @@ RELAY_REGISTER_OP("auto_scheduler_layout_transform")
     .set_support_level(5)
     .set_attr<FTVMCompute>("FTVMCompute", AutoSchedulerLayoutTransformCompute);
 
-// relay._contrib_reverse_reshape
 // relay.meta_schedule_layout_transform
 TVM_REGISTER_NODE_TYPE(MetaScheduleLayoutTransformAttrs);
 
-Array<te::Tensor> MetaSchedulerLayoutTransformCompute(const Attrs& attrs,
-                                                      const Array<te::Tensor>& inputs,
-                                                      const Type& out_type) {
+Array<te::Tensor> MetaScheduleLayoutTransformCompute(const Attrs& attrs,
+                                                     const Array<te::Tensor>& inputs,
+                                                     const Type& out_type) {
   const auto* param = attrs.as<MetaScheduleLayoutTransformAttrs>();
   CHECK(param != nullptr);
   return Array<te::Tensor>{
       topi::meta_schedule_layout_transform(inputs[0], param->extents, param->reorder)};
 }
 
-bool MetaSchedulerLayoutTransformRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
-                                     const TypeReporter& reporter) {
+bool MetaScheduleLayoutTransformRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
+                                    const TypeReporter& reporter) {
   const auto* data = types[0].as<TensorTypeNode>();
   CHECK(data != nullptr);
   const MetaScheduleLayoutTransformAttrs* params = attrs.as<MetaScheduleLayoutTransformAttrs>();
@@ -3146,7 +3145,7 @@ bool MetaSchedulerLayoutTransformRel(const Array<Type>& types, int num_inputs, c
   return true;
 }
 
-Expr MakeMetaSchedulerLayoutTransform(Expr data, Array<Integer> extents, Array<Integer> reorder) {
+Expr MakeMetaScheduleLayoutTransform(Expr data, Array<Integer> extents, Array<Integer> reorder) {
   auto attrs = make_object<MetaScheduleLayoutTransformAttrs>();
   attrs->extents = std::move(extents);
   attrs->reorder = std::move(reorder);
@@ -3155,7 +3154,7 @@ Expr MakeMetaSchedulerLayoutTransform(Expr data, Array<Integer> extents, Array<I
 }
 
 TVM_REGISTER_GLOBAL("relay.op._make.meta_schedule_layout_transform")
-    .set_body_typed(MakeMetaSchedulerLayoutTransform);
+    .set_body_typed(MakeMetaScheduleLayoutTransform);
 
 RELAY_REGISTER_OP("meta_schedule_layout_transform")
     .describe(R"code(Transform the input kernel layout.
@@ -3163,9 +3162,9 @@ RELAY_REGISTER_OP("meta_schedule_layout_transform")
     .set_attrs_type<MetaScheduleLayoutTransformAttrs>()
     .set_num_inputs(1)
     .add_argument("data", "Tensor", "The input tensor.")
-    .add_type_rel("meta_schedule_layout_transform", MetaSchedulerLayoutTransformRel)
+    .add_type_rel("meta_schedule_layout_transform", MetaScheduleLayoutTransformRel)
     .set_support_level(5)
-    .set_attr<FTVMCompute>("FTVMCompute", MetaSchedulerLayoutTransformCompute);
+    .set_attr<FTVMCompute>("FTVMCompute", MetaScheduleLayoutTransformCompute);
 
 /* relay._contrib_reverse_reshape */
 Expr MakeReverseReshape(Expr data, Array<Integer> newshape) {

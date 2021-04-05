@@ -224,7 +224,6 @@ bool Conv2DRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
       // skip the normal inference logic.
       {}  // do nothing
     }
-    // assign result to reporter
   } else {
     // use weight to infer the conv shape.
     if (weight == nullptr) return false;

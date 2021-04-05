@@ -56,7 +56,7 @@ Expr MakeLayoutTransform(Expr data, String src_layout, String dst_layout);
 
 Expr MakeAutoSchedulerLayoutTransform(Expr data, String src_layout, String dst_layout);
 
-Expr MakeMetaSchedulerLayoutTransform(Expr data, Array<Integer> extents, Array<Integer> reorder);
+Expr MakeMetaScheduleLayoutTransform(Expr data, Array<Integer> extents, Array<Integer> reorder);
 
 Expr MakeOnes(Array<Integer> shape, DataType dtype);
 

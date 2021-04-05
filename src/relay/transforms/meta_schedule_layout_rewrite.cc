@@ -84,7 +84,7 @@ class MetaScheduleFuncMutator : public ExprMutator {
       LOG(INFO) << "reorder:" << reorder;
       //      auto original_shape=call->args[1].as<Var>()->get()->type_annotation;
       // Insert a new op to do layout transform. (This will be simplified by FoldConstant later).
-      Expr updated_kernel = MakeMetaSchedulerLayoutTransform(call->args[1], extents, reorder);
+      Expr updated_kernel = MakeMetaScheduleLayoutTransform(call->args[1], extents, reorder);
       Array<Expr> updated_args = {call->args[0], updated_kernel};
 
       // Update the attrs

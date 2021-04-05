@@ -46,9 +46,6 @@
 #include <utility>
 #include <vector>
 
-#include "../../meta_schedule/space/postproc.h"
-#include "../../meta_schedule/space/search_rule.h"
-#include "../../printer/text_printer.h"
 #include "../transforms/pass_utils.h"
 #include "utils.h"
 
@@ -106,7 +103,7 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
       : target_(target), device_copy_op_(Op::Get("device_copy")) {
     // Whether to use auto_scheduler schedule.
     use_auto_scheduler_ = backend::IsAutoSchedulerEnabled();
-    use_meta_schedule_ = backend::IsMetaSchedulerEnabled();
+    use_meta_schedule_ = backend::IsMetaScheduleEnabled();
   }
 
   CachedFunc Create(const Function& func) {

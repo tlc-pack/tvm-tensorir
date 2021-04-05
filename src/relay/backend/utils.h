@@ -313,9 +313,9 @@ inline bool IsCompileEngineCacheDisabled() {
 }
 
 /*!
- * \brief Return whether the auto scheduler is enabled in the pass context.
+ * \brief Return whether meta schedule is enabled in the pass context.
  */
-inline bool IsMetaSchedulerEnabled() {
+inline bool IsMetaScheduleEnabled() {
   return transform::PassContext::Current()
       ->GetConfig<Bool>("relay.backend.use_meta_schedule", Bool(false))
       .value();

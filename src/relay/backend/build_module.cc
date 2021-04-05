@@ -372,8 +372,7 @@ class RelayBuildModule : public runtime::ModuleNode {
       }
     }
 
-
-    if (backend::IsMetaSchedulerEnabled() && targets.size() == 1) {
+    if (backend::IsMetaScheduleEnabled() && targets.size() == 1) {
       const auto& target = (*targets.begin()).second;
       Pass major_pass = transform::MetaScheduleLayoutRewrite();
 
