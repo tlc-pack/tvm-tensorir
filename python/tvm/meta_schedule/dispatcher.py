@@ -17,9 +17,8 @@
 """
 The global context that dispatches best schedules to workloads.
 
-In auto-scheduler, a state (loop_state.py::StateObject) saves the
-schedule configuration by its transform_steps, so a state is used
-as a schedule configuration here.
+In meta schedule, a trace saves the schedule configuration by its instructions and decisions,
+ so a trace is used as a schedule configuration here.
 """
 # pylint: disable=invalid-name
 
@@ -49,34 +48,17 @@ class DispatchContext(object):
 
         Parameters
         ----------
-        target: Target
-            The current target
-        task : str
-            The task name
+        task : SearchTask
+            The task to query
         Returns
         -------
-        state : StateObject
-            The state that stores schedule configuration for the workload
+        trace : Trace
+            The schedule trace for the workload
         """
         ret = self._query_inside(task)
         if ret is None:
             ret = self._old_ctx.query(task)
         return ret
-
-    def update(self, task, state):
-        """
-        Update the config for a workload
-
-        Parameters
-        ----------
-        target: Target
-            The current target
-        task : str
-            The current workload_key.
-        state : Object
-            The state that stores schedule configuration for the workload
-        """
-        raise NotImplementedError()
 
     def _query_inside(self, task):
         """
@@ -85,15 +67,13 @@ class DispatchContext(object):
 
         Parameters
         ----------
-        target: Target
-            The current target
-        task : str
-            The current workload_key.
+        task : SearchTask
+            The current task
 
         Returns
         -------
-        state : StateObject
-            The schedule configuration for the workload
+        trace : Trace
+            The schedule trace for the workload
         """
         raise NotImplementedError()
 
@@ -113,12 +93,10 @@ class ApplyHistoryBest(DispatchContext):
 
     Parameters
     ----------
-    search_task : SearchTask
-        the search task
-    n_lines: Optional[int]
-        if it is not None, only load the first `n_lines` lines of log.
-    include_compatible: bool
-        When set to True, compatible records will also be considered.
+    records : Union[str, pathlib.Path]
+        the path to the tune records
+    space : SearchSpace
+        the search space which contains postprocessor
     """
 
     def __init__(self, records, space):
@@ -131,7 +109,6 @@ class ApplyHistoryBest(DispatchContext):
         self.database = _ffi_api.GetInMemoryDB(records)
 
     def _query_inside(self, task):
-        # print("task:", task)
         return _ffi_api.GetBest(self.database, task)
 
 
@@ -170,18 +147,14 @@ class FallbackContext(DispatchContext):
                 self.messages.add(msg)
                 logger.warning(msg)
 
-        state = None
+        trace = None
 
         # cache this config to avoid duplicated warning message
-        self.memory[key] = state
-        return state
+        self.memory[key] = trace
+        return trace
 
     def _query_inside(self, task):
         raise RuntimeError("This function should never be called")
-
-    def update(self, task, state):
-        key = task
-        self.memory[key] = state
 
 
 DispatchContext.current = FallbackContext()

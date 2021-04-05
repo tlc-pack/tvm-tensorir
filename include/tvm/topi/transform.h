@@ -1454,7 +1454,6 @@ inline Tensor meta_schedule_layout_transform(const Tensor& src, const Array<Inte
                                              const String tag = kInjective) {
   Array<PrimExpr> new_shape;
   getNewShape(extents, reorder, new_shape);
-  LOG(INFO) << new_shape;
   return compute(
       new_shape,
       [&](const Array<Var>& dst_indices) {
