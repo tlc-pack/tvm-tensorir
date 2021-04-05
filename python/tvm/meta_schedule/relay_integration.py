@@ -86,16 +86,7 @@ def call_all_topi_funcs(mod, params, target):
     autotvm.GLOBAL_SCOPE.silent = old_autotvm_silent
 
 
-workload_registry = {}
-
-
-@tvm._ffi.register_func("meta_schedule.relay_integration.get_workload")
-def get_workload(key):
-    return workload_registry[key]
-
-
 def extract_tasks(mod, params, target):
-    global workload_registry
     if isinstance(target, str):
         target = tvm.target.Target(target)
     env = TaskExtractionTracingEnvironment()
@@ -106,7 +97,6 @@ def extract_tasks(mod, params, target):
         build_thread = threading.Thread(target=call_all_topi_funcs, args=(mod, params, target))
         build_thread.start()
         build_thread.join()
-    workload_registry = env.funcs
     return env.funcs;
 
 
