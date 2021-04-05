@@ -36,7 +36,7 @@
 namespace tvm {
 namespace relay {
 
-class MetaSchedulerLayoutRewriter : public ExprMutator {
+class MetaScheduleLayoutRewriter : public ExprMutator {
  public:
   Expr VisitExpr_(const CallNode* n) final;
   static std::mutex mutex;

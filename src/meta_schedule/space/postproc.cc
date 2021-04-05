@@ -966,9 +966,9 @@ class PostProcRewriteLayout {
       auto new_func = orig_func.CopyOnWrite();
       new_func->buffer_map = std::move(new_buffer_map);
       sch->state()->mod = IRModule({{GlobalVar("main"), GetRef<tir::PrimFunc>(new_func)}});
-      std::lock_guard<std::mutex> lock(::tvm::relay::MetaSchedulerLayoutRewriter::mutex);
+      std::lock_guard<std::mutex> lock(::tvm::relay::MetaScheduleLayoutRewriter::mutex);
 
-      ::tvm::relay::MetaSchedulerLayoutRewriter::global_layout_rewrite_queue.push_back(hint);
+      ::tvm::relay::MetaScheduleLayoutRewriter::global_layout_rewrite_queue.push_back(hint);
     }
     return true;
   }

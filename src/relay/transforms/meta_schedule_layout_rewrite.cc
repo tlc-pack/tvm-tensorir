@@ -43,9 +43,9 @@ namespace relay {
 
 // Two global variables for receiving layout information from python
 
-std::mutex MetaSchedulerLayoutRewriter::mutex;
+std::mutex MetaScheduleLayoutRewriter::mutex;
 std::deque<meta_schedule::LayoutRewriteHint>
-    MetaSchedulerLayoutRewriter::global_layout_rewrite_queue;
+    MetaScheduleLayoutRewriter::global_layout_rewrite_queue;
 
 // Copy an Attrs but with a new meta_schedule_rewritten_layout filed.
 template <typename T>
@@ -112,7 +112,7 @@ class MetaScheduleFuncMutator : public ExprMutator {
                                        "nn.contrib_conv2d_winograd_without_weight_transform"};
 };
 
-Expr MetaSchedulerLayoutRewriter::VisitExpr_(const CallNode* n) {
+Expr MetaScheduleLayoutRewriter::VisitExpr_(const CallNode* n) {
   auto new_n = ExprMutator::VisitExpr_(n);
 
   if (const auto* call = new_n.as<CallNode>()) {
@@ -136,22 +136,22 @@ Expr MetaSchedulerLayoutRewriter::VisitExpr_(const CallNode* n) {
   return new_n;
 }
 
-Expr MetaSchedulerLayoutRewrite(const Expr& expr) {
-  return MetaSchedulerLayoutRewriter().Mutate(expr);
+Expr MetaScheduleLayoutRewrite(const Expr& expr) {
+  return MetaScheduleLayoutRewriter().Mutate(expr);
 }
 
 namespace transform {
 
-Pass MetaSchedulerLayoutRewrite() {
+Pass MetaScheduleLayoutRewrite() {
   runtime::TypedPackedFunc<Function(Function, IRModule, PassContext)> pass_func =
       [=](Function f, IRModule m, PassContext pc) {
-        return Downcast<Function>(relay::MetaSchedulerLayoutRewrite(f));
+        return Downcast<Function>(relay::MetaScheduleLayoutRewrite(f));
       };
-  return CreateFunctionPass(pass_func, 3, "MetaSchedulerLayoutRewrite", {"InferType"});
+  return CreateFunctionPass(pass_func, 3, "MetaScheduleLayoutRewrite", {"InferType"});
 }
 
-TVM_REGISTER_GLOBAL("relay._transform.MetaSchedulerLayoutRewrite")
-    .set_body_typed(MetaSchedulerLayoutRewrite);
+TVM_REGISTER_GLOBAL("relay._transform.MetaScheduleLayoutRewrite")
+    .set_body_typed(MetaScheduleLayoutRewrite);
 
 TVM_REGISTER_GLOBAL("relay.attrs.get_meta_schedule_original_layout")
     .set_body_typed([](const Attrs& attrs) {

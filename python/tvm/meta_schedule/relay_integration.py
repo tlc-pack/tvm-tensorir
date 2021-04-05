@@ -45,7 +45,7 @@ def call_all_topi_funcs(mod, params, target):
                 "relay.backend.use_meta_schedule": True,
                 "relay.backend.disable_compile_engine_cache": True,
             },
-            disabled_pass={"MetaSchedulerLayoutRewrite"},
+            disabled_pass={"MetaScheduleLayoutRewrite"},
     ):
         try:
             opt_mod, _ = relay.optimize(mod, target, params)

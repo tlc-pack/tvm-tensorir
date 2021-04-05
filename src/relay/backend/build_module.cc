@@ -375,7 +375,7 @@ class RelayBuildModule : public runtime::ModuleNode {
 
     if (backend::IsMetaSchedulerEnabled() && targets.size() == 1) {
       const auto& target = (*targets.begin()).second;
-      Pass major_pass = transform::MetaSchedulerLayoutRewrite();
+      Pass major_pass = transform::MetaScheduleLayoutRewrite();
 
       if (target->kind->device_type == kDLCPU && pass_ctx.PassEnabled(major_pass->Info())) {
         With<Target> tctx(target);
