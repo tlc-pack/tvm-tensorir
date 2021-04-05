@@ -455,18 +455,15 @@ class PostprocRewriteParallelizeVectorizeUnroll {
                FindBlockSRef(sch->state(), MakeAnnParser(&parsed))) {
     tir::BlockRV root_rv = sch->GetBlock("root");
     tir::StmtSRef root = sch->GetSRef(root_rv);
+    // find the only block that has annotations related with parallel/vectorize/unroll
     Optional<tir::StmtSRef> opt_block_sref = FindBlockSRef(sch->state(), MakeAnnParser(&parsed));
     if (!opt_block_sref.defined()) {
       return true;
     }
     RemoveParsedAnn(sch, opt_block_sref.value(), parsed);
     for (const BlockRV& block_rv : sch->GetChildBlocks(root_rv)) {
-      // Extract block info
-      tir::StmtSRef block_sref = opt_block_sref.value();
-      RemoveParsedAnn(sch, block_sref, parsed);
-      const auto* block = block_sref->StmtAs<tir::BlockNode>();
-      BlockRV block_rv = sch->GetBlock(block->name_hint);
-      // Extract loop info
+   // Extract loop info
+      tir::StmtSRef block_sref = sch->GetSRef(block_rv);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
       if (n_loops == 0) {
@@ -773,6 +770,7 @@ class PostProcRewriteLayout {
         CollectIterSplitExpr(arg);
       }
     }
+    // keep only the itersplitexpr and append them to the result array
     void Collect(const arith::IterMapExpr& expr) {
       if (const auto* op = expr.as<arith::IterSplitExprNode>()) {
         CollectIterSplitExpr(GetRef<arith::IterSplitExpr>(op));
@@ -803,7 +801,7 @@ class PostProcRewriteLayout {
       }
       VisitStmt(op->block->body);
     }
-    // true if expr1<expr2
+    // true if expr1's loop is above expr2's loop
     static bool compare(
         const arith::IterSplitExpr& expr1, const arith::IterSplitExpr& expr2,
         const std::unordered_map<tir::Var, int, ObjectPtrHash, ObjectPtrEqual>& loop_order) {
@@ -823,18 +821,19 @@ class PostProcRewriteLayout {
 
     void VisitExpr_(const tir::BufferLoadNode* op) {
       if (buffer.same_as(op->buffer)) {
-        CHECK(!visited);
+        ICHECK(!visited) << "cannot rewrite a buffer with 2 or more accesses in the function";
         block_to_rewrite = realize->block;
         visited = true;
         PrimExpr sum = 0;
         PrimExpr flatten_shape = 1;
+        // get the flattened index
         for (size_t i = 0; i < op->indices.size(); i++) {
           sum *= op->buffer->shape[i];
           flatten_shape *= op->buffer->shape[i];
           tir::Var var = Downcast<tir::Var>(op->indices[i]);
-          CHECK(var.defined());
+          ICHECK(var.defined()) << "cannot handle irregular access pattern";
           auto bind = binding_map.Get(var);
-          CHECK(bind.defined());
+          ICHECK(bind.defined()) << "index " << i << " is not a block var";
           sum += bind.value();
         }
         arith::Analyzer analyzer;
@@ -847,7 +846,7 @@ class PostProcRewriteLayout {
           loop_vars.emplace(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
           loop_order.emplace(loop->loop_var, i);
         }
-
+        // analyze the access pattern of the flattened index
         auto results = arith::DetectIterMap(
             Array<tir::IterVar>{
                 tir::IterVar(Range::FromMinExtent(0, flatten_shape), tir::Var(), tir::kDataPar)},
@@ -857,6 +856,7 @@ class PostProcRewriteLayout {
         for (size_t i = 0; i < results.size(); i++) {
           collector.Collect(results[i]);
         }
+        // get the extents for rewrite
         for (const auto& splitexpr : splitexprs) {
           IntImm extent = Downcast<IntImm>(splitexpr->extent);
           if (extent.defined()) {
@@ -866,6 +866,7 @@ class PostProcRewriteLayout {
           }
         }
         hint.reorder.resize(hint.extents.size());
+        // get the order for rewrite, which is consistent with the order of related loops
         for (size_t i = 0; i < hint.extents.size(); i++) {
           int idx = 0;
           for (const auto& other : splitexprs) {
@@ -944,9 +945,12 @@ class PostProcRewriteLayout {
   bool Proc(Schedule& sch, SearchTask& task) const {
     tir::PrimFunc func = GetOnlyFunc(sch->mod());
     auto buffer_to_rewrite = func->GetAttr("layout_free_placeholders", Array<tir::Var>());
+    // for each buffer with the annotation" layout_free_placeholders", do layout rewrite
     for (const auto& input_var : buffer_to_rewrite.value()) {
       tir::Buffer buffer = func->buffer_map.Get(input_var).value();
       LayoutRewriteHint hint;
+      // Step 0: find the loops used in the buffer access and
+      //       get the auxillary (`extent` and `reorder`) to do rewrite
       IterVarResolver resolver(sch, buffer, hint);
       const tir::Stmt& body = func->body;
       tir::Block block = resolver.getBufferIterInfo(body);
@@ -954,18 +958,28 @@ class PostProcRewriteLayout {
       for (size_t i = 0; i < hint.extents.size(); i++) {
         new_shape.push_back(hint.extents[hint.reorder[i]]);
       }
+      // Step 1: create a new buffer
       tir::Buffer new_buffer(buffer->data, buffer->dtype, new_shape, Array<PrimExpr>(),
                              buffer->elem_offset, buffer->name, buffer->scope,
                              buffer->data_alignment, buffer->offset_factor, buffer->buffer_type);
+      // Step 2: do the rewrite to the buffer access
+      // the rule is as below:
+      //      for example,
+      //      let extents = [2, 3, 4], reorder = [0, 2, 1], and the shape of buffer A is (4, 6)
+      //      then A[i, j] will be first rewritten to
+      //      A'[(6 * i + j) / 12, (6 * i + j) / 4 % 3 , (6 * i + j) % 4] according to the
+      //      `extents`, and then reordered to A'[(6 * i + j) / 12, (6 * i + j) % 4 , (6 * i + j) /
+      //      4 % 3] according to `reorder`
       IndexRewriter rewriter(hint, buffer, block, new_buffer);
-
       sch->state()->Replace(sch->GetSRef(block), rewriter.Rewrite(block), {});
+      // Step 3: update the buffer map
       Map<tir::Var, tir::Buffer> new_buffer_map(func->buffer_map);
       new_buffer_map.Set(input_var, new_buffer);
       tir::PrimFunc orig_func = GetOnlyFunc(sch->mod());
       auto new_func = orig_func.CopyOnWrite();
       new_func->buffer_map = std::move(new_buffer_map);
       sch->state()->mod = IRModule({{GlobalVar("main"), GetRef<tir::PrimFunc>(new_func)}});
+      // Step 4: tell the relay builder how to rewrite the params
       std::lock_guard<std::mutex> lock(::tvm::relay::MetaScheduleLayoutRewriter::mutex);
 
       ::tvm::relay::MetaScheduleLayoutRewriter::global_layout_rewrite_queue.push_back(hint);
