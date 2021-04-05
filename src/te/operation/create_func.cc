@@ -181,10 +181,13 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       LOG(FATAL) << "Unsupported OperationNode";
     }
   }
-
-  PrimFunc func = PrimFunc(parameters, SeqStmt::Flatten(seq), VoidType(), buffer_map,
-                           DictAttrs(Map<String, ObjectRef>{{"layout_free_placeholders", layout_free}}));
-
+  PrimFunc func;
+  if (!layout_free.empty()) {
+    func = PrimFunc(parameters, SeqStmt::Flatten(seq), VoidType(), buffer_map,
+                    DictAttrs(Map<String, ObjectRef>{{"layout_free_placeholders", layout_free}}));
+  } else {
+    func = PrimFunc(parameters, SeqStmt::Flatten(seq), VoidType(), buffer_map);
+  }
   const auto* complete = runtime::Registry::Get("script.Complete");
   ICHECK(complete);
 

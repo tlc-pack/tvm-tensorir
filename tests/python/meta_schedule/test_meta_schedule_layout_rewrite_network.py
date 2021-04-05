@@ -132,7 +132,6 @@ SPACE = ms.space.PostOrderApply(
 )
 
 
-@pytest.mark.skip(reason="needs RPC")
 def tune_and_check(log, mod, data, weight):
     os.environ["TVM_TRACKER_KEY"] = RPC_KEY
 
@@ -219,22 +218,25 @@ def tune_and_check(log, mod, data, weight):
     out = run_module(lib, True).asnumpy()
     np.testing.assert_allclose(out, std, rtol=1e-4, atol=1e-4)
 
-
+@pytest.mark.skip(reason="needs RPC")
 def test_conv2d():
     mod, data, weight = get_relay_conv2d()
     tune_and_check("conv2d.json", mod, data, weight)
 
 
+@pytest.mark.skip(reason="needs RPC")
 def test_conv2d_winograd():
     mod, data, weight = get_relay_conv2d(outc=128, inc=128)
     tune_and_check("conv2d_winograd.json", mod, data, weight)
 
 
+@pytest.mark.skip(reason="needs RPC")
 def test_dense():
     mod, data, weight = get_relay_dense()
     tune_and_check("dense.json", mod, data, weight)
 
 
+@pytest.mark.skip(reason="needs RPC")
 def test_batch_matmul():
     mod, data, weight = get_relay_batchmm()
     tune_and_check("batch_matmul.json", mod, data, weight)
