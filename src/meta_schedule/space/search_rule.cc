@@ -928,26 +928,18 @@ void ReorderAndFuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
  * \param block
  * \return
  */
-Array<Instruction> GetSplitInstsOverBlock(const Schedule& sch, const BlockRV& block) {
-  Array<Instruction> insts = sch->trace->insts;
-  Array<Instruction> res;
-  res.reserve(sch->trace->insts.size());
-
-  for (const Instruction& inst : insts) {
-    if (inst->inst_attrs->IsInstance<SplitAttrs>()) {
-      ICHECK_GT(inst->inputs.size(), 1);
-      ICHECK(inst->inputs[0]->IsInstance<LoopRVNode>());
-      LoopRV loop = Downcast<LoopRV>(inst->inputs[0]);
-      Array<BlockRV> child_blocks = sch->GetChildBlocks(loop);
-      for (const BlockRV& child : child_blocks) {
-        if (sch->Get(child).same_as(sch->Get(block))) {
-          res.push_back(inst);
-          break;
-        }
-      }
+bool InThreadScope(const Schedule& sch, const BlockRV& block) {
+  const Array<LoopRV>& axes = sch->GetAxes(block);
+  for (const LoopRV& loop_rv : axes) {
+    const tir::For& loop = sch->Get(loop_rv);
+    if (!loop->thread_binding.defined()) {
+      continue;
+    }
+    if (std::string(loop->thread_binding.value()->thread_tag).substr(0, 9) == "threadIdx") {
+      return true;
     }
   }
-  return res;
+  return false;
 }
 
 /********** AddRFactor **********/
@@ -1082,7 +1074,7 @@ class RuleCrossThreadReduction {
       for (const BlockRV& consumer : consumers) {
         consumers_sref.push_back(tmp_sch->GetSRef(consumer));
       }
-      const tir::StmtSRef& root_sref = tir::GetSRefTreeRoot(block_sref);
+      const tir::StmtSRef& root_sref = tir::GetSRefTreeRoot(tmp_sch->GetSRef(block_rv));
       const tir::StmtSRef& lca_sref = consumers.size() == 1
                                           ? consumers_sref[0]
                                           : tir::LowestCommonAncestor(consumers_sref, root_sref);
@@ -1113,9 +1105,8 @@ class RuleCrossThreadReduction {
     if (fusible) {
       ICHECK(target_block.defined());
       const BlockRV& target_block_rv = target_block.value();
-      Array<Instruction> split_insts = GetSplitInstsOverBlock(tmp_sch, target_block_rv);
 
-      if (split_insts.empty()) {
+      if (!InThreadScope(tmp_sch, target_block_rv)) {
         // Todo: modify comments below
         // If the target stage does not have split step,
         // it must be a simple stage without reduce iters.
@@ -1127,12 +1118,9 @@ class RuleCrossThreadReduction {
         Array<LoopRV> split_res = tmp_sch->Split(loop_to_split, {NullOpt, Integer(warp_size)});
         const Instruction& split_inst = tmp_sch->trace->insts.back();
         ICHECK(split_inst->inst_attrs->IsInstance<SplitAttrs>());
-        split_insts.push_back(split_inst);
         ICHECK_EQ(split_res.size(), 2);
         tmp_sch->Bind(split_res[1], "threadIdx.x");
       }
-
-      CHECK_EQ(split_insts.size(), 1); // Todo: CHECK or ICHECK?
 
       Array<LoopRV> target_block_loops = tmp_sch->GetAxes(target_block_rv);
       ICHECK_GT(target_block_loops.size(), num_common_axes);
@@ -1146,11 +1134,7 @@ class RuleCrossThreadReduction {
       LoopRV fused_reduce_loop;
       ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
 
-      Array<Optional<PrimExpr>> factor;
-      for (auto it = split_insts[0]->inputs.begin() + 1; it != split_insts[0]->inputs.end(); ++it) { // Todo: use auto?
-        factor.push_back(Downcast<Optional<PrimExpr>>(*it));
-      }
-      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, factor);
+      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, Integer(warp_size)});
       ICHECK_EQ(split_res.size(), 2);
       tmp_sch->Bind(split_res[1], "threadIdx.x");
     } else {
