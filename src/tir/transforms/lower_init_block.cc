@@ -28,9 +28,7 @@
 namespace tvm {
 namespace tir {
 
-class ReductionTransformer : public StmtMutator {
- public:
-  ReductionTransformer() = default;
+class InitBlockLower : public StmtMutator {
  private:
   Stmt VisitStmt_(const BlockNode* block) final {
     if (!block->init.defined()) {
@@ -38,10 +36,10 @@ class ReductionTransformer : public StmtMutator {
     }
     Stmt init = RealizeInitBlock(block->init.value(), block->iter_vars);
     Stmt body = VisitStmt(block->body);
-    ObjectPtr<BlockNode> new_block = make_object<BlockNode>(*block);
-    new_block->init = NullOpt;
-    new_block->body = SeqStmt::Flatten(init, body);
-    return Stmt(std::move(new_block));
+    auto n = CopyOnWrite(block);
+    n->init = NullOpt;
+    n->body = SeqStmt::Flatten(init, body);
+    return Block(n);
   }
 
   static Stmt RealizeInitBlock(const Stmt& init, const Array<IterVar>& iter_vars) {
@@ -65,22 +63,22 @@ class ReductionTransformer : public StmtMutator {
   }
 };
 
-PrimFunc LowerReduction(PrimFunc func) {
+PrimFunc LowerInitBlock(PrimFunc func) {
   auto fptr = func.CopyOnWrite();
-  fptr->body = ReductionTransformer()(std::move(fptr->body));
+  fptr->body = InitBlockLower()(std::move(fptr->body));
   return func;
 }
 
 namespace transform {
 
-Pass LowerReduction() {
+Pass LowerInitBlock() {
   auto pass_func = [](PrimFunc f, IRModule m, PassContext ctx) {
-    return LowerReduction(std::move(f));
+    return LowerInitBlock(std::move(f));
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.LowerReduction", {});
 }
 
-TVM_REGISTER_GLOBAL("tir.transform.LowerReduction").set_body_typed(LowerReduction);
+TVM_REGISTER_GLOBAL("tir.transform.LowerInitBlock").set_body_typed(LowerInitBlock);
 
 }  // namespace transform
 

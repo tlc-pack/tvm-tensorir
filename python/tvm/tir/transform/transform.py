@@ -564,7 +564,7 @@ def HoistIfThenElse(variant=None):
         return _ffi_api.HoistIfThenElse()
 
 
-def LowerReduction():
+def LowerInitBlock():
     """Lower block init stmt into IfThenElse stmts
 
     Returns
@@ -572,4 +572,4 @@ def LowerReduction():
     fpass : tvm.transform.Pass
         The result pass
     """
-    return _ffi_api.LowerReduction()
+    return _ffi_api.LowerInitBlock()

@@ -45,7 +45,7 @@ class WithBranch:
 
 def test_lower_reduction():
     origin_mod = WithInit()
-    mod = tvm.tir.transform.LowerReduction()(origin_mod)
+    mod = tvm.tir.transform.LowerInitBlock()(origin_mod)
     tvm.ir.assert_structural_equal(mod, WithBranch(), True)
 
 
