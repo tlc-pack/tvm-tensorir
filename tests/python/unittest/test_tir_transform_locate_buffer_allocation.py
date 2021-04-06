@@ -16,6 +16,50 @@
 # under the License.
 import tvm
 from tvm import tir
+from tvm.script import ty
+
+
+def _check(original, transformed):
+    func = original
+    mod = tvm.IRModule.from_expr(func)
+    mod = tvm.tir.transform.LocateBufferAllocation()(mod)
+    tvm.ir.assert_structural_equal(mod["main"], transformed)
+
+
+@tvm.script.tir
+def element_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16))
+    C = tir.match_buffer(c, (16, 16))
+    B = tir.alloc_buffer((16, 16))
+    for i_0 in range(0, 16):
+        for j_0 in range(0, 16):
+            with tir.block([16, 16]) as [i, j]:
+                B[i, j] = A[i, j] + 1.0
+        for j_0 in range(0, 16):
+            with tir.block([16, 16]) as [i, j]:
+                C[i, j] = B[i, j] * 2.0
+
+
+@tvm.script.tir
+def transformed_element_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [16, 16])
+    C = tir.match_buffer(c, [16, 16])
+
+    for i_0 in range(0, 16):
+        with tir.block([]):
+            tir.reads([A[i_0, 0:16]])
+            tir.writes([C[i_0, 0:16]])
+            B = tir.alloc_buffer([16, 16])
+            for j_0 in tir.serial(0, 16):
+                with tir.block([16, 16], "") as [i, j]:
+                    tir.bind(i, i_0)
+                    tir.bind(j, j_0)
+                    B[i, j] = A[i, j] + tir.float32(1)
+            for j_0 in tir.serial(0, 16):
+                with tir.block([16, 16], "") as [i, j]:
+                    tir.bind(i, i_0)
+                    tir.bind(j, j_0)
+                    C[i, j] = B[i, j] * tir.float32(2)
 
 
 @tvm.script.tir
@@ -27,7 +71,7 @@ def original_func() -> None:
         B = tir.alloc_buffer((128, 128), "float32")
         C = tir.alloc_buffer((128, 128), "float32")
         D = tir.alloc_buffer((128, 128), "float32")
-        with tir.init():
+        if k == 0:
             for ii, jj in tir.grid(4, 4):
                 B[i * 4 + ii, j * 4 + jj] = A[i * 4 + ii, j * 4 + jj]
         for ii, jj in tir.grid(4, 4):
@@ -39,38 +83,46 @@ def original_func() -> None:
 
 @tvm.script.tir
 def transformed_func() -> None:
-    with tir.block([], "root"):
-        tir.reads([])
-        tir.writes([])
-        A = tir.alloc_buffer([128, 128], elem_offset=0, align=128, offset_factor=1)
-        with tir.block([128, 128], "") as [i, j]:
-            A[i, j] = tir.float32(0)
-        with tir.block([32, 32, tir.reduce_axis(0, 32)], "") as [i_1, j_1, k]:
-            B = tir.alloc_buffer([128, 128])
-            with tir.init():
-                for ii, jj in tir.grid(4, 4):
-                    B[((i_1*4) + ii), ((j_1*4) + jj)] = A[((i_1*4) + ii), ((j_1*4) + jj)]
-            for ii_1, jj_1 in tir.grid(4, 4):
-                with tir.block([], ""):
-                    tir.reads([B[((i_1*4) + ii_1), ((j_1*4) + jj_1)]])
-                    tir.writes([B[((i_1*4) + ii_1), ((j_1*4) + jj_1)]])
-                    C = tir.alloc_buffer([128, 128])
-                    for kk in tir.serial(0, 4):
-                        B[((i_1*4) + ii_1), ((j_1*4) + jj_1)] = (B[((i_1*4) + ii_1), ((j_1*4) + jj_1)] + C[((i_1*4) + ii_1), ((k*4) + kk)])
-                    for kk_1 in tir.serial(0, 4):
-                        with tir.block([], ""):
-                            tir.reads([B[((i_1*4) + ii_1), ((j_1*4) + jj_1)], C[((i_1*4) + ii_1), ((k*4) + kk_1)]])
-                            tir.writes([B[((i_1*4) + ii_1), ((j_1*4) + jj_1)]])
-                            D = tir.alloc_buffer([128, 128])
-                            B[((i_1*4) + ii_1), ((j_1*4) + jj_1)] = (B[((i_1*4) + ii_1), ((j_1*4) + jj_1)] + (D[((j_1*4) + jj_1), ((k*4) + kk_1)]*C[((i_1*4) + ii_1), ((k*4) + kk_1)]))
+    A = tir.alloc_buffer([128, 128])
+    with tir.block([128, 128], "") as [i, j]:
+        A[i, j] = tir.float32(0)
+    with tir.block([32, 32, tir.reduce_axis(0, 32)], "") as [i, j, k]:
+        B = tir.alloc_buffer([128, 128])
+        if k == 0:
+            for ii, jj in tir.grid(4, 4):
+                B[i * 4 + ii, j * 4 + jj] = A[i * 4 + ii, j * 4 + jj]
+        for ii, jj in tir.grid(4, 4):
+            with tir.block([], ""):
+                tir.reads([B[((i * 4) + ii), ((j * 4) + jj)]])
+                tir.writes([B[((i * 4) + ii), ((j * 4) + jj)]])
+                C = tir.alloc_buffer([128, 128])
+                for kk in tir.serial(0, 4):
+                    B[((i * 4) + ii), ((j * 4) + jj)] = (
+                        B[((i * 4) + ii), ((j * 4) + jj)] + C[((i * 4) + ii), ((k * 4) + kk)]
+                    )
+                for kk in tir.serial(0, 4):
+                    with tir.block([], ""):
+                        tir.reads(
+                            [
+                                B[((i * 4) + ii), ((j * 4) + jj)],
+                                C[((i * 4) + ii), ((k * 4) + kk)],
+                            ]
+                        )
+                        tir.writes([B[((i * 4) + ii), ((j * 4) + jj)]])
+                        D = tir.alloc_buffer([128, 128])
+                        B[((i * 4) + ii), ((j * 4) + jj)] = B[((i * 4) + ii), ((j * 4) + jj)] + (
+                            D[((j * 4) + jj), ((k * 4) + kk)] * C[((i * 4) + ii), ((k * 4) + kk)]
+                        )
+
+
+def test_elementwise():
+    _check(element_func, transformed_element_func)
 
 
 def test_locate_buffer_allocation():
-    func = original_func
-    mod = tvm.IRModule.from_expr(func)
-    mod = tvm.tir.transform.LocateBufferAllocation()(mod)
-    tvm.ir.assert_structural_equal(mod["main"], transformed_func)
+    _check(original_func, transformed_func)
 
 
 if __name__ == "__main__":
+    test_elementwise()
     test_locate_buffer_allocation()

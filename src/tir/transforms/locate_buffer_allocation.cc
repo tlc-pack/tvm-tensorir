@@ -34,8 +34,15 @@ class BufferAllocationLocator : public StmtExprMutator {
  public:
   explicit BufferAllocationLocator(const PrimFunc& func) {
     Map<Buffer, Stmt> buffer_lac = DetectBufferAccessLCA(func);
+    std::set<const BufferNode*> arg_buffers;
+    for (const auto& kv : func->buffer_map) {
+      const Buffer& buffer = kv.second;
+      arg_buffers.emplace(buffer.get());
+      buffer_alloc_outer_.Set(buffer->data, buffer);
+    }
     for (const auto& pair : buffer_lac) {
       const Buffer& buffer = pair.first;
+      if (arg_buffers.find(buffer.get()) != arg_buffers.end()) continue;
       const StmtNode* stmt = pair.second.get();
       auto it = alloc_buffers_.find(stmt);
       if (it == alloc_buffers_.end()) {
@@ -71,6 +78,9 @@ class BufferAllocationLocator : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
+    ICHECK(!op->init.defined());
+    bool is_root = is_root_;
+    is_root_ = false;
     Array<Buffer> alloc_buffers;
     auto it = alloc_buffers_.find(op);
     if (it != alloc_buffers_.end()) {
@@ -95,19 +105,22 @@ class BufferAllocationLocator : public StmtExprMutator {
     if (alloc_buffers.same_as(op->alloc_buffers)) {
       return GetRef<Stmt>(op);
     } else {
-      // Recalculate block access region
-      auto access = GetBlockAccessRegion(GetRef<Block>(op), buffer_alloc_outer_);
-      auto reads = access[0];
-      auto writes = access[1];
-      for (const auto& opaque_access : access[2]) {
-        reads.push_back(opaque_access);
-        writes.push_back(opaque_access);
-      }
-
       auto n = CopyOnWrite(op);
       n->alloc_buffers = std::move(alloc_buffers);
-      n->reads = std::move(reads);
-      n->writes = std::move(writes);
+
+      if (!is_root) {
+        // Recalculate block access region
+        auto access = GetBlockAccessRegion(GetRef<Block>(op), buffer_alloc_outer_);
+        auto reads = access[0];
+        auto writes = access[1];
+        for (const auto& opaque_access : access[2]) {
+          reads.push_back(opaque_access);
+          writes.push_back(opaque_access);
+        }
+        n->reads = std::move(reads);
+        n->writes = std::move(writes);
+      }
+
       return Stmt(n);
     }
   }
@@ -140,6 +153,7 @@ class BufferAllocationLocator : public StmtExprMutator {
 
   std::map<const StmtNode*, std::vector<Buffer>> alloc_buffers_;
   Map<Var, Buffer> buffer_alloc_outer_;
+  bool is_root_{true};
 };
 
 PrimFunc LocateBufferAllocation(PrimFunc func) {
