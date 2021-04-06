@@ -354,6 +354,8 @@ class MutatorParallel {
     extent_candidates.insert(1);
     for (size_t i = 0; i < trace->insts.size(); i++) {
       const Instruction& mark_inst = trace->insts[i];
+      // Step 1. Find the `MarkBlockAttr` whose ann_key is `auto_parallel_extent`
+      //         and whose parallel extent is given by an integer.
       if (const auto* mark_attr = mark_inst->inst_attrs.as<MarkBlockAttrs>()) {
         ICHECK_EQ(mark_inst->inputs.size(), 2);
         if (mark_attr->ann_key != tir::attr::auto_parallel_extent ||
@@ -361,6 +363,8 @@ class MutatorParallel {
           continue;
         }
         tir::StmtSRef root_sref = tir::GetBlocks(sch->state(), "root")[0];
+        // Step 2. For all the leaf blocks ,fetch the loops above it.
+        // Furthermore, get their loop types.
         for (const auto& block_sref : tir::GetChildBlocks(sch->state(), root_sref)) {
           Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
           std::vector<int> loop_types;

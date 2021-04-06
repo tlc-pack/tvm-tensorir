@@ -492,9 +492,6 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
     Sampler* sampler = &thread_samplers[thread_id];
     for (;;) {
       const Trace& support_trace = support[sampler->SampleInt(0, support.size())]->trace;
-      // Remove most of the decisions, i.e. random replay
-      // N.B. We do not change the sampling result from `SampleComputeLocation`,
-      // because it tends to fail quite frequently
       Map<Instruction, ObjectRef> decisions;
       try {
         if (Optional<Schedule> opt_sch =
@@ -577,6 +574,8 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
       const std::function<Optional<Mutator>()>& mutator_sampler =
           thread_mutator_samplers[thread_id];
       // Loop until success
+      int max_retry_cnt = 10;
+      int retry_cnt = 0;
       for (;;) {
         int trace_idx = trace_sampler();
         const CachedTrace& cached_trace = sch_curr[trace_idx];
@@ -602,6 +601,11 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
             sch_next[i] = cached_trace;
             break;
           }
+        }
+        retry_cnt++;
+        if (retry_cnt >= max_retry_cnt) {
+          sch_next[i] = cached_trace;
+          break;
         }
       }
     };

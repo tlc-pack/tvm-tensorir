@@ -644,19 +644,38 @@ class RuleParallelizeVectorizeUnroll {
 
   Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
                         const BlockRV& block_rv) const {
-    BlockRV root_block = sch->GetBlock("root");
-    if (HasAnyAnn(sch->GetSRef(root_block))) {
+    static std::unordered_set<Schedule, ObjectPtrHash, ObjectPtrEqual> visited;
+    // TODO(Hongyi)
+    // adding annotation to the root block will cause segmentation fault in postprocessor.
+    // so I put the annotation to the first visited block
+    bool has_ann;
+    tir::PreOrderVisit(GetOnlyFunc(sch->mod())->body, [&has_ann](const ObjectRef& obj) -> bool {
+      if (has_ann) {
+        return false;
+      }
+      if (const auto* block = obj.as<tir::BlockNode>()) {
+        if (block->annotations.count(tir::attr::auto_parallel_extent) ||
+            block->annotations.count(tir::attr::auto_vectorize_extent) ||
+            block->annotations.count(tir::attr::auto_unroll_explicit) ||
+            block->annotations.count(tir::attr::auto_unroll_implicit)) {
+          has_ann = true;
+          return false;
+        }
+      }
+      return true;
+    });
+    if (has_ann) {
       return {sch};
     }
     // Parallelization
     if (max_jobs_per_core != -1) {
       int max_extent =
           GetTargetNumCores(task->target, &warned_num_cores_missing) * max_jobs_per_core;
-      sch->MarkBlock(root_block, tir::attr::auto_parallel_extent, max_extent);
+      sch->MarkBlock(block_rv, tir::attr::auto_parallel_extent, max_extent);
     }
     // Vectorization
     if (max_vectorize_extent != -1) {
-      sch->MarkBlock(root_block, tir::attr::auto_vectorize_extent, max_vectorize_extent);
+      sch->MarkBlock(block_rv, tir::attr::auto_vectorize_extent, max_vectorize_extent);
     }
     // Unroll
     if (!unroll_max_steps.empty()) {
@@ -665,9 +684,9 @@ class RuleParallelizeVectorizeUnroll {
       Array<FloatImm> probs(n, FloatImm(DataType::Float(64), prob));
       tir::Var max_step = sch->SampleCategorical(unroll_max_steps, probs);
       if (unroll_explicit) {
-        sch->MarkBlock(root_block, tir::attr::auto_unroll_explicit, max_step);
+        sch->MarkBlock(block_rv, tir::attr::auto_unroll_explicit, max_step);
       } else {
-        sch->MarkBlock(root_block, tir::attr::auto_unroll_implicit, max_step);
+        sch->MarkBlock(block_rv, tir::attr::auto_unroll_implicit, max_step);
       }
     }
     return {sch};
