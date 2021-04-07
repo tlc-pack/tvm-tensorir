@@ -25,6 +25,8 @@
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/stmt_functor.h>
 
+#include "../../support/arena.h"
+
 namespace tvm {
 namespace tir {
 
@@ -40,7 +42,6 @@ class LCADetector : public StmtExprVisitor {
       const Buffer& buffer = kv.second;
       detector.buffer_var_map_.emplace(buffer->data.get(), buffer.get());
     }
-    detector.root_ = Downcast<BlockRealize>(func->body)->block.get();
     detector(func->body);
     // Prepare the return
     Map<Buffer, Stmt> buffer_lca;
@@ -53,7 +54,9 @@ class LCADetector : public StmtExprVisitor {
  private:
   void VisitStmt_(const ForNode* op) final {
     int n = ancestor_scopes_.size();
-    scope_info_.emplace(op, ScopeInfo{ancestor_scopes_.back(), n});
+    auto it = scope_info_.find(ancestor_scopes_.back());
+    ICHECK(it != scope_info_.end());
+    scope_info_.emplace(op, arena_.make<ScopeInfo>(it->second, op, n));
     ancestor_scopes_.push_back(op);
     StmtExprVisitor::VisitStmt_(op);
     ancestor_scopes_.pop_back();
@@ -64,7 +67,13 @@ class LCADetector : public StmtExprVisitor {
     for (const Buffer& buf : op->alloc_buffers) {
       buffer_var_map_.emplace(buf->data.get(), buf.get());
     }
-    scope_info_.emplace(op, ScopeInfo{ancestor_scopes_.back(), n});
+    ScopeInfo* info = nullptr;
+    if (ancestor_scopes_.size() > 1) {
+      auto it = scope_info_.find(ancestor_scopes_.back());
+      ICHECK(it != scope_info_.end());
+      info = it->second;
+    }
+    scope_info_.emplace(op, arena_.make<ScopeInfo>(info, op, n));
     ancestor_scopes_.push_back(op);
     StmtExprVisitor::VisitStmt_(op);
     ancestor_scopes_.pop_back();
@@ -112,27 +121,32 @@ class LCADetector : public StmtExprVisitor {
   const StmtNode* LowestCommonAncestor(const StmtNode* lhs, const StmtNode* rhs) const {
     if (lhs == nullptr) return rhs;
     if (rhs == nullptr) return lhs;
-    while (lhs != root_ && rhs != root_ && lhs != rhs) {
-      auto it_l = scope_info_.find(lhs);
-      auto it_r = scope_info_.find(rhs);
-      ICHECK(it_l != scope_info_.end());
-      ICHECK(it_r != scope_info_.end());
-      const ScopeInfo& l = it_l->second;
-      const ScopeInfo& r = it_r->second;
-      if (l.depth == r.depth) {
-        lhs = l.parent_scope;
-        rhs = r.parent_scope;
-      } else if (l.depth < r.depth) {
-        rhs = r.parent_scope;
+    auto it_l = scope_info_.find(lhs);
+    auto it_r = scope_info_.find(rhs);
+    ICHECK(it_l != scope_info_.end());
+    ICHECK(it_r != scope_info_.end());
+    const ScopeInfo* l = it_l->second;
+    const ScopeInfo* r = it_r->second;
+    while (l->parent_scope_info != nullptr &&  //
+           r->parent_scope_info != nullptr &&  //
+           l != r) {
+      if (l->depth == r->depth) {
+        l = l->parent_scope_info;
+        r = r->parent_scope_info;
+      } else if (l->depth < r->depth) {
+        r = r->parent_scope_info;
       } else {
-        lhs = l.parent_scope;
+        l = l->parent_scope_info;
       }
     }
-    if (lhs == root_ || rhs == root_) {
-      return root_;
+    if (l->parent_scope_info == nullptr) {
+      return l->stmt;
     }
-    ICHECK(lhs == rhs);
-    return lhs;
+    if (r->parent_scope_info == nullptr) {
+      return r->stmt;
+    }
+    ICHECK(l == r);
+    return l->stmt;
   }
 
   /*!
@@ -141,23 +155,26 @@ class LCADetector : public StmtExprVisitor {
    *       body can be a SeqStmt (the LCA of buffer access) in TensorIR.
    */
   struct ScopeInfo {
-    ScopeInfo(const StmtNode* parent, int depth) : parent_scope(parent), depth(depth) {}
-    // The parent scope node
-    const StmtNode* parent_scope;
+    // The parent scope info
+    const ScopeInfo* parent_scope_info;
+    // The parent scope stmt node
+    const StmtNode* stmt;
     // The scope depth in the AST
     int depth;
+    ScopeInfo(const ScopeInfo* parent_info, const StmtNode* stmt, int depth)
+        : parent_scope_info(parent_info), stmt(stmt), depth(depth) {}
   };
 
   /*! \brief The ancestor scope stacks (Block and For), initialized with Null. */
   std::vector<const StmtNode*> ancestor_scopes_ = {nullptr};
   /*! \brief The parent and depth info of each ForNode/BlockNode. */
-  std::unordered_map<const StmtNode*, ScopeInfo> scope_info_ = {};
+  std::unordered_map<const StmtNode*, ScopeInfo*> scope_info_ = {};
   /*! \brief The map from Buffer to its LCA ForNode/BlockNode. */
   std::unordered_map<const BufferNode*, const StmtNode*> buffer_lca_ = {};
   /*! \brief The map from Buffer data to the Buffer. */
   std::unordered_map<const VarNode*, const BufferNode*> buffer_var_map_ = {};
-  /*! \brief The root block of the func. */
-  const BlockNode* root_ = nullptr;
+  /*! \brief Internal arena. */
+  support::Arena arena_;
 };
 
 Map<Buffer, Stmt> DetectBufferAccessLCA(const PrimFunc& func) { return LCADetector::Detect(func); }
