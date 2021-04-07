@@ -137,8 +137,8 @@ class LCADetector : public StmtExprVisitor {
 
   /*!
    * \brief The AST node information for querying LCA.
-   * \note Only BlockNode and ForNode are considered, since they are the only position where the
-   *       body can be a SeqStmt (The LCA of buffer access) in TensorIR.
+   * \note Only BlockNode and ForNode are considered, since they are the only statements whose
+   *       body can be a SeqStmt (the LCA of buffer access) in TensorIR.
    */
   struct ScopeInfo {
     ScopeInfo(const StmtNode* parent, int depth) : parent_scope(parent), depth(depth) {}
@@ -150,9 +150,9 @@ class LCADetector : public StmtExprVisitor {
 
   /*! \brief The ancestor scope stacks (Block and For), initialized with Null. */
   std::vector<const StmtNode*> ancestor_scopes_ = {nullptr};
-  /*! \brief The parent and depth info of each for Node. */
+  /*! \brief The parent and depth info of each ForNode/BlockNode. */
   std::unordered_map<const StmtNode*, ScopeInfo> scope_info_ = {};
-  /*! \brief The map from Buffer to its LCA for nodes. */
+  /*! \brief The map from Buffer to its LCA ForNode/BlockNode. */
   std::unordered_map<const BufferNode*, const StmtNode*> buffer_lca_ = {};
   /*! \brief The map from Buffer data to the Buffer. */
   std::unordered_map<const VarNode*, const BufferNode*> buffer_var_map_ = {};
