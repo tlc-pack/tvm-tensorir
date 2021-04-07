@@ -85,18 +85,20 @@ Replay::Replay(int batch_size, int num_trials) {
 
 /********** Search **********/
 
+// flops calculation
+
 Array<MeasureInput> SampleVariants(Array<MeasureInput> inputs) {
   Array<MeasureInput> ret;
   for (size_t i = 0; i < inputs.size(); ++i) {
     MeasureInput inp = inputs[i];
     if (inp->task->shape_vars.defined()) {
-      Array<ObjectRef> variants = inp->task->shape_variants.value();
+      Array<Array<IntImm>> variants = inp->task->shape_variants.value();
       for (size_t j = 0; j < variants.size(); ++j) {
-        Array<ObjectRef> variant = Downcast<Array<ObjectRef>>(variants[j]);
-        ret.push_back(MeasureInput(inp->task, inp->sch, variant));
+        // Array<IntImm> variant = Downcast<Array<IntImm>>(variants[j]);
+        ret.push_back(MeasureInput(inp->task, inp->sch, variants[j]));
       }
     } else {
-        ret.push_back(MeasureInput(inp->task, inp->sch));
+      ret.push_back(MeasureInput(inp->task, inp->sch));
     }
   }
   return ret;

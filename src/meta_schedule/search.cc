@@ -31,7 +31,7 @@ namespace meta_schedule {
 SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, Target target_host,
                        Optional<String> log_file,
                        Optional<Array<String>> shape_vars,
-                       Optional<Array<ObjectRef>> shape_variants,
+                       Optional<Array<Array<IntImm>>> shape_variants,
                        Optional<Array<FloatImm>> shape_freq) {
   ObjectPtr<SearchTaskNode> n = make_object<SearchTaskNode>();
   if (task_name == "") {
@@ -103,7 +103,7 @@ struct Internal {
   static SearchTask SearchTaskNew(tir::PrimFunc func, String task_name, Target target,
                                   Target target_host, Optional<String> log_file,
                                   Optional<Array<String>> shape_vars,
-                                  Optional<Array<ObjectRef>> shape_variants,
+                                  Optional<Array<Array<IntImm>>> shape_variants,
                                   Optional<Array<FloatImm>> shape_freq) {
     return SearchTask(func, task_name, target, target_host, log_file,
                       shape_vars, shape_variants, shape_freq);

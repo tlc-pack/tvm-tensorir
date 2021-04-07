@@ -718,10 +718,13 @@ Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTas
   ICHECK_EQ(measure_inputs.size(), measure_results.size());
   // Update the measure
   for (int i = 0, n = measure_inputs.size(); i < n; ++i) {
+    const MeasureInput& measure_input = measure_inputs[i];
     const MeasureResult& measure_result = measure_results[i];
     const CachedTrace& trace = cached_traces[i];
-    database->Add(trace.trace->Simplified(/*remove_postproc=*/true), trace.repr,
-                  AsVector<FloatImm, double>(measure_result->costs), task);
+    database->Add(trace.trace->Simplified(/*remove_postproc=*/true), trace.sch,
+                  AsVector<FloatImm, double>(measure_result->costs),
+                  measure_input->task->shape_vars,
+                  measure_input->variant);
   }
   // Update the cost model
   cost_model->Update(measure_inputs, measure_results);

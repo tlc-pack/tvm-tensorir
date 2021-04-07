@@ -49,7 +49,7 @@ class SearchTaskNode : public Object {
 
   double flop_ct;
   Optional<Array<String>> shape_vars;
-  Optional<Array<ObjectRef>> shape_variants;
+  Optional<Array<Array<IntImm>>> shape_variants;
   Optional<Array<FloatImm>> shape_freq;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -86,7 +86,7 @@ class SearchTask : public ObjectRef {
    */
   explicit SearchTask(tir::PrimFunc workload, String task_name, Target target, Target target_host,
                       Optional<String> log_file, Optional<Array<String>> shape_vars,
-                      Optional<Array<ObjectRef>> shape_variants,
+                      Optional<Array<Array<IntImm>>> shape_variants,
                       Optional<Array<FloatImm>> shape_freq);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
 };

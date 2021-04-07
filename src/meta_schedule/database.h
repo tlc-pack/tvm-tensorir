@@ -24,12 +24,40 @@
 #include <vector>
 
 #include "./trace.h"
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
 
 class SearchTask;
 class TuneContextNode;
+
+struct WorkloadInfo {
+  Array<IntImm> shape_variant;
+
+  bool operator==(const WorkloadInfo &other) const {
+    if (shape_variant.size() != other.shape_variant.size()) return false;
+    for (size_t i = 0; i < shape_variant.size(); ++i) {
+      if (shape_variant[i]->value != other.shape_variant[i]->value) {
+        return false;
+      }
+    } 
+    return true;
+  }
+};
+
+struct WklInfoHasher {
+  std::size_t operator()(const WorkloadInfo& k) const {
+    std::size_t seed = k.shape_variant.size();
+    for(auto& k : k.shape_variant) {
+      seed ^= k->value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    }
+    return seed;
+  }
+};
+
+template<typename T>
+using InfoMap = std::unordered_map<WorkloadInfo, T, WklInfoHasher>;
 
 /*! \brief An abstract database storing all the tuning records. */
 class DatabaseNode : public runtime::Object {
@@ -41,13 +69,18 @@ class DatabaseNode : public runtime::Object {
     /*! \brief The string representation of the schedule */
     String repr;
     /*! \brief The running time of the schedule */
-    std::vector<double> times;
+    InfoMap<std::vector<double>> gflops;
 
-    double MeanTime() const {
-      if (times.empty()) {
-        return kMaxTimeCost;
+    double MeanGFlops() const {
+      if (gflops.empty()) {
+        return 0;
       }
-      return std::accumulate(times.begin(), times.end(), 0.0) / times.size();
+      double sum = 0;
+      for (auto kv : gflops) {
+        const std::vector<double>& vec = kv.second;
+        sum += std::accumulate(vec.cbegin(), vec.cend(), 0.0) / vec.size();
+      }
+      return sum / gflops.size();
     }
   };
 
@@ -66,8 +99,13 @@ class DatabaseNode : public runtime::Object {
    * \param repr The string representation of the schedule
    * \param times The running time of the schedule
    */
-  virtual void Add(const Trace& trace, const String& repr, const std::vector<double>& times,
-                   const SearchTask& task) = 0;
+  virtual void Add(const Trace& trace, const String& repr,
+                   const InfoMap<std::vector<double>>& gflops) = 0;
+
+  virtual void Add(const Trace& trace, const Schedule& sch,
+                   const std::vector<double> times,
+                   const Optional<Array<String>>& shape_vars,
+                   const Optional<Array<IntImm>>& shape_variant) = 0;
 
   /*!
    * \brief Check if a schedule already exists in the database

@@ -84,8 +84,10 @@ Array<MeasureResult> TuneContextNode::Measure(const Array<MeasureInput>& measure
     const MeasureResult& measure_result = measure_results[i];
     MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
     if (error_no == MeasureErrorNO::kNoError) {
-      db->Add(measure_input->sch->trace, Repr(measure_input->sch),
-              AsVector<FloatImm, double>(measure_result->costs), measure_input->task);
+      db->Add(measure_input->sch->trace, measure_input->sch,
+              AsVector<FloatImm, double>(measure_result->costs),
+              measure_input->task->shape_vars,
+              measure_input->variant);
     }
     for (const MeasureCallback& callback : this->measure_callbacks) {
       callback->Callback(measure_input, measure_result);

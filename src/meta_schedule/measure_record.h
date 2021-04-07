@@ -100,7 +100,7 @@ class MeasureInputNode : public Object {
   /*! \brief Concrete schedule of the task */
   Schedule sch;
 
-  Optional<Array<ObjectRef>> variant;
+  Optional<Array<IntImm>> variant;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("task", &task);
@@ -127,7 +127,7 @@ class MeasureInput : public ObjectRef {
    * \param state Concrete schedule of the task
    */
   explicit MeasureInput(SearchTask task, Schedule sch,
-                        Optional<Array<ObjectRef>> variant = NullOpt);
+                        Optional<Array<IntImm>> variant = NullOpt);
 
   TVM_DEFINE_OBJECT_REF_METHODS(MeasureInput, ObjectRef, MeasureInputNode);
 };
