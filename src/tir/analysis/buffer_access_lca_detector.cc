@@ -95,22 +95,24 @@ class LCADetector : public StmtExprVisitor {
   }
 
   // Works for Load/Store and opaque access.
-  void VisitExpr_(const VarNode* op) final {
-    auto it = buffer_var_map_.find(op);
-    if (it != buffer_var_map_.end()) {
-      UpdateBufferLCA(it->second);
-    }
-  }
+  void VisitExpr_(const VarNode* op) final { VisitBufferVar(op); }
 
   // Explict to visit buffer data in Load and Store node.
   void VisitExpr_(const LoadNode* op) final {
     ExprVisitor::VisitExpr_(op);
-    VisitExpr(op->buffer_var);
+    VisitBufferVar(op->buffer_var.get());
   }
 
   void VisitStmt_(const StoreNode* op) final {
     StmtVisitor::VisitStmt_(op);
-    VisitExpr(op->buffer_var);
+    VisitBufferVar(op->buffer_var.get());
+  }
+
+  void VisitBufferVar(const VarNode* op) {
+    auto it = buffer_var_map_.find(op);
+    if (it != buffer_var_map_.end()) {
+      UpdateBufferLCA(it->second);
+    }
   }
 
   void UpdateBufferLCA(const BufferNode* buffer) {
