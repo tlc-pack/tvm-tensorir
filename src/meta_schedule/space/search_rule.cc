@@ -645,7 +645,6 @@ class RuleParallelizeVectorizeUnroll {
   Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
                         const BlockRV& block_rv) const {
     static std::unordered_set<Schedule, ObjectPtrHash, ObjectPtrEqual> visited;
-    // TODO(Hongyi)
     // adding annotation to the root block will cause segmentation fault in postprocessor.
     // so I put the annotation to the first visited block
     bool has_ann;

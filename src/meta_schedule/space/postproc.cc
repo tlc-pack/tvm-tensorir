@@ -200,7 +200,7 @@ class StrideExtractor : public tir::StmtExprVisitor {
   }
 
  private:
-  explicit StrideExtractor(const tir::Var& var) : var_(var), strides_() {}
+  explicit StrideExtractor(const tir::Var& var) : var_(var) {}
 
   void VisitExpr_(const tir::MulNode* node) final {
     StmtExprVisitor::VisitExpr_(node);
