@@ -163,6 +163,104 @@ void ParallelCompute(ScheduleState self, const StmtSRef& loop_sref, const ForKin
   self->Replace(loop_sref, For(new_loop), {});
 }
 
+/*! \brief A helper mutator which recursively mutates the old buffer's storage scope */
+class StorageScopeMutator : StmtExprMutator {
+ public:
+  /*!
+   * \param allocate_site The block where `old_buffer` was allocated.
+   * \param old_buffer The old buffer
+   * \param storage_scope The storage scope to be set
+   * \return The new block after the mutation
+   */
+  static Block Replace(const Block& allocate_site, const Buffer& old_buffer,
+                       const String& storage_scope) {
+    Buffer new_buffer = old_buffer->WithScope(storage_scope);
+    StorageScopeMutator replacer(old_buffer, new_buffer);
+    Stmt result = replacer.VisitStmt(allocate_site);
+    ICHECK(result->IsInstance<BlockNode>());
+    return Downcast<Block>(result);
+  }
+
+ private:
+  StorageScopeMutator(Buffer oldBuffer, Buffer newBuffer)
+      : old_buffer_(std::move(oldBuffer)), new_buffer_(std::move(newBuffer)) {}
+
+  Stmt VisitStmt_(const BufferStoreNode* op) final {
+    Stmt res = StmtMutator::VisitStmt_(op);
+    if (op->buffer.same_as(old_buffer_)) {
+      ObjectPtr<BufferStoreNode> ptr = CopyOnWrite(res.as<BufferStoreNode>());
+      ptr->buffer = new_buffer_;
+      return Stmt(ptr);
+    } else {
+      return res;
+    }
+  }
+
+  Stmt VisitStmt_(const BufferRealizeNode* op) final {
+    Stmt res = StmtMutator::VisitStmt_(op);
+    if (op->buffer.same_as(old_buffer_)) {
+      ObjectPtr<BufferRealizeNode> ptr = CopyOnWrite(res.as<BufferRealizeNode>());
+      ptr->buffer = new_buffer_;
+      return Stmt(ptr);
+    } else {
+      return res;
+    }
+  }
+
+  Stmt VisitStmt_(const BlockNode* op) final {
+    Stmt res = StmtMutator::VisitStmt_(op);
+    ObjectPtr<BlockNode> block = CopyOnWrite(res.as<BlockNode>());
+    // Step 1. Mutate read region.
+    Array<BufferRegion> reads;
+    for (const BufferRegion& read : block->reads) {
+      if (read->buffer.same_as(old_buffer_)) {
+        reads.push_back(BufferRegion(new_buffer_, read->region));
+      } else {
+        reads.push_back(read);
+      }
+    }
+    block->reads = reads;
+    // Step 2. Mutate write region.
+    Array<BufferRegion> writes;
+    for (const BufferRegion& write : block->writes) {
+      if (write->buffer.same_as(old_buffer_)) {
+        writes.push_back(BufferRegion(new_buffer_, write->region));
+      } else {
+        writes.push_back(write);
+      }
+    }
+    block->writes = writes;
+    // Step 3. Mutate match_buffers.
+    Array<MatchBufferRegion> match_buffers;
+    for (const MatchBufferRegion& match_buffer : block->match_buffers) {
+      if (match_buffer->source->buffer.same_as(old_buffer_)) {
+        match_buffers.push_back(MatchBufferRegion(
+            match_buffer->buffer, BufferRegion(new_buffer_, match_buffer->source->region)));
+      } else {
+        match_buffers.push_back(match_buffer);
+      }
+    }
+    block->match_buffers = match_buffers;
+    return Stmt(block);
+  }
+
+  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
+    PrimExpr res = ExprMutator::VisitExpr_(op);
+    if (op->buffer.same_as(old_buffer_)) {
+      ObjectPtr<BufferLoadNode> ptr = CopyOnWrite(res.as<BufferLoadNode>());
+      ptr->buffer = new_buffer_;
+      return PrimExpr(ptr);
+    } else {
+      return res;
+    }
+  }
+
+  /*! \brief The old buffer */
+  Buffer old_buffer_;
+  /*! \brief The new buffer */
+  Buffer new_buffer_;
+};
+
 void Vectorize(ScheduleState self, const StmtSRef& loop_sref) {
   if (is_one(loop_sref->StmtAs<ForNode>()->extent)) {
     return;
@@ -218,6 +316,57 @@ void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref) {
   Block new_block =
       WithAnnotation(block_ptr, tir::attr::double_buffer_scope, IntImm(DataType::Int(32), 1));
   self->Replace(block_sref, new_block, {{GetRef<Block>(block_ptr), new_block}});
+}
+
+void SetScope(ScheduleState self, const StmtSRef& block_sref, int i, const String& storage_scope) {
+  const auto* block_ptr = block_sref->StmtAs<BlockNode>();
+  CHECK(block_ptr) << "TypeError: set_scope expects a block as its first argument";
+  CHECK_GE(i, 0) << "ValueError: index out of range";
+  CHECK_LT(i, block_ptr->writes.size()) << "ValueError: index out of range";
+  Buffer buffer = block_ptr->writes[i]->buffer;
+  // Climb up along the sref tree, and find the block where `buffer` is allocated.
+  const StmtSRefNode* allocate_site_sref = block_sref.get();
+  {
+    while (allocate_site_sref != nullptr) {
+      const auto* block = allocate_site_sref->StmtAs<BlockNode>();
+      if (block == nullptr) {
+        allocate_site_sref = allocate_site_sref->parent;
+        continue;
+      }
+      bool allocated_here = false;
+      for (const Buffer& buf : block->alloc_buffers) {
+        if (buffer.same_as(buf)) {
+          allocated_here = true;
+          break;
+        }
+      }
+      if (!allocated_here) {
+        for (const MatchBufferRegion matchBufferRegion : block->match_buffers) {
+          if (matchBufferRegion->buffer.same_as(buffer)) {
+            allocated_here = true;
+            break;
+          }
+        }
+      }
+      if (allocated_here) {
+        break;
+      }
+      allocate_site_sref = allocate_site_sref->parent;
+    }
+  }
+  // If we cannot find the allocate site from `alloc_buffers` and `match_buffers` of some block, it
+  // means that the buffer is in the function's buffer_map, which isn't an intermediate buffer.
+  CHECK_NE(allocate_site_sref, nullptr)
+      << "ValueError: The buffer is expected to be an intermediate buffer allocated in some block";
+  const auto* allocate_site = allocate_site_sref->StmtAs<BlockNode>();
+  // The allocate site must be a block.
+  ICHECK_NE(allocate_site, nullptr);
+  // Recursively replace the old buffer to a new buffer, where the new buffer has the given storage
+  // scope.
+  Block new_block =
+      StorageScopeMutator::Replace(GetRef<Block>(allocate_site), buffer, storage_scope);
+  self->Replace(GetRef<StmtSRef>(allocate_site_sref), new_block,
+                {{GetRef<Block>(allocate_site), new_block}});
 }
 
 }  // namespace schedule

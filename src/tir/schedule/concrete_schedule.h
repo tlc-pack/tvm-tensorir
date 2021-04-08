@@ -162,6 +162,8 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   void DoubleBuffer(const BlockRV& block_rv) override;
 
+  void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) override;
+
   void Pragma(const LoopRV& loop_rv, const String& pragma_type,
               const ExprRV& pragma_value) override;
 
