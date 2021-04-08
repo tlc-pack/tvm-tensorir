@@ -35,6 +35,7 @@ def Apply(ftransform):
     fpass : tvm.transform.Pass
         The result pass
     """
+
     # pylint: disable=unused-argument
     def _transform(func, mod, ctx):
         return ftransform(func)
@@ -55,6 +56,7 @@ def Filter(fcond):
     fpass : tvm.transform.Pass
         The result pass
     """
+
     # pylint: disable=unused-argument
     def _transform(func, mod, ctx):
         return func if fcond(func) else None
@@ -595,6 +597,19 @@ def CompactBufferAllocation():
         The result pass
     """
     return _ffi_api.CompactBufferAllocation()
+
+
+def FlattenBuffer():
+    """Flatten the multi-dimensional BufferLoad and BufferStore
+    to single dimensional Load/Store. Also remove Block so that
+    ensure that the Tir after flatten can not be scheduled again.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.FlattenBuffer()
 
 
 # pylint: disable=no-else-return,inconsistent-return-statements
