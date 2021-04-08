@@ -340,7 +340,7 @@ class ScheduleNode : public runtime::Object {
   /*!
    * \brief Set the storage scope of a buffer, which is the i-th write buffer of the given block
    * \param block_rv The producer of the buffer
-   * \param i The producer of the buffer
+   * \param i The index of the buffer in block's write region
    * \param storage_scope The storage scope to be set
    */
   virtual void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) = 0;
