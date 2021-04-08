@@ -684,7 +684,7 @@ struct SetScopeAttrs : public InstAttrsNode {
   static Instruction Make(const BlockRV& block, int i, const String& storage_scope);
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SetScopeAttrs,                       //
-                                      "meta_schedule.attrs.SetScopeAttr",  //
+                                      "meta_schedule.attrs.SetScopeAttrs",  //
                                       "SetScope", false);
 };
 

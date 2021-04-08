@@ -186,6 +186,7 @@ class VectorizeAttrs(InstAttrs):
 class RFactorAttrs(InstAttrs):
     """Attrs of the instruction that applies rfactor"""
 
+
 @register_object("meta_schedule.attrs.SetScopeAttrs")
 class SetScopeAttrs(InstAttrs):
     """Attrs of the instruction that applies set_scope"""
