@@ -855,6 +855,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  private:
   /******** Visitors ********/
   void VisitStmt_(const tir::BlockRealizeNode* realize) override {
+    // TODO(Hongyi): think of better ways of judging init block in the future
     if (std::string(realize->block->name_hint).find("_init") != std::string::npos) {
       return;
     }
