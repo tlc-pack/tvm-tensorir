@@ -452,7 +452,10 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     Parsed parsed;
     tir::BlockRV root_rv = sch->GetBlock("root");
     tir::StmtSRef root = sch->GetSRef(root_rv);
-    MakeAnnParser (&parsed)(sch->Get(root_rv).get());
+    bool find_ann = MakeAnnParser(&parsed)(sch->Get(root_rv).get());
+    if (!find_ann) {
+      return true;
+    }
     RemoveParsedAnn(sch, root, parsed);
     for (const BlockRV& block_rv : sch->GetChildBlocks(root_rv)) {
       tir::StmtSRef block_sref = sch->GetSRef(block_rv);
