@@ -163,27 +163,33 @@ void ParallelCompute(ScheduleState self, const StmtSRef& loop_sref, const ForKin
   self->Replace(loop_sref, For(new_loop), {});
 }
 
-/*! \brief A helper mutator which recursively mutates the old buffer's storage scope */
+/*!
+ * \brief A helper mutator which recursively mutates the old buffer's storage scope and collects
+ *         the block sref reuse information for the following replacement.
+ */
 class StorageScopeMutator : StmtExprMutator {
  public:
   /*!
    * \param allocate_site The block where `old_buffer` was allocated.
    * \param old_buffer The old buffer
    * \param storage_scope The storage scope to be set
+   * \param block_sref_reuse The block sref reuse map to be updated
    * \return The new block after the mutation
    */
-  static Block Replace(const Block& allocate_site, const Buffer& old_buffer,
-                       const String& storage_scope) {
+  static Block Mutate(const Block& allocate_site, const Buffer& old_buffer,
+                       const String& storage_scope, Map<Block, Block>* block_sref_reuse) {
     Buffer new_buffer = old_buffer->WithScope(storage_scope);
-    StorageScopeMutator replacer(old_buffer, new_buffer);
+    StorageScopeMutator replacer(old_buffer, new_buffer, block_sref_reuse);
     Stmt result = replacer.VisitStmt(allocate_site);
     ICHECK(result->IsInstance<BlockNode>());
     return Downcast<Block>(result);
   }
 
  private:
-  StorageScopeMutator(Buffer oldBuffer, Buffer newBuffer)
-      : old_buffer_(std::move(oldBuffer)), new_buffer_(std::move(newBuffer)) {}
+  StorageScopeMutator(Buffer oldBuffer, Buffer newBuffer, Map<Block, Block>* block_sref_reuse)
+      : old_buffer_(std::move(oldBuffer)),
+        new_buffer_(std::move(newBuffer)),
+        block_sref_reuse_(block_sref_reuse) {}
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     Stmt res = StmtMutator::VisitStmt_(op);
@@ -230,7 +236,17 @@ class StorageScopeMutator : StmtExprMutator {
       }
     }
     block->writes = writes;
-    // Step 3. Mutate match_buffers.
+    // Step 3. Mutate alloc_buffers.
+    Array<Buffer> alloc_buffers;
+    for (const Buffer& buffer : block->alloc_buffers) {
+      if (buffer.same_as(old_buffer_)) {
+        alloc_buffers.push_back(new_buffer_);
+      } else {
+        alloc_buffers.push_back(buffer);
+      }
+    }
+    block->alloc_buffers = alloc_buffers;
+    // Step 4. Mutate match_buffers.
     Array<MatchBufferRegion> match_buffers;
     for (const MatchBufferRegion& match_buffer : block->match_buffers) {
       if (match_buffer->source->buffer.same_as(old_buffer_)) {
@@ -241,6 +257,7 @@ class StorageScopeMutator : StmtExprMutator {
       }
     }
     block->match_buffers = match_buffers;
+    block_sref_reuse_->Set(GetRef<Block>(op), Block(block));
     return Stmt(block);
   }
 
@@ -259,6 +276,8 @@ class StorageScopeMutator : StmtExprMutator {
   Buffer old_buffer_;
   /*! \brief The new buffer */
   Buffer new_buffer_;
+  /*! \brief The block sref reuse map for the following replacement */
+  Map<Block, Block>* block_sref_reuse_;
 };
 
 void Vectorize(ScheduleState self, const StmtSRef& loop_sref) {
@@ -362,11 +381,11 @@ void SetScope(ScheduleState self, const StmtSRef& block_sref, int i, const Strin
   // The allocate site must be a block.
   ICHECK_NE(allocate_site, nullptr);
   // Recursively replace the old buffer to a new buffer, where the new buffer has the given storage
-  // scope.
-  Block new_block =
-      StorageScopeMutator::Replace(GetRef<Block>(allocate_site), buffer, storage_scope);
-  self->Replace(GetRef<StmtSRef>(allocate_site_sref), new_block,
-                {{GetRef<Block>(allocate_site), new_block}});
+  // scope. At the meanwhile, collect the block sref reuse information.
+  Map<Block, Block> block_reuse_map;
+  Block new_block = StorageScopeMutator::Mutate(GetRef<Block>(allocate_site), buffer, storage_scope,
+                                                &block_reuse_map);
+  self->Replace(GetRef<StmtSRef>(allocate_site_sref), new_block, block_reuse_map);
 }
 
 }  // namespace schedule
