@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/node/serialization.h>
 #include <tvm/support/parallel_for.h>
 
 #include <mutex>   // NOLINT(build/c++11)
@@ -213,6 +214,16 @@ class EvolutionaryNode : public SearchStrategyNode {
     return result;
   }
 
+  static std::vector<tir::PrimFunc> ForkWorkload(int n, tir::PrimFunc& workload) {
+    std::vector<tir::PrimFunc> result;
+    result.reserve(n);
+    for (int i = 0; i < n; i++) {
+      auto deep_copy = Downcast<tir::PrimFunc>(LoadJSON(SaveJSON(workload)));
+      result.push_back(deep_copy);
+    }
+    return result;
+  }
+
   /*!
    * \brief Replay the trace and do postprocessing
    * \param n The number of samplers to be forked
@@ -220,8 +231,9 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \return A list of samplers, the result of forking
    */
   static Optional<Schedule> ReplayTrace(const Trace& trace, const SearchTask& task,
-                                        const SearchSpace& space, Sampler* sampler) {
-    Schedule sch(task->workload, sampler->ForkSeed());
+                                        const SearchSpace& space, Sampler* sampler,
+                                        const tir::PrimFunc& workload) {
+    Schedule sch(workload, sampler->ForkSeed());
     trace->Apply(sch);
     if (!space->Postprocess(task, sch, sampler)) {
       return NullOpt;
@@ -467,16 +479,18 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   // Threading RNG
   int num_threads = std::thread::hardware_concurrency();
   std::vector<Sampler> thread_samplers = ForkSamplers(num_threads, global_sampler);
+  std::vector<tir::PrimFunc> thread_workloads = ForkWorkload(num_threads, task->workload);
   // Pick measured states
   int num_measured = this->population * this->init_measured_ratio;
   for (const Database::Entry& entry : database->GetTopK(num_measured)) {
     results.push_back(entry.trace.value());
   }
-  auto f_proc_measured = [this, &results, &thread_samplers, &task, &space](int thread_id,
-                                                                           int i) -> void {
+  auto f_proc_measured = [this, &results, &thread_samplers, &task, &space, thread_workloads](
+                             int thread_id, int i) -> void {
     Sampler* sampler = &thread_samplers[thread_id];
     const Trace& trace = results[i];
-    if (Optional<Schedule> opt_sch = ReplayTrace(trace, task, space, sampler)) {
+    if (Optional<Schedule> opt_sch =
+            ReplayTrace(trace, task, space, sampler, thread_workloads[thread_id])) {
       Schedule sch = opt_sch.value();
       this->AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
     } else {
@@ -487,15 +501,15 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   support::parallel_persist_for(0, results.size(), f_proc_measured);
   // Pick unmeasured states
   std::atomic<int> fail_ct(0);
-  auto f_proc_unmeasured = [this, &results, &thread_samplers, &fail_ct, &task, &space, &support](
-                               int thread_id, int i) -> void {
+  auto f_proc_unmeasured = [this, &results, &thread_samplers, &fail_ct, &task, &space, &support,
+                            thread_workloads](int thread_id, int i) -> void {
     Sampler* sampler = &thread_samplers[thread_id];
     for (;;) {
       const Trace& support_trace = support[sampler->SampleInt(0, support.size())]->trace;
       Map<Instruction, ObjectRef> decisions;
       try {
-        if (Optional<Schedule> opt_sch =
-                ReplayTrace(Trace(support_trace->insts, decisions), task, space, sampler)) {
+        if (Optional<Schedule> opt_sch = ReplayTrace(Trace(support_trace->insts, decisions), task,
+                                                     space, sampler, thread_workloads[thread_id])) {
           Schedule sch = opt_sch.value();
           Trace trace(sch->trace->insts, sch->trace->decisions);
           this->AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
@@ -525,6 +539,7 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
   // Threading RNG
   int num_threads = std::thread::hardware_concurrency();
   std::vector<Sampler> thread_samplers = ForkSamplers(num_threads, global_sampler);
+  std::vector<tir::PrimFunc> thread_workloads = ForkWorkload(num_threads, task->workload);
   std::vector<std::function<int()>> thread_trace_samplers(num_threads);
   std::vector<std::function<Optional<Mutator>()>> thread_mutator_samplers(num_threads);
   std::vector<int> trace_used;
@@ -567,7 +582,7 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
     // The worker function
     auto f_find_candidate = [&thread_samplers, &thread_trace_samplers, &thread_mutator_samplers,
                              &trace_used, &trace_used_mutex, &sch_curr, &sch_next, &task, &space,
-                             this](int thread_id, int i) {
+                             thread_workloads, this](int thread_id, int i) {
       // Prepare samplers
       Sampler* sampler = &thread_samplers[thread_id];
       const std::function<int()>& trace_sampler = thread_trace_samplers[thread_id];
@@ -585,7 +600,8 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
           if (Optional<Trace> opt_new_trace =
                   mutator->Apply(task, GetRef<Trace>(cached_trace.trace), sampler)) {
             Trace new_trace = opt_new_trace.value();
-            if (Optional<Schedule> opt_sch = ReplayTrace(new_trace, task, space, sampler)) {
+            if (Optional<Schedule> opt_sch =
+                    ReplayTrace(new_trace, task, space, sampler, thread_workloads[thread_id])) {
               Schedule sch = opt_sch.value();
               CachedTrace new_cached_trace{new_trace.get(), sch, Repr(sch), -1.0};
               this->AddCachedTrace(new_cached_trace);
