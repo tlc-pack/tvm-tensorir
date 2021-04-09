@@ -122,10 +122,10 @@ class ReductionTransformer : public StmtMutator {
  * \brief Detecting the LCA of buffer access points of
  *        buffers for calculating the realize region
  */
-class LCADetector : public StmtExprVisitor {
+class LCACollector : public StmtExprVisitor {
  public:
   static Map<Buffer, Optional<For>> Detect(const PrimFunc& func) {
-    LCADetector detector;
+    LCACollector detector;
     // Buffers, who appear as arguments, do not have allocation sites
     for (const auto& kv : func->buffer_map) {
       const Buffer& buffer = kv.second;
@@ -259,7 +259,7 @@ class BufferAccessRewriter : public StmtExprMutator {
 class BufferAllocator : public StmtExprMutator {
  public:
   static Stmt Alloc(const PrimFunc& f) {
-    Map<Buffer, Optional<For>> buffer_lca = LCADetector::Detect(f);
+    Map<Buffer, Optional<For>> buffer_lca = LCACollector::Detect(f);
     SMap<Buffer, BufferInfo> buffer_info;
     SMap<Optional<For>, Array<Buffer>> loop_allocs;
     buffer_info.reserve(buffer_lca.size());
