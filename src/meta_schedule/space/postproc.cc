@@ -191,6 +191,59 @@ Postproc RewriteCooperativeFetch() {
 
 /********** RewriteParallelizeVectorizeUnroll **********/
 
+class StrideExtractor : public tir::StmtExprVisitor {
+ public:
+  static int64_t Extract(const PrimExpr& expr, const tir::Var& var) {
+    StrideExtractor extractor(var);
+    extractor.VisitExpr(expr);
+    return extractor.strides_[expr.get()];
+  }
+
+ private:
+  explicit StrideExtractor(const tir::Var& var) : var_(var) {}
+
+  void VisitExpr_(const tir::MulNode* node) final {
+    StmtExprVisitor::VisitExpr_(node);
+
+    if (const auto* a = node->a.as<IntImmNode>()) {
+      if (strides_.count(node->b.get())) {
+        strides_[node] = strides_[node->b.get()] * a->value;
+      }
+    } else if (const auto* b = node->b.as<IntImmNode>()) {
+      if (strides_.count(node->a.get())) {
+        strides_[node] = strides_[node->a.get()] * b->value;
+      }
+    }
+  }
+
+  void VisitExpr_(const tir::AddNode* node) final {
+    StmtExprVisitor::VisitExpr_(node);
+    int64_t stride_a, stride_b;
+    if (strides_.count(node->a.get())) {
+      stride_a = strides_[node->a.get()];
+    } else {
+      stride_a = INT64_MAX;
+    }
+    if (strides_.count(node->b.get())) {
+      stride_b = strides_[node->b.get()];
+    } else {
+      stride_b = INT64_MAX;
+    }
+    if (stride_a != INT64_MAX || stride_b != INT64_MAX) {
+      strides_[node] = std::min(stride_a, stride_b);
+    }
+  }
+
+  void VisitExpr_(const tir::VarNode* node) final {
+    if (node == var_.get()) {
+      strides_[node] = 1;
+    }
+  }
+
+  const tir::Var& var_;
+  std::unordered_map<const PrimExprNode*, int64_t> strides_;
+};
+
 class PostprocRewriteParallelizeVectorizeUnroll {
  public:
   struct Parsed {
@@ -266,6 +319,65 @@ class PostprocRewriteParallelizeVectorizeUnroll {
         loop_types.push_back(GetLoopIterType(sch->state(), loop_srefs.back()));
       }
     }
+    // check the maximal number of axes that are vectorizable (contiguous memory access)
+    tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
+    Array<tir::BufferRegion> buffer_access(realize->block->reads);
+    buffer_access.insert(buffer_access.end(), realize->block->writes.begin(),
+                         realize->block->writes.end());
+    std::unordered_map<const tir::VarNode*, PrimExpr> binding_map;
+    for (size_t i = 0; i < realize->iter_values.size(); i++) {
+      binding_map[realize->block->iter_vars[i]->var.get()] = realize->iter_values[i];
+    }
+    int max_fusible = INT32_MAX;
+    // for each block read/write, get the strides of the loop vars and find the fusible
+    // (vectorizable) axes
+    for (const tir::BufferRegion& access : buffer_access) {
+      int fusible = 0;
+      std::vector<int64_t> strides;
+      // get strides for each loop var
+      for (const tir::StmtSRef& loop_sref : loop_srefs) {
+        int64_t stride = 0, buffer_stride = 1;
+        const auto* var = loop_sref->StmtAs<tir::ForNode>();
+        arith::Analyzer analyzer;
+        for (int i = access->region.size() - 1; i >= 0; i--) {
+          PrimExpr idx = analyzer.Simplify(tir::Substitute(access->region[i]->min, binding_map));
+          int64_t coef = StrideExtractor::Extract(idx, var->loop_var);
+          if (coef != 0) {
+            stride = coef * buffer_stride;
+            break;
+          }
+          buffer_stride *= access->buffer->shape[i].as<IntImmNode>()->value;
+        }
+        strides.push_back(stride);
+      }
+      int prev_used_iter = -1;
+      // check the number of fusible loops
+      for (int i = strides.size() - 1; i >= 0; i--) {
+        if (strides[i] == 0) {
+          // not used in the buffer access, safe to fuse
+          fusible++;
+          continue;
+        } else if (prev_used_iter == -1) {
+          // the stride of last axis is not 1 means the memory access is not contiguous
+          if (strides[i] != 1) {
+            break;
+          }
+          fusible++;
+          prev_used_iter = i;
+        } else {
+          // contiguous memory access
+          const auto* prev_loop = loop_srefs[prev_used_iter]->StmtAs<tir::ForNode>();
+          int64_t prev_used_iter_extent = prev_loop->extent.as<IntImmNode>()->value;
+          if (strides[i] == strides[prev_used_iter] * prev_used_iter_extent) {
+            fusible++;
+            prev_used_iter = i;
+          } else {
+            break;
+          }
+        }
+      }
+      max_fusible = std::min(max_fusible, fusible);
+    }
     // Calculate the parallelize extent
     if (parsed->max_parallel_extent != -1) {
       int max_extent = parsed->max_parallel_extent;
@@ -298,9 +410,15 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       int max_extent = parsed->max_vectorize_extent;
       int& num_fusible = parsed->num_vectorize_loops = 0;
       int64_t prod_extent = 1;
-      for (int i = n_loops - 1; i >= 0 && loop_types[i] == tir::IterVarType::kDataPar; --i) {
+      for (int i = n_loops - 1;
+           i >= 0 && loop_types[i] == tir::IterVarType::kDataPar && num_fusible < max_fusible;
+           --i) {
         const tir::StmtSRef& loop_sref = loop_srefs[i];
         if (HasAnyAnn(loop_sref)) {
+          break;
+        }
+        // Cannot vectorize reduce axis
+        if (GetLoopIterType(sch->state(), loop_sref) != tir::IterVarType::kDataPar) {
           break;
         }
         // Cannot fuse with a loop with multiple children
@@ -332,14 +450,15 @@ class PostprocRewriteParallelizeVectorizeUnroll {
 
   bool Proc(const Schedule& sch) const {
     Parsed parsed;
-    while (Optional<tir::StmtSRef> opt_block_sref =
-               FindBlockSRef(sch->state(), MakeAnnParser(&parsed))) {
-      // Extract block info
-      tir::StmtSRef block_sref = opt_block_sref.value();
-      RemoveParsedAnn(sch, block_sref, parsed);
-      const auto* block = block_sref->StmtAs<tir::BlockNode>();
-      BlockRV block_rv = sch->GetBlock(block->name_hint);
-      // Extract loop info
+    tir::BlockRV root_rv = sch->GetBlock("root");
+    tir::StmtSRef root = sch->GetSRef(root_rv);
+    bool find_ann = MakeAnnParser(&parsed)(sch->Get(root_rv).get());
+    if (!find_ann) {
+      return true;
+    }
+    RemoveParsedAnn(sch, root, parsed);
+    for (const BlockRV& block_rv : sch->GetChildBlocks(root_rv)) {
+      tir::StmtSRef block_sref = sch->GetSRef(block_rv);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
       if (n_loops == 0) {

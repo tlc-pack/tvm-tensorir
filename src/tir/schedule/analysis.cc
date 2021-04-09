@@ -661,10 +661,6 @@ Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef
       visited_reduce = true;
     }
     result.push_back(loop_sref);
-    // If the loop has multiple children, then do not go into it anymore
-    if (!HasSingleChild(loop_sref)) {
-      break;
-    }
   }
   return result;
 }
