@@ -214,12 +214,17 @@ class StorageScopeMutator : StmtExprMutator {
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
+    bool changed = false;
     Stmt res = StmtMutator::VisitStmt_(op);
+    if (res.get() != op) {
+      changed = true;
+    }
     ObjectPtr<BlockNode> block = CopyOnWrite(res.as<BlockNode>());
     // Step 1. Mutate read region.
     Array<BufferRegion> reads;
     for (const BufferRegion& read : block->reads) {
       if (read->buffer.same_as(old_buffer_)) {
+        changed = true;
         reads.push_back(BufferRegion(new_buffer_, read->region));
       } else {
         reads.push_back(read);
@@ -230,6 +235,7 @@ class StorageScopeMutator : StmtExprMutator {
     Array<BufferRegion> writes;
     for (const BufferRegion& write : block->writes) {
       if (write->buffer.same_as(old_buffer_)) {
+        changed = true;
         writes.push_back(BufferRegion(new_buffer_, write->region));
       } else {
         writes.push_back(write);
@@ -240,6 +246,7 @@ class StorageScopeMutator : StmtExprMutator {
     Array<Buffer> alloc_buffers;
     for (const Buffer& buffer : block->alloc_buffers) {
       if (buffer.same_as(old_buffer_)) {
+        changed = true;
         alloc_buffers.push_back(new_buffer_);
       } else {
         alloc_buffers.push_back(buffer);
@@ -250,6 +257,7 @@ class StorageScopeMutator : StmtExprMutator {
     Array<MatchBufferRegion> match_buffers;
     for (const MatchBufferRegion& match_buffer : block->match_buffers) {
       if (match_buffer->source->buffer.same_as(old_buffer_)) {
+        changed = true;
         match_buffers.push_back(MatchBufferRegion(
             match_buffer->buffer, BufferRegion(new_buffer_, match_buffer->source->region)));
       } else {
@@ -257,8 +265,12 @@ class StorageScopeMutator : StmtExprMutator {
       }
     }
     block->match_buffers = match_buffers;
-    block_sref_reuse_->Set(GetRef<Block>(op), Block(block));
-    return Stmt(block);
+    if (changed) {
+      block_sref_reuse_->Set(GetRef<Block>(op), Block(block));
+      return Stmt(block);
+    } else {
+      return GetRef<Block>(op);
+    }
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
