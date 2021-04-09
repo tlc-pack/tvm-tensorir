@@ -666,7 +666,7 @@ struct BindAttrs : public InstAttrsNode {
 struct SetScopeAttrs : public InstAttrsNode {
   /*! \brief The index of the buffer in block's write region */
   int i;
-  /*! \brief The storage scope of the instruction cache_write */
+  /*! \brief The storage scope to be set */
   String storage_scope;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -675,7 +675,8 @@ struct SetScopeAttrs : public InstAttrsNode {
   }
 
   /*!
-   * \brief Set the storage scope of a buffer, which is the i-th write buffer of the given block
+   * \brief Set the storage scope of a buffer, where the buffer is given as the i-th write buffer
+   *        of the input block
    * \param block The producer of the buffer
    * \param i The index of the buffer in block's write region
    * \param storage_scope The The storage scope to be set
