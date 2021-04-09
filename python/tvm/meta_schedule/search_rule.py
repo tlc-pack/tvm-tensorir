@@ -153,7 +153,7 @@ def multi_level_tiling(
     cache_write_scope: str,
     consumer_inline_strict: bool,
     fusion_levels: List[int],
-    max_innermost_factor: int = 16,
+    max_innermost_factor: int = 64,
     vector_load_max_len: Optional[int] = None,
     tile_binds: Optional[List[str]] = None,
 ) -> SearchRule:
@@ -265,7 +265,7 @@ def mark_tensorize(tensor_intrins: List[TensorIntrin]) -> SearchRule:
     return _ffi_api_search_rule.MarkTensorize(tensor_intrins)  # pylint: disable=no-member
 
 
-def simplify_compute_with_const_tensor(max_innermost_factor: int = 16) -> SearchRule:
+def simplify_compute_with_const_tensor(max_innermost_factor: int = 64) -> SearchRule:
     """Simplify compute with const tensor by unrolling indices of the const tensor.
 
     Parameteters
