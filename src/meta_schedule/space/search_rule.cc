@@ -642,57 +642,32 @@ class RuleParallelizeVectorizeUnroll {
         unroll_explicit(other.unroll_explicit),
         warned_num_cores_missing(static_cast<int>(other.warned_num_cores_missing)) {}
 
-  static bool IsLeftmostSubroot(const tir::Schedule& sch, tir::StmtSRef block_sref) {
-    if (!IsSubrootBlock(sch->state(), block_sref)) {
-      return false;
-    }
-    tir::StmtSRefNode* child_sref = block_sref.operator->();
-    for (tir::StmtSRefNode* parent_sref = child_sref->parent;;
-         child_sref = parent_sref, parent_sref = child_sref->parent) {
-      const auto* parent_loop = parent_sref->StmtAs<tir::ForNode>();
-      if (parent_loop == nullptr) {
-        return true;
-      }
-      const auto* seq_stmt = parent_loop->body.as<tir::SeqStmtNode>();
-      if (seq_stmt == nullptr) {
-        continue;
-      }
-      const tir::Stmt& first_child = seq_stmt->seq[0];
-      if (first_child.get() != child_sref->stmt) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
                         const BlockRV& block_rv) const {
-    // Extract basic information
-    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
-    tir::StmtSRef block_sref = sch->GetSRef(block_rv);
-    // Check if the block is root and leaf
-    bool is_leftmost_root = IsLeftmostSubroot(sch, block_sref);
-    bool is_leaf = IsLeafBlock(sch->state(), block_sref);
+    BlockRV root_rv = sch->GetBlock("root");
+    if (HasAnyAnn(sch->GetSRef(root_rv))) {
+      return {sch};
+    }
     // Parallelization
-    if (max_jobs_per_core != -1 && is_leftmost_root) {
+    if (max_jobs_per_core != -1) {
       int max_extent =
           GetTargetNumCores(task->target, &warned_num_cores_missing) * max_jobs_per_core;
-      sch->MarkBlock(block_rv, tir::attr::auto_parallel_extent, max_extent);
+      sch->MarkBlock(root_rv, tir::attr::auto_parallel_extent, max_extent);
     }
     // Vectorization
-    if (max_vectorize_extent != -1 && is_leaf) {
-      sch->MarkBlock(block_rv, tir::attr::auto_vectorize_extent, max_vectorize_extent);
+    if (max_vectorize_extent != -1) {
+      sch->MarkBlock(root_rv, tir::attr::auto_vectorize_extent, max_vectorize_extent);
     }
     // Unroll
-    if (!unroll_max_steps.empty() && is_leftmost_root) {
+    if (!unroll_max_steps.empty()) {
       int n = unroll_max_steps.size();
       double prob = 1.0 / n;
       Array<FloatImm> probs(n, FloatImm(DataType::Float(64), prob));
       tir::Var max_step = sch->SampleCategorical(unroll_max_steps, probs);
       if (unroll_explicit) {
-        sch->MarkBlock(block_rv, tir::attr::auto_unroll_explicit, max_step);
+        sch->MarkBlock(root_rv, tir::attr::auto_unroll_explicit, max_step);
       } else {
-        sch->MarkBlock(block_rv, tir::attr::auto_unroll_implicit, max_step);
+        sch->MarkBlock(root_rv, tir::attr::auto_unroll_implicit, max_step);
       }
     }
     return {sch};
