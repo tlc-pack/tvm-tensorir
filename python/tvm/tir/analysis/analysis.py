@@ -27,6 +27,7 @@ from .. import Buffer, Stmt
 
 if TYPE_CHECKING:
     from ..function import PrimFunc
+    from .. import Buffer, Stmt
 
 
 def expr_deep_equal(lhs: PrimExpr, rhs: PrimExpr) -> bool:
