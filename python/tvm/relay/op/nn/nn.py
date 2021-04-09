@@ -220,7 +220,10 @@ def conv2d(
     # TODO enforce 4-way padding in topi/nn/conv2d after #4644 merged
     # convert 2-way padding to 4-way padding
     padding = get_pad_tuple2d(padding)
-    return _make.conv2d(
+
+    # <bojian/TVM-SymbolicTuning>
+    # return _make.conv2d(
+    result = _make.conv2d(
         data,
         weight,
         strides,
@@ -234,6 +237,17 @@ def conv2d(
         out_layout,
         out_dtype,
     )
+    # import tvm
+    # from tvm import relay, topi
+
+    # print("X.shape={}".format(topi.utils.get_const_tuple(data.type_annotation.shape)))
+    # f = relay.shape_of(data)
+
+    # m = tvm.IRModule()
+    # m['main'] = relay.Function([data], f)
+    # m = relay.transform.InferType()(m)
+    # print(m['main'].ret_type)
+    return result
 
 
 def conv3d(

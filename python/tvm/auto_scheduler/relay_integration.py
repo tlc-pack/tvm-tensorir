@@ -173,6 +173,18 @@ class TracingEnvironment:
         self.wkl_key_to_weight = {}
         self.wkl_key_to_input_names = {}
 
+
+    # <bojian/TVM-SymbolicTuning>
+    def gather_all_conv2d_workloads(self, t):
+        padded_tensor = t.op.input_tensors[0]
+        X = padded_tensor.op.input_tensors[0]
+        W = t.op.input_tensors[1]
+        from tvm import topi
+        print("Conv2D Workload Recorded: X.shape={}, W.shape={}, Y.shape={}"
+              .format(topi.utils.get_const_tuple(X.shape),
+                      topi.utils.get_const_tuple(W.shape),
+                      topi.utils.get_const_tuple(t.shape)))
+
     def __enter__(self):
         TracingEnvironment.current = self
         return self
@@ -248,6 +260,10 @@ def traverse_to_get_io_tensors(outs):
     has_complex_op = False
     visited = set()
 
+
+    # <bojian/TVM-SymbolicTuning>
+    tracing_env = TracingEnvironment.current
+
     def traverse(t):
         nonlocal has_complex_op
 
@@ -256,10 +272,26 @@ def traverse_to_get_io_tensors(outs):
         assert t.handle is not None
         if t.handle.value in visited:
             return
+
+        # <bojian/TVM-SymbolicTuning>
+        # from tvm import topi
+        # try:
+        #     input_tensors = ['{}'.format(topi.utils.get_const_tuple(_t.shape))
+        #                      for _t in t.op.input_tensors]
+        #     print('{}: [{}] -> {}'.format(t.op.tag, ', '.join(input_tensors), topi.utils.get_const_tuple(t.shape)))
+        # except AttributeError:
+        #     pass
+
         if isinstance(t.op, PlaceholderOp):
             inputs.append(t)
         elif isinstance(t.op, ComputeOp):
             has_complex_op = has_complex_op or any([isinstance(e, Reduce) for e in t.op.body])
+
+            # <bojian/TVM-SymbolicTuning>
+            if "conv2d" in t.op.tag:
+                tracing_env.gather_all_conv2d_workloads(t)
+
+
             if "layout_free_placeholders" in t.op.attrs:
                 layout_free_ops.append(t.op)
             for x in t.op.input_tensors:
