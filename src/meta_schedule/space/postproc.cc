@@ -451,18 +451,14 @@ class PostprocRewriteParallelizeVectorizeUnroll {
 
   bool Proc(const Schedule& sch) const {
     Parsed parsed;
-    while (Optional<tir::StmtSRef> opt_block_sref =
-               FindBlockSRef(sch->state(), MakeAnnParser(&parsed))) {
     tir::BlockRV root_rv = sch->GetBlock("root");
     tir::StmtSRef root = sch->GetSRef(root_rv);
-    // find the only block that has annotations related with parallel/vectorize/unroll
-    Optional<tir::StmtSRef> opt_block_sref = FindBlockSRef(sch->state(), MakeAnnParser(&parsed));
-    if (!opt_block_sref.defined()) {
+    bool find_ann = MakeAnnParser(&parsed)(sch->Get(root_rv).get());
+    if (!find_ann) {
       return true;
     }
-    RemoveParsedAnn(sch, opt_block_sref.value(), parsed);
+    RemoveParsedAnn(sch, root, parsed);
     for (const BlockRV& block_rv : sch->GetChildBlocks(root_rv)) {
-   // Extract loop info
       tir::StmtSRef block_sref = sch->GetSRef(block_rv);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
@@ -499,8 +495,6 @@ class PostprocRewriteParallelizeVectorizeUnroll {
         }
       }
     }
-    //    LOG(INFO)<<tir::Repr(sch);
-
     return true;
   }
 };
@@ -750,7 +744,6 @@ Postproc VerifyGPUCode() {
   };
   return Postproc("verify_gpu_code", f_proc);
 }
-
 class PostProcRewriteLayout {
  private:
   class IterVarMapCollector {
