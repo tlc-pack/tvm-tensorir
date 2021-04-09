@@ -33,14 +33,14 @@ namespace tir {
 class BufferAllocationLocator : public StmtExprMutator {
  public:
   explicit BufferAllocationLocator(const PrimFunc& func) {
-    Map<Buffer, Stmt> buffer_lac = DetectBufferAccessLCA(func);
+    Map<Buffer, Stmt> buffer_lca = DetectBufferAccessLCA(func);
     std::set<const BufferNode*> arg_buffers;
     for (const auto& kv : func->buffer_map) {
       const Buffer& buffer = kv.second;
       arg_buffers.emplace(buffer.get());
       buffer_alloc_outer_.Set(buffer->data, buffer);
     }
-    for (const auto& pair : buffer_lac) {
+    for (const auto& pair : buffer_lca) {
       const Buffer& buffer = pair.first;
       if (arg_buffers.find(buffer.get()) != arg_buffers.end()) continue;
       const StmtNode* stmt = pair.second.get();
@@ -110,9 +110,10 @@ class BufferAllocationLocator : public StmtExprMutator {
 
       if (!is_root) {
         // Recalculate block access region
-        auto access = GetBlockAccessRegion(GetRef<Block>(op), buffer_alloc_outer_);
-        auto reads = access[0];
-        auto writes = access[1];
+        Array<Array<BufferRegion>> access =
+            GetBlockAccessRegion(GetRef<Block>(op), buffer_alloc_outer_);
+        Array<BufferRegion> reads = access[0];
+        Array<BufferRegion> writes = access[1];
         for (const auto& opaque_access : access[2]) {
           reads.push_back(opaque_access);
           writes.push_back(opaque_access);
