@@ -71,15 +71,9 @@ class BufferFlattener : public StmtExprMutator {
     if (!is_one(predicate)) {
       body = IfThenElse(predicate, body);
     }
-    // Step 3. Pick out blocks that writes with double buffering
-    if (IsDoubleBufferScope(block->annotations)) {
-      ICHECK_EQ(block->writes.size(), 1);
-      const Buffer& write = block->writes[0]->buffer;
-      double_buffered_.insert(write.get());
-    }
     // Step 4. Handle allocations
     for (const Buffer& buffer : block->alloc_buffers) {
-      body = MakeAllocStmt(buffer, body, double_buffered_.count(buffer.get()));
+      body = MakeAllocStmt(buffer, body);
     }
     return body;
   }
@@ -139,7 +133,7 @@ class BufferFlattener : public StmtExprMutator {
     return StmtExprMutator::VisitExpr_(op);
   }
 
-  static Stmt MakeAllocStmt(const Buffer& buffer, Stmt body, bool is_double_buffer) {
+  static Stmt MakeAllocStmt(const Buffer& buffer, Stmt body) {
     if (IsReduceTempBuffer(buffer)) {
       return body;
     }
@@ -150,9 +144,6 @@ class BufferFlattener : public StmtExprMutator {
     PrimExpr area = BufferArea(buffer);
     body = Allocate(buffer->data, buffer->dtype, {area}, const_true(), body);
     body = AttrStmt(buffer->data, attr::storage_scope, StringImm(storage_scope), body);
-    if (is_double_buffer) {
-      body = AttrStmt(buffer->data, attr::double_buffer_scope, Integer(1), body);
-    }
     return body;
   }
 
@@ -166,19 +157,6 @@ class BufferFlattener : public StmtExprMutator {
     body = AttrStmt(iter_var, attr_key, extent, body);
     return body;
   }
-
-  static bool IsDoubleBufferScope(const Map<String, ObjectRef>& annotations) {
-    if (Optional<ObjectRef> ann_value = annotations.Get(attr::double_buffer_scope)) {
-      const auto* value = ann_value.as<PrimExprNode>();
-      ICHECK(value != nullptr);
-      if (is_one(GetRef<PrimExpr>(value))) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  std::unordered_set<const BufferNode*> double_buffered_;
 };
 
 PrimFunc FlattenBuffer(PrimFunc f) {
