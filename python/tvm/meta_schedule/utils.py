@@ -586,7 +586,6 @@ def rpc_runner_run(
         verbose,
     )
 
-    print('rpc runner run')
     assert len(measure_inputs) == len(
         build_results
     ), "Measure input size should be equal to build results"
@@ -675,10 +674,12 @@ def rpc_runner_worker(
                     args_set = []
                     shape_vars = measure_input.task.shape_vars
                     variant = measure_input.variant
-                    binds = {
-                        shape_vars[k]: variant[k].value
-                        for k in range(len(shape_vars))
-                    }
+                    binds = None
+                    if shape_vars is not None and variant is not None:
+                        binds = {
+                            shape_vars[k]: variant[k].value
+                            for k in range(len(shape_vars))
+                        }
                     args_set = [
                         realize_arguments(remote, ctx, measure_input.task.workload, binds)
                         for _ in range(rpc_eval_repeat)

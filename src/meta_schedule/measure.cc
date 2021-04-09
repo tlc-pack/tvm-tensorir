@@ -240,7 +240,7 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
       const MeasureInput& measure_input = batch_measure_inputs[i];
       const MeasureResult& measure_result = batch_measure_results[i];
       const String& task_name = measure_input->task->task_name;
-      double flop_ct = CalculateFlop(measure_input->sch, measure_input->task->shape_vars.value(), measure_input->variant.value());
+      double flop_ct = CalculateFlop(measure_input->sch, measure_input->task->shape_vars, measure_input->variant);
       MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
       ++num_measures;
       if (error_no == MeasureErrorNO::kNoError) {

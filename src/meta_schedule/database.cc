@@ -114,7 +114,8 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask& task) {
   Schedule sch(orig_func);
   TraceNode::Deserialize(trace_obj, sch);
   InfoMap<std::vector<double>> info2gflops; 
-  WorkloadInfo info{variant};
+  WorkloadInfo info;
+  if (variant.defined()) info.shape_variant = variant;
   info2gflops[info] = CalculateGFlops(sch, shape_vars, variant, AsVector<FloatImm, double>(times));
   return Database::Entry{sch->trace, Repr(sch), info2gflops};
 }
@@ -174,6 +175,7 @@ class InMemoryDBNode : public DatabaseNode {
       };
       support::parallel_persist_for(0, n_loaded, worker);
       int total_valid = 0;
+      LOG(INFO) << "Finish read records.";
       for (int i = 0; i < n_loaded; ++i) {
         const Entry& entry = records[i];
         if (entry.trace.defined()) {
@@ -247,9 +249,9 @@ class InMemoryDBNode : public DatabaseNode {
            const Optional<Array<String>>& shape_vars,
            const Optional<Array<IntImm>>& shape_variant) override {
     InfoMap<std::vector<double>> info2gflops; 
-    WorkloadInfo info{shape_variant.value()};
-    std::vector<double> gflops = CalculateGFlops(sch, shape_vars.value(), shape_variant.value(), times);
-    info2gflops[info] = CalculateGFlops(sch, shape_vars.value(), shape_variant.value(), times);
+    WorkloadInfo info;
+    if (shape_variant.defined()) info.shape_variant = shape_variant.value();
+    info2gflops[info] = CalculateGFlops(sch, shape_vars, shape_variant, times);
     this->Add(trace, Repr(sch), info2gflops);
   }
 

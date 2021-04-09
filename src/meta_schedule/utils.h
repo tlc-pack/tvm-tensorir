@@ -180,39 +180,42 @@ inline Optional<tir::StmtSRef> FindBlockSRef(const tir::ScheduleState& sch, FPre
 double CountFlop(const tir::PrimFunc& func);
 
 inline double CalculateFlop(tir::Schedule sch,
-                            Array<String> shape_vars,
-                            Array<IntImm> variant) {
+                            Optional<Array<String>> optional_shape_vars,
+                            Optional<Array<IntImm>> optional_variant) {
   IRModule mod = sch->mod();
   tir::PrimFunc func = Downcast<tir::PrimFunc>(mod->Lookup("main"));
-
-  Map<String, IntImm> value_map;
-  ICHECK_EQ(shape_vars.size(), variant.size());
-  for (size_t i = 0; i < shape_vars.size(); ++i) {
-    value_map.Set(shape_vars[i], variant[i]);
-  }
-  auto vmap = [&](const tir::Var& var) -> Optional<PrimExpr> {
-    auto it = value_map.find(var->name_hint);
-    if (it != value_map.end()) return (*it).second;
-    return Optional<PrimExpr>(nullptr);
-  };
-  tir::Stmt body = Substitute(func->body, vmap);
-  Array<tir::Var> params;
-  for (auto var : func->params) {
-    if (value_map.find(var->name_hint) == value_map.end()) {
-      params.push_back(var);
+  if (optional_shape_vars.defined() && optional_variant.defined()) {
+    Array<String> shape_vars = optional_shape_vars.value();
+    Array<IntImm> variant = optional_variant.value();
+    Map<String, IntImm> value_map;
+    ICHECK_EQ(shape_vars.size(), variant.size());
+    for (size_t i = 0; i < shape_vars.size(); ++i) {
+      value_map.Set(shape_vars[i], variant[i]);
     }
+    auto vmap = [&](const tir::Var& var) -> Optional<PrimExpr> {
+      auto it = value_map.find(var->name_hint);
+      if (it != value_map.end()) return (*it).second;
+      return Optional<PrimExpr>(nullptr);
+    };
+    tir::Stmt body = Substitute(func->body, vmap);
+    Array<tir::Var> params;
+    for (auto var : func->params) {
+      if (value_map.find(var->name_hint) == value_map.end()) {
+        params.push_back(var);
+      }
+    }
+    func = tir::PrimFunc(params, body, func->ret_type,
+                         func->buffer_map, func->attrs);
+    IRModule new_mod = tir::transform::Simplify()(IRModule::FromExpr(func));
+    func = Downcast<tir::PrimFunc>(new_mod->Lookup("main"));
   }
-  func = tir::PrimFunc(params, body, func->ret_type,
-                       func->buffer_map, func->attrs);
-  IRModule new_mod = tir::transform::Simplify()(IRModule::FromExpr(func));
-  func = Downcast<tir::PrimFunc>(new_mod->Lookup("main"));
   double flop = CountFlop(func);
   return flop;
 }
 
 inline std::vector<double> CalculateGFlops(tir::Schedule sch,
-                                           Array<String> shape_vars,
-                                           Array<IntImm> variant,
+                                           Optional<Array<String>> shape_vars,
+                                           Optional<Array<IntImm>> variant,
                                            std::vector<double> times) {
   double flop = CalculateFlop(sch, shape_vars, variant);
   std::vector<double> gflops(times.size());
