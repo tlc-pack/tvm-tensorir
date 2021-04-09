@@ -347,77 +347,77 @@ class MutatorParallel {
    * \param trace The trace from which to find the instructions
    * \return All the candidate instructions
    */
-  std::vector<Candidate> FindCandidates(const Trace& trace, const tir::PrimFunc& workload,
-                                        const int& max_extent) const {
-    std::vector<Candidate> candidates;
+  Candidate FindCandidates(const Trace& trace, const tir::PrimFunc& workload,
+                           const int& max_extent) const {
     Schedule sch(workload);
-    auto f_provide_decision = [&trace, &sch, &candidates, &max_extent](
-                                  const Instruction& inst,
-                                  const Array<Optional<ObjectRef>>& inputs) -> Optional<ObjectRef> {
-      Optional<ObjectRef> decision = trace->decisions.Get(inst);
+    std::set<int> extent_candidates;
+    extent_candidates.insert(1);
+    for (size_t i = 0; i < trace->insts.size(); i++) {
+      const Instruction& mark_inst = trace->insts[i];
       // Step 1. Find the `MarkBlockAttr` whose ann_key is `auto_parallel_extent`
       //         and whose parallel extent is given by an integer.
-      if (const auto* attr = inst->inst_attrs.as<MarkBlockAttrs>()) {
-        ICHECK_EQ(inst->inputs.size(), 2);
-        if (attr->ann_key != tir::attr::auto_parallel_extent ||
-            !inst->inputs[1]->IsInstance<IntImmNode>()) {
-          return decision;
+      if (const auto* mark_attr = mark_inst->inst_attrs.as<MarkBlockAttrs>()) {
+        ICHECK_EQ(mark_inst->inputs.size(), 2);
+        if (mark_attr->ann_key != tir::attr::auto_parallel_extent ||
+            !mark_inst->inputs[1]->IsInstance<IntImmNode>()) {
+          continue;
         }
-        // Step 2. Fetch the block and the loops above it. Furthermore, get their loop types.
-        BlockRV block_rv = Downcast<BlockRV>(inputs[0]);
-        tir::StmtSRef block_sref = sch->GetSRef(block_rv);
-        Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
-        std::vector<int> loop_types;
-        for (const tir::StmtSRef& loop_sref : loop_srefs) {
-          loop_types.emplace_back(GetLoopIterType(sch->state(), loop_sref));
+        tir::StmtSRef root_sref = tir::GetBlocks(sch->state(), "root")[0];
+        // Step 2. For all the leaf blocks ,fetch the loops above it.
+        // Furthermore, get their loop types.
+        for (const auto& block_sref : tir::GetChildBlocks(sch->state(), root_sref)) {
+          Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
+          std::vector<int> loop_types;
+          for (const tir::StmtSRef& loop_sref : loop_srefs) {
+            loop_types.emplace_back(GetLoopIterType(sch->state(), loop_sref));
+          }
+          // Step 3. Get the original parallel extent.
+          int ori_extent = mark_inst->inputs[1].as<IntImmNode>()->value;
+          // Step 4. Find extent candidates.
+          int prod_extent = 1;
+          for (int i = 0; i < static_cast<int>(loop_srefs.size()) &&
+                          loop_types[i] == tir::IterVarType::kDataPar;
+               ++i) {
+            const tir::StmtSRef& loop_sref = loop_srefs[i];
+            if (HasAnyAnn(loop_sref)) {
+              break;
+            }
+            // Check if the loop extent is valid
+            int64_t extent = GetLoopIntExtent(loop_sref);
+            if (extent == -1) {
+              break;
+            }
+            // Then we can fuse it in. Moreover, if extent is not 1 and extent does not
+            // equal the original extent, then it is a valid candidate.
+            if (extent != 1) {
+              prod_extent *= extent;
+              if (prod_extent > max_extent) {
+                break;
+              }
+              if (prod_extent != ori_extent) {
+                extent_candidates.insert(prod_extent);
+              }
+            }
+            // Check if we need to break.
+            if (!HasSingleChild(loop_sref)) {
+              break;
+            }
+          }
         }
-        // Step 3. Get the original parallel extent.
-        int ori_extent = inst->inputs[1].as<IntImmNode>()->value;
-        // Step 4. Find extent candidates.
-        int prod_extent = 1;
-        std::vector<int> extent_candidates;
-        for (int i = 0;
-             i < static_cast<int>(loop_srefs.size()) && loop_types[i] == tir::IterVarType::kDataPar;
-             ++i) {
-          const tir::StmtSRef& loop_sref = loop_srefs[i];
-          if (HasAnyAnn(loop_sref)) {
-            break;
-          }
-          // Check if the loop extent is valid
-          int64_t extent = GetLoopIntExtent(loop_sref);
-          if (extent == -1) {
-            break;
-          }
-          // Then we can fuse it in. Moreover, if extent is not 1 and extent does not
-          // equal the original extent, then it is a valid candidate.
-          if (extent != 1 && extent != ori_extent) {
-            prod_extent *= extent;
-            extent_candidates.emplace_back(prod_extent);
-          }
-          // Check if we need to break.
-          if (prod_extent > max_extent || !HasSingleChild(loop_sref)) {
-            break;
-          }
-        }
-
-        if (!extent_candidates.empty()) {
-          candidates.emplace_back(inst, extent_candidates);
-        }
+        return Candidate(mark_inst,
+                         std::vector<int>(extent_candidates.begin(), extent_candidates.end()));
       }
-      return decision;
-    };
-    trace->Apply(sch, f_provide_decision);
-    return candidates;
+    }
+    return Candidate(Instruction({}, {}, InstAttrs()), {});
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) const {
     int max_extent =
         GetTargetNumCores(task->target, &warned_num_cores_missing) * max_jobs_per_core - 1;
-    std::vector<Candidate> candidates = FindCandidates(trace, task->workload, max_extent);
-    if (candidates.empty()) {
+    Candidate candidate = FindCandidates(trace, task->workload, max_extent);
+    if (candidate.extent_candidates.empty()) {
       return NullOpt;
     }
-    const Candidate& candidate = candidates[sampler->SampleInt(0, candidates.size())];
     const BlockRV& block = Downcast<BlockRV>(candidate.inst->inputs[0]);
     const std::vector<int>& extent_candidates = candidate.extent_candidates;
     const int& parallel_size = extent_candidates[sampler->SampleInt(0, extent_candidates.size())];
