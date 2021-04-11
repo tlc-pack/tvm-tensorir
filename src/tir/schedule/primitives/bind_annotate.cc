@@ -214,17 +214,6 @@ class StorageScopeMutator : StmtExprMutator {
     }
   }
 
-  Stmt VisitStmt_(const BufferRealizeNode* op) final {
-    Stmt res = StmtMutator::VisitStmt_(op);
-    if (op->buffer.same_as(old_buffer_)) {
-      ObjectPtr<BufferRealizeNode> ptr = CopyOnWrite(res.as<BufferRealizeNode>());
-      ptr->buffer = new_buffer_;
-      return Stmt(ptr);
-    } else {
-      return res;
-    }
-  }
-
   Stmt VisitStmt_(const BlockNode* op) final {
     // To reduce the number of blocks in block sref reuse map, we check whether the block is really
     // mutated (i.e., the old buffer appears in the block). If so, we return the block after
