@@ -1079,16 +1079,27 @@ class RuleCrossThreadReduction {
                                           ? consumers_sref[0]
                                           : tir::LowestCommonAncestor(consumers_sref, root_sref);
 
-      for (int i = 0; i < static_cast<int>(consumers.size()); ++i) {
-        if (consumers_sref[i]->stmt == lca_sref->stmt) {
-          ICHECK(!target_block.defined());
-          target_block = consumers[i];
+      if (lca_sref->StmtAs<tir::BlockNode>() != nullptr) {
+        // LCA is a block.
+        for (int i = 0; i < static_cast<int>(consumers.size()); ++i) {
+          if (consumers_sref[i]->stmt == lca_sref->stmt) {
+            ICHECK(!target_block.defined());
+            target_block = consumers[i];
+          }
         }
-      }
 
-      // simple check
-      if (consumers.size() == 1) {
-        ICHECK(target_block.defined());
+        // simple check
+        if (consumers.size() == 1) {
+          ICHECK(target_block.defined());
+        }
+      } else {
+        // LCA is a for.
+        const auto* lca_loop = TVM_SREF_TO_FOR(lca_loop, lca_sref);
+        if (lca_loop->thread_binding.defined() &&
+            std::string(lca_loop->thread_binding.value()->thread_tag).substr(0, 10) ==
+                "blockIdx.x") {
+          target_block = consumers[0];
+        }
       }
     }
 
