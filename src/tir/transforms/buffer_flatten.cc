@@ -160,12 +160,23 @@ class LCACollector : public StmtExprVisitor {
   }
 
   void CalcBufferLCA(const BufferNode* buffer) {
+    // Note that `nullptr` means that lca is the root block!
+    const auto it = buffer_lca_.find(buffer);
+    if (it == buffer_lca_.end()) {
+      // If the buffer is visited for the first time, the lca is the most recent For loop.
+      buffer_lca_.emplace(buffer, ancestor_loops_.back());
+      return;
+    }
     const ForNode*& lca = buffer_lca_[buffer];
     lca = LowestCommonAncestor(lca, ancestor_loops_.back());
   }
 
   const ForNode* LowestCommonAncestor(const ForNode* lhs, const ForNode* rhs) const {
-    while (lhs != nullptr && rhs != nullptr && lhs != rhs) {
+    if (lhs == nullptr || rhs == nullptr) {
+      // The lca is the root block.
+      return nullptr;
+    }
+    while (lhs != rhs) {
       auto it_l = for_info_.find(lhs);
       auto it_r = for_info_.find(rhs);
       ICHECK(it_l != for_info_.end());
@@ -181,12 +192,7 @@ class LCACollector : public StmtExprVisitor {
         lhs = l.parent_loop;
       }
     }
-    if (lhs == nullptr) {
-      return rhs;
-    }
-    if (rhs == nullptr) {
-      return lhs;
-    }
+    ICHECK_EQ(lhs, rhs);
     return lhs;
   }
 
