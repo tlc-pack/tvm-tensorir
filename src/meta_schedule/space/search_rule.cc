@@ -1127,6 +1127,7 @@ class RuleCrossThreadReduction {
       const LoopRV& target_loop = target_block_loops[num_common_axes - 1];
 
       tmp_sch->ComputeAt(block_rv, target_loop, true);
+      tmp_sch->SetScope(block_rv, 0, "shared");
 
       // Reorder the loop axes if reduction loops are not innermost.
       // After the reordering, fuse all the reduction loops.
@@ -1137,6 +1138,7 @@ class RuleCrossThreadReduction {
       Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, Integer(warp_size)});
       ICHECK_EQ(split_res.size(), 2);
       tmp_sch->Bind(split_res[1], "threadIdx.x");
+      tmp_sch->Bind(target_loop, "blockIdx.x");
     } else {
       // Reorder the loop axes if reduction loops are not innermost.
       // After the reordering, fuse all the reduction loops.
