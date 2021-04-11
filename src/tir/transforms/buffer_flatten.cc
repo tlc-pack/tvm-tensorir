@@ -160,7 +160,7 @@ class LCACollector : public StmtExprVisitor {
   }
 
   void CalcBufferLCA(const BufferNode* buffer) {
-    // Note that `nullptr` means that lca is the root block!
+    // We use `nullptr` as lca to represent the case that the lca is the root block.
     const auto it = buffer_lca_.find(buffer);
     if (it == buffer_lca_.end()) {
       // If the buffer is visited for the first time, the lca is the most recent For loop.
