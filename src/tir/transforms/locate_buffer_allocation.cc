@@ -34,22 +34,19 @@ class BufferAllocationLocator : public StmtExprMutator {
  public:
   explicit BufferAllocationLocator(const PrimFunc& func) {
     Map<Buffer, Stmt> buffer_lca = DetectBufferAccessLCA(func);
-    std::set<const BufferNode*> arg_buffers;
+    std::unordered_set<const BufferNode*> arg_buffers;
     for (const auto& kv : func->buffer_map) {
       const Buffer& buffer = kv.second;
       arg_buffers.emplace(buffer.get());
       buffer_alloc_outer_.Set(buffer->data, buffer);
     }
-    for (const auto& pair : buffer_lca) {
-      const Buffer& buffer = pair.first;
-      if (arg_buffers.find(buffer.get()) != arg_buffers.end()) continue;
-      const StmtNode* stmt = pair.second.get();
-      auto it = alloc_buffers_.find(stmt);
-      if (it == alloc_buffers_.end()) {
-        alloc_buffers_[stmt] = {buffer};
-      } else {
-        it->second.push_back(buffer);
+    for (const auto& kv : buffer_lca) {
+      const Buffer& buffer = kv.first;
+      const StmtNode* stmt = kv.second.get();
+      if (arg_buffers.count(buffer.get())) {
+        continue;
       }
+      alloc_buffers_[stmt].push_back(buffer);
     }
   }
 
@@ -128,7 +125,7 @@ class BufferAllocationLocator : public StmtExprMutator {
 
   Stmt VisitStmt_(const BufferRealizeNode* op) final {
     ICHECK(false) << "Internal Error: BufferRealizeNode is not allowed in TensorIR.";
-    return StmtMutator::VisitStmt_(op);
+    throw;
   }
 
   Stmt InjectOpaqueBlock(const Stmt& body, const std::vector<Buffer>& alloc_buffers) {
@@ -152,7 +149,7 @@ class BufferAllocationLocator : public StmtExprMutator {
     return std::move(realize);
   }
 
-  std::map<const StmtNode*, std::vector<Buffer>> alloc_buffers_;
+  std::unordered_map<const StmtNode*, std::vector<Buffer>> alloc_buffers_;
   Map<Var, Buffer> buffer_alloc_outer_;
   bool is_root_{true};
 };
