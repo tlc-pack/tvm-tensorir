@@ -55,6 +55,7 @@ class InternalError(TVMError):
         super(InternalError, self).__init__(msg)
 
 
+register_error("IndexError", IndexError)
 register_error("ValueError", ValueError)
 register_error("TypeError", TypeError)
 register_error("AttributeError", AttributeError)
