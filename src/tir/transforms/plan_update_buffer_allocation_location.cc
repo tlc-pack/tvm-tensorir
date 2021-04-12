@@ -70,7 +70,7 @@ class BufferAllocationLocator : public StmtExprMutator {
       n->body = std::move(body);
       return Stmt(n);
     } else {
-      return GetRef<Stmt>(op);
+      return stmt;
     }
   }
 
@@ -85,8 +85,6 @@ class BufferAllocationLocator : public StmtExprMutator {
       for (const Buffer& buf : it->second) {
         buffer_alloc_outer_.Set(buf->data, buf);
       }
-    } else {
-      alloc_buffers = {};
     }
     Stmt stmt = StmtMutator::VisitStmt_(op);
     op = stmt.as<BlockNode>();
@@ -154,7 +152,7 @@ class BufferAllocationLocator : public StmtExprMutator {
   bool is_root_{true};
 };
 
-PrimFunc LocateBufferAllocation(PrimFunc func) {
+PrimFunc PlanAndUpdateBufferAllocationLocation(PrimFunc func) {
   auto fptr = func.CopyOnWrite();
   BufferAllocationLocator locator(func);
   fptr->body = locator(fptr->body);
@@ -163,14 +161,15 @@ PrimFunc LocateBufferAllocation(PrimFunc func) {
 
 namespace transform {
 
-Pass LocateBufferAllocation() {
+Pass PlanAndUpdateBufferAllocationLocation() {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
-    return LocateBufferAllocation(std::move(f));
+    return PlanAndUpdateBufferAllocationLocation(std::move(f));
   };
-  return CreatePrimFuncPass(pass_func, 0, "tir.LocateBufferAllocation", {});
+  return CreatePrimFuncPass(pass_func, 0, "tir.PlanAndUpdateBufferAllocationLocation", {});
 }
 
-TVM_REGISTER_GLOBAL("tir.transform.LocateBufferAllocation").set_body_typed(LocateBufferAllocation);
+TVM_REGISTER_GLOBAL("tir.transform.PlanAndUpdateBufferAllocationLocation")
+    .set_body_typed(PlanAndUpdateBufferAllocationLocation);
 
 }  // namespace transform
 

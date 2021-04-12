@@ -22,7 +22,7 @@ from tvm.script import ty
 def _check(original, transformed):
     func = original
     mod = tvm.IRModule.from_expr(func)
-    mod = tvm.tir.transform.LocateBufferAllocation()(mod)
+    mod = tvm.tir.transform.PlanAndUpdateBufferAllocationLocation()(mod)
     tvm.ir.assert_structural_equal(mod["main"], transformed)
 
 

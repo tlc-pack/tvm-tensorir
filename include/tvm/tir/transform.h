@@ -360,7 +360,7 @@ TVM_DLL Pass BufferFlatten();
  *        with alloc_buffers at the allocation site.
  * \return The pass.
  */
-TVM_DLL Pass LocateBufferAllocation();
+TVM_DLL Pass PlanAndUpdateBufferAllocationLocation();
 
 /*!
  * \brief Hoist loop-invariant IfThenElse nodes to
