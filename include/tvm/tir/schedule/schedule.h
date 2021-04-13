@@ -183,7 +183,7 @@ class ScheduleNode : public runtime::Object {
    */
   virtual BlockRV GetBlock(const String& name, const String& func_name = "main") = 0;
   /*!
-   * \brief Get the loops above the specific block in its scope, from outer to inner
+   * \brief Get the parent loops of the block in its scope, from outer to inner
    * \param block_rv The query block
    * \return A list of loops above the given block in its scope, from outer to inner
    */

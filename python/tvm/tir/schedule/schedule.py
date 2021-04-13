@@ -216,7 +216,7 @@ class Schedule(Object):
         )
 
     def get_loops(self, block: BlockRV) -> List[LoopRV]:
-        """Get the loops above the specific block in its scope, from outer to inner
+        """Get the parent loops of the block in its scope, from outer to inner
 
         Parameters
         ----------

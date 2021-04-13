@@ -42,7 +42,7 @@ void VerifySRefTree(const ScheduleState& self);
  */
 Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name, const String& func_name);
 /*!
- * \brief Get the loops above the specific block in its scope, from outer to inner
+ * \brief Get the parent loops of the block in its scope, from outer to inner
  * \param self The schedule state
  * \param block_sref The query block
  * \return A list of loops above the given block in its scope, from outer to inner
