@@ -37,11 +37,9 @@ class BlockRV(Object):
     """A random variable that refers to a block"""
 
 
-VarRV = Var  # An integer random variable
+IntRV = PrimExpr  #  A random variable that evaluates to an integer
 
-ExprRV = PrimExpr  #  A random variable that evaluates to an expression
-
-RAND_VAR_TYPE = Union[VarRV, ExprRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
+RAND_VAR_TYPE = Union[IntRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
 
 
 @_register_object("tir.Schedule")
@@ -118,7 +116,7 @@ class Schedule(Object):
 
         Parameters
         ----------
-        rand_var : Union[VarRV, ExprRV, BlockRV, LoopRV]
+        rand_var : Union[IntRV, BlockRV, LoopRV]
             The random variable to be evaluated
 
         Returns
@@ -137,14 +135,13 @@ class Schedule(Object):
         """Returns:
         - the corresponding Block that a BlockRV evaluates to;
         - the corresponding For that a LoopRV evaluates to;
-        - the corresponding integer that a VarRV evaluates to;
-        - the corresponding expression that a ExprRV evaluates to;
+        - the corresponding integer that a IntRV evaluates to;
         - the corresponding Block that a block sref points to;
         - the corresponding For that a loop sref points to;
 
         Parameters
         ----------
-        rand_var_or_sref : Union[VarRV, ExprRV, BlockRV, LoopRV, StmtSRef]
+        rand_var_or_sref : Union[IntRV, BlockRV, LoopRV, StmtSRef]
             The random variable / sref to be evaluated
 
         Returns
@@ -180,12 +177,12 @@ class Schedule(Object):
             self, rand_var_or_stmt
         )
 
-    def remove_rv(self, rand_var: Union[BlockRV, LoopRV, VarRV]) -> None:
+    def remove_rv(self, rand_var: RAND_VAR_TYPE) -> None:
         """Remove a random variable from the symbol table
 
         Parameters
         ----------
-        rand_var : Union[BlockRV, LoopRV, VarRV]
+        rand_var : Union[BlockRV, LoopRV, IntRV]
             The random variable to be removed
         """
         return _ffi_api_schedule.ScheduleRemoveRV(self, rand_var)  # pylint: disable=no-member

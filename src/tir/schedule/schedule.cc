@@ -79,8 +79,9 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGet")
       if (const auto* block_rv = obj.as<BlockRVNode>()) {
         return self->Get(GetRef<BlockRV>(block_rv));
       }
-      if (const auto* expr_rv = obj.as<PrimExprNode>()) {
-        return self->Get(GetRef<PrimExpr>(expr_rv));
+      if (const auto* int_rv = obj.as<IntRVNode>()) {
+        int64_t result = self->Get(GetRef<IntRV>(int_rv));
+        return IntImm(DataType::Int(32), result);
       }
       LOG(FATAL) << "TypeError: Cannot evaluate the random variable of type: " << obj->GetTypeKey()
                  << ". Its value is: " << obj;
@@ -108,8 +109,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRemoveRV")
       if (const auto* block_rv = obj.as<BlockRVNode>()) {
         return self->RemoveRV(GetRef<BlockRV>(block_rv));
       }
-      if (const auto* var_rv = obj.as<VarNode>()) {
-        return self->RemoveRV(GetRef<VarRV>(var_rv));
+      if (const auto* int_rv = obj.as<IntRVNode>()) {
+        return self->RemoveRV(GetRef<IntRV>(int_rv));
       }
       LOG(FATAL) << "TypeError: Invalid type: " << obj->GetTypeKey();
       throw;

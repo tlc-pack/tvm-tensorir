@@ -64,13 +64,12 @@ class ConcreteScheduleNode : public ScheduleNode {
   /******** Lookup random variables ********/
   inline Block Get(const BlockRV& block_rv) const final;
   inline For Get(const LoopRV& loop_rv) const final;
-  inline int64_t Get(const VarRV& var_rv) const final;
-  inline PrimExpr Get(const ExprRV& expr_rv) const final;
+  inline int64_t Get(const IntRV& expr_rv) const final;
   inline StmtSRef GetSRef(const BlockRV& block_rv) const final;
   inline StmtSRef GetSRef(const LoopRV& loop_rv) const final;
   void RemoveRV(const BlockRV& block_rv) final { RemoveFromSymbolTable(block_rv); }
   void RemoveRV(const LoopRV& loop_rv) final { RemoveFromSymbolTable(loop_rv); }
-  void RemoveRV(const VarRV& var_rv) final { RemoveFromSymbolTable(var_rv); }
+  void RemoveRV(const IntRV& int_rv) final { RemoveFromSymbolTable(int_rv); }
   using ScheduleNode::GetSRef;
 
  public:
@@ -93,7 +92,7 @@ class ConcreteScheduleNode : public ScheduleNode {
    * \return The new random variables created
    */
   template <class T>
-  inline Array<T> SetRV(const Array<StmtSRef>& srefs);
+  inline Array<T> CreateRV(const Array<StmtSRef>& srefs);
   /*!
    * \brief Add an sref as a random variable into the symbol table
    * \tparam T The type of the random variable
@@ -101,19 +100,19 @@ class ConcreteScheduleNode : public ScheduleNode {
    * \return The new random variable created
    */
   template <class T>
-  inline T SetRV(const StmtSRef& sref);
+  inline T CreateRV(const StmtSRef& sref);
   /*!
    * \brief Add an integer as a random variable into the symbol table
    * \param number The integer to be added to the symbol table
    * \return The new random variable created
    */
-  inline VarRV SetRV(int64_t number);
+  inline IntRV CreateRV(int64_t number);
   /*!
    * \brief Add integers as random variables into the symbol table
    * \param numbers The integers to be added to the symbol table
    * \return The new random variables created
    */
-  inline Array<VarRV> SetRV(const Array<Integer>& numbers);
+  inline Array<IntRV> CreateRV(const Array<Integer>& numbers);
   /*! \brief Remove a random variable from the symbol table */
   inline void RemoveFromSymbolTable(const ObjectRef& rv);
 };
@@ -134,10 +133,10 @@ inline For ConcreteScheduleNode::Get(const LoopRV& loop_rv) const {
   return GetRef<For>(loop);
 }
 
-inline int64_t ConcreteScheduleNode::Get(const VarRV& var_rv) const {
-  auto it = this->symbol_table_.find(var_rv);
+inline int64_t ConcreteScheduleNode::Get(const IntRV& int_rv) const {
+  auto it = this->symbol_table_.find(int_rv);
   if (it == this->symbol_table_.end()) {
-    LOG(FATAL) << "IndexError: Cannot find corresponding VarRV: " << var_rv;
+    LOG(FATAL) << "IndexError: Cannot find corresponding VarRV: " << int_rv;
   }
   const ObjectRef& obj = (*it).second;
   const auto* int_imm = obj.as<IntImmNode>();
@@ -146,14 +145,6 @@ inline int64_t ConcreteScheduleNode::Get(const VarRV& var_rv) const {
                << (obj.defined() ? obj->GetTypeKey() : "None");
   }
   return int_imm->value;
-}
-
-inline PrimExpr ConcreteScheduleNode::Get(const ExprRV& expr_rv) const {
-  PrimExpr transformed = Substitute(expr_rv, [this](const VarRV& var_rv) -> Optional<PrimExpr> {
-    // Replace all the var_rv with their corresponding value in the symbol table
-    return Integer(this->Get(var_rv));
-  });
-  return this->analyzer_->Simplify(transformed);
 }
 
 inline StmtSRef ConcreteScheduleNode::GetSRef(const BlockRV& block_rv) const {
@@ -201,7 +192,7 @@ inline StmtSRef ConcreteScheduleNode::GetSRef(const LoopRV& loop_rv) const {
 /******** Adding/Removing elements in the symbol table ********/
 
 template <class T>
-inline Array<T> ConcreteScheduleNode::SetRV(const Array<StmtSRef>& srefs) {
+inline Array<T> ConcreteScheduleNode::CreateRV(const Array<StmtSRef>& srefs) {
   Array<T> result;
   result.reserve(srefs.size());
   for (const StmtSRef& sref : srefs) {
@@ -213,24 +204,24 @@ inline Array<T> ConcreteScheduleNode::SetRV(const Array<StmtSRef>& srefs) {
 }
 
 template <class T>
-inline T ConcreteScheduleNode::SetRV(const StmtSRef& sref) {
+inline T ConcreteScheduleNode::CreateRV(const StmtSRef& sref) {
   T rv;
   this->symbol_table_.Set(rv, sref);
   return rv;
 }
 
-inline VarRV ConcreteScheduleNode::SetRV(int64_t number) {
-  VarRV rv;
+inline IntRV ConcreteScheduleNode::CreateRV(int64_t number) {
+  Var rv;
   this->symbol_table_.Set(rv, Integer(number));
   return rv;
 }
 
-inline Array<VarRV> ConcreteScheduleNode::SetRV(const Array<Integer>& numbers) {
-  Array<VarRV> result;
+inline Array<IntRV> ConcreteScheduleNode::CreateRV(const Array<Integer>& numbers) {
+  Array<IntRV> result;
   result.reserve(numbers.size());
   for (int64_t number : numbers) {
-    VarRV rv;
-    this->symbol_table_.Set(rv, Integer(number));
+    Var rv;
+    this->symbol_table_.Set(rv, IntImm(DataType::Int(32), number));
     result.push_back(rv);
   }
   return result;

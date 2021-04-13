@@ -67,13 +67,12 @@ class LoopRV : public runtime::ObjectRef {
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopRV, runtime::ObjectRef, LoopRVNode);
 };
 
-/**************** Random variable: ExprRV ****************/
+/**************** Random variable: IntRV ****************/
 
 /*! \brief An integer random variable */
-using VarRV = Var;
+using IntRV = PrimExpr;
 
-/*! \brief A random variable that evaluates to an expression */
-using ExprRV = PrimExpr;
+using IntRVNode = PrimExprNode;
 
 /**************** The schedule class ****************/
 
@@ -132,13 +131,7 @@ class ScheduleNode : public runtime::Object {
    * \param var_rv The random variable to be looked up
    * \return The corresponding value
    */
-  virtual int64_t Get(const VarRV& var_rv) const = 0;
-  /*!
-   * \brief Get the value corresponding to the specific random variable
-   * \param expr_rv The random variable to be looked up
-   * \return The corresponding value
-   */
-  virtual PrimExpr Get(const ExprRV& expr_rv) const = 0;
+  virtual int64_t Get(const IntRV& var_rv) const = 0;
   /*!
    * \brief Get the block sref corresponding to the specific BlockRV
    * \param block_rv The BlockRV to be looked up
@@ -177,7 +170,7 @@ class ScheduleNode : public runtime::Object {
    * \brief Remove an integer random variable from the symbol table
    * \param block_rv The random variable to be removed
    */
-  virtual void RemoveRV(const VarRV& var_rv) = 0;
+  virtual void RemoveRV(const IntRV& var_rv) = 0;
 
  public:
   /******** Block/Loop relation ********/
