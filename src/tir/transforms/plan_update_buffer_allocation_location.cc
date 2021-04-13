@@ -115,13 +115,13 @@ class BufferAllocationLocator : public StmtExprMutator {
     throw;
   }
 
-  Stmt InjectOpaqueBlock(const Stmt& body, const std::vector<Buffer>& alloc_buffers) {
+  Stmt InjectOpaqueBlock(Stmt body, const Array<Buffer>& alloc_buffers) {
     ICHECK(!alloc_buffers.empty());
     Block opaque_block(/*iter_vars=*/{},
                        /*reads=*/{},
                        /*writes=*/{},
                        /*name_hint=*/"",
-                       /*body=*/body,
+                       /*body=*/std::move(body),
                        /*init=*/NullOpt,
                        /*alloc_buffers=*/alloc_buffers);
     auto n = CopyOnWrite(opaque_block.get());
@@ -142,7 +142,7 @@ class BufferAllocationLocator : public StmtExprMutator {
   }
 
   /*! \brief The map from stmt to the buffers to be allocated under it. */
-  std::unordered_map<const StmtNode*, std::vector<Buffer>> alloc_buffers_;
+  std::unordered_map<const StmtNode*, Array<Buffer>> alloc_buffers_;
   /*! \brief The buffer already allocated during recursive visiting. */
   Map<Var, Buffer> buffer_data_to_buffer_;
   /*! \brief indicate the whether the block is root. */
