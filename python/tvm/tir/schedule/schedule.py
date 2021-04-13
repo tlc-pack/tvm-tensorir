@@ -215,7 +215,7 @@ class Schedule(Object):
             func_name,
         )
 
-    def get_axes(self, block: BlockRV) -> List[LoopRV]:
+    def get_loops(self, block: BlockRV) -> List[LoopRV]:
         """Get the loops above the specific block in its scope, from outer to inner
 
         Parameters
@@ -228,7 +228,7 @@ class Schedule(Object):
         loops : List[LoopRV]
             A list of loops above the given block in its scope, from outer to inner
         """
-        return _ffi_api_schedule.ScheduleGetAxes(self, block)  # pylint: disable=no-member
+        return _ffi_api_schedule.ScheduleGetLoops(self, block)  # pylint: disable=no-member
 
 
 @_register_object("tir.ConcreteSchedule")

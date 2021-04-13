@@ -47,7 +47,7 @@ Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name, const S
  * \param block_sref The query block
  * \return A list of loops above the given block in its scope, from outer to inner
  */
-Array<StmtSRef> GetAxes(const StmtSRef& block_sref);
+Array<StmtSRef> GetLoops(const StmtSRef& block_sref);
 /*!
  * \brief Get the leaf blocks of a scope where a specific block/loop is in
  * \param self The schedule state

@@ -48,7 +48,7 @@ Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name, const S
   return std::move(finder.results_);
 }
 
-Array<StmtSRef> GetAxes(const StmtSRef& block_sref) {
+Array<StmtSRef> GetLoops(const StmtSRef& block_sref) {
   std::vector<StmtSRef> result;
   for (StmtSRefNode* parent = block_sref->parent; parent && parent->stmt->IsInstance<ForNode>();
        parent = parent->parent) {

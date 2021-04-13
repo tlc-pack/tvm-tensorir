@@ -187,7 +187,7 @@ class ScheduleNode : public runtime::Object {
    * \param block_rv The query block
    * \return A list of loops above the given block in its scope, from outer to inner
    */
-  virtual Array<LoopRV> GetAxes(const BlockRV& block_rv) = 0;
+  virtual Array<LoopRV> GetLoops(const BlockRV& block_rv) = 0;
 };
 
 class Schedule : public runtime::ObjectRef {

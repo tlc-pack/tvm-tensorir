@@ -75,7 +75,7 @@ class ConcreteScheduleNode : public ScheduleNode {
  public:
   /******** Block/Loop relation ********/
   BlockRV GetBlock(const String& name, const String& func_name = "main") override;
-  Array<LoopRV> GetAxes(const BlockRV& block_rv) override;
+  Array<LoopRV> GetLoops(const BlockRV& block_rv) override;
 
   /******** Utility functions ********/
  protected:

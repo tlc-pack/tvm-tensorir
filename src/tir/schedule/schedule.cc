@@ -120,8 +120,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRemoveRV")
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetBlock")
     .set_body_method<Schedule>(&ScheduleNode::GetBlock);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetAxes")
-    .set_body_method<Schedule>(&ScheduleNode::GetAxes);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetLoops")
+    .set_body_method<Schedule>(&ScheduleNode::GetLoops);
 
 }  // namespace tir
 }  // namespace tvm

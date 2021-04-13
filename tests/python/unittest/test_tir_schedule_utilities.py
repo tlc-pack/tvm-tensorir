@@ -67,13 +67,13 @@ def test_tir_schedule_get_block():
     assert block.same_as(matmul.body.block.body.body.body[1].body.block)
 
 
-def test_tir_schedule_get_axes():
+def test_tir_schedule_get_loops():
     # Tests:
-    # - Schedule.get_axes
+    # - Schedule.get_loops
     # - Schedule.get
     sch = tir.Schedule(matmul, debug_mode=True)
     block_rv = sch.get_block(name="update")
-    i, j, k = sch.get_axes(block_rv)
+    i, j, k = sch.get_loops(block_rv)
     assert sch.get(i).loop_var.name == "i"
     assert sch.get(j).loop_var.name == "j"
     assert sch.get(k).loop_var.name == "k"
@@ -84,7 +84,7 @@ def test_tir_schedule_copy():
     # - Schedule.copy
     sch_1 = tir.Schedule(matmul, debug_mode=True)
     block_rv = sch_1.get_block(name="update")
-    i, j, k = sch_1.get_axes(block_rv)
+    i, j, k = sch_1.get_loops(block_rv)
     assert sch_1.get(i).loop_var.name == "i"
     assert sch_1.get(j).loop_var.name == "j"
     assert sch_1.get(k).loop_var.name == "k"
@@ -110,6 +110,6 @@ def test_tir_schedule_remove_rv():
 if __name__ == "__main__":
     test_tir_schedule_creation()
     test_tir_schedule_get_block()
-    test_tir_schedule_get_axes()
+    test_tir_schedule_get_loops()
     test_tir_schedule_copy()
     test_tir_schedule_remove_rv()

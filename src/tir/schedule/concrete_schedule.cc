@@ -192,8 +192,8 @@ BlockRV ConcreteScheduleNode::GetBlock(const String& name, const String& func_na
   return CreateRV<BlockRV>(blocks[0]);
 }
 
-Array<LoopRV> ConcreteScheduleNode::GetAxes(const BlockRV& block_rv) {
-  return CreateRV<LoopRV>(tir::GetAxes(this->GetSRef(block_rv)));
+Array<LoopRV> ConcreteScheduleNode::GetLoops(const BlockRV& block_rv) {
+  return CreateRV<LoopRV>(tir::GetLoops(this->GetSRef(block_rv)));
 }
 
 /******** FFI ********/
