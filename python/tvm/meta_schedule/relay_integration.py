@@ -93,11 +93,7 @@ def call_all_topi_funcs(mod, params, target):
                 "Get errors with GraphRuntimeCodegen for task extraction. "
                 "Fallback to VMCompiler."
             )
-            compiler = relay.vm.VMCompiler()
-            if params:
-                compiler.set_params(params)
-            mod = tvm.IRModule.from_expr(mod) if isinstance(mod, relay.Function) else mod
-            compiler.lower(mod, target)
+
 
     autotvm.GLOBAL_SCOPE.silent = old_autotvm_silent
 
