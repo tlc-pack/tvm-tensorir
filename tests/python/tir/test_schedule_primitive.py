@@ -491,6 +491,24 @@ def reverse_compute_at_with_producer_predicate(a: ty.handle, c: ty.handle) -> No
                 C[i_1] = B[i_1]
 
 
+@tvm.script.tir
+def element_wise_set_scope(a: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [128, 128])
+    A = tir.match_buffer(a, [128, 128])
+    B_shared = tir.alloc_buffer([128, 128], scope="shared")
+    for i0 in tir.thread_binding(0, 128, thread = "blockIdx.x"):
+        for ax1 in tir.thread_binding(0, 128, thread = "threadIdx.x"):
+            with tir.block([128, 128], "B") as [vi, vj]:
+                tir.bind(vi, i0)
+                tir.bind(vj, ax1)
+                B_shared[vi, vj] = A[vi, vj] * tir.float32(2)
+        for i1 in tir.thread_binding(0, 128, thread = "threadIdx.x"):
+            with tir.block([128, 128], "C") as [vi_1, vj_1]:
+                tir.bind(vi_1, i0)
+                tir.bind(vj_1, i1)
+                C[vi_1, vj_1] = B_shared[vi_1, vj_1] + tir.float32(1)
+
+
 # pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
 # fmt: on
 
@@ -780,6 +798,20 @@ def test_double_buffer():
     tvm.ir.assert_structural_equal(element_wise_double_buffer, s.mod["main"])
 
 
+def test_set_scope():
+    func = util.element_wise_stmt()
+    s = tir.Schedule(func, debug_mode=True)
+    B, C = s.get_block("B"), s.get_block("C")
+    ci, cj = s.get_axes(C)
+    s.compute_at(B, ci)
+    bi, bj = s.get_axes(B)
+    s.bind(bj, "threadIdx.x")
+    s.bind(cj, "threadIdx.x")
+    s.bind(bi, "blockIdx.x")
+    s.set_scope(B, 0, "shared")
+    tvm.ir.assert_structural_equal(element_wise_set_scope, s.mod["main"])
+
+
 if __name__ == "__main__":
     test_fuse()
     test_split_fuse()
@@ -800,3 +832,4 @@ if __name__ == "__main__":
     test_blockize_schedule()
     test_pragma()
     test_double_buffer()
+    test_set_scope()
