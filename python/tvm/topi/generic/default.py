@@ -40,4 +40,5 @@ def default_tir_schedule(outs):
     if target.kind.name not in ("llvm", "c"):
         raise RuntimeError("schedule not registered for '%s'" % target)
     func = te.create_func(outs)
+
     return func
