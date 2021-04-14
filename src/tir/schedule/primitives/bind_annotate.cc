@@ -177,26 +177,27 @@ class StorageScopeMutator : StmtExprMutator {
    * \return The new block after the mutation
    */
   static Block Mutate(const Block& allocate_site, const Buffer& old_buffer,
-                       const String& storage_scope, Map<Block, Block>* block_sref_reuse) {
+                      const String& storage_scope, Map<Block, Block>* block_sref_reuse) {
     Buffer new_buffer = old_buffer->WithScope(storage_scope);
-    StorageScopeMutator mutator(allocate_site, old_buffer, new_buffer, block_sref_reuse);
+    StorageScopeMutator mutator(old_buffer, new_buffer, storage_scope, block_sref_reuse);
     Stmt new_block = mutator.VisitStmt(allocate_site);
     return Downcast<Block>(new_block);
   }
 
  private:
-  StorageScopeMutator(Block allocate_site, Buffer old_buffer, Buffer new_buffer,
+  StorageScopeMutator(const Buffer& old_buffer, Buffer new_buffer, String storage_scope,
                       Map<Block, Block>* block_sref_reuse)
-      : allocate_site_(std::move(allocate_site)),
-        old_buffer_(std::move(old_buffer)),
-        new_buffer_(std::move(new_buffer)),
-        block_sref_reuse_(block_sref_reuse) {}
+      : storage_scope(std::move(storage_scope)),
+        block_sref_reuse_(block_sref_reuse) {
+    buffer_map_[old_buffer.get()] = std::move(new_buffer);
+  }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     PrimExpr res = ExprMutator::VisitExpr_(op);
-    if (op->buffer.same_as(old_buffer_)) {
+    auto it = buffer_map_.find(op->buffer.get());
+    if (it != buffer_map_.end()) {
       ObjectPtr<BufferLoadNode> ptr = CopyOnWrite(res.as<BufferLoadNode>());
-      ptr->buffer = new_buffer_;
+      ptr->buffer = it->second;
       return PrimExpr(ptr);
     } else {
       return res;
@@ -205,9 +206,10 @@ class StorageScopeMutator : StmtExprMutator {
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     Stmt res = StmtMutator::VisitStmt_(op);
-    if (op->buffer.same_as(old_buffer_)) {
+    auto it = buffer_map_.find(op->buffer.get());
+    if (it != buffer_map_.end()) {
       ObjectPtr<BufferStoreNode> ptr = CopyOnWrite(res.as<BufferStoreNode>());
-      ptr->buffer = new_buffer_;
+      ptr->buffer = it->second;
       return Stmt(ptr);
     } else {
       return res;
@@ -219,63 +221,66 @@ class StorageScopeMutator : StmtExprMutator {
     // mutated (i.e., the old buffer appears in the block). If so, we return the block after
     // mutation. Otherwise we just return the original block.
     bool changed = false;
-    Stmt res = StmtMutator::VisitStmt_(op);
-    if (res.get() != op) {
-      changed = true;
-    }
-    ObjectPtr<BlockNode> block = CopyOnWrite(res.as<BlockNode>());
     // Step 1. Mutate the read region.
     Array<BufferRegion> reads;
-    for (const BufferRegion& read : block->reads) {
-      if (read->buffer.same_as(old_buffer_)) {
+    for (const BufferRegion& read : op->reads) {
+      auto it = buffer_map_.find(read->buffer.get());
+      if (it != buffer_map_.end()) {
         changed = true;
-        reads.push_back(BufferRegion(new_buffer_, read->region));
+        reads.push_back(BufferRegion(it->second, read->region));
       } else {
         reads.push_back(read);
       }
     }
-    block->reads = reads;
     // Step 2. Mutate the write region.
     Array<BufferRegion> writes;
-    for (const BufferRegion& write : block->writes) {
-      if (write->buffer.same_as(old_buffer_)) {
+    for (const BufferRegion& write : op->writes) {
+      auto it = buffer_map_.find(write->buffer.get());
+      if (it != buffer_map_.end()) {
         changed = true;
-        writes.push_back(BufferRegion(new_buffer_, write->region));
+        writes.push_back(BufferRegion(it->second, write->region));
       } else {
         writes.push_back(write);
       }
     }
-    block->writes = writes;
-    // Step 3. Mutate `alloc_buffers` if `old_buffer_` was allocated in this block.
-    if (allocate_site_.get() == op) {
-      Array<Buffer> alloc_buffers;
-      for (const Buffer& buffer : block->alloc_buffers) {
-        if (buffer.same_as(old_buffer_)) {
-          changed = true;
-          alloc_buffers.push_back(new_buffer_);
-        } else {
-          alloc_buffers.push_back(buffer);
-        }
+    // Step 3. Mutate `alloc_buffers` for the old buffer allocated in this block.
+    Array<Buffer> alloc_buffers;
+    for (const Buffer& buffer : op->alloc_buffers) {
+      auto it = buffer_map_.find(buffer.get());
+      if (it != buffer_map_.end()) {
+        changed = true;
+        alloc_buffers.push_back(it->second);
+      } else {
+        alloc_buffers.push_back(buffer);
       }
-      block->alloc_buffers = alloc_buffers;
     }
-    // Step 4. Mutate `match_buffers`.
+    // Step 4. Mutate `match_buffers`. If an old buffer appears as a source of MatchBufferRegion,
+    // the storage scope of the target buffer also needs to be set.
     Array<MatchBufferRegion> match_buffers;
-    for (const MatchBufferRegion& match_buffer : block->match_buffers) {
-      if (match_buffer->source->buffer.same_as(old_buffer_)) {
+    for (const MatchBufferRegion& match_buffer : op->match_buffers) {
+      auto it = buffer_map_.find(match_buffer->source->buffer.get());
+      if (it != buffer_map_.end()) {
         changed = true;
+        Buffer new_target_buffer = match_buffer->buffer->WithScope(storage_scope);
+        buffer_map_[match_buffer->buffer.get()] = new_target_buffer;
         match_buffers.push_back(MatchBufferRegion(
-            match_buffer->buffer, BufferRegion(new_buffer_, match_buffer->source->region)));
-      } else if (match_buffer->buffer.same_as(old_buffer_)) {
-        changed = true;
-        match_buffers.push_back(MatchBufferRegion(new_buffer_, match_buffer->source));
+            new_target_buffer, BufferRegion(it->second, match_buffer->source->region)));
       } else {
         match_buffers.push_back(match_buffer);
       }
     }
-    block->match_buffers = match_buffers;
+    // Step 5. Recursively mutate the block.
+    Stmt res = StmtMutator::VisitStmt_(op);
+    if (res.get() != op) {
+      changed = true;
+    }
 
     if (changed) {
+      ObjectPtr<BlockNode> block = CopyOnWrite(res.as<BlockNode>());
+      block->reads = std::move(reads);
+      block->writes = std::move(writes);
+      block->alloc_buffers = std::move(alloc_buffers);
+      block->match_buffers = std::move(match_buffers);
       block_sref_reuse_->Set(GetRef<Block>(op), Block(block));
       return Stmt(block);
     } else {
@@ -283,12 +288,11 @@ class StorageScopeMutator : StmtExprMutator {
     }
   }
 
-  /*! \brief The block where `old_buffer_` was allocated. */
-  Block allocate_site_;
-  /*! \brief The old buffer */
-  Buffer old_buffer_;
-  /*! \brief The new buffer */
-  Buffer new_buffer_;
+  /*! \brief The storage scope to be set. */
+  String storage_scope;
+  /*! \brief A mapping which maps old buffers to new buffers, including the buffers defined in
+   *         MatchBufferRegion.*/
+  std::unordered_map<const BufferNode*, Buffer> buffer_map_;
   /*! \brief The block sref reuse map for the following replacement */
   Map<Block, Block>* block_sref_reuse_;
 };
@@ -370,7 +374,7 @@ void SetScope(ScheduleState self, const StmtSRef& block_sref, int i, const Strin
         allocate_site_sref = allocate_site_sref->parent;
         continue;
       }
-      // Try to find the buffer in `allloc_buffers` and `match_buffers`.
+      // Try to find the buffer in `allloc_buffers`
       bool allocated_here = false;
       for (const Buffer& alloc_buffer : block->alloc_buffers) {
         if (buffer.same_as(alloc_buffer)) {
@@ -378,11 +382,12 @@ void SetScope(ScheduleState self, const StmtSRef& block_sref, int i, const Strin
           break;
         }
       }
+      // We do not allow the buffer being defined in `match_buffer`.
       for (const MatchBufferRegion match_buffer : block->match_buffers) {
-        if (match_buffer->buffer.same_as(buffer)) {
-          allocated_here = true;
-          break;
-        }
+        CHECK(!match_buffer->buffer.same_as(buffer))
+            << "ValueError: Set the storage scope of a buffer defined in MatchBufferRegion is not "
+               "allowed. You might want to set the storage scope of its source buffer if you "
+               "really want to change its storage scope.";
       }
       // If the buffer is allocated in this block, break the while-loop.
       if (allocated_here) {
