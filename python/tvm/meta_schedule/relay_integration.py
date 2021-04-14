@@ -94,7 +94,6 @@ def call_all_topi_funcs(mod, params, target):
                 "Fallback to VMCompiler."
             )
 
-
     autotvm.GLOBAL_SCOPE.silent = old_autotvm_silent
 
 
@@ -109,6 +108,7 @@ def extract_tasks(mod, params, target):
         The associated parameters of the program
     target: Union[tvm.target.Target, str]
         The compilation target
+
     Returns
     -------
     funcs: dict of str to tvm.tir.PrimFunc

@@ -751,11 +751,12 @@ class PostProcRewriteLayout {
  private:
   class IterVarMapCollector {
    public:
-    explicit IterVarMapCollector(Array<arith::IterSplitExpr>& splitexprs) : splitexprs(splitexprs) {}
+    explicit IterVarMapCollector(Array<arith::IterSplitExpr>& splitexprs)
+        : splitexprs_(splitexprs) {}
 
     void CollectIterSplitExpr(const arith::IterSplitExpr& expr) {
       if (expr->source->source.as<tir::VarNode>()) {
-        splitexprs.push_back(
+        splitexprs_.push_back(
             arith::IterSplitExpr(expr->source, expr->lower_factor, expr->extent, expr->scale));
       } else if (const auto& op = expr->source->source.as<arith::IterSumExprNode>()) {
         CollectIterSumExpr(GetRef<arith::IterSumExpr>(op));
@@ -780,16 +781,16 @@ class PostProcRewriteLayout {
     }
 
    private:
-    Array<arith::IterSplitExpr>& splitexprs;
+    Array<arith::IterSplitExpr>& splitexprs_;
   };
 
   class IterVarResolver : public tir::StmtExprVisitor {
 
 
     void VisitStmt_(const tir::BlockRealizeNode* op) {
-      realize = GetRef<tir::BlockRealize>(op);
-      for (size_t i = 0; i < realize->iter_values.size(); i++) {
-        binding_map.Set(realize->block->iter_vars[i]->var, realize->iter_values[i]);
+      realize_ = GetRef<tir::BlockRealize>(op);
+      for (size_t i = 0; i < realize_->iter_values.size(); i++) {
+        binding_map_.Set(realize_->block->iter_vars[i]->var, realize_->iter_values[i]);
       }
       VisitStmt(op->block->body);
     }
@@ -813,10 +814,10 @@ class PostProcRewriteLayout {
     }
 
     void VisitExpr_(const tir::BufferLoadNode* op) {
-      if (buffer.same_as(op->buffer)) {
-        ICHECK(!visited) << "cannot rewrite a buffer with 2 or more accesses in the function";
-        block_to_rewrite = realize->block;
-        visited = true;
+      if (buffer_.same_as(op->buffer)) {
+        ICHECK(!visited_) << "cannot rewrite a buffer with 2 or more accesses in the function";
+        block_to_rewrite_ = realize_->block;
+        visited_ = true;
         PrimExpr sum = 0;
         PrimExpr flatten_shape = 1;
         // get the flattened index
@@ -825,13 +826,13 @@ class PostProcRewriteLayout {
           flatten_shape *= op->buffer->shape[i];
           tir::Var var = Downcast<tir::Var>(op->indices[i]);
           ICHECK(var.defined()) << "cannot handle irregular access pattern";
-          auto bind = binding_map.Get(var);
+          auto bind = binding_map_.Get(var);
           ICHECK(bind.defined()) << "index " << i << " is not a block var";
           sum += bind.value();
         }
         arith::Analyzer analyzer;
-        auto block_sref = sch->GetSRef(realize->block);
-        auto loops = tir::GetAxes(sch->state(), block_sref);
+        auto block_sref = sch_->GetSRef(realize_->block);
+        auto loops = tir::GetAxes(sch_->state(), block_sref);
         std::unordered_map<tir::Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_vars;
         std::unordered_map<tir::Var, int, ObjectPtrHash, ObjectPtrEqual> loop_order;
         for (size_t i = 0; i < loops.size(); i++) {
@@ -843,7 +844,7 @@ class PostProcRewriteLayout {
         auto results = arith::DetectIterMap(
             Array<tir::IterVar>{
                 tir::IterVar(Range::FromMinExtent(0, flatten_shape), tir::Var(), tir::kDataPar)},
-            Array<PrimExpr>{analyzer.Simplify(sum)}, loop_vars, realize->predicate, &analyzer);
+            Array<PrimExpr>{analyzer.Simplify(sum)}, loop_vars, realize_->predicate, &analyzer);
         Array<arith::IterSplitExpr> splitexprs;
         IterVarMapCollector collector(splitexprs);
         for (size_t i = 0; i < results.size(); i++) {
@@ -853,41 +854,41 @@ class PostProcRewriteLayout {
         for (const auto& splitexpr : splitexprs) {
           IntImm extent = Downcast<IntImm>(splitexpr->extent);
           if (extent.defined()) {
-            hint.extents.push_back(extent->value);
+            hint_.extents.push_back(extent->value);
           } else {
             LOG(FATAL) << "dynamic layout";
           }
         }
-        hint.reorder.resize(hint.extents.size());
+        hint_.reorder.resize(hint_.extents.size());
         // get the order for rewrite, which is consistent with the order of related loops
-        for (size_t i = 0; i < hint.extents.size(); i++) {
+        for (size_t i = 0; i < hint_.extents.size(); i++) {
           int idx = 0;
           for (const auto& other : splitexprs) {
             if (compare(other, splitexprs[i], loop_order)) {
               idx++;
             }
           }
-          hint.reorder[idx] = Integer(i);
+          hint_.reorder[idx] = Integer(i);
         }
       }
     }
     
-    bool visited = false;
-    tir::BlockRealize realize;
-    Map<tir::Var, PrimExpr> binding_map{};
-    const Schedule& sch;
-    const tir::Buffer& buffer;
-    LayoutRewriteHint& hint;
-    tir::Block block_to_rewrite;
+    bool visited_ = false;
+    tir::BlockRealize realize_;
+    Map<tir::Var, PrimExpr> binding_map_{};
+    const Schedule& sch_;
+    const tir::Buffer& buffer_;
+    LayoutRewriteHint& hint_;
+    tir::Block block_to_rewrite_;
     
    public:
     IterVarResolver(const Schedule& sch, const tir::Buffer& buffer, LayoutRewriteHint& hint)
-        : sch(sch), buffer(buffer), hint(hint) {}
+        : sch_(sch), buffer_(buffer), hint_(hint) {}
 
     tir::Block getBufferIterInfo(const tir::Stmt& body) {
-      visited = false;
+      visited_ = false;
       VisitStmt(body);
-      return block_to_rewrite;
+      return block_to_rewrite_;
     }
   };
 
@@ -898,13 +899,16 @@ class PostProcRewriteLayout {
    public:
     IndexRewriter(const LayoutRewriteHint& hint, const tir::Buffer& buffer_to_rewrite,
                   const tir::Block& block, const tir::Buffer& new_buffer)
-        : hint(hint), buffer_to_rewrite(buffer_to_rewrite), block(block), new_buffer(new_buffer) {}
+        : hint_(hint),
+          buffer_to_rewrite_(buffer_to_rewrite),
+          block_(block),
+          new_buffer_(new_buffer) {}
 
     tir::Stmt Rewrite(const tir::Stmt& stmt) { return this->VisitStmt(stmt); }
 
     tir::Stmt VisitStmt_(const tir::BlockNode* op) final {
       tir::Block mutated_block = Downcast<tir::Block>(StmtMutator::VisitStmt_(op));
-      if (GetRef<tir::Block>(op).same_as(block)) {
+      if (GetRef<tir::Block>(op).same_as(block_)) {
         tir::BlockReadWriteCollector block_read_write_collector(mutated_block->alloc_buffers);
         block_read_write_collector(mutated_block->body);
         auto n = CopyOnWrite(mutated_block.operator->());
@@ -915,7 +919,7 @@ class PostProcRewriteLayout {
     }
 
     PrimExpr VisitExpr_(const tir::BufferLoadNode* op) final {
-      if (op->buffer.same_as(buffer_to_rewrite)) {
+      if (op->buffer.same_as(buffer_to_rewrite_)) {
         PrimExpr sum = 0;
         for (size_t i = 0; i < op->indices.size(); i++) {
           sum *= op->buffer->shape[i];
@@ -923,24 +927,26 @@ class PostProcRewriteLayout {
         }
         Array<PrimExpr> r_new_indices;
         arith::Analyzer analyzer;
-        for (int i = hint.extents.size() - 1; i >= 0; i--) {
-          r_new_indices.push_back(analyzer.Simplify(floormod(sum, hint.extents[i])));
-          sum = floordiv(sum, hint.extents[i]);
+        for (int i = hint_.extents.size() - 1; i >= 0; i--) {
+          r_new_indices.push_back(analyzer.Simplify(floormod(sum, hint_.extents[i])));
+          sum = floordiv(sum, hint_.extents[i]);
         }
         Array<PrimExpr> new_indices(r_new_indices.rbegin(), r_new_indices.rend());
         Array<PrimExpr> reordered_indices;
-        for (size_t i = 0; i < hint.extents.size(); i++) {
-          reordered_indices.push_back(new_indices[hint.reorder[i]]);
+        for (size_t i = 0; i < hint_.extents.size(); i++) {
+          reordered_indices.push_back(new_indices[hint_.reorder[i]]);
         }
 
-        return tir::BufferLoad(new_buffer, reordered_indices);
+        return tir::BufferLoad(new_buffer_, reordered_indices);
       }
       return GetRef<PrimExpr>(op);
     }
-    const LayoutRewriteHint& hint;
-    const tir::Buffer& buffer_to_rewrite;
-    const tir::Block& block;
-    const tir::Buffer& new_buffer;
+
+   private:
+    const LayoutRewriteHint& hint_;
+    const tir::Buffer& buffer_to_rewrite_;
+    const tir::Block& block_;
+    const tir::Buffer& new_buffer_;
   };
 
  public:
