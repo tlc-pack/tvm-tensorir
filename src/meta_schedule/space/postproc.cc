@@ -458,7 +458,8 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       return true;
     }
     RemoveParsedAnn(sch, root, parsed);
-    for (const BlockRV& block_rv : sch->GetChildBlocks(root_rv)) {
+    for (BlockRV block_rv : sch->GetChildBlocks(root_rv)) {
+      block_rv=sch->GetBlock(sch->Get(block_rv)->name_hint);
       tir::StmtSRef block_sref = sch->GetSRef(block_rv);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
@@ -750,7 +751,7 @@ class PostProcRewriteLayout {
  private:
   class IterVarMapCollector {
    public:
-    IterVarMapCollector(Array<arith::IterSplitExpr>& splitexprs) : splitexprs(splitexprs) {}
+    explicit IterVarMapCollector(Array<arith::IterSplitExpr>& splitexprs) : splitexprs(splitexprs) {}
 
     void CollectIterSplitExpr(const arith::IterSplitExpr& expr) {
       if (expr->source->source.as<tir::VarNode>()) {
@@ -760,13 +761,13 @@ class PostProcRewriteLayout {
         CollectIterSumExpr(GetRef<arith::IterSumExpr>(op));
       }
     }
-    
+
     void CollectIterSumExpr(const arith::IterSumExpr& expr) {
       for (const auto& arg : expr->args) {
         CollectIterSplitExpr(arg);
       }
     }
-    
+
     // keep only the itersplitexpr and append them to the result array
     void Collect(const arith::IterMapExpr& expr) {
       if (const auto* op = expr.as<arith::IterSplitExprNode>()) {
@@ -936,11 +937,12 @@ class PostProcRewriteLayout {
       }
       return GetRef<PrimExpr>(op);
     }
+    const LayoutRewriteHint& hint;
+    const tir::Buffer& buffer_to_rewrite;
+    const tir::Block& block;
+    const tir::Buffer& new_buffer;
   };
-  const LayoutRewriteHint& hint;
-  const tir::Buffer& buffer_to_rewrite;
-  const tir::Block& block;
-  const tir::Buffer& new_buffer;
+
  public:
   bool Proc(Schedule& sch, SearchTask& task) const {
     tir::PrimFunc func = GetOnlyFunc(sch->mod());

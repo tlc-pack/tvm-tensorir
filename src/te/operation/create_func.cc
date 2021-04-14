@@ -91,8 +91,9 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
     CHECK_EQ(op->num_outputs(), 1);
     const te::Tensor& tensor = op.output(0);
     if (const auto& placeholder = op.as<te::PlaceholderOpNode>()) {
-      Var arg("var_" + placeholder->name, PrimType(DataType::Handle()));
-      Buffer input_buffer = decl_buffer(placeholder->shape, placeholder->dtype, placeholder->name);
+      Var arg(GetUniqueName("var_" + placeholder->name, &name_map), PrimType(DataType::Handle()));
+      Buffer input_buffer = decl_buffer(placeholder->shape, placeholder->dtype,
+                                        GetUniqueName(placeholder->name, &name_map));
       op2buffers[op] = input_buffer;
       op2arg[op] = arg;
       parameters.push_back(arg);
