@@ -133,6 +133,7 @@ def get_valid_implementations(op, attrs, inputs, out_type, target):
     with target:
         strategy = fstrategy(attrs, inputs, out_type, target)
     analyzer = tvm.arith.Analyzer()
+
     ret = []
     if PassContext.current().config.get("relay.with_tir_schedule", False):
         specializations = strategy.tir_specializations

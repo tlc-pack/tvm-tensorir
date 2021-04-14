@@ -373,6 +373,24 @@ struct AutoSchedulerLayoutTransformAttrs
   }
 };
 
+/*! \brief Attributes for MetaScheduleLayoutTransform operator */
+struct MetaScheduleLayoutTransformAttrs : public tvm::AttrsNode<MetaScheduleLayoutTransformAttrs> {
+  Array<Integer> extents;
+  Array<Integer> reorder;
+
+  TVM_DECLARE_ATTRS(MetaScheduleLayoutTransformAttrs,
+                    "relay.attrs.MetaScheduleLayoutTransformAttrs") {
+    TVM_ATTR_FIELD(extents).describe("The extents of the new layout (not in the actual order)");
+    TVM_ATTR_FIELD(reorder).describe(
+        "The order of the extents, for example, "
+        "let extents = [2, 3, 4], reorder = [0, 2, 1], and the shape of buffer A is (4, 6)"
+        "then A[i, j] will be first rewritten to "
+        "A[(6 * i + j) / 12, (6 * i + j) / 4 % 3 , (6 * i + j) % 4] according to the `extents`,"
+        "and then reordered to A[(6 * i + j) / 12, (6 * i + j) % 4 , (6 * i + j) / 4 % 3]"
+        "according to `reorder`");
+  }
+};
+
 /*! \brief Attributes for ShapeOf operator */
 struct ShapeOfAttrs : public tvm::AttrsNode<ShapeOfAttrs> {
   DataType dtype;

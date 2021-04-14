@@ -56,6 +56,8 @@ Expr MakeLayoutTransform(Expr data, String src_layout, String dst_layout);
 
 Expr MakeAutoSchedulerLayoutTransform(Expr data, String src_layout, String dst_layout);
 
+Expr MakeMetaScheduleLayoutTransform(Expr data, Array<Integer> extents, Array<Integer> reorder);
+
 Expr MakeOnes(Array<Integer> shape, DataType dtype);
 
 Expr MakePad(Expr data, Array<Array<Integer>> pad_width, Expr pad_value, String pad_mode);

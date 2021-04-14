@@ -337,7 +337,7 @@ def build(ir_mod, target=None, target_host=None, params=None, mod_name="default"
     with tophub_context:
         bld_mod = BuildModule()
         executor_config, runtime_mod, params = bld_mod.build(
-            mod=ir_mod, target=target, params=params, executor=executor, tune_result
+            mod=ir_mod, target=target, params=params, executor=executor
         )
         func_metadata = bld_mod.get_function_metadata()
 

@@ -103,6 +103,7 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
       : target_(target), device_copy_op_(Op::Get("device_copy")) {
     // Whether to use auto_scheduler schedule.
     use_auto_scheduler_ = backend::IsAutoSchedulerEnabled();
+    use_meta_schedule_ = backend::IsMetaScheduleEnabled();
   }
 
   CachedFunc Create(const Function& func) {
@@ -165,18 +166,32 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
         }
       }
 
+      if (use_meta_schedule_) {
+        const auto* fmeta_schedule =
+            runtime::Registry::Get("meta_schedule.relay_integration.get_func_from_dispatcher");
+        ICHECK(fmeta_schedule != nullptr)
+            << "meta_schedule.relay_integration.get_func_from_dispatcher is not registered";
+        const auto* fcreate_func = runtime::Registry::Get("te.CreateFunc");
+        ObjectRef func = (*fcreate_func)(tensor_outs);
+        ObjectRef obj = (*fmeta_schedule)(func);
+        if (obj.defined()) {
+          prim_func = Downcast<tir::PrimFunc>(obj);
+        }
+      }
+
       // Use TOPI schdule if user specificed, or the function has no auto_scheduler schedule.
-      if (!schedule.defined()) {
+      if (!schedule.defined() && !prim_func.defined()) {
         ICHECK(anchor_implementation_.defined());
         auto pass_ctx = transform::PassContext::Current();
-      bool with_tir = pass_ctx->GetConfig<Bool>("relay.with_tir_schedule", Bool(false)).value();
-      if (with_tir) {
-        prim_func = anchor_implementation_.PrimFunc(anchor_attrs_, tensor_outs, target_);
-      } else {
-        schedule = anchor_implementation_.Schedule(anchor_attrs_, tensor_outs, target_);}
-        for (const auto& scalar : scalars_) {
-          if (schedule->Contain(scalar)) {
-            schedule[scalar].compute_inline();
+        bool with_tir = pass_ctx->GetConfig<Bool>("relay.with_tir_schedule", Bool(false)).value();
+        if (with_tir) {
+          prim_func = anchor_implementation_.PrimFunc(anchor_attrs_, tensor_outs, target_);
+        } else {
+          schedule = anchor_implementation_.Schedule(anchor_attrs_, tensor_outs, target_);
+          for (const auto& scalar : scalars_) {
+            if (schedule->Contain(scalar)) {
+              schedule[scalar].compute_inline();
+            }
           }
         }
       }
@@ -325,6 +340,7 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
   // Cache device copy op for equivalence checking to reduce registry lookup
   // overhead for each invocation of call node when retrieving schedules.
   const Op& device_copy_op_;
+  bool use_meta_schedule_;
 };
 
 /*!
@@ -791,18 +807,9 @@ class CompileEngineImpl : public CompileEngineNode {
     if (const auto* f = runtime::Registry::Get("relay.backend.lower")) {
       // TODO(@siyuan): const folder will flush the pass_context
       if (with_tir_schedule_ && cfunc->prim_func.defined()) {
-        if (!tune_result.empty()) {
-          auto func_map = tune_result[key->target->str()];
-          CHECK(!func_map.empty()) << "no target " << key->target << " in tune result";
-          auto prim_func = func_map[cfunc->prim_func];
-          CHECK(prim_func.defined())
-              << "no function of name " << cache_node->func_name << " in tune result";
-          cache_node->funcs = (*f)(prim_func, NullValue<Array<te::Tensor>>(), cache_node->func_name,
-                                   key->source_func);
-        } else {
-          cache_node->funcs = (*f)(cfunc->prim_func, NullValue<Array<te::Tensor>>(),
-                                   cache_node->func_name, key->source_func);
-        }
+        cache_node->funcs = (*f)(cfunc->prim_func, NullValue<Array<te::Tensor>>(),
+                                 cache_node->func_name, key->source_func);
+
       } else {
         cache_node->funcs = (*f)(cfunc->schedule, all_args, cache_node->func_name, key->source_func);
       }
@@ -904,6 +911,8 @@ CompileEngine& CompileEngine::Global() {
 
 TVM_REGISTER_PASS_CONFIG_OPTION("relay.backend.use_auto_scheduler", Bool);
 TVM_REGISTER_PASS_CONFIG_OPTION("relay.backend.disable_compile_engine_cache", Bool);
+
+TVM_REGISTER_PASS_CONFIG_OPTION("relay.backend.use_meta_schedule", Bool);
 
 TVM_REGISTER_GLOBAL("relay.backend._make_LoweredOutput")
     .set_body_typed([](tvm::Array<te::Tensor> outputs, OpImplementation impl) {

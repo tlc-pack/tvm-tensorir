@@ -21,6 +21,7 @@ import logging
 import re
 from tvm import topi
 from tvm.auto_scheduler import is_auto_scheduler_enabled
+from tvm.meta_schedule import is_meta_schedule_enabled
 from tvm.te import SpecializedCondition
 from tvm.relay.ty import is_dynamic
 from .generic import *
@@ -142,6 +143,11 @@ def conv2d_strategy_cpu(attrs, inputs, out_type, target):
                 wrap_topi_schedule(topi.x86.schedule_conv2d_nhwc),
                 name="conv2d_nhwc.x86",
             )
+            strategy.add_tir_implementation(
+                wrap_compute_conv2d(topi.nn.conv2d_nhwc, need_meta_schedule_layout=True),
+                wrap_topi_schedule(topi.generic.default_tir_schedule),
+                name="conv2d_nhwc.x86",
+            )
 
             judge_winograd_auto_scheduler = False
             if len(kernel.shape) == 4:
@@ -168,6 +174,15 @@ def conv2d_strategy_cpu(attrs, inputs, out_type, target):
                         topi.nn.conv2d_winograd_nhwc, need_auto_scheduler_layout=True
                     ),
                     naive_schedule,  # this implementation should never be picked by autotvm
+                    name="conv2d_nhwc.winograd",
+                    plevel=15,
+                )
+            if is_meta_schedule_enabled() and judge_winograd_auto_scheduler:
+                strategy.add_tir_implementation(
+                    wrap_compute_conv2d(
+                        topi.nn.conv2d_winograd_nhwc, need_meta_schedule_layout=True
+                    ),
+                    wrap_topi_schedule(topi.generic.default_tir_schedule),
                     name="conv2d_nhwc.winograd",
                     plevel=15,
                 )
@@ -407,8 +422,8 @@ def dense_strategy_cpu(attrs, inputs, out_type, target):
     strategy.add_tir_implementation(
         wrap_compute_dense(topi.x86.dense_nopack),
         wrap_topi_schedule(topi.generic.default_tir_schedule),
-        name="dense.generic",
-        plevel=10,
+        name="dense_nopack.x86",
+        plevel=5,
     )
 
     if is_auto_scheduler_enabled():
@@ -419,6 +434,13 @@ def dense_strategy_cpu(attrs, inputs, out_type, target):
             plevel=11,
         )
 
+    if is_meta_schedule_enabled():
+        strategy.add_tir_implementation(
+            wrap_compute_dense(topi.nn.dense, need_meta_schedule_layout=True),
+            wrap_topi_schedule(topi.generic.default_tir_schedule),
+            name="dense.generic",
+            plevel=11,
+        )
     if "cblas" in target.libs:
         with SpecializedCondition(same_type and dtype in ["float32", "float64"]):
             strategy.add_implementation(
@@ -473,6 +495,20 @@ def batch_matmul_strategy_cpu(attrs, inputs, out_type, target):
         strategy.add_implementation(
             wrap_compute_batch_matmul(topi.x86.batch_matmul),
             wrap_topi_schedule(topi.x86.schedule_batch_matmul),
+            name="batch_matmul.x86",
+            plevel=10,
+        )
+    if is_dynamic(out_type) or is_meta_schedule_enabled():
+        strategy.add_tir_implementation(
+            wrap_compute_batch_matmul(topi.nn.batch_matmul, need_meta_schedule_layout=True),
+            wrap_topi_schedule(topi.generic.default_tir_schedule),
+            name="batch_matmul.generic",
+            plevel=10,
+        )
+    else:
+        strategy.add_tir_implementation(
+            wrap_compute_batch_matmul(topi.x86.batch_matmul),
+            wrap_topi_schedule(topi.generic.default_tir_schedule),
             name="batch_matmul.x86",
             plevel=10,
         )
@@ -593,6 +629,14 @@ def conv2d_winograd_without_weight_transfrom_strategy_cpu(attrs, inputs, out_typ
             ),
             naive_schedule,
             name="ansor.winograd",
+        )
+        strategy.add_tir_implementation(
+            wrap_compute_conv2d(
+                topi.nn.conv2d_winograd_nhwc_without_weight_transform,
+                need_meta_schedule_layout=True,
+            ),
+            wrap_topi_schedule(topi.generic.default_tir_schedule),
+            name="meta_schedule.winograd",
         )
     else:
         raise RuntimeError(

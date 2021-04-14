@@ -83,6 +83,9 @@ _reg.register_injective_schedule("strided_set")
 # layout_transform
 _reg.register_injective_schedule("layout_transform")
 _reg.register_pattern("layout_transform", OpPattern.INJECTIVE)
+_reg.register_injective_schedule("meta_schedule_layout_transform")
+_reg.register_pattern("meta_schedule_layout_transform", OpPattern.INJECTIVE)
+
 _reg.register_injective_schedule("auto_scheduler_layout_transform")
 _reg.register_pattern("auto_scheduler_layout_transform", OpPattern.INJECTIVE)
 

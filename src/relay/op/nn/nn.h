@@ -59,7 +59,8 @@ bool DenseRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
     // data dtype as the weight dtype. However if weight dtype is explicitly
     // present we will use that.
     auto weight_dtype = (weight == nullptr ? data->dtype : weight->dtype);
-    if (param->auto_scheduler_rewritten_layout.size() == 0) {
+    if (param->auto_scheduler_rewritten_layout.size() == 0 &&
+        param->meta_schedule_original_shape.empty()) {
       // Normal case: assign result to reporter
       reporter->Assign(types[1], TensorType(wshape, weight_dtype));
     } else {

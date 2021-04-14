@@ -278,7 +278,9 @@ def simplify_compute_with_const_tensor(max_innermost_factor: int = 64) -> Search
     rule: SearchRUle
         The rule created
     """
-    return _ffi_api_search_rule.SimplifyComputeWithConstTensor(max_innermost_factor)  # pylint: disable=no-member
+    return _ffi_api_search_rule.SimplifyComputeWithConstTensor(
+        max_innermost_factor
+    )  # pylint: disable=no-member
 
 
 def add_rfactor(
@@ -301,4 +303,6 @@ def add_rfactor(
     rule: SearchRule
         The rule created
     """
-    return _ffi_api_search_rule.AddRFactor(max_jobs_per_core, max_innermost_factor)  # pylint: disable=no-member
+    return _ffi_api_search_rule.AddRFactor(
+        max_jobs_per_core, max_innermost_factor
+    )  # pylint: disable=no-member
