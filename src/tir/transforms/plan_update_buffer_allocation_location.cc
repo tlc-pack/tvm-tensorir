@@ -94,20 +94,15 @@ class BufferAllocationLocator : public StmtExprMutator {
       }
     }
 
-    if (alloc_buffers.same_as(op->alloc_buffers)) {
-      return GetRef<Stmt>(op);
-    } else {
-      auto n = CopyOnWrite(op);
-      n->alloc_buffers = std::move(alloc_buffers);
-
-      // The read/write regions of root block are always empty.
-      if (!is_root) {
-        // Recalculate block access region
-        CollectReadWrite(GetRef<Block>(op), &n->reads, &n->writes);
-      }
-
-      return Stmt(n);
+    auto n = CopyOnWrite(op);
+    n->alloc_buffers = std::move(alloc_buffers);
+    // The read/write regions of root block are always empty.
+    if (!is_root) {
+      // Recalculate block access region
+      CollectReadWrite(GetRef<Block>(op), &n->reads, &n->writes);
     }
+
+    return Stmt(n);
   }
 
   Stmt VisitStmt_(const BufferRealizeNode* op) final {
