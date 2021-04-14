@@ -146,7 +146,7 @@ def conv2d_strategy_cpu(attrs, inputs, out_type, target):
             strategy.add_tir_implementation(
                 wrap_compute_conv2d(topi.nn.conv2d_nhwc, need_meta_schedule_layout=True),
                 wrap_topi_schedule(topi.generic.default_tir_schedule),
-                name="conv2d_nhwc.x86"
+                name="conv2d_nhwc.x86",
             )
 
             judge_winograd_auto_scheduler = False
@@ -503,14 +503,14 @@ def batch_matmul_strategy_cpu(attrs, inputs, out_type, target):
             wrap_compute_batch_matmul(topi.nn.batch_matmul, need_meta_schedule_layout=True),
             wrap_topi_schedule(topi.generic.default_tir_schedule),
             name="batch_matmul.generic",
-            plevel=10
+            plevel=10,
         )
     else:
         strategy.add_tir_implementation(
             wrap_compute_batch_matmul(topi.x86.batch_matmul),
             wrap_topi_schedule(topi.generic.default_tir_schedule),
             name="batch_matmul.x86",
-            plevel=10
+            plevel=10,
         )
     if "cblas" in target.libs:
         strategy.add_implementation(
@@ -633,7 +633,7 @@ def conv2d_winograd_without_weight_transfrom_strategy_cpu(attrs, inputs, out_typ
         strategy.add_tir_implementation(
             wrap_compute_conv2d(
                 topi.nn.conv2d_winograd_nhwc_without_weight_transform,
-                need_meta_schedule_layout=True
+                need_meta_schedule_layout=True,
             ),
             wrap_topi_schedule(topi.generic.default_tir_schedule),
             name="meta_schedule.winograd",

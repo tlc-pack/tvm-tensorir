@@ -21,7 +21,9 @@ from tvm import te, auto_scheduler
 from .. import tag
 
 
-def dense(data, weight, bias=None, out_dtype=None, auto_scheduler_rewritten_layout="", original_shape=[]):
+def dense(
+    data, weight, bias=None, out_dtype=None, auto_scheduler_rewritten_layout="", original_shape=[]
+):
     """The default implementation of dense in topi.
 
     Parameters

@@ -486,11 +486,11 @@ def conv2d_winograd_nhwc(
     kernel_size: int,
     stride: int = 1,
     padding: int = 0,
-    dilation: int = 1
+    dilation: int = 1,
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     # TODO: implement tile_size
     tile_size = 4  # _infer_tile_size(data, kernel)
-    inputs = te.placeholder((N, H, W, CI), name='inputs')
+    inputs = te.placeholder((N, H, W, CI), name="inputs")
     N, H, W, CI = topi.utils.get_const_tuple(inputs.shape)
     if isinstance(dilation, int):
         dilation_h = dilation_w = dilation
@@ -509,55 +509,69 @@ def conv2d_winograd_nhwc(
     r = KW
     m = tile_size
     alpha = m + r - 1
-    A, B, G = topi.nn.winograd_util.winograd_transform_matrices(m, r, 'float32')
+    A, B, G = topi.nn.winograd_util.winograd_transform_matrices(m, r, "float32")
 
     H = (H + 2 * HPAD - KH) // HSTR + 1
     W = (W + 2 * WPAD - KW) // WSTR + 1
     nH, nW = (H + m - 1) // m, (W + m - 1) // m
     P = N * nH * nW
-    r_kh = te.reduce_axis((0, KH), name='r_kh')
-    r_kw = te.reduce_axis((0, KW), name='r_kw')
+    r_kh = te.reduce_axis((0, KH), name="r_kh")
+    r_kw = te.reduce_axis((0, KW), name="r_kw")
     kshape = (alpha, alpha, CI, CO)
     kernel_pack = te.placeholder(kshape, inputs.dtype, name="weight")
 
     idxdiv = te.indexdiv
     idxmod = te.indexmod
     # pack input tile
-    input_tile = te.compute((alpha, alpha, P, CI), lambda eps, nu, p, ci:
-    data_pad[idxdiv(p, (nH * nW))][idxmod(idxdiv(p, nW), nH) * m + eps]
-    [idxmod(p, nW) * m + nu][ci], name='input_tile')
+    input_tile = te.compute(
+        (alpha, alpha, P, CI),
+        lambda eps, nu, p, ci: data_pad[idxdiv(p, (nH * nW))][idxmod(idxdiv(p, nW), nH) * m + eps][
+            idxmod(p, nW) * m + nu
+        ][ci],
+        name="input_tile",
+    )
 
     # transform data
-    r_a = te.reduce_axis((0, alpha), 'r_a')
-    r_b = te.reduce_axis((0, alpha), 'r_b')
-    data_pack = te.compute((alpha, alpha, P, CI), lambda eps, nu, p, ci:
-    te.sum(input_tile[r_a][r_b][p][ci] * B[r_a][eps] * B[r_b][nu],
-           axis=[r_a, r_b]), name='data_pack',
-                           attrs={"auto_scheduler_simplify_const_tensor_indices": ["eps", "nu",
-                                                                                   "r_a", "r_b"]})
+    r_a = te.reduce_axis((0, alpha), "r_a")
+    r_b = te.reduce_axis((0, alpha), "r_b")
+    data_pack = te.compute(
+        (alpha, alpha, P, CI),
+        lambda eps, nu, p, ci: te.sum(
+            input_tile[r_a][r_b][p][ci] * B[r_a][eps] * B[r_b][nu], axis=[r_a, r_b]
+        ),
+        name="data_pack",
+        attrs={"auto_scheduler_simplify_const_tensor_indices": ["eps", "nu", "r_a", "r_b"]},
+    )
 
     # do batch gemm
-    ci = te.reduce_axis((0, CI), name='ci')
-    bgemm = te.compute((alpha, alpha, P, CO), lambda eps, nu, p, co:
-    te.sum(data_pack[eps][nu][p][ci] *
-           kernel_pack[eps][nu][ci][co],
-           axis=[ci]), name='bgemm')
+    ci = te.reduce_axis((0, CI), name="ci")
+    bgemm = te.compute(
+        (alpha, alpha, P, CO),
+        lambda eps, nu, p, co: te.sum(
+            data_pack[eps][nu][p][ci] * kernel_pack[eps][nu][ci][co], axis=[ci]
+        ),
+        name="bgemm",
+    )
 
     # inverse transform
-    r_a = te.reduce_axis((0, alpha), 'r_a')
-    r_b = te.reduce_axis((0, alpha), 'r_b')
-    inverse = te.compute((m, m, P, CO), lambda vh, vw, p, co:
-    te.sum(bgemm[r_a][r_b][p][co] * A[r_a][vh] * A[r_b][vw],
-           axis=[r_a, r_b]), name='inverse',
-                         attrs={"auto_scheduler_simplify_const_tensor_indices": ["vh", "vw",
-                                                                                 "r_a", "r_b"]})
+    r_a = te.reduce_axis((0, alpha), "r_a")
+    r_b = te.reduce_axis((0, alpha), "r_b")
+    inverse = te.compute(
+        (m, m, P, CO),
+        lambda vh, vw, p, co: te.sum(
+            bgemm[r_a][r_b][p][co] * A[r_a][vh] * A[r_b][vw], axis=[r_a, r_b]
+        ),
+        name="inverse",
+        attrs={"auto_scheduler_simplify_const_tensor_indices": ["vh", "vw", "r_a", "r_b"]},
+    )
 
     # output
-    output = te.compute((N, H, W, CO), lambda n, h, w, co:
-    inverse[idxmod(h, m),
-            idxmod(w, m),
-            n * nH * nW + idxdiv(h, m) * nW + idxdiv(w, m),
-            co],
-                        name='conv2d_winograd')
+    output = te.compute(
+        (N, H, W, CO),
+        lambda n, h, w, co: inverse[
+            idxmod(h, m), idxmod(w, m), n * nH * nW + idxdiv(h, m) * nW + idxdiv(w, m), co
+        ],
+        name="conv2d_winograd",
+    )
 
     return [inputs, kernel_pack, output]

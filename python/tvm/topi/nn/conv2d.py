@@ -1109,7 +1109,7 @@ def _conv2d_winograd_nhwc_impl(
         (alpha, alpha, P, CI),
         lambda eps, nu, p, ci: data_pad[p // (nH * nW)][((p // nW) % nH) * m + eps][
             (p % nW) * m + nu
-            ][ci],
+        ][ci],
         name="input_tile",
     )
 
@@ -1213,7 +1213,7 @@ def conv2d_winograd_nhwc(
         tile_size,
         pre_computed,
         auto_scheduler_rewritten_layout,
-        original_shape
+        original_shape,
     )
 
 
@@ -1225,7 +1225,7 @@ def conv2d_winograd_nhwc_without_weight_transform(
     dilation,
     out_dtype,
     auto_scheduler_rewritten_layout="",
-    original_shape=[]
+    original_shape=[],
 ):
     """Conv2D Winograd without layout transform in NHWC layout.
     This is a clean version to be used by the auto-scheduler for both CPU and GPU.
@@ -1262,5 +1262,5 @@ def conv2d_winograd_nhwc_without_weight_transform(
         out_dtype,
         pre_computed=True,
         auto_scheduler_rewritten_layout=auto_scheduler_rewritten_layout,
-        original_shape=original_shape
+        original_shape=original_shape,
     )

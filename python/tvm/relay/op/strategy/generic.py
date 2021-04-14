@@ -163,6 +163,7 @@ def tir_schedule_adaptive_pool(attrs, outs, target):
     with target:
         return topi.generic.default_tir_schedule(outs)
 
+
 # softmax
 def wrap_compute_softmax(topi_compute):
     """Wrap softmax topi compute"""
@@ -745,7 +746,9 @@ def dilation2d_strategy(attrs, inputs, out_type, target):
 
 
 # dense
-def wrap_compute_dense(topi_compute, need_auto_scheduler_layout=False, need_meta_schedule_layout=False):
+def wrap_compute_dense(
+    topi_compute, need_auto_scheduler_layout=False, need_meta_schedule_layout=False
+):
     """wrap dense topi compute"""
 
     def _compute_dense(attrs, inputs, out_type):
@@ -791,7 +794,9 @@ def dense_pack_strategy(attrs, inputs, out_type, target):
 
 
 # batch_matmul
-def wrap_compute_batch_matmul(topi_compute, need_auto_scheduler_layout=False, need_meta_schedule_layout=False):
+def wrap_compute_batch_matmul(
+    topi_compute, need_auto_scheduler_layout=False, need_meta_schedule_layout=False
+):
     """wrap batch_matmul topi compute"""
 
     def _compute_batch_matmul(attrs, inputs, out_type):

@@ -137,11 +137,10 @@ class FallbackContext(DispatchContext):
 
         if self.verbose == 1:
             msg = (
-                    "-----------------------------------\n"
-                    "Cannot find tuned schedules for task=%s"
-                    "A fallback TOPI schedule is used, "
-                    "which may bring great performance regression or even compilation failure. "
-                    % task
+                "-----------------------------------\n"
+                "Cannot find tuned schedules for task=%s"
+                "A fallback TOPI schedule is used, "
+                "which may bring great performance regression or even compilation failure. " % task
             )
             if msg not in self.messages:
                 self.messages.add(msg)

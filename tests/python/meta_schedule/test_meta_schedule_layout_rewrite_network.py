@@ -128,7 +128,7 @@ SPACE = ms.space.PostOrderApply(
         ms.postproc.rewrite_parallel_vectorize_unroll(),
         ms.postproc.rewrite_reduction_block(),
         ms.postproc.disallow_dynamic_loops(),
-        ms.postproc.rewrite_layout()
+        ms.postproc.rewrite_layout(),
     ],
 )
 
@@ -159,7 +159,7 @@ def tune_and_check(log, mod, data, weight):
                     ms.mutator.mutate_tile_size(): 0.90,
                     ms.mutator.mutate_compute_location(): 0.05,
                     ms.mutator.mutate_auto_unroll(): 0.03,
-                    ms.mutator.mutate_parallel(max_jobs_per_core=16): 0.02
+                    ms.mutator.mutate_parallel(max_jobs_per_core=16): 0.02,
                 },
                 cost_model=ms.XGBModel(),
                 eps_greedy=0.25,
@@ -171,8 +171,10 @@ def tune_and_check(log, mod, data, weight):
             ),
         )
     with ms.ApplyHistoryBest(log, SPACE):
-        with tvm.transform.PassContext(opt_level=3, config={"relay.with_tir_schedule": True,
-                                                            "relay.backend.use_meta_schedule": True}):
+        with tvm.transform.PassContext(
+            opt_level=3,
+            config={"relay.with_tir_schedule": True, "relay.backend.use_meta_schedule": True},
+        ):
             lib = relay.build_module.build(mod, TARGET, params={"weight": weight}, tune_result={})
 
     def run_module(lib, use_arm):
@@ -181,7 +183,9 @@ def tune_and_check(log, mod, data, weight):
             module = graph_runtime.GraphModule(lib["default"](ctx))
             module.set_input("data", data)
             print("Evaluate inference time cost...")
-            ftimer = module.module.time_evaluator("run", ctx, number=10, repeat=100, min_repeat_ms=50)
+            ftimer = module.module.time_evaluator(
+                "run", ctx, number=10, repeat=100, min_repeat_ms=50
+            )
             prof_res = np.array(ftimer().results) * 1000  # convert to millisecond
             print(
                 "Mean inference time (std dev): %.2f ms (%.2f ms)"
@@ -196,7 +200,9 @@ def tune_and_check(log, mod, data, weight):
             lib.export_library(tmp.relpath(filename))
             # Upload module to device
             print("Upload...")
-            remote = auto_scheduler.utils.request_remote(RPC_KEY, "172.16.2.241", 4445, timeout=10000)
+            remote = auto_scheduler.utils.request_remote(
+                RPC_KEY, "172.16.2.241", 4445, timeout=10000
+            )
             remote.upload(tmp.relpath(filename))
             rlib = remote.load_module(filename)
 
@@ -209,7 +215,8 @@ def tune_and_check(log, mod, data, weight):
             ftimer = module.module.time_evaluator("run", ctx, repeat=3, min_repeat_ms=500)
             prof_res = np.array(ftimer().results) * 1e3  # convert to millisecond
             print(
-                "Mean inference time (std dev): %.2f ms (%.2f ms)" % (np.mean(prof_res), np.std(prof_res))
+                "Mean inference time (std dev): %.2f ms (%.2f ms)"
+                % (np.mean(prof_res), np.std(prof_res))
             )
 
             module.run()

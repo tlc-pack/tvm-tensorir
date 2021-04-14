@@ -76,13 +76,13 @@ def call_all_topi_funcs(mod, params, target):
     autotvm.GLOBAL_SCOPE.silent = True
 
     with transform.PassContext(
-            opt_level=3,
-            config={
-                "relay.with_tir_schedule": True,
-                "relay.backend.use_meta_schedule": True,
-                "relay.backend.disable_compile_engine_cache": True,
-            },
-            disabled_pass={"MetaScheduleLayoutRewrite"},
+        opt_level=3,
+        config={
+            "relay.with_tir_schedule": True,
+            "relay.backend.use_meta_schedule": True,
+            "relay.backend.disable_compile_engine_cache": True,
+        },
+        disabled_pass={"MetaScheduleLayoutRewrite"},
     ):
         try:
             opt_mod, _ = relay.optimize(mod, target, params)
@@ -105,19 +105,19 @@ def call_all_topi_funcs(mod, params, target):
 def extract_tasks(mod, params, target):
     """Extract tuning tasks from a relay program.
 
-      Parameters
-      ----------
-      mod: tvm.IRModule or relay.function.Function
-          The module or function to tune
-      params: dict of str to numpy array
-          The associated parameters of the program
-      target: Union[tvm.target.Target, str]
-          The compilation target
-      Returns
-      -------
-      funcs: dict of str to tvm.tir.PrimFunc
-          The extracted functions along with its name
-      """
+    Parameters
+    ----------
+    mod: tvm.IRModule or relay.function.Function
+        The module or function to tune
+    params: dict of str to numpy array
+        The associated parameters of the program
+    target: Union[tvm.target.Target, str]
+        The compilation target
+    Returns
+    -------
+    funcs: dict of str to tvm.tir.PrimFunc
+        The extracted functions along with its name
+    """
     if isinstance(target, str):
         target = tvm.target.Target(target)
     env = TaskExtractionTracingEnvironment()
@@ -128,7 +128,7 @@ def extract_tasks(mod, params, target):
         build_thread = threading.Thread(target=call_all_topi_funcs, args=(mod, params, target))
         build_thread.start()
         build_thread.join()
-    return env.funcs;
+    return env.funcs
 
 
 def is_meta_schedule_enabled():

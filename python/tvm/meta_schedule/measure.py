@@ -195,7 +195,7 @@ class RPCRunner(ProgramRunner):
         min_repeat_ms: int = 40,
         cooldown_interval: float = 0.0,
         enable_cpu_cache_flush: bool = False,
-        f_create_args: Optional[Callable[[TVMContext], List[NDArray]]] = None
+        f_create_args: Optional[Callable[[TVMContext], List[NDArray]]] = None,
     ):
         if key is None:
             key = os.environ.get("TVM_TRACKER_KEY", None)
