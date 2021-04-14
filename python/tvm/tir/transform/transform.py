@@ -558,6 +558,19 @@ def BufferFlatten():
     return _ffi_api.BufferFlatten()
 
 
+def PlanAndUpdateBufferAllocationLocation():
+    """Locate the buffer allocation to the exact position (usually is
+    the lca of buffer access). This pass will inject opaque block
+    with alloc_buffers at the allocation site.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.PlanAndUpdateBufferAllocationLocation()
+
+
 # pylint: disable=no-else-return,inconsistent-return-statements
 def HoistIfThenElse(variant: Optional[str] = None):
     """Hoist loop-invariant IfThenElse nodes to outside the eligible loops.
