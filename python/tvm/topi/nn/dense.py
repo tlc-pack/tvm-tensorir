@@ -29,6 +29,7 @@ def matmul(
     transpose_a=False,
     transpose_b=False,
     auto_scheduler_rewritten_layout="",
+    original_shape=[],
 ):
     """The default implementation of matmul in topi.
 
@@ -76,6 +77,10 @@ def matmul(
         out_dim, red_dim = auto_scheduler.get_shape_from_rewritten_layout(
             auto_scheduler_rewritten_layout, ["j", "k"]
         )
+        auto_scheduler.remove_index_check(tensor_b)
+    elif len(original_shape) != 0:
+        out_dim, red_dim = original_shape
+        tensor_b = te.placeholder((out_dim, red_dim), name=tensor_b.name)
         auto_scheduler.remove_index_check(tensor_b)
     elif transpose_b:
         out_dim, red_dim = tensor_b.shape

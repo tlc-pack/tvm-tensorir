@@ -71,7 +71,8 @@ bool MatmulRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
     // data dtype as the tensor_b dtype. However if tensor_b dtype is explicitly
     // present we will use that.
     auto tensor_b_dtype = (tensor_b == nullptr ? tensor_a->dtype : tensor_b->dtype);
-    if (param->auto_scheduler_rewritten_layout.size() == 0) {
+    if (param->auto_scheduler_rewritten_layout.size() == 0 &&
+        param->meta_schedule_original_shape.empty()) {
       // Normal case: assign result to reporter
       reporter->Assign(types[1], TensorType(wshape, tensor_b_dtype));
     } else {

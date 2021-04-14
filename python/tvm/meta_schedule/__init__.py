@@ -33,3 +33,5 @@ from .schedule import Schedule
 from .search import SearchSpace, SearchStrategy, SearchTask
 from .trace import Trace
 from .xgb_model import XGBModel
+from .dispatcher import DispatchContext, ApplyHistoryBest
+from .relay_integration import is_meta_schedule_enabled, extract_tasks

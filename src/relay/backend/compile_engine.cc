@@ -103,6 +103,7 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
       : target_(target), device_copy_op_(Op::Get("device_copy")) {
     // Whether to use auto_scheduler schedule.
     use_auto_scheduler_ = backend::IsAutoSchedulerEnabled();
+    use_meta_schedule_ = backend::IsMetaScheduleEnabled();
   }
 
   CachedFunc Create(const Function& func) {
@@ -165,8 +166,21 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
         }
       }
 
-      // Use TOPI schedule if user specificed, or the function has no auto_scheduler schedule.
-      if (!schedule.defined()) {
+      if (use_meta_schedule_) {
+        const auto* fmeta_schedule =
+            runtime::Registry::Get("meta_schedule.relay_integration.get_func_from_dispatcher");
+        ICHECK(fmeta_schedule != nullptr)
+            << "meta_schedule.relay_integration.get_func_from_dispatcher is not registered";
+        const auto* fcreate_func = runtime::Registry::Get("te.CreateFunc");
+        ObjectRef func = (*fcreate_func)(tensor_outs);
+        ObjectRef obj = (*fmeta_schedule)(func);
+        if (obj.defined()) {
+          prim_func = Downcast<tir::PrimFunc>(obj);
+        }
+      }
+
+      // Use TOPI schdule if user specificed, or the function has no auto_scheduler schedule.
+      if (!schedule.defined() && !prim_func.defined()) {
         ICHECK(anchor_implementation_.defined());
         auto pass_ctx = transform::PassContext::Current();
         bool with_tir = pass_ctx->GetConfig<Bool>("relay.with_tir_schedule", Bool(false)).value();
@@ -326,6 +340,7 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
   // Cache device copy op for equivalence checking to reduce registry lookup
   // overhead for each invocation of call node when retrieving schedules.
   const Op& device_copy_op_;
+  bool use_meta_schedule_;
 };
 
 /*!
@@ -887,6 +902,8 @@ CompileEngine& CompileEngine::Global() {
 
 TVM_REGISTER_PASS_CONFIG_OPTION("relay.backend.use_auto_scheduler", Bool);
 TVM_REGISTER_PASS_CONFIG_OPTION("relay.backend.disable_compile_engine_cache", Bool);
+
+TVM_REGISTER_PASS_CONFIG_OPTION("relay.backend.use_meta_schedule", Bool);
 
 TVM_REGISTER_GLOBAL("relay.backend._make_LoweredOutput")
     .set_body_typed([](tvm::Array<te::Tensor> outputs, OpImplementation impl) {

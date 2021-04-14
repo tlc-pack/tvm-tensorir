@@ -16,7 +16,6 @@
 # under the License.
 """ Search API """
 from typing import Any, Dict, List, Optional, Union
-
 from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.target import Target
@@ -64,9 +63,7 @@ class SearchTask(Object):
             if hasattr(workload, "__qualname__"):
                 task_name = workload.__qualname__
             else:
-                raise ValueError(
-                    "Unable to extract task_name from the PrimFunc, please specific it explicitly"
-                )
+                task_name = ""
         if not isinstance(target, Target):
             target = Target(target)
         if not isinstance(target_host, Target):

@@ -80,7 +80,7 @@ Optional<Array<ObjectRef>> LoadTuningRecords(const String& path) {
  * \param record_obj The tuning record
  * \param task The search task
  */
-Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& task) {
+Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask& task) {
   const auto* record = record_obj.as<ArrayNode>();
   ICHECK_EQ(record->size(), 7);
   String task_name = Downcast<String>(record->at(0));
@@ -89,13 +89,7 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
   Array<FloatImm> times = Downcast<Array<FloatImm>>(record->at(3));
   ObjectRef trace_obj = record->at(4);
   String log_version = Downcast<String>(record->at(5));
-  // TODO(@junrushao1994): structural equality of target
-  if (task_name != task->task_name ||                  //
-      log_version != String(kLogVersion) ||            //
-      Target(target)->str() != task->target->str() ||  //
-      Target(target_host)->str() != task->target_host->str()) {
-    return Database::Entry{NullOpt, String(""), {}};
-  }
+
   tir::PrimFunc orig_func{nullptr};
   {
     std::string prim_func_b64 = Downcast<String>(record->at(6));
@@ -107,9 +101,8 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
     strm->Read(&parsed);
     orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
   }
-  if (!StructuralEqual()(orig_func, task->workload)) {
-    return Database::Entry{NullOpt, String(""), {}};
-  }
+
+  task = SearchTask(orig_func, task_name, Target(target), Target(target_host), NullOpt);
   Schedule sch(orig_func);
   TraceNode::Deserialize(trace_obj, sch);
   return Database::Entry{sch->trace, Repr(sch), AsVector<FloatImm, double>(times)};
@@ -134,12 +127,25 @@ struct EntryPtrComparator {
   }
 };
 
+struct SearchTaskHasher {
+  size_t operator()(const SearchTask& task) const {
+    size_t hash = std::hash<String>()(task->task_name);
+    hash ^= std::hash<String>()(task->target->str());
+    return hash;
+  }
+};
+struct SearchTaskEqual {
+  TVM_DLL bool operator()(const SearchTask& task1, const SearchTask& task2) const {
+    return task1->task_name == task2->task_name && task1->target->str() == task2->target->str();
+  }
+};
+
 class InMemoryDBNode : public DatabaseNode {
  public:
   /*! \brief Virtual destructor */
   ~InMemoryDBNode() = default;
 
-  void Init(const SearchTask& task) override {
+  void Init() override {
     if (!path.defined()) {
       LOG(INFO) << "Path to tuning logs is not specified - No file is used.";
       return;
@@ -150,9 +156,10 @@ class InMemoryDBNode : public DatabaseNode {
       int n_loaded = loaded.size();
       LOG(INFO) << "Converting tuning records to meta schedule trace...";
       std::vector<Entry> records(n_loaded);
-      auto worker = [&loaded, &records, &task](int thread_id, int i) -> void {
+      std::vector<SearchTask> tasks(n_loaded);
+      auto worker = [&loaded, &records, &tasks](int thread_id, int i) -> void {
         const ObjectRef& record_obj = loaded[i];
-        records[i] = json_io::RecordToEntry(record_obj, task);
+        records[i] = json_io::RecordToEntry(record_obj, tasks[i]);
       };
       support::parallel_persist_for(0, n_loaded, worker);
       int total_valid = 0;
@@ -160,13 +167,11 @@ class InMemoryDBNode : public DatabaseNode {
         const Entry& entry = records[i];
         if (entry.trace.defined()) {
           ++total_valid;
-          this->Add(entry.trace.value(), entry.repr, entry.times);
+          this->Add(entry.trace.value(), entry.repr, entry.times, tasks[i]);
         }
       }
       if (total_valid > 0) {
-        LOG(INFO) << "Loaded " << total_valid << " valid record(s). "
-                  << "Best time cost: " << (this->best.MeanTime() * 1000) << " ms, "
-                  << (task->flop_ct / this->best.MeanTime() / 1e9) << " GFLOPs";
+        LOG(INFO) << "Loaded " << total_valid << " valid record(s). ";
       } else {
         LOG(INFO) << "No valid records found.";
       }
@@ -188,13 +193,14 @@ class InMemoryDBNode : public DatabaseNode {
    * \param repr The string representation of the schedule
    * \param time The running time of the schedule
    */
-  void Add(const Trace& trace, const String& repr, const std::vector<double>& times) override {
+  void Add(const Trace& trace, const String& repr, const std::vector<double>& times,
+           const SearchTask& task) override {
     ICHECK(!times.empty());
-    Database::Entry& entry = entries_[repr];
+    Database::Entry& entry = entries_[task][repr];
     double time = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
     if (!entry.repr.empty()) {
       if (entry.MeanTime() >= time) {
-        sorted_.erase(&entry);
+        sorted_[task].erase(&entry);
       } else {
         return;
       }
@@ -202,9 +208,9 @@ class InMemoryDBNode : public DatabaseNode {
     entry.trace = trace;
     entry.repr = repr;
     entry.times = times;
-    sorted_.insert(&entry);
-    if (!best.trace.defined() || best.MeanTime() > time) {
-      best = entry;
+    sorted_[task].insert(&entry);
+    if (!best[task].trace.defined() || best[task].MeanTime() > time) {
+      best[task] = entry;
     }
   }
 
@@ -213,37 +219,55 @@ class InMemoryDBNode : public DatabaseNode {
    * \param repr The string representation of the schedule
    * \return A boolean indicating if the schedule exists in the database
    */
-  bool Has(const String& repr) const override { return entries_.count(repr) != 0; }
+  bool Has(const String& repr, const SearchTask& task) const override {
+    if (entries_.count(task) == 0) {
+      return false;
+    }
+    return entries_.at(task).count(repr) != 0;
+  }
 
   /*!
    * \brief Get the top-k entries
    * \param repr The string representation of the schedule
    */
-  std::vector<Entry> GetTopK(int top_k) const override {
+  std::vector<Entry> GetTopK(int top_k, const SearchTask& task) const override {
     std::vector<Entry> result;
     result.reserve(top_k);
-    auto iter = sorted_.cbegin();
-    for (int i = 0; i < top_k && iter != sorted_.cend(); ++i, ++iter) {
+    if (sorted_.count(task) == 0) {
+      return result;
+    }
+    auto iter = sorted_.at(task).cbegin();
+    for (int i = 0; i < top_k && iter != sorted_.at(task).cend(); ++i, ++iter) {
       result.push_back(**iter);
     }
     return result;
   }
 
-  Entry GetBest() const override { return best; }
+  Entry GetBest(const SearchTask& task) override { return best[task]; }
 
-  int Size() const override { return entries_.size(); }
+  int Size() const override {
+    int size = 0;
+    for (auto& kv : entries_) {
+      size += kv.second.size();
+    }
+    return size;
+  }
 
  public:
   /*! \brief Path to the file that stores tuning records in JSON format */
   Optional<String> path;
   /*! \brief The best entry so far */
-  Entry best;
+  std::unordered_map<SearchTask, Entry, SearchTaskHasher, SearchTaskEqual> best;
 
  private:
   /*! \brief All the measured states, de-duplicated by the string repr */
-  std::unordered_map<String, Database::Entry> entries_;
+  std::unordered_map<SearchTask, std::unordered_map<String, Database::Entry>, SearchTaskHasher,
+                     SearchTaskEqual>
+      entries_;
   /*! \brief All the measured states */
-  std::multiset<Database::Entry*, EntryPtrComparator> sorted_;
+  std::unordered_map<SearchTask, std::multiset<Database::Entry*, EntryPtrComparator>,
+                     SearchTaskHasher, SearchTaskEqual>
+      sorted_;
 };
 
 class InMemoryDB : public Database {
@@ -251,7 +275,6 @@ class InMemoryDB : public Database {
   explicit InMemoryDB(const Optional<String>& path) {
     ObjectPtr<InMemoryDBNode> n = make_object<InMemoryDBNode>();
     n->path = path;
-    n->best = Database::Entry{NullOpt, String(""), {}};
     data_ = std::move(n);
   }
 
@@ -259,12 +282,32 @@ class InMemoryDB : public Database {
 };
 
 TVM_REGISTER_NODE_TYPE(InMemoryDBNode);
-
+TVM_REGISTER_GLOBAL("meta_schedule.GetBest").set_body_typed([](InMemoryDB self, SearchTask task) {
+  if (self->best.count(task)) {
+    return self->best.at(task).trace;
+  } else {
+    return Optional<Trace>(NullOpt);
+  }
+});
 }  // namespace in_memory_db
 
 Database InMemoryDB(Optional<String> path) { return in_memory_db::InMemoryDB(path); }
-
+Database InitMemoryDB(String path) {
+  auto db = InMemoryDB(path);
+  db->Init();
+  return db;
+}
+tir::PrimFunc ApplyTrace(Trace trace, SearchTask task, SearchSpace space) {
+  Schedule sch(task->workload);
+  trace->Apply(sch);
+  if (!space->Postprocess(task, sch, nullptr)) {
+    LOG(FATAL) << "ValueError: The best schedule cannot be postprocessed all of a sudden";
+  }
+  return GetOnlyFunc(sch->mod());
+}
+TVM_REGISTER_GLOBAL("meta_schedule.ApplyTrace").set_body_typed(ApplyTrace);
 TVM_REGISTER_OBJECT_TYPE(DatabaseNode);
+TVM_REGISTER_GLOBAL("meta_schedule.GetInMemoryDB").set_body_typed(InitMemoryDB);
 
 }  // namespace meta_schedule
 }  // namespace tvm
