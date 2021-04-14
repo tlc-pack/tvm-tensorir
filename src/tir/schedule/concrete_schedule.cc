@@ -203,6 +203,11 @@ void ConcreteScheduleNode::DoubleBuffer(const BlockRV& block_rv) {
   this->state_->DebugVerify();
 }
 
+void ConcreteScheduleNode::SetScope(const BlockRV& block_rv, int i, const String& storage_scope) {
+  schedule::SetScope(state(), this->GetSRef(block_rv), i, storage_scope);
+  this->state_->DebugVerify();
+}
+
 void ConcreteScheduleNode::Pragma(const LoopRV& loop_rv, const String& pragma_type,
                                   const ExprRV& pragma_value) {
   schedule::Pragma(state_,                  //

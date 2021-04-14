@@ -476,6 +476,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBind")
     });
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDoubleBuffer")
     .set_body_method<Schedule>(&ScheduleNode::DoubleBuffer);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSetScope")
+    .set_body_method<Schedule>(&ScheduleNode::SetScope);
 TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma")  //
     .set_body_method<Schedule>(&ScheduleNode::Pragma);
 

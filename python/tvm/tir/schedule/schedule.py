@@ -258,6 +258,11 @@ class Schedule(Object):
     def double_buffer(self, block: BlockRV) -> None:
         _ffi_api_schedule.ScheduleDoubleBuffer(self, block)  # pylint: disable=no-member
 
+    def set_scope(self, block: BlockRV, i: int, storage_scope: str) -> None:
+        _ffi_api_schedule.ScheduleSetScope(  # pylint: disable=no-member
+            self, block, i, storage_scope
+        )
+
     def pragma(self, loop: LoopRV, pragma_type: str, pragma_value: ExprRV) -> None:
         if isinstance(pragma_value, bool):
             pragma_value = IntImm("bool", pragma_value)
