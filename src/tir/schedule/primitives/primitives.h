@@ -118,6 +118,15 @@ TVM_DLL void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& 
 TVM_DLL void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref);
 
 /*!
+ * \brief Set the storage scope of a buffer, which is the i-th write buffer of the given block
+ * \param block_sref The producer of the buffer
+ * \param i The index of the buffer in block's write region
+ * \param storage_scope The storage scope to be set
+ */
+TVM_DLL void SetScope(ScheduleState self, const StmtSRef& block_sref, int i,
+                      const String& storage_scope);
+
+/*!
  * \brief add annotation to a loop
  * \param loop_sref the loop of interest
  * \param pragma_type the attribute key

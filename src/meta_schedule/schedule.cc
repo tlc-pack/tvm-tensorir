@@ -212,6 +212,11 @@ void ScheduleNode::DoubleBuffer(const BlockRV& block_rv) {
   // TODO
 }
 
+void ScheduleNode::SetScope(const BlockRV& block_rv, int i, const String& storage_scope) {
+  tir::ConcreteScheduleNode::SetScope(block_rv, i, storage_scope);
+  this->trace->Append(SetScopeAttrs::Make(block_rv, i, storage_scope));
+}
+
 void ScheduleNode::Pragma(const LoopRV& loop_rv, const String& pragma_type,
                           const ExprRV& pragma_value) {
   tir::ConcreteScheduleNode::Pragma(loop_rv, pragma_type, pragma_value);

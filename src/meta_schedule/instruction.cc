@@ -129,6 +129,7 @@ Array<ObjectRef> InstructionNode::Deserialize(const Array<ObjectRef>& record,
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(UnrollAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(RFactorAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(BindAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SetScopeAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(EnterPostProcAttrs),
       };
 #undef TVM_META_SCHEDULE_INST_VTABLE_ENTRY
@@ -424,6 +425,15 @@ Instruction BindAttrs::Make(const LoopRV& loop, const String& thread_axis) {
   ObjectPtr<BindAttrs> n = make_object<BindAttrs>();
   n->thread_axis = thread_axis;
   return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction SetScopeAttrs::Make(const BlockRV& block, int i, const String& storage_scope) {
+  ObjectPtr<SetScopeAttrs> n = make_object<SetScopeAttrs>();
+  n->i = i;
+  n->storage_scope = storage_scope;
+  return Instruction(/*inputs=*/{block},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
@@ -740,6 +750,16 @@ Array<ObjectRef> BindAttrs::Apply(const Schedule& sch,  //
   ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   sch->Bind(loop, thread_axis);
+  return {};
+}
+
+Array<ObjectRef> SetScopeAttrs::Apply(const Schedule& sch, //
+                                      const Array<Optional<ObjectRef>>& inputs,
+                                      const Optional<ObjectRef>& decision) const {
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  sch->SetScope(block, i, storage_scope);
   return {};
 }
 
@@ -1092,6 +1112,16 @@ void BindAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
   py.Print(os);
 }
 
+void SetScopeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                             const Array<String>& outputs,
+                             const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("set_scope");
+  py.AddArgInput("block", inputs[0]);
+  py.AddArgAttr("i", this->i);
+  py.AddArgAttr("storage_scope", this->storage_scope);
+  py.Print(os);
+}
+
 void EnterPostProcAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                   const Array<String>& outputs,
                                   const Optional<ObjectRef>& decision) const {
@@ -1189,6 +1219,12 @@ void RFactorAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>
 void BindAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
   record->push_back(this->thread_axis);
+}
+
+void SetScopeAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+  ICHECK(!decision.defined());
+  record->push_back(Integer(i));
+  record->push_back(this->storage_scope);
 }
 
 /**************** Deserialize  ****************/
@@ -1305,6 +1341,14 @@ InstAttrs BindAttrs::Deserialize(const Array<ObjectRef>& record, Optional<Object
   return InstAttrs(std::move(n));
 }
 
+InstAttrs SetScopeAttrs::Deserialize(const Array<ObjectRef>& record,
+                                     Optional<ObjectRef>* decision) {
+  ObjectPtr<SetScopeAttrs> n = make_object<SetScopeAttrs>();
+  n->i = Downcast<Integer>(record[3]);
+  n->storage_scope = Downcast<String>(record[4]);
+  return InstAttrs(std::move(n));
+}
+
 /**************** Deserialize/Serialize for empty instructions ****************/
 
 #define TVM_META_SCHEDULE_INST_IO_EMPTY(AttrsType)                                                 \
@@ -1362,6 +1406,7 @@ TVM_REGISTER_NODE_TYPE(VectorizeAttrs);
 TVM_REGISTER_NODE_TYPE(UnrollAttrs);
 TVM_REGISTER_NODE_TYPE(RFactorAttrs);
 TVM_REGISTER_NODE_TYPE(BindAttrs);
+TVM_REGISTER_NODE_TYPE(SetScopeAttrs);
 TVM_REGISTER_NODE_TYPE(EnterPostProcAttrs);
 
 }  // namespace meta_schedule

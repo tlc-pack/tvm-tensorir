@@ -131,6 +131,71 @@ class ConcreteScheduleNode : public ScheduleNode {
   /*! \brief Remove a random variable from the symbol table */
   inline void RemoveFromSymbolTable(const ObjectRef& rv);
 };
+  BlockRV GetBlock(const String& name) override;
+
+  Array<LoopRV> GetAxes(const BlockRV& block_rv) override;
+
+  Array<BlockRV> GetChildBlocks(const BlockRV& block_rv) override;
+
+  Array<BlockRV> GetChildBlocks(const LoopRV& loop_rv) override;
+
+  Array<BlockRV> GetProducers(const BlockRV& block_rv) override;
+
+  Array<BlockRV> GetConsumers(const BlockRV& block_rv) override;
+
+  /******** Schedule: loops ********/
+
+  LoopRV Fuse(const Array<LoopRV>& loop_rvs) override;
+
+  Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factor_rvs) override;
+
+  void Reorder(const Array<LoopRV>& order) override;
+
+  /******** Schedule: compute location ********/
+
+  void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv, bool preserve_unit_loop) override;
+
+  void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
+                        bool preserve_unit_loop) override;
+
+  void ComputeInline(const BlockRV& block_rv) override;
+
+  void ReverseComputeInline(const BlockRV& block_rv) override;
+
+  /******** Schedule: parallelize / annotate ********/
+
+  void Vectorize(const LoopRV& loop_rv) override;
+
+  void Parallel(const LoopRV& loop_rv) override;
+
+  void Unroll(const LoopRV& loop_rv) override;
+
+  void Bind(const LoopRV& loop_rv, const IterVar& thread) override;
+
+  void Bind(const LoopRV& loop_rv, const String& thread) override;
+
+  void DoubleBuffer(const BlockRV& block_rv) override;
+
+  void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) override;
+
+  void Pragma(const LoopRV& loop_rv, const String& pragma_type,
+              const ExprRV& pragma_value) override;
+
+  /******** Schedule: cache read/write ********/
+
+  BlockRV CacheRead(const BlockRV& block_rv, int i, const String& storage_scope) override;
+
+  BlockRV CacheWrite(const BlockRV& block_rv, int i, const String& storage_scope) override;
+
+  /******** Schedule: reduction ********/
+
+  BlockRV RFactor(const LoopRV& loop_rv, int factor_axis) override;
+
+  BlockRV DecomposeReduction(const BlockRV& block_rv, const Optional<LoopRV>& loop_rv) override;
+
+  void MergeReduction(const BlockRV& init_block_rv, const BlockRV& update_block_rv) override;
+
+  /******** Schedule: blockize / tensorize ********/
 
 
 /******** Lookup random variables ********/
