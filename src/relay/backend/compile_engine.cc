@@ -186,7 +186,6 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
         bool with_tir = pass_ctx->GetConfig<Bool>("relay.with_tir_schedule", Bool(false)).value();
         if (with_tir) {
           prim_func = anchor_implementation_.PrimFunc(anchor_attrs_, tensor_outs, target_);
-
         } else {
           schedule = anchor_implementation_.Schedule(anchor_attrs_, tensor_outs, target_);
           for (const auto& scalar : scalars_) {

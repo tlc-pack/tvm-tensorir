@@ -76,6 +76,7 @@ PassContext PassContext::Current() {
     return entry->default_context;
   }
 }
+
 // linearly scan the pass array to match pass_name
 inline bool PassArrayContains(const Array<runtime::String>& pass_array,
                               const std::string& pass_name) {
@@ -96,9 +97,6 @@ bool PassContext::PassEnabled(const PassInfo& info) const {
 
   return operator->()->opt_level >= info->opt_level;
 }
-
-
-
 
 class PassConfigManager {
  public:
@@ -515,7 +513,6 @@ void SequentialNode::ResolveDependency(const IRModule& mod) {
   LOG(FATAL) << "Pass dependency has not been resolved yet."
              << "\n";
 }
-
 
 Pass GetPass(const String& pass_name) {
   using tvm::runtime::Registry;

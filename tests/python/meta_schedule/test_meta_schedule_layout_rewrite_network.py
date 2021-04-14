@@ -37,17 +37,17 @@ def get_np_array(var, dtype):
 
 
 def get_relay_conv2d(
-        outc=64,
-        inc=64,
-        height=14,
-        width=14,
-        kh=3,
-        kw=3,
-        batch=1,
-        pad=0,
-        stride=1,
-        dilation=1,
-        layout="NHWC",
+    outc=64,
+    inc=64,
+    height=14,
+    width=14,
+    kh=3,
+    kw=3,
+    batch=1,
+    pad=0,
+    stride=1,
+    dilation=1,
+    layout="NHWC",
 ):
     dtype = "float32"
     if layout == "NHWC":
@@ -86,6 +86,7 @@ def get_relay_dense(m=128, n=128, k=128):
     mod["main"] = relay.Function([d, w], y)
     data, weight = get_np_array(d, dtype), get_np_array(w, dtype)
     return mod, data, weight
+
 
 def get_relay_batchmm(batch=4, m=128, n=128, k=128):
     dtype = "float32"
@@ -217,6 +218,7 @@ def tune_and_check(log, mod, data, weight):
     std = run_module(lib_std, True).asnumpy()
     out = run_module(lib, True).asnumpy()
     np.testing.assert_allclose(out, std, rtol=1e-4, atol=1e-4)
+
 
 @pytest.mark.skip(reason="needs RPC")
 def test_conv2d():

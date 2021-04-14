@@ -258,22 +258,22 @@ class XGBModel(PyCostModel):
     booster: Optional[xgb.Booster]
 
     def __init__(
-            self,
-            *,
-            # model-related
-            xgb_max_depth: int = 10,
-            xgb_gamma: float = 0.001,
-            xgb_min_child_weight: float = 0,
-            xgb_eta: float = 0.2,
-            xgb_seed: int = 43,
-            # serialization-related
-            path: Optional[str] = None,
-            # behavior of randomness
-            num_warmup_samples: int = 100,
-            # evaluation
-            early_stopping_rounds: int = 50,
-            verbose_eval: int = 25,
-            average_peak_n: int = 32,
+        self,
+        *,
+        # model-related
+        xgb_max_depth: int = 10,
+        xgb_gamma: float = 0.001,
+        xgb_min_child_weight: float = 0,
+        xgb_eta: float = 0.2,
+        xgb_seed: int = 43,
+        # serialization-related
+        path: Optional[str] = None,
+        # behavior of randomness
+        num_warmup_samples: int = 100,
+        # evaluation
+        early_stopping_rounds: int = 50,
+        verbose_eval: int = 25,
+        average_peak_n: int = 32,
     ):
         super().__init__()
         # model-related

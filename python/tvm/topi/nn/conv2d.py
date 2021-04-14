@@ -22,10 +22,6 @@ from collections import namedtuple
 import tvm
 from tvm import te, auto_scheduler
 
-from tvm.te.tensor import Tensor
-from tvm.runtime import convert_to_object
-from tvm.tir import expr as _expr
-
 from .pad import pad
 from .utils import get_pad_tuple
 from ..utils import simplify, get_const_tuple, get_const_int, tag
@@ -360,17 +356,15 @@ def conv2d_hwcn(Input, Filter, stride, padding, dilation, out_dtype=None):
     return Output
 
 
-
-
 def conv2d_nhwc(
-        Input,
-        Filter,
-        stride,
-        padding,
-        dilation,
-        out_dtype="float32",
-        auto_scheduler_rewritten_layout="",
-        original_shape=[],
+    Input,
+    Filter,
+    stride,
+    padding,
+    dilation,
+    out_dtype="float32",
+    auto_scheduler_rewritten_layout="",
+    original_shape=[],
 ):
     """Convolution operator in NHWC layout.
 
@@ -1010,16 +1004,16 @@ def unpack_NCHWc_to_nchw(packed_out, out_dtype):
 
 
 def _conv2d_winograd_nhwc_impl(
-        data,
-        weight,
-        strides,
-        padding,
-        dilation,
-        out_dtype,
-        tile_size,
-        pre_computed=False,
-        auto_scheduler_rewritten_layout="",
-        original_shape=[],
+    data,
+    weight,
+    strides,
+    padding,
+    dilation,
+    out_dtype,
+    tile_size,
+    pre_computed=False,
+    auto_scheduler_rewritten_layout="",
+    original_shape=[],
 ):
     """Conv2D Winograd implementation in NHWC layout.
     This is a clean version to be used by the auto-scheduler for both CPU and GPU.
@@ -1115,7 +1109,7 @@ def _conv2d_winograd_nhwc_impl(
         (alpha, alpha, P, CI),
         lambda eps, nu, p, ci: data_pad[p // (nH * nW)][((p // nW) % nH) * m + eps][
             (p % nW) * m + nu
-        ][ci],
+            ][ci],
         name="input_tile",
     )
 
@@ -1171,15 +1165,15 @@ def _conv2d_winograd_nhwc_impl(
 
 @tvm.target.generic_func
 def conv2d_winograd_nhwc(
-        data,
-        weight,
-        strides,
-        padding,
-        dilation,
-        out_dtype,
-        pre_computed=False,
-        auto_scheduler_rewritten_layout="",
-        original_shape=[],
+    data,
+    weight,
+    strides,
+    padding,
+    dilation,
+    out_dtype,
+    pre_computed=False,
+    auto_scheduler_rewritten_layout="",
+    original_shape=[],
 ):
     """Conv2D Winograd in NHWC layout.
     This is a clean version to be used by the auto-scheduler for both CPU and GPU.

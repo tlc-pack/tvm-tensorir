@@ -62,7 +62,7 @@ class MetaScheduleFuncMutator : public ExprMutator {
       : ExprMutator(), layout_rewrite_queue_(std::move(layout_rewrite_queue)) {}
 
   Expr VisitExpr_(const CallNode* n) {
-    auto new_n = ExprMutator::VisitExpr_(n);
+    Expr new_n = ExprMutator::VisitExpr_(n);
 
     const auto* call = new_n.as<CallNode>();
 
@@ -110,7 +110,7 @@ class MetaScheduleFuncMutator : public ExprMutator {
 };
 
 Expr MetaScheduleLayoutRewriter::VisitExpr_(const CallNode* n) {
-  auto new_n = ExprMutator::VisitExpr_(n);
+  Expr new_n = ExprMutator::VisitExpr_(n);
 
   if (const auto* call = new_n.as<CallNode>()) {
     if (const auto* func = call->op.as<FunctionNode>()) {
@@ -123,8 +123,7 @@ Expr MetaScheduleLayoutRewriter::VisitExpr_(const CallNode* n) {
 
       // Mutate the called function
       if (!global_layout_rewrite_queue.empty()) {
-        auto ret = MetaScheduleFuncMutator(global_layout_rewrite_queue).VisitExpr(new_n);
-        return ret;
+        return MetaScheduleFuncMutator(global_layout_rewrite_queue).VisitExpr(new_n);
       }
     }
   }

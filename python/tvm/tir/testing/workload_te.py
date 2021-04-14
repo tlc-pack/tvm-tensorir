@@ -20,10 +20,10 @@ from tvm import te, tir, topi
 
 
 def batch_matmul_nkkm(  # pylint: disable=invalid-name
-        B: int,
-        N: int,
-        M: int,
-        K: int,
+    B: int,
+    N: int,
+    M: int,
+    K: int,
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     x = te.placeholder((B, N, K), name="X")
     y = te.placeholder((B, K, M), name="Y")
@@ -37,15 +37,15 @@ def batch_matmul_nkkm(  # pylint: disable=invalid-name
 
 
 def conv1d_nlc(  # pylint: disable=invalid-name
-        N: int,
-        L: int,
-        CI: int,
-        CO: int,
-        kernel_size: int,
-        stride: int = 1,
-        padding: int = 0,
-        dilation: int = 1,
-        groups: int = 1,
+    N: int,
+    L: int,
+    CI: int,
+    CO: int,
+    kernel_size: int,
+    stride: int = 1,
+    padding: int = 0,
+    dilation: int = 1,
+    groups: int = 1,
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     inputs = te.placeholder((N, L, CI), name="inputs")
     weight = te.placeholder((kernel_size, CI // groups, CO), name="weight")
@@ -62,12 +62,12 @@ def conv1d_nlc(  # pylint: disable=invalid-name
         (batch_size, out_len, out_channel),
         lambda n, l, co: te.sum(
             (
-                    padded[
-                        n,
-                        l * stride + rl * dilation,
-                        co // out_channel_per_group * channel_per_group + rc,
-                    ]
-                    * weight[rl, rc, co]
+                padded[
+                    n,
+                    l * stride + rl * dilation,
+                    co // out_channel_per_group * channel_per_group + rc,
+                ]
+                * weight[rl, rc, co]
             ),
             axis=[rl, rc],
         ),
@@ -77,16 +77,16 @@ def conv1d_nlc(  # pylint: disable=invalid-name
 
 
 def conv2d_nhwc(  # pylint: disable=invalid-name
-        N: int,
-        H: int,
-        W: int,
-        CI: int,
-        CO: int,
-        kernel_size: int,
-        stride: int = 1,
-        padding: int = 0,
-        dilation: int = 1,
-        groups: int = 1,
+    N: int,
+    H: int,
+    W: int,
+    CI: int,
+    CO: int,
+    kernel_size: int,
+    stride: int = 1,
+    padding: int = 0,
+    dilation: int = 1,
+    groups: int = 1,
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     inputs = te.placeholder((N, H, W, CI), name="inputs")
     weight = te.placeholder((kernel_size, kernel_size, CI // groups, CO), name="weight")
@@ -105,13 +105,13 @@ def conv2d_nhwc(  # pylint: disable=invalid-name
         (batch_size, out_h, out_w, out_channel),
         lambda n, h, w, co: te.sum(
             (
-                    padded[
-                        n,
-                        h * stride + rh * dilation,
-                        w * stride + rw * dilation,
-                        co // out_channel_per_group * channel_per_group + rc,
-                    ]
-                    * weight[rh, rw, rc, co]
+                padded[
+                    n,
+                    h * stride + rh * dilation,
+                    w * stride + rw * dilation,
+                    co // out_channel_per_group * channel_per_group + rc,
+                ]
+                * weight[rh, rw, rc, co]
             ),
             axis=[rh, rw, rc],
         ),
@@ -121,17 +121,17 @@ def conv2d_nhwc(  # pylint: disable=invalid-name
 
 
 def conv3d_ndhwc(  # pylint: disable=invalid-name
-        N: int,
-        D: int,
-        H: int,
-        W: int,
-        CI: int,
-        CO: int,
-        kernel_size: int,
-        stride: int = 1,
-        padding: int = 0,
-        dilation: int = 1,
-        groups: int = 1,
+    N: int,
+    D: int,
+    H: int,
+    W: int,
+    CI: int,
+    CO: int,
+    kernel_size: int,
+    stride: int = 1,
+    padding: int = 0,
+    dilation: int = 1,
+    groups: int = 1,
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     inputs = te.placeholder((N, D, H, W, CI))
     weight = te.placeholder((kernel_size, kernel_size, kernel_size, CI // groups, CO))
@@ -152,14 +152,14 @@ def conv3d_ndhwc(  # pylint: disable=invalid-name
         (batch_size, out_d, out_h, out_w, out_channel),
         lambda n, d, h, w, co: te.sum(
             (
-                    padded[
-                        n,
-                        d * stride + rd * dilation,
-                        h * stride + rh * dilation,
-                        w * stride + rw * dilation,
-                        co // out_channel_per_group * channel_per_group + rc,
-                    ]
-                    * weight[rd, rh, rw, rc, co]
+                padded[
+                    n,
+                    d * stride + rd * dilation,
+                    h * stride + rh * dilation,
+                    w * stride + rw * dilation,
+                    co // out_channel_per_group * channel_per_group + rc,
+                ]
+                * weight[rd, rh, rw, rc, co]
             ),
             axis=[rd, rh, rw, rc],
         ),
@@ -169,15 +169,15 @@ def conv3d_ndhwc(  # pylint: disable=invalid-name
 
 
 def depthwise_conv2d_nhwc(  # pylint: disable=invalid-name
-        N: int,
-        H: int,
-        W: int,
-        C: int,
-        kernel_size: int,
-        stride: int = 1,
-        padding: int = 0,
-        dilation: int = 1,
-        factor: int = 1,
+    N: int,
+    H: int,
+    W: int,
+    C: int,
+    kernel_size: int,
+    stride: int = 1,
+    padding: int = 0,
+    dilation: int = 1,
+    factor: int = 1,
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     inputs = te.placeholder((N, H, W, C))
     weight = te.placeholder((factor, kernel_size, kernel_size, C))
@@ -194,13 +194,13 @@ def depthwise_conv2d_nhwc(  # pylint: disable=invalid-name
         (batch_size, out_h, out_w, out_channel),
         lambda n, h, w, c: te.sum(
             (
-                    padded[
-                        n,
-                        h * stride + rh * dilation,
-                        w * stride + rw * dilation,
-                        c // factor,
-                    ]
-                    * weight[c % factor, rh, rw, c // factor]
+                padded[
+                    n,
+                    h * stride + rh * dilation,
+                    w * stride + rw * dilation,
+                    c // factor,
+                ]
+                * weight[c % factor, rh, rw, c // factor]
             ),
             axis=[rh, rw],
         ),
@@ -210,14 +210,14 @@ def depthwise_conv2d_nhwc(  # pylint: disable=invalid-name
 
 
 def conv2d_transpose_nhwc(  # pylint: disable=invalid-name
-        N: int,
-        H: int,
-        W: int,
-        CI: int,
-        CO: int,
-        kernel_size: int,
-        stride: int = 1,
-        padding: int = 0,
+    N: int,
+    H: int,
+    W: int,
+    CI: int,
+    CO: int,
+    kernel_size: int,
+    stride: int = 1,
+    padding: int = 0,
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     inputs = te.placeholder((N, H, W, CI), name="inputs")
     weight = te.placeholder((kernel_size, kernel_size, CI, CO), name="weight")
@@ -299,15 +299,15 @@ def conv2d_transpose_nhwc(  # pylint: disable=invalid-name
 
 
 def conv2d_capsule_nhwijc(  # pylint: disable=invalid-name
-        N: int,
-        H: int,
-        W: int,
-        CI: int,
-        CO: int,
-        kernel_size: int,
-        stride: int = 1,
-        padding: int = 0,
-        capsule_size: int = 4,
+    N: int,
+    H: int,
+    W: int,
+    CI: int,
+    CO: int,
+    kernel_size: int,
+    stride: int = 1,
+    padding: int = 0,
+    capsule_size: int = 4,
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     inputs = te.placeholder((N, H, W, capsule_size, capsule_size, CI), name="inputs")
     weight = te.placeholder(
@@ -329,8 +329,8 @@ def conv2d_capsule_nhwijc(  # pylint: disable=invalid-name
         (batch_size, out_h, out_w, capsule_size, capsule_size, out_channel),
         lambda n, h, w, cap_i, cap_j, co: te.sum(
             (
-                    padded[n, h * stride + rh, w * stride + rw, cap_i, cap_k, rc]
-                    * weight[rh, rw, cap_k, cap_j, rc, co]
+                padded[n, h * stride + rh, w * stride + rw, cap_i, cap_k, rc]
+                * weight[rh, rw, cap_k, cap_j, rc, co]
             ),
             axis=[rh, rw, cap_k, rc],
         ),
@@ -340,9 +340,9 @@ def conv2d_capsule_nhwijc(  # pylint: disable=invalid-name
 
 
 def norm_bmn(  # pylint: disable=invalid-name
-        B: int,
-        M: int,
-        N: int,
+    B: int,
+    M: int,
+    N: int,
 ) -> Tuple[te.Tensor, te.Tensor]:
     a = te.placeholder((B, M, N), name="A")
     i = te.reduce_axis((0, M), name="i")
@@ -357,12 +357,12 @@ def norm_bmn(  # pylint: disable=invalid-name
 
 
 def conv2d_nhwc_without_layout_rewrite(  # pylint: disable=invalid-name
-        Input: int,
-        Filter: int,
-        stride: int,
-        padding: int,
-        dilation: int,
-        out_dtype="float32",
+    Input: int,
+    Filter: int,
+    stride: int,
+    padding: int,
+    dilation: int,
+    out_dtype="float32",
 ):
     """A copy of `topi.nn.conv2d_nhwc` but without the 'layout_free` attribute.
     We use this in single op and subgraph evaluation
@@ -419,15 +419,15 @@ def conv2d_nhwc_without_layout_rewrite(  # pylint: disable=invalid-name
 
 
 def conv2d_nhwc_bn_relu(  # pylint: disable=invalid-name
-        N: int,
-        H: int,
-        W: int,
-        CI: int,
-        CO: int,
-        kernel_size: int,
-        strides: int,
-        padding: int,
-        dilation: int = 1,
+    N: int,
+    H: int,
+    W: int,
+    CI: int,
+    CO: int,
+    kernel_size: int,
+    strides: int,
+    padding: int,
+    dilation: int = 1,
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor, te.Tensor, te.Tensor, te.Tensor]:
     data = te.placeholder((N, H, W, CI), name="data")
     kernel = te.placeholder((kernel_size, kernel_size, CI, CO), name="kernel")
@@ -451,10 +451,10 @@ def conv2d_nhwc_bn_relu(  # pylint: disable=invalid-name
 
 
 def transpose_batch_matmul(  # pylint: disable=invalid-name
-        batch: int,
-        seq_len: int,
-        n_head: int,
-        n_dim: int,
+    batch: int,
+    seq_len: int,
+    n_head: int,
+    n_dim: int,
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     query = te.placeholder((batch, seq_len, n_head, n_dim), name="query")
     value = te.placeholder((batch, seq_len, n_head, n_dim), name="value")
@@ -478,18 +478,18 @@ def transpose_batch_matmul(  # pylint: disable=invalid-name
 
 
 def conv2d_winograd_nhwc(
-        N: int,
-        H: int,
-        W: int,
-        CI: int,
-        CO: int,
-        kernel_size: int,
-        stride: int = 1,
-        padding: int = 0,
-        dilation: int = 1
+    N: int,
+    H: int,
+    W: int,
+    CI: int,
+    CO: int,
+    kernel_size: int,
+    stride: int = 1,
+    padding: int = 0,
+    dilation: int = 1
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     # TODO: implement tile_size
-    tile_size = 4 #_infer_tile_size(data, kernel)
+    tile_size = 4  # _infer_tile_size(data, kernel)
     inputs = te.placeholder((N, H, W, CI), name='inputs')
     N, H, W, CI = topi.utils.get_const_tuple(inputs.shape)
     if isinstance(dilation, int):

@@ -34,6 +34,22 @@ import threading
 
 @tvm._ffi.register_func("meta_schedule.relay_integration.get_func_from_dispatcher")
 def get_func_from_dispatcher(func):
+    """
+    If it is in TaskExtractionTracingEnvironmentQuery, add it into the function table.
+    Otherwise, query the dispatcher for trace and apply it onto the function.
+    Note: This is used internally for relay integration. Do
+    not use this as a general user-facing API.
+
+    Parameters
+    ----------
+    func: tvm.tir.PrimFunc
+        The original function from compile engine
+
+    Returns
+    -------
+    transformed_func: Optional[tvm.tir.PrimFunc]
+        The new function after applying trace
+    """
     env = TaskExtractionTracingEnvironment.current
     if env is None:
         target = tvm.target.Target.current()
@@ -87,6 +103,21 @@ def call_all_topi_funcs(mod, params, target):
 
 
 def extract_tasks(mod, params, target):
+    """Extract tuning tasks from a relay program.
+
+      Parameters
+      ----------
+      mod: tvm.IRModule or relay.function.Function
+          The module or function to tune
+      params: dict of str to numpy array
+          The associated parameters of the program
+      target: Union[tvm.target.Target, str]
+          The compilation target
+      Returns
+      -------
+      funcs: dict of str to tvm.tir.PrimFunc
+          The extracted functions along with its name
+      """
     if isinstance(target, str):
         target = tvm.target.Target(target)
     env = TaskExtractionTracingEnvironment()
@@ -103,7 +134,7 @@ def extract_tasks(mod, params, target):
 def is_meta_schedule_enabled():
     """Return whether the meta-schedule is enabled.
 
-    Parameters
+    Returns
     ----------
     enabled: bool
         Whether the meta-schedule is enabled

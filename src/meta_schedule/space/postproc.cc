@@ -744,6 +744,8 @@ Postproc VerifyGPUCode() {
   };
   return Postproc("verify_gpu_code", f_proc);
 }
+
+/********** RewriteLayout **********/
 class PostProcRewriteLayout {
  private:
   class IterVarMapCollector {
@@ -758,11 +760,13 @@ class PostProcRewriteLayout {
         CollectIterSumExpr(GetRef<arith::IterSumExpr>(op));
       }
     }
+    
     void CollectIterSumExpr(const arith::IterSumExpr& expr) {
       for (const auto& arg : expr->args) {
         CollectIterSplitExpr(arg);
       }
     }
+    
     // keep only the itersplitexpr and append them to the result array
     void Collect(const arith::IterMapExpr& expr) {
       if (const auto* op = expr.as<arith::IterSplitExprNode>()) {
@@ -779,13 +783,7 @@ class PostProcRewriteLayout {
   };
 
   class IterVarResolver : public tir::StmtExprVisitor {
-    bool visited = false;
-    tir::BlockRealize realize;
-    Map<tir::Var, PrimExpr> binding_map{};
-    const Schedule& sch;
-    const tir::Buffer& buffer;
-    LayoutRewriteHint& hint;
-    tir::Block block_to_rewrite;
+
 
     void VisitStmt_(const tir::BlockRealizeNode* op) {
       realize = GetRef<tir::BlockRealize>(op);
@@ -794,6 +792,7 @@ class PostProcRewriteLayout {
       }
       VisitStmt(op->block->body);
     }
+    
     // true if expr1's loop is above expr2's loop
     static bool compare(
         const arith::IterSplitExpr& expr1, const arith::IterSplitExpr& expr2,
@@ -871,7 +870,15 @@ class PostProcRewriteLayout {
         }
       }
     }
-
+    
+    bool visited = false;
+    tir::BlockRealize realize;
+    Map<tir::Var, PrimExpr> binding_map{};
+    const Schedule& sch;
+    const tir::Buffer& buffer;
+    LayoutRewriteHint& hint;
+    tir::Block block_to_rewrite;
+    
    public:
     IterVarResolver(const Schedule& sch, const tir::Buffer& buffer, LayoutRewriteHint& hint)
         : sch(sch), buffer(buffer), hint(hint) {}
@@ -885,10 +892,7 @@ class PostProcRewriteLayout {
 
  public:
   class IndexRewriter : public tir::StmtExprMutator {
-    const LayoutRewriteHint& hint;
-    const tir::Buffer& buffer_to_rewrite;
-    const tir::Block& block;
-    const tir::Buffer& new_buffer;
+   
 
    public:
     IndexRewriter(const LayoutRewriteHint& hint, const tir::Buffer& buffer_to_rewrite,
@@ -933,7 +937,10 @@ class PostProcRewriteLayout {
       return GetRef<PrimExpr>(op);
     }
   };
-
+  const LayoutRewriteHint& hint;
+  const tir::Buffer& buffer_to_rewrite;
+  const tir::Block& block;
+  const tir::Buffer& new_buffer;
  public:
   bool Proc(Schedule& sch, SearchTask& task) const {
     tir::PrimFunc func = GetOnlyFunc(sch->mod());
@@ -983,6 +990,7 @@ class PostProcRewriteLayout {
     return true;
   }
 };
+
 Postproc RewriteLayout() {
   auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
     return PostProcRewriteLayout().Proc(sch, task);

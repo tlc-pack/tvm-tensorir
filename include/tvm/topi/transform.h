@@ -1428,8 +1428,8 @@ inline Tensor layout_transform(const Tensor& src, const std::string& src_layout,
       },
       name, tag);
 }
-/*! \brief Utility function for meta_schedule_layout_transform */
 
+/*! \brief Utility function for meta_schedule_layout_transform */
 inline void getNewShape(const Array<Integer>& extents, const Array<Integer>& reorder,
                         Array<PrimExpr>& new_shape) {
   new_shape.clear();
