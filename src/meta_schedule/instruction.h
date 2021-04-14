@@ -443,7 +443,7 @@ struct ComputeInlineAttrs : public InstAttrsNode {
                                       "ComputeInline", false);
 };
 
-/*! \brief Attrs of the instruction that applies compute_inline */
+/*! \brief Attrs of the instruction that applies reverse_compute_inline */
 struct ReverseComputeInlineAttrs : public InstAttrsNode {
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -660,6 +660,33 @@ struct BindAttrs : public InstAttrsNode {
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(BindAttrs,                        //
                                       "meta_schedule.attrs.BindAttrs",  //
                                       "bind", false);
+};
+
+/*! \brief Attrs of the instruction that applies set_scope */
+struct SetScopeAttrs : public InstAttrsNode {
+  /*! \brief The index of the buffer in block's write region */
+  int i;
+  /*! \brief The storage scope to be set */
+  String storage_scope;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("i", &i);
+    v->Visit("storage_scope", &storage_scope);
+  }
+
+  /*!
+   * \brief Set the storage scope of a buffer, where the buffer is given as the i-th write buffer
+   *        of the input block
+   * \param block The producer of the buffer
+   * \param i The index of the buffer in block's write region
+   * \param storage_scope The The storage scope to be set
+   * \return The instruction created
+   */
+  static Instruction Make(const BlockRV& block, int i, const String& storage_scope);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SetScopeAttrs,                       //
+                                      "meta_schedule.attrs.SetScopeAttrs",  //
+                                      "SetScope", false);
 };
 
 /*! \brief Attrs of an NOP that indicates entrance of post processing */

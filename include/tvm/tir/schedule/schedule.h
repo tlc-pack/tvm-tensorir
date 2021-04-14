@@ -338,6 +338,14 @@ class ScheduleNode : public runtime::Object {
    */
   virtual void DoubleBuffer(const BlockRV& block_rv) = 0;
   /*!
+   * \brief Set the storage scope of a buffer, where the buffer is given as the i-th write buffer
+   *        of the input block
+   * \param block_rv The producer of the buffer
+   * \param i The index of the buffer in block's write region
+   * \param storage_scope The storage scope to be set
+   */
+  virtual void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) = 0;
+  /*!
    * \brief Add a pragma annotation to a specific loop
    * \param loop_rv The loop to be annotated
    * \param pragma_type The attribute key
