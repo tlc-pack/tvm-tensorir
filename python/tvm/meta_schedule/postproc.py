@@ -133,3 +133,14 @@ def rewrite_reduction_block() -> Postproc:
         The postprocessor created
     """
     return _ffi_api_postproc.RewriteReductionBlock()  # pylint: disable=no-member
+
+
+def rewrite_layout() -> Postproc:
+    """Creates a postprocessor that rewrites layout
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteLayout()  # pylint: disable=no-member

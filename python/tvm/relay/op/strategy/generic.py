@@ -172,6 +172,7 @@ def tir_schedule_adaptive_pool(attrs, outs, target):
     with target:
         return topi.generic.default_tir_schedule(outs)
 
+
 # softmax
 def wrap_compute_softmax(topi_compute):
     """Wrap softmax topi compute"""
@@ -240,6 +241,10 @@ get_auto_scheduler_rewritten_layout = _ffi.get_global_func(
     "relay.attrs.get_auto_scheduler_rewritten_layout"
 )
 
+get_meta_schedule_original_layout = _ffi.get_global_func(
+    "relay.attrs.get_meta_schedule_original_layout"
+)
+
 # conv2d
 def wrap_compute_conv2d(
     topi_compute,
@@ -247,6 +252,7 @@ def wrap_compute_conv2d(
     need_out_layout=False,
     has_groups=False,
     need_auto_scheduler_layout=False,
+    need_meta_schedule_layout=False,
 ):
     """Wrap conv2d topi compute"""
 
@@ -268,6 +274,9 @@ def wrap_compute_conv2d(
         args.append(out_dtype)
         if need_auto_scheduler_layout:
             args.append(get_auto_scheduler_rewritten_layout(attrs))
+        elif need_meta_schedule_layout:
+            args.append("")
+            args.append(get_meta_schedule_original_layout(attrs))
         return [topi_compute(*args)]
 
     return _compute_conv2d
@@ -785,7 +794,9 @@ def matmul_strategy(attrs, inputs, out_type, target):
 
 
 # dense
-def wrap_compute_dense(topi_compute, need_auto_scheduler_layout=False):
+def wrap_compute_dense(
+    topi_compute, need_auto_scheduler_layout=False, need_meta_schedule_layout=False
+):
     """wrap dense topi compute"""
 
     def _compute_dense(attrs, inputs, out_type):
@@ -795,6 +806,10 @@ def wrap_compute_dense(topi_compute, need_auto_scheduler_layout=False):
         args = [inputs[0], inputs[1], None, out_dtype]
         if need_auto_scheduler_layout:
             args.append(get_auto_scheduler_rewritten_layout(attrs))
+        elif need_meta_schedule_layout:
+            args.append("")
+            args.append(get_meta_schedule_original_layout(attrs))
+
         return [topi_compute(*args)]
 
     return _compute_dense
@@ -827,15 +842,21 @@ def dense_pack_strategy(attrs, inputs, out_type, target):
 
 
 # batch_matmul
-def wrap_compute_batch_matmul(topi_compute, need_auto_scheduler_layout=False, need_out_dtype=False):
+def wrap_compute_batch_matmul(
+    topi_compute, need_auto_scheduler_layout=False, need_out_dtype=False, need_meta_schedule_layout=False
+):
     """wrap batch_matmul topi compute"""
 
     def _compute_batch_matmul(attrs, inputs, out_type):
         args = [inputs[0], inputs[1], out_type.shape]
         if need_auto_scheduler_layout:
             args.append(get_auto_scheduler_rewritten_layout(attrs))
+        elif need_meta_schedule_layout:
+            args.append("")
+            args.append(get_meta_schedule_original_layout(attrs))
         if need_out_dtype:
             args.append(out_type.dtype)
+        
         return [topi_compute(*args)]
 
     return _compute_batch_matmul

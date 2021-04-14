@@ -118,8 +118,12 @@ struct Conv2DAttrs : public tvm::AttrsNode<Conv2DAttrs> {
   tvm::String data_layout;
   tvm::String kernel_layout;
   tvm::String out_layout;
-  tvm::String auto_scheduler_rewritten_layout;  // The layout after auto-scheduler's layout rewrite
+  // The layout after auto-scheduler's layout rewrite
+  tvm::String auto_scheduler_rewritten_layout;
   DataType out_dtype;
+  // The original shape of the weight matrix,
+  // used to recover the compute after transforming the input's layout .
+  Array<PrimExpr> meta_schedule_original_shape;
 
   TVM_DECLARE_ATTRS(Conv2DAttrs, "relay.attrs.Conv2DAttrs") {
     TVM_ATTR_FIELD(strides)
@@ -211,7 +215,11 @@ struct Conv2DWinogradAttrs : public tvm::AttrsNode<Conv2DWinogradAttrs> {
   tvm::String data_layout;
   tvm::String kernel_layout;
   tvm::String out_layout;
-  tvm::String auto_scheduler_rewritten_layout;  // The layout after auto-scheduler's layout rewrite
+  // The layout after auto-scheduler's layout rewrite
+  tvm::String auto_scheduler_rewritten_layout;
+  // The original shape of the weight matrix,
+  // used to recover the compute after transforming the input's layout .
+  Array<PrimExpr> meta_schedule_original_shape;
   DataType out_dtype;
 
   TVM_DECLARE_ATTRS(Conv2DWinogradAttrs, "relay.attrs.Conv2DWinogradAttrs") {
@@ -990,7 +998,11 @@ struct MatmulAttrs : public tvm::AttrsNode<MatmulAttrs> {
 /*! \brief Attributes for dense operator */
 struct DenseAttrs : public tvm::AttrsNode<DenseAttrs> {
   IndexExpr units;
-  tvm::String auto_scheduler_rewritten_layout;  // The layout after auto-scheduler's layout rewrite
+  // The layout after auto-scheduler's layout rewrite
+  tvm::String auto_scheduler_rewritten_layout;
+  // The original shape of the weight matrix,
+  // used to recover the compute after transforming the input's layout .
+  Array<PrimExpr> meta_schedule_original_shape;
   DataType out_dtype;
 
   TVM_DECLARE_ATTRS(DenseAttrs, "relay.attrs.DenseAttrs") {
@@ -1007,6 +1019,9 @@ struct DenseAttrs : public tvm::AttrsNode<DenseAttrs> {
 struct BatchMatmulAttrs : public tvm::AttrsNode<BatchMatmulAttrs> {
   tvm::String auto_scheduler_rewritten_layout;  // The layout after auto-scheduler's layout rewrite
   DataType out_dtype;
+  // The original shape of the weight matrix,
+  // used to recover the compute after transforming the input's layout .
+  Array<PrimExpr> meta_schedule_original_shape;
 
   TVM_DECLARE_ATTRS(BatchMatmulAttrs, "relay.attrs.BatchMatmulAttrs") {
     // use 0 bits to indicate none.

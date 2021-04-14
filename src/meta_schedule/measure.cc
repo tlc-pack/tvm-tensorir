@@ -207,11 +207,11 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
     callback->Init(task);
   }
   this->db = InMemoryDB(task->log_file);
-  this->db->Init(task);
+  this->db->Init();
 }
 
 Optional<Schedule> ProgramMeasurerNode::GetBest(const SearchTask& task) const {
-  Optional<Trace> trace = db->GetBest().trace;
+  Optional<Trace> trace = db->GetBest(task).trace;
   if (!trace.defined()) {
     return NullOpt;
   }
@@ -246,8 +246,8 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
       if (error_no == MeasureErrorNO::kNoError) {
         double avg_time_cost = FloatArrayMean(measure_result->costs);
         db->Add(measure_input->sch->trace, Repr(measure_input->sch),
-                AsVector<FloatImm, double>(measure_result->costs));
-        double best_time_cost = db->GetBest().MeanTime();
+                AsVector<FloatImm, double>(measure_result->costs), measure_input->task);
+        double best_time_cost = db->GetBest(measure_input->task).MeanTime();
         StdCout(verbose) << std::fixed << std::setprecision(4)  //
                          << '[' << task_name << "] #" << num_measures
                          << "\tTime: " << (avg_time_cost * 1000) << " ms, "
@@ -256,14 +256,14 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
                          << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else if (error_no == MeasureErrorNO::kRunTimeoutError ||
                  error_no == MeasureErrorNO::kBuildTimeoutError) {
-        double best_time_cost = db->GetBest().MeanTime();
+        double best_time_cost = db->GetBest(measure_input->task).MeanTime();
         StdCout(verbose) << std::fixed << std::setprecision(4)  //
                          << '[' << task_name << "] #" << num_measures
                          << "\tError: " << MeasureErrorNOToStr(error_no)
                          << "\tBest time: " << (best_time_cost * 1000) << " ms, "
                          << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else {
-        double best_time_cost = db->GetBest().MeanTime();
+        double best_time_cost = db->GetBest(measure_input->task).MeanTime();
         StdCout(verbose) << std::fixed << std::setprecision(4)  //
                          << '[' << task_name << "] #" << num_measures
                          << "\tError: " << MeasureErrorNOToStr(error_no)
