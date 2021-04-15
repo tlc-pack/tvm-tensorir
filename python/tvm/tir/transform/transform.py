@@ -552,7 +552,7 @@ def NarrowBufferRegion():
 
     Example
     -------
-    Before narrowing, the buffer contains full likely access region.
+    Before narrowing, the buffer contains full possible access region.
     .. code-block:: python
 
         for i in range(0, 16):

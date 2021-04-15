@@ -365,7 +365,7 @@ TVM_DLL Pass PlanAndUpdateBufferAllocationLocation();
 /*!
  * \brief Narrow the buffer access region.
  * \example
- *  Before narrowing, the buffer contains full likely access region.
+ *  Before narrowing, the buffer contains full possible access region.
  *  \code
  *
  *  for i in range(0, 16):

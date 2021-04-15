@@ -19,7 +19,7 @@
 
 /*!
  * \file buffer_flatten.cc
- * \brief Narrow the buffer size into its exactly need.
+ * \brief Narrow the buffer size into its exact need.
  */
 
 #include <tvm/arith/int_set.h>
@@ -215,11 +215,11 @@ class BufferNarrower : public StmtExprMutator {
     // Step 1. Handle block vars in `min` and `extent`
     PrimExpr min = this->VisitExpr(loop->min);
     PrimExpr extent = this->VisitExpr(loop->extent);
-    // Step 3. Visit recursively
+    // Step 2. Visit recursively
     ancestor_loops_.push_back(GetRef<For>(loop));
     Stmt body = this->VisitStmt(loop->body);
     ancestor_loops_.pop_back();
-    // Step 5. Make the new loop
+    // Step 3. Make the new loop
     if (loop->kind == ForKind::kThreadBinding && reduction_loop_vars_.count(loop->loop_var)) {
       // do nothing, because the loop is going to be removed
     } else {
