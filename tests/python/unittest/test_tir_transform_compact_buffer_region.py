@@ -22,7 +22,7 @@ from tvm.script import ty
 def _check(original, transformed):
     func = original
     mod = tvm.IRModule.from_expr(func)
-    mod = tvm.tir.transform.NarrowBufferRegion()(mod)
+    mod = tvm.tir.transform.CompactBufferAllocation()(mod)
     mod = tvm.tir.transform.Simplify()(mod)
     tvm.ir.assert_structural_equal(mod["main"], transformed)
 
@@ -37,15 +37,15 @@ def elementwise_func(a: ty.handle, c: ty.handle) -> None:
             tir.writes(C[i, 0:16])
             B = tir.alloc_buffer((16, 16), "float32")
             for j in range(0, 16):
-                with tir.block([16, 16]) as [vi, vj]:
-                    tir.bind(vi, i)
-                    tir.bind(vj, j)
-                    B[vi, vj] = A[vi, vj] + 1.0
+                with tir.block([]) as []:
+                    tir.reads(A[i, j])
+                    tir.writes(B[i, j])
+                    B[i, j] = A[i, j] + 1.0
             for j in range(0, 16):
-                with tir.block([16, 16]) as [vi, vj]:
-                    tir.bind(vi, i)
-                    tir.bind(vj, j)
-                    C[vi, vj] = B[vi, vj] * 2.0
+                with tir.block([]) as []:
+                    tir.reads(B[i, j])
+                    tir.writes(C[i, j])
+                    C[i, j] = B[i, j] * 2.0
 
 
 @tvm.script.tir
@@ -95,33 +95,12 @@ def shared_func(a: ty.handle, c: ty.handle) -> None:
             tir.writes(C[i, 0:16])
             B = tir.alloc_buffer((16, 16), "float32", scope="shared")
             for j in range(0, 16):
-                with tir.block([16, 16]) as [vi, vj]:
-                    tir.bind(vi, i)
-                    tir.bind(vj, j)
-                    B[vi, vj] = A[vi, vj] + 1.0
-            for j in range(0, 16):
-                with tir.block([16, 16]) as [vi, vj]:
-                    tir.bind(vi, i)
-                    tir.bind(vj, j)
-                    C[vi, vj] = B[vi, vj] * 2.0
-
-
-@tvm.script.tir
-def narrowed_shared_func(a: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (16, 16), "float32")
-    C = tir.match_buffer(c, (16, 16), "float32")
-    for i in tir.thread_binding(0, 16, thread="threadIdx.x"):
-        with tir.block([]):
-            tir.reads(A[i, 0:16])
-            tir.writes(C[i, 0:16])
-            B = tir.alloc_buffer((16, 16), "float32", scope="shared")
-            for j in range(0, 16):
-                with tir.block([]):
+                with tir.block([]) as []:
                     tir.reads(A[i, j])
                     tir.writes(B[i, j])
                     B[i, j] = A[i, j] + 1.0
             for j in range(0, 16):
-                with tir.block([]):
+                with tir.block([]) as []:
                     tir.reads(B[i, j])
                     tir.writes(C[i, j])
                     C[i, j] = B[i, j] * 2.0
@@ -136,7 +115,7 @@ def test_unschedulable_block():
 
 
 def test_shared_mem():
-    _check(shared_func, narrowed_shared_func)
+    _check(shared_func, shared_func)
 
 
 if __name__ == "__main__":

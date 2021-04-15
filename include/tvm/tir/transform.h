@@ -363,7 +363,14 @@ TVM_DLL Pass BufferFlatten();
 TVM_DLL Pass PlanAndUpdateBufferAllocationLocation();
 
 /*!
- * \brief Narrow the buffer access region.
+ * \brief Substitute expr via BlockRealize value bindings. Also lower blocks into opaque blocks
+ *        which do not have block iter_vars and iter_values.
+ * \return The pass.
+ */
+TVM_DLL Pass SubstituteBlockVar();
+
+/*!
+ * \brief Compact the buffer access region.
  * \example
  *  Before narrowing, the buffer contains full possible access region.
  *  \code
@@ -395,7 +402,7 @@ TVM_DLL Pass PlanAndUpdateBufferAllocationLocation();
  *
  * \return The pass.
  */
-TVM_DLL Pass NarrowBufferRegion();
+TVM_DLL Pass CompactBufferAllocation();
 
 /*!
  * \brief Hoist loop-invariant IfThenElse nodes to

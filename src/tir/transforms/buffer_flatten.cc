@@ -38,7 +38,17 @@ using NDIntSet = std::vector<arith::IntSet>;
 // These functions are written in narrow_buffer_region.cc.
 arith::IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent);
 void NDIntSetUnionWith(NDIntSet* lhs, const NDIntSet& rhs);
-Array<Range> NDIntSet2Region(const NDIntSet& nd_int_set);
+Array<Range> NDIntSet2Region(const NDIntSet& nd_int_set) {
+  Integer one(1);
+  Array<Range> result;
+  result.reserve(nd_int_set.size());
+  for (const arith::IntSet& int_set : nd_int_set) {
+    PrimExpr min = int_set.min();
+    PrimExpr max = int_set.max();
+    result.push_back(Range(/*begin=*/min, /*end=*/max + one));
+  }
+  return result;
+}
 NDIntSet NDIntSetFromShape(const Array<PrimExpr>& shape);
 NDIntSet NDIntSetEmpty(int ndim);
 bool IsThreadBound(const For& loop);

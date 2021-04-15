@@ -547,7 +547,19 @@ def PlanAndUpdateBufferAllocationLocation():
     return _ffi_api.PlanAndUpdateBufferAllocationLocation()
 
 
-def NarrowBufferRegion():
+def SubstituteBlockVar():
+    """Substitute expr via BlockRealize value bindings. Also lower blocks into opaque blocks
+    which do not have block iter_vars and iter_values.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.SubstituteBlockVar()
+
+
+def CompactBufferAllocation():
     """Narrow the buffer access region.
 
     Example
@@ -578,7 +590,7 @@ def NarrowBufferRegion():
     fpass : tvm.transform.Pass
         The result pass
     """
-    return _ffi_api.NarrowBufferRegion()
+    return _ffi_api.CompactBufferAllocation()
 
 
 # pylint: disable=no-else-return,inconsistent-return-statements
