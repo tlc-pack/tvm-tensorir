@@ -810,7 +810,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
           if (stage->origin_op->name.find(".local") != std::string::npos
               // Uncommenting the following line might give you better performance,
               // but it can also potentially bring illegal memory accesses.
-              // || stage->origin_op->name.find("shared") != std::string::npos
+              || stage->origin_op->name.find("shared") != std::string::npos
               ) {
             // blockidx_checker.has_blockIdx = false;
             // blockidx_checker(value);
