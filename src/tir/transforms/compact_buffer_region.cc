@@ -157,8 +157,11 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
 
  private:
   struct BufferAccessInfo {
+    /*! \brief The buffer access region, which can be updated during visiting. */
     NDIntSet accessed_region;
+    /*! \brief The inner most loop outside the buffer allocation site. */
     const ForNode* alloc_site = nullptr;
+    /*! \brief Mark whether the buffer is an arg (defined by function match_buffer). */
     bool is_arg = false;
 
     explicit BufferAccessInfo(int ndim) : accessed_region(NDIntSetEmpty(ndim)) {}
@@ -281,7 +284,12 @@ class BufferCompactor : public StmtExprMutator {
 
  private:
   struct BufferAllocInfo {
+    /*! \brief The buffer access region. */
     Region region;
+    /*!
+     * \brief The reallocated buffer with minimal size.
+     * \note The value if NullOpt if the buffer do not need reallocate (e.g arg buffer).
+     */
     Optional<Buffer> new_buffer = NullOpt;
 
     explicit BufferAllocInfo(Region region) : region(std::move(region)) {}
