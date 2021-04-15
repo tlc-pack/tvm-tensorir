@@ -390,9 +390,14 @@ class ThreadPartitionInserter : public StmtMutator {
 // likely conditions
 class LoopPartitioner : public StmtMutator {
  public:
-  explicit LoopPartitioner(bool partition_const_loop, bool no_unroll_loop_with_extent_one)
+  explicit LoopPartitioner(bool partition_const_loop, bool no_unroll_loop_with_extent_one
+                           // <bojian/TVM-SymbolicTuning>
+                         , bool blockIdx_partitioning = false
+                           )
       : selector(CandidateSelector(partition_const_loop)),
-        no_unroll_loop_with_extent_one_(no_unroll_loop_with_extent_one) {}
+        no_unroll_loop_with_extent_one_(no_unroll_loop_with_extent_one)
+        // <bojian/TVM-SymbolicTuning>
+      , blockIdx_partitioning(blockIdx_partitioning) {}
 
   Stmt VisitAndMutate(Stmt stmt) {
     selector(stmt);
@@ -460,6 +465,9 @@ class LoopPartitioner : public StmtMutator {
   arith::Analyzer analyzer_;
   CandidateSelector selector;
   bool no_unroll_loop_with_extent_one_;
+
+  // <bojian/TVM-SymbolicTuning>
+  bool blockIdx_partitioning;
 };
 
 // Returns an interval (in the first component) in which all the conditions
@@ -634,16 +642,20 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
   finder(body);
 
   // <bojian/TVM-SymbolicTuning>
-  if (var->name_hint == "blockIdx.x") {
-    if (dmlc::GetEnv("SYMTUNE_SCHED_OPT_NO_BLOCKIDX_PARTITION", 0)) {
+  if (blockIdx_partitioning) {
+    if (var->name_hint == "blockIdx.x") {
+      if (dmlc::GetEnv("SYMTUNE_SCHED_OPT_NO_BLOCKIDX_PARTITION", 0)) {
+        return Stmt();
+      }
+      LOG(INFO) << "Doing blockIdx.x partitioning";
+      BlockIdxPartitioner blockIdx_partitioner(finder.blockIdx_div_pred,
+                                               finder.blockIdx_mod_pred);
+      Stmt new_kernel_body = blockIdx_partitioner(stmt);
+      // LOG(INFO) << "After blockIdx partitioning: " << new_kernel_body;
+      return new_kernel_body;
+    } else {
       return Stmt();
     }
-    LOG(INFO) << "Doing blockIdx.x partitioning";
-    BlockIdxPartitioner blockIdx_partitioner(finder.blockIdx_div_pred,
-                                             finder.blockIdx_mod_pred);
-    Stmt new_kernel_body = blockIdx_partitioner(stmt);
-    // LOG(INFO) << "After blockIdx partitioning: " << new_kernel_body;
-    return new_kernel_body;
   }
 
 
@@ -816,7 +828,13 @@ class RemoveLikelyTags : public StmtExprMutator {
 };
 
 Stmt LoopPartition(Stmt stmt, bool partition_const_loop, bool no_unroll_loop_with_extent_one) {
-  stmt = LoopPartitioner(partition_const_loop, no_unroll_loop_with_extent_one)
+  stmt = LoopPartitioner(partition_const_loop, no_unroll_loop_with_extent_one
+             // <bojian/TVM-SymbolicTuning>
+           , false)
+             .VisitAndMutate(std::move(stmt));
+  stmt = LoopPartitioner(partition_const_loop, no_unroll_loop_with_extent_one
+             // <bojian/TVM-SymbolicTuning>
+           , true)
              .VisitAndMutate(std::move(stmt));
   stmt = RemoveLikelyTags()(std::move(stmt));
 
