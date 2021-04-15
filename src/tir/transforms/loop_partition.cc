@@ -839,7 +839,7 @@ Pass LoopPartition() {
     
                             // <bojian/TVM-SymbolicTuning>
                             // cfg.value()->partition_const_loop,
-                            (bool)(dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0) == 1),
+                            (bool)(dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0) != 0),
 
                             cfg.value()->no_unroll_loop_with_extent_one);
     return f;
