@@ -100,15 +100,15 @@ def compile_cuda(code, target="ptx", arch=None, options=None, path_target=None):
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     # <bojian/TVM-SymbolicTuning>
-    # (out, _) = proc.communicate()
-    proc.wait()
-    print("Compilation has been completed")
+    (out, _) = proc.communicate()
+    # proc.wait()
+    # print("Compilation has been completed")
 
     if proc.returncode != 0:
         msg = code
         msg += "\nCompilation error:\n"
         # <bojian/TVM-SymbolicTuning>
-        # msg += py_str(out)
+        msg += py_str(out)
         raise RuntimeError(msg)
 
     data = bytearray(open(file_target, "rb").read())
