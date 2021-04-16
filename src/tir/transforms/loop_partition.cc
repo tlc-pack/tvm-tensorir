@@ -260,13 +260,14 @@ class PartitionFinder : public StmtExprVisitor {
           blockIdx_div_finder(cond);
           blockIdx_mod_finder(cond);
           if (const FloorDivNode *floor_div = blockIdx_div_finder.floor_div) {
-            blockIdx_div_pred =
-                GetRef<FloorDiv>(floor_div) ==
+            blockIdx_div_max =
                 analyzer_.Simplify(FloorDiv(hint_map_[current_var_.get()].max(), floor_div->b));
+            blockIdx_div_pred = GetRef<FloorDiv>(floor_div) == blockIdx_div_max;
             LOG(INFO) << "Preparing FloorDiv pred=" << blockIdx_div_pred;
           }
           if (const FloorModNode *floor_mod = blockIdx_mod_finder.floor_mod) {
-            blockIdx_mod_pred = GetRef<FloorMod>(floor_mod) == (floor_mod->b - 1);
+            blockIdx_mod_max = (floor_mod->b - 1);
+            blockIdx_mod_pred = GetRef<FloorMod>(floor_mod) == blockIdx_mod_max;
             LOG(INFO) << "Preparing FloorMod pred=" << blockIdx_mod_pred;
           }
 
@@ -301,8 +302,10 @@ class PartitionFinder : public StmtExprVisitor {
  private:
   arith::Analyzer analyzer_;
  public:
-  PrimExpr blockIdx_div_pred;
-  PrimExpr blockIdx_mod_pred;
+  PrimExpr blockIdx_div_pred,
+           blockIdx_div_max,
+           blockIdx_mod_pred,
+           blockIdx_mod_max;
 
 
   Partition partitions;
@@ -523,16 +526,56 @@ protected:
 };
 
 
+class BlockIdxDivReplacer : public StmtExprMutator {
+private:
+  // const FloorDivNode *op_;
+  const PrimExpr expr_;
+public:
+  BlockIdxDivReplacer(const PrimExpr expr) : expr_(expr) {}
+protected:
+  PrimExpr VisitExpr_(const FloorDivNode *op) override {
+    if (const VarNode *const var = op->a.as<VarNode>()) {
+      if (var->name_hint == "blockIdx.x") {
+        return expr_;
+      }
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+};
+
+
+class BlockIdxModReplacer : public StmtExprMutator {
+private:
+  // const FloorModNode *op_;
+  const PrimExpr expr_;
+public:
+  BlockIdxModReplacer(const PrimExpr expr) : expr_(expr) {}
+protected:
+  PrimExpr VisitExpr_(const FloorModNode *op) override {
+    if (const VarNode *const var = op->a.as<VarNode>()) {
+      if (var->name_hint == "blockIdx.x") {
+        return expr_;
+      }
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+};
+
+
 class BlockIdxPartitioner : public StmtExprMutator {
 private:
-  PrimExpr blockIdx_div_pred_, blockIdx_mod_pred_;
+  PrimExpr blockIdx_div_pred_, 
+           blockIdx_div_max_,
+           blockIdx_mod_pred_,
+           blockIdx_mod_max_;
   bool kernel_body_start_ = false;
   BlockIdxDivEliminator blockIdx_div_elim;
   BlockIdxModEliminator blockIdx_mod_elim;
 public:
-  BlockIdxPartitioner(PrimExpr blockIdx_div_pred, PrimExpr blockIdx_mod_pred)
-      : blockIdx_div_pred_(blockIdx_div_pred),
-        blockIdx_mod_pred_(blockIdx_mod_pred) {}
+  BlockIdxPartitioner(PrimExpr blockIdx_div_pred, PrimExpr blockIdx_div_max,
+                      PrimExpr blockIdx_mod_pred, PrimExpr blockIdx_mod_max)
+      : blockIdx_div_pred_(blockIdx_div_pred), blockIdx_div_max_(blockIdx_div_max), 
+        blockIdx_mod_pred_(blockIdx_mod_pred), blockIdx_mod_max_(blockIdx_mod_max) {}
 protected:
   Stmt VisitStmt_(const AllocateNode* op) override {
     // if (op->attr_key == attr::thread_extent) {
@@ -555,23 +598,32 @@ protected:
 
       if (blockIdx_div_pred_.defined() && blockIdx_mod_pred_.defined()) {
 
+        BlockIdxDivReplacer blockIdx_div_replacer(blockIdx_div_max_);
+        BlockIdxModReplacer blockIdx_mod_replacer(blockIdx_mod_max_);
+
         stmt = IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
                           blockIdx_div_elim(blockIdx_mod_elim(op->body)),
                           IfThenElse(!blockIdx_div_pred_,
-                                     blockIdx_div_elim(op->body),
+                                     blockIdx_mod_replacer(blockIdx_div_elim(op->body)),
                                      IfThenElse(!blockIdx_mod_pred_,
-                                                blockIdx_mod_elim(op->body),
-                                                op->body
+                                                blockIdx_div_replacer(blockIdx_mod_elim(op->body)),
+                                                blockIdx_div_replacer(blockIdx_mod_replacer(op->body))
                                                 )
                                      )
                           );
 
       } else if (blockIdx_div_pred_.defined()) {
+
+        BlockIdxDivReplacer blockIdx_div_replacer(blockIdx_div_max_);
+
         stmt = IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
-                          op->body);
+                          blockIdx_div_replacer(op->body));
       } else if (blockIdx_mod_pred_.defined()) {
+
+        BlockIdxModReplacer blockIdx_mod_replacer(blockIdx_mod_max_);
+
         stmt = IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
-                          op->body);
+                          blockIdx_mod_replacer(op->body));
       }
 
       if (stmt.defined()) {
@@ -649,7 +701,9 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
       }
       LOG(INFO) << "Doing blockIdx.x partitioning";
       BlockIdxPartitioner blockIdx_partitioner(finder.blockIdx_div_pred,
-                                               finder.blockIdx_mod_pred);
+                                               finder.blockIdx_div_max,
+                                               finder.blockIdx_mod_pred,
+                                               finder.blockIdx_mod_max);
       Stmt new_kernel_body = blockIdx_partitioner(stmt);
       // LOG(INFO) << "After blockIdx partitioning: " << new_kernel_body;
       return new_kernel_body;
