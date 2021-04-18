@@ -333,6 +333,7 @@ class RuleMultiLevelTiling {
     } else {
       state.write_cache = write_cache;
     }
+
     state.write_cache_is_added = true;
     result.push_back(std::move(state));
     return result;
@@ -505,9 +506,6 @@ class RuleMultiLevelTiling {
   Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
                         const BlockRV& block_rv) const {
     tir::StmtSRef block_sref = sch->GetSRef(block_rv);
-    if (HasAnyAnn(block_sref)) {
-      return {sch};
-    }
     if (!NeedsMultiLevelTiling(sch->state(), block_sref)) {
       return {sch};
     }
