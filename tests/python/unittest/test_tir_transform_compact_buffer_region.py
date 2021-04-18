@@ -49,7 +49,7 @@ def elementwise_func(a: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.script.tir
-def narrowed_elementwise_func(a: ty.handle, c: ty.handle) -> None:
+def compacted_elementwise_func(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32")
     C = tir.match_buffer(c, (16, 16), "float32")
     for i in range(0, 16):
@@ -85,28 +85,99 @@ def unschedulable_func(a: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.script.tir
-def shared_func(a: ty.handle, c: ty.handle) -> None:
+def shared_mem_func(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32")
     C = tir.match_buffer(c, (16, 16), "float32")
-    for i in tir.thread_binding(0, 16, thread="threadIdx.x"):
-        with tir.block([]):
-            tir.reads(A[i, 0:16])
-            tir.writes(C[i, 0:16])
-            B = tir.alloc_buffer((16, 16), "float32", scope="shared")
-            for j in range(0, 16):
-                with tir.block([]) as []:
-                    tir.reads(A[i, j])
-                    tir.writes(B[i, j])
-                    B[i, j] = A[i, j] + 1.0
-            for j in range(0, 16):
-                with tir.block([]) as []:
-                    tir.reads(B[i, j])
-                    tir.writes(C[i, j])
-                    C[i, j] = B[i, j] * 2.0
+    for i0 in tir.thread_binding(0, 2, thread="blockIdx.x"):
+        for i1 in tir.thread_binding(0, 2, thread="vthread"):
+            for i2 in tir.thread_binding(0, 4, thread="threadIdx.x"):
+                with tir.block([]):
+                    tir.reads(A[i0 * 8 + i1 * 4 + i2, 0:16])
+                    tir.writes(C[i0 * 8 + i1 * 4 + i2, 0:16])
+                    B = tir.alloc_buffer((16, 16), "float32", scope="shared")
+                    for j in range(0, 16):
+                        with tir.block([]) as []:
+                            tir.reads(A[i0 * 8 + i1 * 4 + i2, j])
+                            tir.writes(B[i0 * 8 + i1 * 4 + i2, j])
+                            B[i0 * 8 + i1 * 4 + i2, j] = A[i0 * 8 + i1 * 4 + i2, j] + 1.0
+                    for j in range(0, 16):
+                        with tir.block([]) as []:
+                            tir.reads(B[i0 * 8 + i1 * 4 + i2, j])
+                            tir.writes(C[i0 * 8 + i1 * 4 + i2, j])
+                            C[i0 * 8 + i1 * 4 + i2, j] = B[i0 * 8 + i1 * 4 + i2, j] * 2.0
+
+
+@tvm.script.tir
+def compacted_shared_mem_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), "float32")
+    C = tir.match_buffer(c, (16, 16), "float32")
+    for i0 in tir.thread_binding(0, 2, thread="blockIdx.x"):
+        for i1 in tir.thread_binding(0, 2, thread="vthread"):
+            for i2 in tir.thread_binding(0, 4, thread="threadIdx.x"):
+                with tir.block([]):
+                    tir.reads(A[i0 * 8 + i1 * 4 + i2, 0:16])
+                    tir.writes(C[i0 * 8 + i1 * 4 + i2, 0:16])
+                    B = tir.alloc_buffer((8, 16), "float32", scope="shared")
+                    for j in range(0, 16):
+                        with tir.block([]) as []:
+                            tir.reads(A[i0 * 8 + i1 * 4 + i2, j])
+                            tir.writes(B[i1 * 4 + i2, j])
+                            B[i1 * 4 + i2, j] = A[i0 * 8 + i1 * 4 + i2, j] + 1.0
+                    for j in range(0, 16):
+                        with tir.block([]) as []:
+                            tir.reads(B[i1 * 4 + i2, j])
+                            tir.writes(C[i0 * 8 + i1 * 4 + i2, j])
+                            C[i0 * 8 + i1 * 4 + i2, j] = B[i1 * 4 + i2, j] * 2.0
+
+
+@tvm.script.tir
+def warp_mem_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), "float32")
+    C = tir.match_buffer(c, (16, 16), "float32")
+    for i0 in tir.thread_binding(0, 2, thread="blockIdx.x"):
+        for i1 in tir.thread_binding(0, 2, thread="vthread"):
+            for i2 in tir.thread_binding(0, 4, thread="threadIdx.x"):
+                with tir.block([]):
+                    tir.reads(A[i0 * 8 + i1 * 4 + i2, 0:16])
+                    tir.writes(C[i0 * 8 + i1 * 4 + i2, 0:16])
+                    B = tir.alloc_buffer((16, 16), "float32", scope="warp")
+                    for j in range(0, 16):
+                        with tir.block([]) as []:
+                            tir.reads(A[i0 * 8 + i1 * 4 + i2, j])
+                            tir.writes(B[i0 * 8 + i1 * 4 + i2, j])
+                            B[i0 * 8 + i1 * 4 + i2, j] = A[i0 * 8 + i1 * 4 + i2, j] + 1.0
+                    for j in range(0, 16):
+                        with tir.block([]) as []:
+                            tir.reads(B[i0 * 8 + i1 * 4 + i2, j])
+                            tir.writes(C[i0 * 8 + i1 * 4 + i2, j])
+                            C[i0 * 8 + i1 * 4 + i2, j] = B[i0 * 8 + i1 * 4 + i2, j] * 2.0
+
+
+@tvm.script.tir
+def compacted_warp_mem_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), "float32")
+    C = tir.match_buffer(c, (16, 16), "float32")
+    for i0 in tir.thread_binding(0, 2, thread="blockIdx.x"):
+        for i1 in tir.thread_binding(0, 2, thread="vthread"):
+            for i2 in tir.thread_binding(0, 4, thread="threadIdx.x"):
+                with tir.block([]):
+                    tir.reads(A[i0 * 8 + i1 * 4 + i2, 0:16])
+                    tir.writes(C[i0 * 8 + i1 * 4 + i2, 0:16])
+                    B = tir.alloc_buffer((4, 16), "float32", scope="warp")
+                    for j in range(0, 16):
+                        with tir.block([]) as []:
+                            tir.reads(A[i0 * 8 + i1 * 4 + i2, j])
+                            tir.writes(B[i2, j])
+                            B[i2, j] = A[i0 * 8 + i1 * 4 + i2, j] + 1.0
+                    for j in range(0, 16):
+                        with tir.block([]) as []:
+                            tir.reads(B[i2, j])
+                            tir.writes(C[i0 * 8 + i1 * 4 + i2, j])
+                            C[i0 * 8 + i1 * 4 + i2, j] = B[i2, j] * 2.0
 
 
 def test_elementwise():
-    _check(elementwise_func, narrowed_elementwise_func)
+    _check(elementwise_func, compacted_elementwise_func)
 
 
 def test_unschedulable_block():
@@ -114,10 +185,15 @@ def test_unschedulable_block():
 
 
 def test_shared_mem():
-    _check(shared_func, shared_func)
+    _check(shared_mem_func, compacted_shared_mem_func)
+
+
+def test_warp_mem():
+    _check(warp_mem_func, compacted_warp_mem_func)
 
 
 if __name__ == "__main__":
     test_elementwise()
     test_unschedulable_block()
     test_shared_mem()
+    test_warp_mem()

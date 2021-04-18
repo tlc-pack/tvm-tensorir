@@ -23,6 +23,7 @@
 #include <tvm/tir/builtin.h>
 #include <tvm/tir/transform.h>
 
+#include "../../support/utils.h"
 #include "../schedule/utils.h"
 
 namespace tvm {
@@ -51,7 +52,20 @@ Array<Range> NDIntSet2Region(const NDIntSet& nd_int_set) {
 }
 NDIntSet NDIntSetFromShape(const Array<PrimExpr>& shape);
 NDIntSet NDIntSetEmpty(int ndim);
-bool IsThreadBound(const For& loop);
+bool IsThreadBound(const For& loop) {
+  if (loop->kind != ForKind::kThreadBinding) {
+    return false;
+  }
+  ICHECK(loop->thread_binding.defined());
+  IterVar binding = loop->thread_binding.value();
+  if (support::StartsWith(binding->thread_tag, "threadIdx")) {
+    return true;
+  }
+  if (support::StartsWith(binding->thread_tag, "vthread")) {
+    return true;
+  }
+  return false;
+}
 
 inline bool StrStartsWith(const String& str, const String& prefix) {
   int n = prefix.size();

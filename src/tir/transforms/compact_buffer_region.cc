@@ -27,6 +27,7 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
+#include "../../runtime/thread_storage_scope.h"
 #include "../../support/utils.h"
 
 namespace tvm {
@@ -57,21 +58,6 @@ NDIntSet NDIntSetFromShape(const Array<PrimExpr>& shape) {
 
 NDIntSet NDIntSetEmpty(int ndim) {
   return std::vector<arith::IntSet>(ndim, arith::IntSet::Nothing());
-}
-
-bool IsThreadBound(const For& loop) {
-  if (loop->kind != ForKind::kThreadBinding) {
-    return false;
-  }
-  ICHECK(loop->thread_binding.defined());
-  IterVar binding = loop->thread_binding.value();
-  if (support::StartsWith(binding->thread_tag, "threadIdx")) {
-    return true;
-  }
-  if (support::StartsWith(binding->thread_tag, "vthread")) {
-    return true;
-  }
-  return false;
 }
 
 /*! \brief Collect the access region of each buffer. */
@@ -154,14 +140,15 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
       {
         const ForNode* alloc_site = info.alloc_site;
         // Every loop will be relaxed if the lca is the root
-        bool need_relax = (alloc_site == nullptr);
+        bool need_relax_loop = (alloc_site == nullptr);
         for (const ForNode* loop : ancestor_loops_) {
           const VarNode* loop_var = loop->loop_var.get();
-          if (need_relax || (buffer->scope == "shared" && IsThreadBound(GetRef<For>(loop)))) {
+          if (need_relax_loop ||
+              NeedRelaxThread(GetRef<For>(loop), runtime::StorageScope::Create(buffer->scope))) {
             dom_map[loop_var] = IntSetFromMinExtent(loop->min, loop->extent);
           }
           if (loop == alloc_site) {
-            need_relax = true;
+            need_relax_loop = true;
           }
         }
       }
@@ -183,6 +170,22 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
       result.push_back(int_set.CoverRange(Range(/*begin=*/0, /*end=*/original_shape[i])));
     }
     return result;
+  }
+
+  static bool NeedRelaxThread(const For& loop, const runtime::StorageScope& scope) {
+    if (loop->kind != ForKind::kThreadBinding) {
+      return false;
+    }
+    ICHECK(loop->thread_binding.defined());
+    IterVar binding = loop->thread_binding.value();
+    runtime::ThreadScope ts = runtime::ThreadScope::Create(binding->thread_tag);
+
+    // When there is warp memory
+    // threadIdx.x must be set to be warp index.
+    if (scope.rank == runtime::StorageRank::kWarp && ts.rank == 1 && ts.dim_index == 0) {
+      return true;
+    }
+    return static_cast<int>(scope.rank) <= ts.rank;
   }
 
   /*! \brief Collective information about each buffer. */
