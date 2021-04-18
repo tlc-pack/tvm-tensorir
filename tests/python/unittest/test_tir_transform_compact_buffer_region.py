@@ -176,6 +176,48 @@ def compacted_warp_mem_func(a: ty.handle, c: ty.handle) -> None:
                             C[i0 * 8 + i1 * 4 + i2, j] = B[i2, j] * 2.0
 
 
+@tvm.script.tir
+def symbolic_func(a: ty.handle, c: ty.handle, n: ty.int32) -> None:
+    A = tir.match_buffer(a, (n * 8,), "float32")
+    C = tir.match_buffer(c, (n * 8,), "float32")
+    for i in range(0, n):
+        with tir.block([]):
+            tir.reads(A[i * 8 : i * 8 + 8])
+            tir.writes(C[i * 8 : i * 8 + 8])
+            B = tir.alloc_buffer((n * 8,), "float32")
+            for j in range(0, 8):
+                with tir.block([]) as []:
+                    tir.reads(A[i * 8 + j])
+                    tir.writes(B[i * 8 + j])
+                    B[i * 8 + j] = A[i * 8 + j] + 1.0
+            for j in range(0, 8):
+                with tir.block([]) as []:
+                    tir.reads(B[i * 8 + j])
+                    tir.writes(C[i * 8 + j])
+                    C[i * 8 + j] = B[i * 8 + j] * 2.0
+
+
+@tvm.script.tir
+def compacted_symbolic_func(a: ty.handle, c: ty.handle, n: ty.int32) -> None:
+    A = tir.match_buffer(a, (n * 8,), "float32")
+    C = tir.match_buffer(c, (n * 8,), "float32")
+    for i in range(0, n):
+        with tir.block([]):
+            tir.reads(A[i * 8 : i * 8 + 8])
+            tir.writes(C[i * 8 : i * 8 + 8])
+            B = tir.alloc_buffer((8,), "float32")
+            for j in range(0, 8):
+                with tir.block([]) as []:
+                    tir.reads(A[i * 8 + j])
+                    tir.writes(B[i * 8 + j])
+                    B[j] = A[i * 8 + j] + 1.0
+            for j in range(0, 8):
+                with tir.block([]) as []:
+                    tir.reads(B[i * 8 + j])
+                    tir.writes(C[i * 8 + j])
+                    C[i * 8 + j] = B[j] * 2.0
+
+
 def test_elementwise():
     _check(elementwise_func, compacted_elementwise_func)
 
@@ -190,6 +232,10 @@ def test_shared_mem():
 
 def test_warp_mem():
     _check(warp_mem_func, compacted_warp_mem_func)
+
+
+def test_symbolic():
+    _check(symbolic_func, compacted_symbolic_func)
 
 
 if __name__ == "__main__":
