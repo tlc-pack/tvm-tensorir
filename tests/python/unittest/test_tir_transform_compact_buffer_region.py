@@ -85,6 +85,21 @@ def unschedulable_func(a: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.script.tir
+def param_buffer_access_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (20, 20), "float32")
+    B = tir.match_buffer(c, (20, 20), "float32")
+    for i in range(0, 16):
+        with tir.block([]):
+            tir.reads(A[i, 0:16])
+            tir.writes(B[i, 0:16])
+            for j in range(0, 16):
+                with tir.block([]) as []:
+                    tir.reads(A[i, j])
+                    tir.writes(B[i, j])
+                    B[i, j] = A[i, j] + 1.0
+
+
+@tvm.script.tir
 def shared_mem_func(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32")
     C = tir.match_buffer(c, (16, 16), "float32")
@@ -182,8 +197,8 @@ def symbolic_func(a: ty.handle, c: ty.handle, n: ty.int32) -> None:
     C = tir.match_buffer(c, (n * 8,), "float32")
     for i in range(0, n):
         with tir.block([]):
-            tir.reads(A[i * 8 : i * 8 + 8])
-            tir.writes(C[i * 8 : i * 8 + 8])
+            tir.reads(A[i * 8: i * 8 + 8])
+            tir.writes(C[i * 8: i * 8 + 8])
             B = tir.alloc_buffer((n * 8,), "float32")
             for j in range(0, 8):
                 with tir.block([]) as []:
@@ -203,17 +218,17 @@ def compacted_symbolic_func(a: ty.handle, c: ty.handle, n: ty.int32) -> None:
     C = tir.match_buffer(c, (n * 8,), "float32")
     for i in range(0, n):
         with tir.block([]):
-            tir.reads(A[i * 8 : i * 8 + 8])
-            tir.writes(C[i * 8 : i * 8 + 8])
+            tir.reads(A[i * 8: i * 8 + 8])
+            tir.writes(C[i * 8: i * 8 + 8])
             B = tir.alloc_buffer((8,), "float32")
             for j in range(0, 8):
                 with tir.block([]) as []:
                     tir.reads(A[i * 8 + j])
-                    tir.writes(B[i * 8 + j])
+                    tir.writes(B[j])
                     B[j] = A[i * 8 + j] + 1.0
             for j in range(0, 8):
                 with tir.block([]) as []:
-                    tir.reads(B[i * 8 + j])
+                    tir.reads(B[j])
                     tir.writes(C[i * 8 + j])
                     C[i * 8 + j] = B[j] * 2.0
 
@@ -224,6 +239,10 @@ def test_elementwise():
 
 def test_unschedulable_block():
     _check(unschedulable_func, unschedulable_func)  # changes nothing
+
+
+def test_param_access():
+    _check(param_buffer_access_func, param_buffer_access_func)  # changes nothing
 
 
 def test_shared_mem():
@@ -241,5 +260,7 @@ def test_symbolic():
 if __name__ == "__main__":
     test_elementwise()
     test_unschedulable_block()
+    test_param_access()
     test_shared_mem()
     test_warp_mem()
+    test_symbolic()
