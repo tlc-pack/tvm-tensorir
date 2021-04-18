@@ -605,6 +605,10 @@ class PostprocRewriteUnboundBlocks {
           (n_spatial_loops > 0 && loop_sref->seq_index != -1)) {
         break;
       }
+      if (!HasSingleChild(loop_sref)) {
+        n_spatial_loops++;
+        break;
+      }
       ++n_spatial_loops;
     }
     CHECK_GT(n_spatial_loops, 0) << "ValueError: not supported when spatial loop doesn't exist";
