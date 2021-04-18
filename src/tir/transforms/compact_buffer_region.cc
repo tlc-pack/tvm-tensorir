@@ -64,93 +64,37 @@ bool IsThreadBound(const For& loop) {
     return false;
   }
   ICHECK(loop->thread_binding.defined());
-  std::string thread_tag = loop->thread_binding.value()->thread_tag;
-  if (support::StrStartsWith(thread_tag, "threadIdx")) {
+  IterVar binding = loop->thread_binding.value();
+  if (support::StartsWith(binding->thread_tag, "threadIdx")) {
     return true;
   }
-  if (support::StrStartsWith(thread_tag, "vthread")) {
+  if (support::StartsWith(binding->thread_tag, "vthread")) {
     return true;
   }
   return false;
 }
 
-/*! \brief Helper class to mutate the buffer access. */
-class BufferAccessRewriter : public StmtExprMutator {
- public:
-  using FRewriteBufferAccess = std::function<void(Buffer* buffer, Array<PrimExpr>* indices)>;
-  using FRewriteBufferRegion = std::function<void(Buffer* buffer, Region* region)>;
-
-  static Stmt Rewrite(const Stmt& stmt, const FRewriteBufferAccess& f_access_rewrite,
-                      const FRewriteBufferRegion& f_region_rewrite) {
-    BufferAccessRewriter rewriter(f_access_rewrite, f_region_rewrite);
-    return rewriter.VisitStmt(stmt);
-  }
-
- private:
-  explicit BufferAccessRewriter(const FRewriteBufferAccess& f_access_rewrite,
-                                const FRewriteBufferRegion& f_region_rewrite)
-      : f_access_rewrite_(f_access_rewrite), f_region_rewrite_(f_region_rewrite) {}
-
-  Stmt VisitStmt_(const BufferStoreNode* _op) final {
-    BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(_op));
-    BufferStoreNode* op = store.CopyOnWrite();
-    f_access_rewrite_(&op->buffer, &op->indices);
-    return std::move(store);
-  }
-
-  PrimExpr VisitExpr_(const BufferLoadNode* _op) final {
-    BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_op));
-    BufferLoadNode* op = load.CopyOnWrite();
-    f_access_rewrite_(&op->buffer, &op->indices);
-    return std::move(load);
-  }
-
-  Stmt VisitStmt_(const BlockNode* _op) final {
-    Block block = Downcast<Block>(StmtExprMutator::VisitStmt_(_op));
-    BlockNode* op = block.CopyOnWrite();
-    auto f_rewrite_buffer_region =
-        [this](const Array<BufferRegion>& regions) -> Array<BufferRegion> {
-      Array<BufferRegion> new_regions;
-      new_regions.reserve(regions.size());
-      for (const auto& read : regions) {
-        BufferRegion buffer_region = Downcast<BufferRegion>(read);
-        BufferRegionNode* p = buffer_region.CopyOnWrite();
-        f_region_rewrite_(&p->buffer, &p->region);
-        new_regions.push_back(buffer_region);
-      }
-      return new_regions;
-    };
-    Array<BufferRegion> reads = f_rewrite_buffer_region(op->reads);
-    Array<BufferRegion> writes = f_rewrite_buffer_region(op->writes);
-    op->reads = std::move(reads);
-    op->writes = std::move(writes);
-    return std::move(block);
-  }
-
-  const FRewriteBufferAccess& f_access_rewrite_;
-  const FRewriteBufferRegion& f_region_rewrite_;
-};
-
 /*! \brief Collect the access region of each buffer. */
 class BufferAccessRegionCollector : public StmtExprVisitor {
  public:
-  static std::unordered_map<const BufferNode*, Region> Collect(const PrimFunc& f) {
+  static std::unordered_map<Buffer, Region, ObjectPtrHash, ObjectPtrEqual> Collect(
+      const PrimFunc& f) {
     std::unordered_map<const BufferNode*, BufferAccessInfo> buffer_info;
     for (const auto& kv : f->buffer_map) {
       const Buffer& buffer = kv.second;
       BufferAccessInfo info(buffer->shape.size());
       info.accessed_region = NDIntSetFromShape(buffer->shape);
-      info.is_arg = true;
+      info.is_param = true;
       buffer_info.emplace(buffer.get(), info);
     }
     BufferAccessRegionCollector collector(std::move(buffer_info));
     collector(f->body);
-    std::unordered_map<const BufferNode*, Region> ret;
+    std::unordered_map<Buffer, Region, ObjectPtrHash, ObjectPtrEqual> ret;
     for (const auto& kv : collector.buffer_info_) {
       const BufferNode* buffer = kv.first;
       const BufferAccessInfo& info = kv.second;
       Region region = NarrowBufferRegionFromNDIntSet(info.accessed_region, buffer->shape);
-      ret.emplace(buffer, std::move(region));
+      ret.emplace(GetRef<Buffer>(buffer), std::move(region));
     }
     return ret;
   }
@@ -161,8 +105,8 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
     NDIntSet accessed_region;
     /*! \brief The inner most loop outside the buffer allocation site. */
     const ForNode* alloc_site = nullptr;
-    /*! \brief Mark whether the buffer is an arg (defined by function match_buffer). */
-    bool is_arg = false;
+    /*! \brief Mark whether the buffer is an parameter (defined by function match_buffer). */
+    bool is_param = false;
 
     explicit BufferAccessInfo(int ndim) : accessed_region(NDIntSetEmpty(ndim)) {}
   };
@@ -203,7 +147,7 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
       auto it = buffer_info_.find(buffer);
       ICHECK(it != buffer_info_.end());
       BufferAccessInfo& info = it->second;
-      if (info.is_arg) {
+      if (info.is_param) {
         continue;
       }
       std::unordered_map<const VarNode*, arith::IntSet> dom_map;
@@ -258,27 +202,15 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
 class BufferCompactor : public StmtExprMutator {
  public:
   static Stmt Compact(const PrimFunc& f,
-                      const std::unordered_map<const BufferNode*, Region>& regions) {
-    std::unordered_map<const BufferNode*, BufferAllocInfo> buffer_info;
+                      std::unordered_map<Buffer, Region, ObjectPtrHash, ObjectPtrEqual>& regions) {
+    std::unordered_map<Buffer, BufferAllocInfo, ObjectPtrHash, ObjectPtrEqual> buffer_info;
     for (const auto& kv : regions) {
-      const BufferNode* buffer = kv.first;
+      const Buffer& buffer = kv.first;
       Region region = kv.second;
       buffer_info.emplace(buffer, BufferAllocInfo(std::move(region)));
     }
     BufferCompactor compactor(std::move(buffer_info));
     Stmt stmt = compactor(f->body);
-    stmt = BufferAccessRewriter::Rewrite(
-        /*stmt=*/stmt,
-        /*f_access_rewrite=*/
-        std::bind(&BufferCompactor::RewriteBufferAccess,  //
-                  &compactor,                             //
-                  std::placeholders::_1,                  //
-                  std::placeholders::_2),
-        /*f_region_rewrite=*/
-        std::bind(&BufferCompactor::RewriteBufferRegion,  //
-                  &compactor,                             //
-                  std::placeholders::_1,                  //
-                  std::placeholders::_2));
     return stmt;
   }
 
@@ -288,34 +220,53 @@ class BufferCompactor : public StmtExprMutator {
     Region region;
     /*!
      * \brief The reallocated buffer with minimal size.
-     * \note The value if NullOpt if the buffer do not need reallocate (e.g arg buffer).
+     * \note The value if NullOpt if the buffer do not need reallocate (e.g parameter buffer).
      */
     Optional<Buffer> new_buffer = NullOpt;
 
     explicit BufferAllocInfo(Region region) : region(std::move(region)) {}
   };
 
-  explicit BufferCompactor(std::unordered_map<const BufferNode*, BufferAllocInfo> buffer_info)
+  explicit BufferCompactor(
+      std::unordered_map<Buffer, BufferAllocInfo, ObjectPtrHash, ObjectPtrEqual> buffer_info)
       : buffer_info_(std::move(buffer_info)) {}
 
+  Stmt VisitStmt_(const BufferStoreNode* _op) final {
+    BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(_op));
+    BufferStoreNode* op = store.CopyOnWrite();
+    RewriteBufferAccess(&op->buffer, &op->indices);
+    return std::move(store);
+  }
+
+  PrimExpr VisitExpr_(const BufferLoadNode* _op) final {
+    BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_op));
+    BufferLoadNode* op = load.CopyOnWrite();
+    RewriteBufferAccess(&op->buffer, &op->indices);
+    return std::move(load);
+  }
+
   Stmt VisitStmt_(const BlockNode* op) final {
+    // Step 0. Check there is no Init part.
     ICHECK(!op->init.defined());
+    // Step 1. Reallocate and rewrite alloc_buffers, also update BufferAllocInfo.
+    Array<Buffer> alloc_buffers = RewriteAllocBuffer(op->alloc_buffers);
+    // Step 2. Recursively rewrite BufferLoad/BufferStore.
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<BlockNode>();
     ICHECK(op != nullptr);
-
-    Array<Buffer> alloc_buffers = AllocBuffer(op);
+    // Step 3. Update block signature.
     auto n = CopyOnWrite(op);
+    RewriteBufferRegions(&n->reads);
+    RewriteBufferRegions(&n->writes);
     n->alloc_buffers = std::move(alloc_buffers);
     return Stmt(n);
   }
 
-  Array<Buffer> AllocBuffer(const BlockNode* block) {
-    const Array<Buffer>& buffers = block->alloc_buffers;
+  Array<Buffer> RewriteAllocBuffer(const Array<Buffer>& buffers) {
     Array<Buffer> result;
     result.reserve(buffers.size());
     for (const Buffer& buffer : buffers) {
-      auto it = buffer_info_.find(buffer.get());
+      auto it = buffer_info_.find(buffer);
       ICHECK(it != buffer_info_.end());
       BufferAllocInfo& info = it->second;
       Array<PrimExpr> shape;
@@ -332,11 +283,11 @@ class BufferCompactor : public StmtExprMutator {
   }
 
   void RewriteBufferAccess(Buffer* buffer, Array<PrimExpr>* indices) const {
-    auto it = buffer_info_.find(buffer->get());
+    auto it = buffer_info_.find(*buffer);
     ICHECK(it != buffer_info_.end());
     const BufferAllocInfo& info = it->second;
     if (!info.new_buffer.defined()) {
-      // new_buffer is empty if and only if it's an arg buffer
+      // new_buffer is undefined if and only if it's an parameter buffer
       // Then the buffer and indices do not need to change
       return;
     }
@@ -352,11 +303,11 @@ class BufferCompactor : public StmtExprMutator {
   }
 
   void RewriteBufferRegion(Buffer* buffer, Region* region) const {
-    auto it = buffer_info_.find(buffer->get());
+    auto it = buffer_info_.find(*buffer);
     ICHECK(it != buffer_info_.end());
     const BufferAllocInfo& info = it->second;
     if (!info.new_buffer.defined()) {
-      // new_buffer is empty if and only if it's an arg buffer
+      // new_buffer is undefined if and only if it's an parameter buffer
       // Then the buffer and region do not need to change
       return;
     }
@@ -371,13 +322,26 @@ class BufferCompactor : public StmtExprMutator {
     *region = std::move(new_region);
   }
 
+  void RewriteBufferRegions(Array<BufferRegion>* regions) const {
+    Array<BufferRegion> new_regions;
+    new_regions.reserve(regions->size());
+    for (const auto& region : *regions) {
+      BufferRegion buffer_region = region;
+      BufferRegionNode* p = buffer_region.CopyOnWrite();
+      RewriteBufferRegion(&p->buffer, &p->region);
+      new_regions.push_back(buffer_region);
+    }
+    *regions = std::move(new_regions);
+  }
+
   /*! \brief The allocation information about each buffer. */
-  std::unordered_map<const BufferNode*, BufferAllocInfo> buffer_info_;
+  std::unordered_map<Buffer, BufferAllocInfo, ObjectPtrHash, ObjectPtrEqual> buffer_info_;
 };
 
 PrimFunc CompactBufferAllocation(PrimFunc f) {
   PrimFuncNode* fptr = f.CopyOnWrite();
-  std::unordered_map<const BufferNode*, Region> region = BufferAccessRegionCollector::Collect(f);
+  std::unordered_map<Buffer, Region, ObjectPtrHash, ObjectPtrEqual> region =
+      BufferAccessRegionCollector::Collect(f);
   fptr->body = BufferCompactor::Compact(f, region);
   return f;
 }

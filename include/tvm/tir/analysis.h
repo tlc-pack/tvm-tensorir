@@ -88,13 +88,6 @@ TVM_DLL Array<Var> UndefinedVars(const Stmt& stmt, const Array<Var>& defs);
 TVM_DLL Array<Var> UndefinedVars(const PrimExpr& expr);
 
 /*!
- * \brief Collect the variables that appear in the specific Stmt or Expr
- * \param stmt_or_expr The Stmt or Expr
- * \return All variables that appear
- */
-TVM_DLL Array<Var> Vars(const ObjectRef& stmt_or_expr);
-
-/*!
  * \brief Analyze the side effect
  * \param expr The expression to be checked.
  *

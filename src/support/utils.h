@@ -171,16 +171,20 @@ inline uint64_t HashCombine(uint64_t key, const T& value) {
   return key ^ (hash_func(value) + 0x9e3779b9 + (key << 6) + (key >> 2));
 }
 
-/*! \brief Check whether the string starts with a given prefix. */
-inline bool StrStartsWith(const std::string& str, const std::string& prefix) {
-  int n = prefix.size();
-  if (static_cast<int>(str.size()) < n) {
+/*!
+ * \brief Check whether the string starts with a given prefix.
+ * \param str The given string.
+ * \param prefix The given prefix.
+ * \return Whether the prefix matched.
+ */
+inline bool StartsWith(const std::string& str, const std::string& prefix) {
+  size_t n = prefix.size();
+  if (str.size() < n) {
     return false;
   }
   const char* data = str.data();
   return std::equal(data, data + n, prefix.data());
 }
-
 
 }  // namespace support
 }  // namespace tvm

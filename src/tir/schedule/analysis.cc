@@ -54,6 +54,17 @@ bool ContainsVar(const ObjectRef& stmt_or_expr, const std::unordered_set<const V
   return found;
 }
 
+std::unordered_set<const VarNode*> Vars(const ObjectRef& stmt_or_expr) {
+  std::unordered_set<const VarNode*> result;
+  auto f_visit = [&result](const ObjectRef& obj) -> void {
+    if (const auto* var = obj.as<VarNode>()) {
+      result.insert(var);
+    }
+  };
+  PostOrderVisit(stmt_or_expr, f_visit);
+  return result;
+}
+
 bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& loop_var_ranges) {
   if (loop_var_ranges.empty()) {
     return true;

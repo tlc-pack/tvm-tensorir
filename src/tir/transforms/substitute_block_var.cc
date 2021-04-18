@@ -19,7 +19,7 @@
 
 /*!
  * \file substitute_block_var.cc
- * \brief Compact the buffer size into its exact need.
+ * \brief Substitute expr via BlockRealize value bindings.
  */
 
 #include <tvm/tir/stmt_functor.h>
@@ -28,7 +28,10 @@
 namespace tvm {
 namespace tir {
 
-/*! \brief Helper class to mutate the buffer access. */
+/*!
+ * \brief Substitute expr via BlockRealize value bindings and convert each block into opaque
+ *        blocks.
+ */
 class BlockVarSubstituter : public StmtExprMutator {
  public:
   static Stmt Substitute(const PrimFunc& f) {
