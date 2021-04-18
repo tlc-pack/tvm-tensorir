@@ -56,8 +56,7 @@ def narrowed_elementwise_func(a: ty.handle, c: ty.handle) -> None:
         with tir.block([]):
             tir.reads(A[i, 0:16])
             tir.writes(C[i, 0:16])
-            # Pass simplify will not simplify buffer shape
-            B = tir.alloc_buffer([i + 1 - i, 16], "float32")
+            B = tir.alloc_buffer((1, 16), "float32")
             for j in range(0, 16):
                 with tir.block() as []:
                     tir.reads(A[i, j])

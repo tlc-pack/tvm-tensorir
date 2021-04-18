@@ -176,18 +176,11 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
 
   static Region NarrowBufferRegionFromNDIntSet(const NDIntSet& nd_int_set,
                                                const Array<PrimExpr>& original_shape) {
-    Integer one(1);
     Array<Range> result;
     result.reserve(nd_int_set.size());
     for (size_t i = 0; i < nd_int_set.size(); ++i) {
       const arith::IntSet& int_set = nd_int_set[i];
-      if (int_set.IsNothing()) {
-        result.push_back(Range(/*begin=*/0, /*end=*/original_shape[i]));
-      } else {
-        PrimExpr min = int_set.min();
-        PrimExpr max = int_set.max();
-        result.push_back(Range(/*begin=*/min, /*end=*/max + one));
-      }
+      result.push_back(int_set.CoverRange(Range(/*begin=*/0, /*end=*/original_shape[i])));
     }
     return result;
   }
