@@ -309,8 +309,12 @@ def add_rfactor(
 
 
 def cross_thread_reduction() -> SearchRule:
-    """
-    Todo
+    """Apply cross-thread-reduction to some blocks if needed
+
+    Returns
+    -------
+    rule: SearchRule
+        The rule created
     :return:
     """
     return _ffi_api_search_rule.CrossThreadReduction()  # pylint: disable=no-member

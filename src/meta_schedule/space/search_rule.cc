@@ -923,10 +923,11 @@ void ReorderAndFuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
 }
 
 /*!
- * \brief Todo
- * \param sch
- * \param block
- * \return
+ * \brief Check whether the given `block` is in thread scope, i.e., some of its outer loop is bound
+ *        to threadIdx.
+ * \param sch The Meta-Schedule schedule
+ * \param block The block to be checked
+ * \return A boolean flag indicating whether the block is in thread scope.
  */
 bool InThreadScope(const Schedule& sch, const BlockRV& block) {
   const Array<LoopRV>& axes = sch->GetAxes(block);
@@ -972,8 +973,9 @@ class RuleAddRFactor {
     if (block->writes.size() != 1) {
       return {sch};
     }
-    if (!NeedsRFactor(sch->state(), block_sref, task, max_jobs_per_core,
-                      &warned_num_cores_missing) ||
+    int target_num_cores = GetTargetNumCores(task->target, &warned_num_cores_missing);
+    if (!NeedsRFactorOrCrossThreadReduction(sch->state(), block_sref, target_num_cores,
+                                            target_num_cores * max_jobs_per_core) ||
         HasCacheWriteBlock(sch, block_rv, 0)) {
       return {sch};
     }
@@ -1050,25 +1052,23 @@ class RuleCrossThreadReduction {
     if (block->writes.size() != 1) {
       return {sch};
     }
-    if (!NeedsCrossThreadReduction(sch->state(), block_sref, max_threads_per_block, warp_size) ||
+    if (!NeedsRFactorOrCrossThreadReduction(sch->state(), block_sref, max_threads_per_block,
+                                            warp_size) ||
         HasCacheWriteBlock(sch, block_rv, 0)) {
       return {sch};
     }
 
-    // Todo: provide more documents/comments
+    // Make a copy of the original schedule. The new copy is used for scheduling.
     Schedule tmp_sch = sch->Copy(sch->sampler.ForkSeed());
-
-//    // Reorder the loop axes if reduction loops are not innermost.
-//    // After the reordering, fuse all the reduction loops.
-//    int num_spatial_loops;
-//    LoopRV fused_reduce_loop;
-//    ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
-
-    // Check the opportunity for kernel fusion
+    // Check the opportunity for kernel fusion. We say "fusible", if we can compute_at the block to
+    // its consumer. We want to fuse as much as possible because it results in significantly faster
+    // schedule.
     bool fusible = false;
-    Array<BlockRV> consumers = tmp_sch->GetConsumers(block_rv);
+    // `target_block` is the consumer block that we want to compute_at the input block to.
     Optional<BlockRV> target_block = NullOpt;
+    Array<BlockRV> consumers = tmp_sch->GetConsumers(block_rv);
     if (!consumers.empty()) {
+      // Calculate the lowest common ancestor of all the consumers.
       std::vector<tir::StmtSRef> consumers_sref;
       consumers_sref.reserve(consumers.size());
       for (const BlockRV& consumer : consumers) {
@@ -1079,6 +1079,11 @@ class RuleCrossThreadReduction {
                                           ? consumers_sref[0]
                                           : tir::LowestCommonAncestor(consumers_sref, root_sref);
 
+      // * If the LCA is a block, we check whether the LCA appears in the consumers. If so, we let
+      //   `target_block` be the LCA block.
+      // * If the LCA is a loop, we check whether the loop was bound to blockIdx.x. If so, it means
+      //   that we once applied this rule to the blocks under this loop. In this case we let
+      //   `target_block` be the first consumer to fuse further.
       if (lca_sref->StmtAs<tir::BlockNode>() != nullptr) {
         // LCA is a block.
         for (int i = 0; i < static_cast<int>(consumers.size()); ++i) {
@@ -1087,13 +1092,12 @@ class RuleCrossThreadReduction {
             target_block = consumers[i];
           }
         }
-
-        // simple check
+        // Simple check: if there's only one consumer, then `target_block` shouldn't be NullOpt.
         if (consumers.size() == 1) {
           ICHECK(target_block.defined());
         }
       } else {
-        // LCA is a for.
+        // LCA is a for loop.
         const auto* lca_loop = TVM_SREF_TO_FOR(lca_loop, lca_sref);
         if (lca_loop->thread_binding.defined() &&
             std::string(lca_loop->thread_binding.value()->thread_tag).substr(0, 10) ==
@@ -1103,66 +1107,71 @@ class RuleCrossThreadReduction {
       }
     }
 
+    // To perform the fusion, we need to calculate the number of common dimensions that the input
+    // block and `target_block` have. It indicates the target loop used for compute_at.
     int num_common_axes = -1;
     if (target_block.defined()) {
       num_common_axes =
-          GetNumberOfCommonBlockVars(tmp_sch->Get(block_rv), tmp_sch->Get(target_block.value()));
+          GetNumberCommonOutputDims(tmp_sch->Get(block_rv), tmp_sch->Get(target_block.value()));
       if (num_common_axes > 0 &&
           !NeedsMultiLevelTiling(tmp_sch->state(), tmp_sch->GetSRef(target_block.value()))) {
         fusible = true;
       }
     }
 
+    Array<FloatImm> probs(2, FloatImm(DataType::Float(64), 0.5));
+    tir::Var inner_split_factor = tmp_sch->SampleCategorical(
+        {Integer(warp_size), Integer(2 * static_cast<int>(warp_size))}, probs);
     if (fusible) {
       ICHECK(target_block.defined());
       const BlockRV& target_block_rv = target_block.value();
+      Array<LoopRV> target_block_loops = tmp_sch->GetAxes(target_block_rv);
 
+      // Step 1. If the outer loops of `target_block` haven't been bound to threadIdx, we should
+      // first bound the innermost outer loop of `target_block` to threadIdx. Possibly we need to
+      // split the loop before binding.
       if (!InThreadScope(tmp_sch, target_block_rv)) {
-        // Todo: modify comments below
-        // If the target stage does not have split step,
-        // it must be a simple stage without reduce iters.
-        // We then should do a split for it so that this block is bound to threadIdx. Todo: is it true?
-
         const tir::StmtSRef& target_block_sref = tmp_sch->GetSRef(target_block_rv);
-        CHECK(!ReductionBlock(tmp_sch->state(), target_block_sref, GetScopeRoot(target_block_sref)));
-        const LoopRV& loop_to_split = tmp_sch->GetAxes(target_block_rv).back();
-        Array<LoopRV> split_res = tmp_sch->Split(loop_to_split, {NullOpt, Integer(warp_size)});
-        const Instruction& split_inst = tmp_sch->trace->insts.back();
-        ICHECK(split_inst->inst_attrs->IsInstance<SplitAttrs>());
+        CHECK(!ReductionBlock(tmp_sch->state(), target_block_sref, GetScopeRoot(target_block_sref)))
+            << "ValueError: In this case the target block is expected to be a complete block.";
+        const LoopRV& loop_to_split = target_block_loops.back();
+        Array<LoopRV> split_res = tmp_sch->Split(loop_to_split, {NullOpt, inner_split_factor});
         ICHECK_EQ(split_res.size(), 2);
         tmp_sch->Bind(split_res[1], "threadIdx.x");
+        target_block_loops.pop_back();
+        target_block_loops.push_back(split_res[0]);
+        target_block_loops.push_back(split_res[1]);
       }
 
-      Array<LoopRV> target_block_loops = tmp_sch->GetAxes(target_block_rv);
+      // Step 2. Get the compute_at target loop, and do the compute_at.
       ICHECK_GT(target_block_loops.size(), num_common_axes);
       const LoopRV& target_loop = target_block_loops[num_common_axes - 1];
-
       tmp_sch->ComputeAt(block_rv, target_loop, true);
+      // Step 3. Set the storage scope of the output buffer.
       tmp_sch->SetScope(block_rv, 0, "shared");
-
-      // Reorder the loop axes if reduction loops are not innermost.
-      // After the reordering, fuse all the reduction loops.
-      int num_spatial_loops; // This int variable is only used for passing argument.
+      // Step 4. Reorder the loop axes if reduction loops are not innermost. After the reordering,
+      // fuse all the reduction loops.
+      int num_spatial_loops;
       LoopRV fused_reduce_loop;
       ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
-
-      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, Integer(warp_size)});
+      // Step 5. Split the fused reduction loop and bind the inner one to threadIdx, bind the
+      // target_loop to blockIdx. Note that the target loop might have been bound to blockIdx
+      // before.
+      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, inner_split_factor});
       ICHECK_EQ(split_res.size(), 2);
       tmp_sch->Bind(split_res[1], "threadIdx.x");
       tmp_sch->Bind(target_loop, "blockIdx.x");
     } else {
-      // Reorder the loop axes if reduction loops are not innermost.
-      // After the reordering, fuse all the reduction loops.
+      // If we cannot do the fusion, just fuse all the reduction loops, split the fused loop and
+      // bound the inner one to threadIdx.
       int num_spatial_loops;
       LoopRV fused_reduce_loop;
       ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
-
-      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, Integer(warp_size)});
+      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, inner_split_factor});
       tmp_sch->Bind(split_res[1], "threadIdx.x");
     }
 
-    return {tmp_sch, sch}; // Todo: return the original schedule
-//    return {tmp_sch};
+    return {tmp_sch, sch};
   }
 };
 
