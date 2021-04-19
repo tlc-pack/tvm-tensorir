@@ -315,6 +315,5 @@ def cross_thread_reduction() -> SearchRule:
     -------
     rule: SearchRule
         The rule created
-    :return:
     """
     return _ffi_api_search_rule.CrossThreadReduction()  # pylint: disable=no-member
