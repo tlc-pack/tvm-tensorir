@@ -72,13 +72,7 @@ bool IsReduceTempBuffer(const Buffer& buffer) {
          support::StartsWith(buffer->name, "reduce_temp");
 }
 
-PrimExpr BufferArea(const Buffer& buffer) {
-  PrimExpr area = Integer(1);
-  for (const PrimExpr& dim : buffer->shape) {
-    area = area * dim;
-  }
-  return area;
-}
+PrimExpr BufferArea(const Buffer& buffer);
 
 class ReductionTransformer : public StmtMutator {
  public:
