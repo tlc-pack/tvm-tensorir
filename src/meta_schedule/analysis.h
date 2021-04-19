@@ -223,7 +223,7 @@ TVM_DLL bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv, co
  *        var. That is, `expr` equals `var` plus or minus some constant.
  * \param var The input var
  * \param expr The PrimExpr to be checked
- * \return A boolean flag indicating whether the expression is a constant shift.
+ * \return A boolean flag indicating whether the expression is a constant shift
  */
 TVM_DLL bool IsConstShiftEqual(const tir::Var& var, const PrimExpr& expr);
 
@@ -233,7 +233,7 @@ TVM_DLL bool IsConstShiftEqual(const tir::Var& var, const PrimExpr& expr);
  *        the producer's output buffer and its own output buffer at this dimension.
  * \param producer The producer block
  * \param consumer The consumer block
- * \return The number of common dimensions.
+ * \return The number of common dimensions
  * \note The producer and consumer are required to both have only one output buffer.
  */
 TVM_DLL int GetNumberCommonOutputDims(const tir::Block& producer, const tir::Block& consumer);

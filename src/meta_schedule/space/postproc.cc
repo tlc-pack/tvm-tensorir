@@ -657,7 +657,7 @@ class PostprocRewriteReductionBlock {
       for (int i = 0; i < static_cast<int>(block->iter_vars.size()); ++i) {
         const tir::IterVar& var = block->iter_vars[i];
         const PrimExpr& binding = block_realize->iter_values[i];
-        if (ContainsVar(binding, bound_loop_vars_)) {
+        if (var->iter_type == tir::kCommReduce && ContainsVar(binding, bound_loop_vars_)) {
           return false;
         }
       }
@@ -690,13 +690,13 @@ class PostprocRewriteReductionBlock {
       stack_.pop_back();
     }
 
-    /*! \brief A map recording all the bound loop vars. */
+    /*! \brief A set recording all the bound loop vars. */
     std::unordered_set<const tir::VarNode*> bound_loop_vars_;
     /*! \brief A stack recording all the BlockRealizes along the visiting path. */
     std::vector<const tir::BlockRealizeNode*> stack_;
     /*!
-     * \brief The result block which has reduction block vars and none of the block var bindings is
-     *        bound to threadIdx (i.e., cross-thread-reduction is not needed).
+     * \brief The result block which has at least one reduction block var and none of the block var
+     *        bindings is bound to threadIdx (i.e., cross-thread-reduction is not needed).
      */
     const tir::BlockNode* result_;
   };

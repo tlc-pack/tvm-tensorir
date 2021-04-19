@@ -974,8 +974,8 @@ class RuleAddRFactor {
       return {sch};
     }
     int target_num_cores = GetTargetNumCores(task->target, &warned_num_cores_missing);
-    if (!NeedsRFactorOrCrossThreadReduction(sch->state(), block_sref, target_num_cores,
-                                            target_num_cores * max_jobs_per_core) ||
+    if (!NeedsRFactorOrCrossThreadReduction(
+            sch->state(), block_sref, target_num_cores * max_jobs_per_core, target_num_cores) ||
         HasCacheWriteBlock(sch, block_rv, 0)) {
       return {sch};
     }
