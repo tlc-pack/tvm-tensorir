@@ -53,8 +53,8 @@ class BlockVarSubstituter : public StmtExprMutator {
   Stmt VisitStmt_(const BlockNode* block) final {
     ICHECK(!block->init.defined())
         << "Block Init part is not allowed in pass substituter_block_var";
-    Stmt s = StmtExprMutator::VisitStmt_(block);
-    block = s.as<BlockNode>();
+    Stmt stmt = StmtExprMutator::VisitStmt_(block);
+    block = stmt.as<BlockNode>();
     ICHECK(block != nullptr);
     if (block->iter_vars.empty()) {
       return GetRef<Stmt>(block);
