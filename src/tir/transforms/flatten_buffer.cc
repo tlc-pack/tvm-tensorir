@@ -27,17 +27,10 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
+#include "../../support/utils.h"
+
 namespace tvm {
 namespace tir {
-
-inline bool StrStartsWith(const String& str, const String& prefix) {
-  int n = prefix.size();
-  if (static_cast<int>(str.size()) < n) {
-    return false;
-  }
-  const char* data = str.data();
-  return std::equal(data, data + n, prefix.data());
-}
 
 PrimExpr BufferArea(const Buffer& buffer) {
   PrimExpr area = Integer(1);
@@ -48,8 +41,8 @@ PrimExpr BufferArea(const Buffer& buffer) {
 }
 
 bool IsReduceTempBuffer(const Buffer& buffer) {
-  return StrStartsWith(buffer->name, "normal_reduce_temp") ||  //
-         StrStartsWith(buffer->name, "reduce_temp");
+  return support::StartsWith(buffer->name, "normal_reduce_temp") ||  //
+         support::StartsWith(buffer->name, "reduce_temp");
 }
 
 /*!
@@ -79,11 +72,15 @@ class BufferFlattener : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const ForNode* op) final {
-    // Step 1. Visit recursively
+    // Step 1. Update unit loop info.
     PrimExpr min = this->VisitExpr(op->min);
     PrimExpr extent = this->VisitExpr(op->extent);
+    if (is_one(extent)) {
+      unit_loop_vars_[op->loop_var.get()] = min;
+    }
+    // Step 2. Visit recursively
     Stmt body = this->VisitStmt(op->body);
-    // Step 2. Add the for loop accordingly
+    // Step 3. Add the for loop accordingly
     if (op->kind == ForKind::kThreadBinding) {
       // Case 1. Thread binding
       ICHECK(op->thread_binding.defined());
@@ -96,7 +93,7 @@ class BufferFlattener : public StmtExprMutator {
       // Case 3. An ordinary loop
       body = For(op->loop_var, min, extent, op->kind, body);
     }
-    // Step 3. Handle annotations
+    // Step 4. Handle annotations
     for (const auto& annotation : op->annotations) {
       const String& ann_key = annotation.first;
       const ObjectRef& ann_value = annotation.second;
@@ -111,6 +108,15 @@ class BufferFlattener : public StmtExprMutator {
     BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(op));
     op = store.get();
     return op->buffer.vstore(op->indices, op->value);
+  }
+
+  PrimExpr VisitExpr_(const VarNode* op) final {
+    auto it = unit_loop_vars_.find(op);
+    if (it == unit_loop_vars_.end()) {
+      return GetRef<PrimExpr>(op);
+    } else {
+      return it->second;
+    }
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
@@ -157,6 +163,8 @@ class BufferFlattener : public StmtExprMutator {
     body = AttrStmt(iter_var, attr_key, extent, body);
     return body;
   }
+
+  std::unordered_map<const VarNode*, PrimExpr> unit_loop_vars_;
 };
 
 PrimFunc FlattenBuffer(PrimFunc f) {

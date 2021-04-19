@@ -514,9 +514,9 @@ class BufferAllocator : public StmtExprMutator {
 /*!
  * \brief Transform multi-dimension BufferLoad/BufferStore into one-dimension Load/Store
  */
-class BufferFlattener : public StmtExprMutator {
+class Flattener : public StmtExprMutator {
  public:
-  static Stmt Flatten(const PrimFunc& f) { return BufferFlattener().VisitStmt(f->body); }
+  static Stmt Flatten(const PrimFunc& f) { return Flattener().VisitStmt(f->body); }
 
  private:
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
@@ -645,7 +645,7 @@ PrimFunc BufferFlatten(PrimFunc f) {
   // Step 2. Recalculate the buffer region
   fptr->body = BufferAllocator::Alloc(f);
   // Step 3. Transform BufferLoad/BufferStore into Load/Store
-  fptr->body = BufferFlattener::Flatten(f);
+  fptr->body = Flattener::Flatten(f);
   return f;
 }
 
