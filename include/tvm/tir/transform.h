@@ -367,7 +367,7 @@ TVM_DLL Pass PlanAndUpdateBufferAllocationLocation();
  *        which do not have block iter_vars and iter_values.
  * \return The pass.
  */
-TVM_DLL Pass SubstituteBlockVar();
+TVM_DLL Pass ConvertBlocksToOpaque();
 
 /*!
  * \brief Compact the buffer access region.

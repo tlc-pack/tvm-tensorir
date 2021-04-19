@@ -18,8 +18,8 @@
  */
 
 /*!
- * \file substitute_block_var.cc
- * \brief Substitute expr via BlockRealize value bindings.
+ * \file convert_block_to_opaque.cc
+ * \brief Convert the blocks to opaque blocks which do not have block vars.
  */
 
 #include <tvm/tir/stmt_functor.h>
@@ -32,15 +32,15 @@ namespace tir {
  * \brief Substitute expr via BlockRealize value bindings and convert each block into opaque
  *        blocks.
  */
-class BlockVarSubstituter : public StmtExprMutator {
+class OpaqueBlockConverter : public StmtExprMutator {
  public:
   static Stmt Substitute(const PrimFunc& f) {
-    BlockVarSubstituter substituter;
+    OpaqueBlockConverter substituter;
     return substituter.VisitStmt(f->body);
   }
 
  private:
-  explicit BlockVarSubstituter() = default;
+  explicit OpaqueBlockConverter() = default;
 
   PrimExpr VisitExpr_(const VarNode* var) final {
     auto it = var_substitutes_.find(var);
@@ -52,12 +52,12 @@ class BlockVarSubstituter : public StmtExprMutator {
 
   Stmt VisitStmt_(const BlockNode* block) final {
     ICHECK(!block->init.defined())
-        << "Block Init part is not allowed in pass substituter_block_var";
+        << "Block Init part is not allowed in pass ConvertBlocksToOpaque";
     Stmt stmt = StmtExprMutator::VisitStmt_(block);
     block = stmt.as<BlockNode>();
     ICHECK(block != nullptr);
     if (block->iter_vars.empty()) {
-      return GetRef<Stmt>(block);
+      return stmt;
     } else {
       auto n = CopyOnWrite(block);
       n->iter_vars = {};
@@ -76,36 +76,38 @@ class BlockVarSubstituter : public StmtExprMutator {
       var_substitutes_.emplace(block_var->var.get(), v);
     }
     // Step 2. Visit recursively
-    Stmt s = StmtExprMutator::VisitStmt_(realize);
-    realize = s.as<BlockRealizeNode>();
+    Stmt stmt = StmtExprMutator::VisitStmt_(realize);
+    realize = stmt.as<BlockRealizeNode>();
     ICHECK(realize != nullptr);
     if (realize->iter_values.empty()) {
-      return GetRef<Stmt>(realize);
+      return stmt;
     } else {
       auto n = CopyOnWrite(realize);
       n->iter_values = {};
       return Stmt(n);
     }
   }
+
+  /*! \brief The map from block vars to thier binding values. */
   std::unordered_map<const VarNode*, PrimExpr> var_substitutes_;
 };
 
-PrimFunc SubstituteBlockVar(PrimFunc f) {
+PrimFunc ConvertBlocksToOpaque(PrimFunc f) {
   PrimFuncNode* fptr = f.CopyOnWrite();
-  fptr->body = BlockVarSubstituter::Substitute(f);
+  fptr->body = OpaqueBlockConverter::Substitute(f);
   return f;
 }
 
 namespace transform {
 
-Pass SubstituteBlockVar() {
+Pass ConvertBlocksToOpaque() {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
-    return SubstituteBlockVar(std::move(f));
+    return ConvertBlocksToOpaque(std::move(f));
   };
-  return CreatePrimFuncPass(pass_func, 0, "tir.SubstituteBlockVar", {});
+  return CreatePrimFuncPass(pass_func, 0, "tir.ConvertBlocksToOpaque", {});
 }
 
-TVM_REGISTER_GLOBAL("tir.transform.SubstituteBlockVar").set_body_typed(SubstituteBlockVar);
+TVM_REGISTER_GLOBAL("tir.transform.ConvertBlocksToOpaque").set_body_typed(ConvertBlocksToOpaque);
 }  // namespace transform
 
 }  // namespace tir

@@ -22,7 +22,7 @@ from tvm.script import ty
 def _check(original, transformed):
     func = original
     mod = tvm.IRModule.from_expr(func)
-    mod = tvm.tir.transform.SubstituteBlockVar()(mod)
+    mod = tvm.tir.transform.ConvertBlocksToOpaque()(mod)
     mod = tvm.tir.transform.Simplify()(mod)
     tvm.ir.assert_structural_equal(mod["main"], transformed)
 
@@ -56,7 +56,6 @@ def substituted_elementwise_func(a: ty.handle, c: ty.handle) -> None:
         with tir.block([]):
             tir.reads(A[i, 0:16])
             tir.writes(C[i, 0:16])
-            # Pass simplify will not simplify buffer shape
             B = tir.alloc_buffer([16, 16], "float32")
             for j in range(0, 16):
                 with tir.block() as []:
