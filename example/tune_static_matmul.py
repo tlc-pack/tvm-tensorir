@@ -6,28 +6,6 @@ from tvm.script import ty
 from typing import Tuple
 
 
-@tvm.script.tir
-def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (1024, 1024), "float32")
-    B = tir.match_buffer(b, (1024, 1024), "float32")
-    C = tir.match_buffer(c, (1024, 1024), "float32")
-    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
-        with tir.init():
-            C[vi, vj] = 0.0
-        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
-
-print(matmul)
-# def matmul(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
-#     a = te.placeholder((n, k), name="A")
-#     b = te.placeholder((k, m), name="B")
-#     k = te.reduce_axis((0, k), name="k")
-#     c = te.compute(
-#         (n, m),
-#         lambda i, j: te.sum(a[i, k] * b[k, j], axis=[k]),
-#         name="C",
-#     )
-#     return (a, b, c)
-
 def cpu_space():
     return ms.space.PostOrderApply(
         stages=[
@@ -70,16 +48,25 @@ def create_measurer():
         ],
     )
 
+@tvm.script.tir
+def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (1024, 768), "float32")
+    B = tir.match_buffer(b, (768, 768), "float32")
+    C = tir.match_buffer(c, (1024, 768), "float32")
+    with tir.block([1024, 768, tir.reduce_axis(0, 768)], "matmul") as [vi, vj, vk]:
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 def main():
-    task = ms.SearchTask(workload=matmul,
-                         log_file='matmul_static.log')
+    log_file='matmul_static.log'
+    task = ms.SearchTask(workload=matmul, log_file=log_file)
     space = cpu_space()
     measurer = create_measurer()
     sch = ms.autotune(
         task=task,
         space=space,
-        strategy="replay",
+        strategy=ms.strategy.Replay(num_trials=200),
         measurer=measurer,
     )
     if sch is None:

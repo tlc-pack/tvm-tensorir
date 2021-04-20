@@ -33,27 +33,29 @@ std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler
   const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   int64_t extent = GetLoopIntExtent(loop);
   std::vector<int64_t> result;
-  if (extent == -1) {
-    // Case 1. Handle loops with non-constant length
-    result = std::vector<int64_t>(n, 1);
-    result[0] = -1;
-  } else if (decision->defined()) {
-    // Case 2. Use previous decision
+  if (decision->defined()) {
+    // Use previous decision
     result = AsVector<Integer, int64_t>(decision->value());
     int n = result.size();
     ICHECK_GE(n, 2);
-    int64_t len = extent;
-    for (int i = n - 1; i > 0; --i) {
-      int64_t& l = result[i];
-      // A previous decision could become invalid because of the change of outer tiles
-      // To handle this case properly, we check if the tiling strategy is still perfect.
-      // If not, we use a trivial default solution (1, 1, ..., 1, L) for rest of the tiles
-      if (len % l != 0) {
-        l = len;
+    if (extent != -1) {
+      int64_t len = extent;
+      for (int i = n - 1; i > 0; --i) {
+        int64_t& l = result[i];
+        // A previous decision could become invalid because of the change of outer tiles
+        // To handle this case properly, we check if the tiling strategy is still perfect.
+        // If not, we use a trivial default solution (1, 1, ..., 1, L) for rest of the tiles
+        if (len % l != 0) {
+          l = len;
+        }
+        len /= l;
       }
-      len /= l;
+      result[0] = len;
     }
-    result[0] = len;
+  } else if (extent == -1) {
+    // Case 1. Handle loops with non-constant length
+    result = std::vector<int64_t>(n, 1);
+    result[0] = -1;
   } else {
     // Case 3. Use fresh new sampling result
     std::vector<int> sampled = sampler->SamplePerfectTile(n, extent, max_innermost_factor);

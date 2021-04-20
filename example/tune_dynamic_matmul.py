@@ -7,10 +7,10 @@ import os
 
 @tvm.script.tir
 def dyn_mm(a: ty.handle, b: ty.handle, c: ty.handle, M: ty.int32, N: ty.int32) -> None:
-    A = tir.match_buffer(a, (M, 1024), "float32")
-    B = tir.match_buffer(b, (1024, N), "float32")
+    A = tir.match_buffer(a, (M, 768), "float32")
+    B = tir.match_buffer(b, (768, N), "float32")
     C = tir.match_buffer(c, (M, N), "float32")
-    with tir.block([M, N, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
+    with tir.block([M, N, tir.reduce_axis(0, 768)], "matmul") as [vi, vj, vk]:
         with tir.init():
             C[vi, vj] = 0.0
         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
@@ -59,10 +59,9 @@ def test_dynamic_matmul_autotune():
     os.environ["TVM_TRACKER_KEY"] = "local"
     shape_vars = ('M', 'N')
     shape_variants = [
-        (256, 256),
-        (512, 512)
+        (1024, 768),
     ]
-    shape_freq = (0.5, 0.5)
+    shape_freq = (1.0, )
     task=ms.SearchTask(workload=dyn_mm,
                        log_file='matmul_dynamic.log',
                        shape_vars=shape_vars, 
@@ -75,7 +74,17 @@ def test_dynamic_matmul_autotune():
     print(task.shape_freq)
     space = ms.space.PostOrderApply(
         stages=[
-            micro_kernel,
+            # micro_kernel,
+            ms.rule.multi_level_tiling(
+                structure="SSRSRS",
+                must_cache_read=False,
+                cache_read_scope="global",
+                can_cache_write=True,
+                must_cache_write=False,
+                cache_write_scope="global",
+                consumer_inline_strict=True,
+                fusion_levels=[1, 2],
+            ),
             ms.rule.inline_pure_spatial(strict_mode=True),
             ms.rule.parallelize_vectorize_unroll(
                 max_jobs_per_core=16,
@@ -93,9 +102,16 @@ def test_dynamic_matmul_autotune():
     sch = ms.autotune(
         task=task,
         space=space,
-        strategy="replay",
+        strategy=ms.strategy.Replay(num_trials=300),
         measurer=create_measurer(),
     )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        print(tvm.script.asscript(sch.mod))
+        print("Schedule:")
+        print("\n".join(sch.trace.as_python()))
+
 
 # test_dynamic_matmul_schedule()
 test_dynamic_matmul_autotune()
