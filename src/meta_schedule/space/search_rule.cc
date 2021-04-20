@@ -1119,9 +1119,6 @@ class RuleCrossThreadReduction {
       }
     }
 
-    Array<FloatImm> probs(2, FloatImm(DataType::Float(64), 0.5));
-    tir::Var inner_split_factor = tmp_sch->SampleCategorical(
-        {Integer(warp_size), Integer(2 * static_cast<int>(warp_size))}, probs);
     if (fusible) {
       ICHECK(target_block.defined());
       const BlockRV& target_block_rv = target_block.value();
@@ -1135,7 +1132,7 @@ class RuleCrossThreadReduction {
         CHECK(!ReductionBlock(tmp_sch->state(), target_block_sref, GetScopeRoot(target_block_sref)))
             << "ValueError: In this case the target block is expected to be a complete block.";
         const LoopRV& loop_to_split = target_block_loops.back();
-        Array<LoopRV> split_res = tmp_sch->Split(loop_to_split, {NullOpt, inner_split_factor});
+        Array<LoopRV> split_res = tmp_sch->Split(loop_to_split, {NullOpt, Integer(warp_size)});
         ICHECK_EQ(split_res.size(), 2);
         tmp_sch->Bind(split_res[1], "threadIdx.x");
         target_block_loops.pop_back();
@@ -1157,7 +1154,7 @@ class RuleCrossThreadReduction {
       // Step 5. Split the fused reduction loop and bind the inner one to threadIdx, bind the
       // target_loop to blockIdx. Note that the target loop might have been bound to blockIdx
       // before.
-      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, inner_split_factor});
+      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, Integer(warp_size)});
       ICHECK_EQ(split_res.size(), 2);
       tmp_sch->Bind(split_res[1], "threadIdx.x");
       tmp_sch->Bind(target_loop, "blockIdx.x");
@@ -1167,7 +1164,7 @@ class RuleCrossThreadReduction {
       int num_spatial_loops;
       LoopRV fused_reduce_loop;
       ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
-      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, inner_split_factor});
+      Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, Integer(warp_size)});
       tmp_sch->Bind(split_res[1], "threadIdx.x");
     }
 
