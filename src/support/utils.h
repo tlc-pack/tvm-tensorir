@@ -29,6 +29,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #endif
+#include <tvm/runtime/container.h>
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -177,13 +179,14 @@ inline uint64_t HashCombine(uint64_t key, const T& value) {
  * \param prefix The given prefix.
  * \return Whether the prefix matched.
  */
-inline bool StartsWith(const std::string& str, const std::string& prefix) {
-  size_t n = prefix.size();
-  if (str.size() < n) {
-    return false;
+inline bool StartsWith(const String& str, const char* prefix) {
+  size_t n = str.length();
+  for (size_t i = 0; i < n; i++) {
+    if (!prefix[i]) return true;
+    if (str.at(i) != prefix[i]) return false;
   }
-  const char* data = str.data();
-  return std::equal(data, data + n, prefix.data());
+  // return true if the str is equal to the prefix
+  return prefix[n + 1] == 0;
 }
 
 }  // namespace support

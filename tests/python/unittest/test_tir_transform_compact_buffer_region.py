@@ -79,7 +79,7 @@ def unschedulable_func(a: ty.handle, c: ty.handle) -> None:
             tir.writes(C[i, 0:16])
             B = tir.alloc_buffer((16, 16), "float32")
             for j in range(0, 16):
-                B[i, j] = A[i, j] + 1.0
+                tir.store(B.data, i * 16 + j, A[i, j] + 1.0)
             for j in range(0, 16):
                 C[i, j] = B[i, j] * 2.0
 
@@ -197,8 +197,8 @@ def symbolic_func(a: ty.handle, c: ty.handle, n: ty.int32) -> None:
     C = tir.match_buffer(c, (n * 8,), "float32")
     for i in range(0, n):
         with tir.block([]):
-            tir.reads(A[i * 8: i * 8 + 8])
-            tir.writes(C[i * 8: i * 8 + 8])
+            tir.reads(A[i * 8 : i * 8 + 8])
+            tir.writes(C[i * 8 : i * 8 + 8])
             B = tir.alloc_buffer((n * 8,), "float32")
             for j in range(0, 8):
                 with tir.block([]) as []:
@@ -218,8 +218,8 @@ def compacted_symbolic_func(a: ty.handle, c: ty.handle, n: ty.int32) -> None:
     C = tir.match_buffer(c, (n * 8,), "float32")
     for i in range(0, n):
         with tir.block([]):
-            tir.reads(A[i * 8: i * 8 + 8])
-            tir.writes(C[i * 8: i * 8 + 8])
+            tir.reads(A[i * 8 : i * 8 + 8])
+            tir.writes(C[i * 8 : i * 8 + 8])
             B = tir.alloc_buffer((8,), "float32")
             for j in range(0, 8):
                 with tir.block([]) as []:
