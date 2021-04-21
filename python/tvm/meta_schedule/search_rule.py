@@ -306,3 +306,14 @@ def add_rfactor(
     return _ffi_api_search_rule.AddRFactor(
         max_jobs_per_core, max_innermost_factor
     )  # pylint: disable=no-member
+
+
+def cross_thread_reduction() -> SearchRule:
+    """Apply cross-thread-reduction to some blocks if needed
+
+    Returns
+    -------
+    rule: SearchRule
+        The rule created
+    """
+    return _ffi_api_search_rule.CrossThreadReduction()  # pylint: disable=no-member
