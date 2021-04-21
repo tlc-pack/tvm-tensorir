@@ -523,7 +523,8 @@ class PostprocRewriteUnboundBlocks {
     }
 
    private:
-    explicit UnboundBlockFinder(const tir::Schedule& sch) : sch_(sch), block_(nullptr) {
+    explicit UnboundBlockFinder(const tir::Schedule& sch)
+        : sch_(sch), block_(nullptr), n_thread_binding_(0), n_block_binding_(0) {
       const auto* realize = GetOnlyFunc(sch->mod())->body.as<tir::BlockRealizeNode>();
       root_block_ = realize->block.get();
     }
@@ -532,13 +533,25 @@ class PostprocRewriteUnboundBlocks {
       if (block_) {
         return;
       }
+      String ann;
       if (Optional<String> opt_ann = GetBinding(sch_->GetSRef(loop))) {
-        String ann = opt_ann.value();
-        if (ann == "threadIdx.x" || ann == "blockIdx.x" || ann == "vthread") {
-          return;
+        ann = opt_ann.value();
+        if (ann == "threadIdx.x" || ann == "threadIdx.y" || ann == "threadIdx.z") {
+          ++n_thread_binding_;
+        } else if (ann == "blockIdx.x" || ann == "blockIdx.y" || ann == "blockIdx.z") {
+          ++n_block_binding_;
         }
       }
-      tir::StmtExprVisitor::VisitStmt_(loop);
+      if (!(n_thread_binding_ > 0 && n_block_binding_ > 0) && ann != "vthread") {
+        tir::StmtExprVisitor::VisitStmt_(loop);
+      }
+      if (ann.defined()) {
+        if (ann == "threadIdx.x" || ann == "threadIdx.y" || ann == "threadIdx.z") {
+          --n_thread_binding_;
+        } else if (ann == "blockIdx.x" || ann == "blockIdx.y" || ann == "blockIdx.z") {
+          --n_block_binding_;
+        }
+      }
     }
 
     void VisitStmt_(const tir::BlockNode* block) override {
@@ -552,6 +565,8 @@ class PostprocRewriteUnboundBlocks {
     const tir::Schedule& sch_;
     const tir::BlockNode* block_;
     const tir::BlockNode* root_block_;
+    int n_thread_binding_;
+    int n_block_binding_;
   };
 
   void BindThreadAxes(const Schedule& sch, const tir::StmtSRef& block_sref) const {
@@ -561,13 +576,33 @@ class PostprocRewriteUnboundBlocks {
     BlockRV block_rv = sch->GetBlock(block->name_hint);
     // Extract loops
     Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+    // Check whether the outer loops were bound to blockIdx or threadIdx
+    Array<tir::StmtSRef> loop_srefs;
+    bool has_block_binding = false;
+    bool has_thread_binding = false;
+    for (const LoopRV& loop_rv : loop_rvs) {
+      tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
+      loop_srefs.push_back(loop_sref);
+      if (Optional<String> opt_ann = GetBinding(loop_sref)) {
+        String ann = opt_ann.value();
+        if (ann == "threadIdx.x" || ann == "threadIdx.y" || ann == "threadIdx.z") {
+          has_thread_binding = true;
+        } else if (ann == "blockIdx.x" || ann == "blockIdx.y" || ann == "blockIdx.z") {
+          has_block_binding = true;
+        }
+      }
+    }
+    ICHECK(!(has_block_binding && has_thread_binding));
+    CHECK(!(has_block_binding && !has_thread_binding))
+        << "ValueError: Currently it is not allowed that a block has blockIdx outer loop but "
+           "doesn't have threadIdx outer loop";
     // Find the outer spatial loops
     // TODO(@junrushao1994): check if each loop has only one children, otherwise we cannot fuse
     int n_spatial_loops = 0;
-    for (const LoopRV& loop_rv : loop_rvs) {
-      tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
+    for (const tir::StmtSRef& loop_sref : loop_srefs) {
       tir::IterVarType iter_type = GetLoopIterType(sch->state(), loop_sref);
-      if (iter_type != tir::kDataPar || GetBinding(loop_sref).defined()) {
+      if (iter_type != tir::kDataPar || GetBinding(loop_sref).defined() ||
+          (n_spatial_loops > 0 && loop_sref->seq_index != -1)) {
         break;
       }
       ++n_spatial_loops;
@@ -575,10 +610,14 @@ class PostprocRewriteUnboundBlocks {
     CHECK_GT(n_spatial_loops, 0) << "ValueError: not supported when spatial loop doesn't exist";
     // Fuse the spatial loops
     LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + n_spatial_loops});
-    Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
-    ICHECK_EQ(splits.size(), 2);
-    sch->Bind(splits[0], "blockIdx.x");
-    sch->Bind(splits[1], "threadIdx.x");
+    if (!has_thread_binding) {
+      Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
+      ICHECK_EQ(splits.size(), 2);
+      sch->Bind(splits[0], "blockIdx.x");
+      sch->Bind(splits[1], "threadIdx.x");
+    } else {
+      sch->Bind(fused, "blockIdx.x");
+    }
   }
 
   bool Proc(const SearchTask& task, const Schedule& sch) const {

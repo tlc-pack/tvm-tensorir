@@ -1098,12 +1098,7 @@ class RuleCrossThreadReduction {
         }
       } else {
         // LCA is a for loop.
-        const auto* lca_loop = TVM_SREF_TO_FOR(lca_loop, lca_sref);
-        if (lca_loop->thread_binding.defined() &&
-            std::string(lca_loop->thread_binding.value()->thread_tag).substr(0, 10) ==
-                "blockIdx.x") {
-          target_block = consumers[0];
-        }
+        target_block = consumers[0];
       }
     }
 
@@ -1157,7 +1152,6 @@ class RuleCrossThreadReduction {
       Array<LoopRV> split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, Integer(warp_size)});
       ICHECK_EQ(split_res.size(), 2);
       tmp_sch->Bind(split_res[1], "threadIdx.x");
-      tmp_sch->Bind(target_loop, "blockIdx.x");
     } else {
       // If we cannot do the fusion, just fuse all the reduction loops, split the fused loop and
       // bound the inner one to threadIdx.
