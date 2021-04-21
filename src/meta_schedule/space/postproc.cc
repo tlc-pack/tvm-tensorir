@@ -523,7 +523,8 @@ class PostprocRewriteUnboundBlocks {
     }
 
    private:
-    explicit UnboundBlockFinder(const tir::Schedule& sch) : sch_(sch), block_(nullptr) {
+    explicit UnboundBlockFinder(const tir::Schedule& sch)
+        : sch_(sch), block_(nullptr), n_thread_binding_(0), n_block_binding_(0) {
       const auto* realize = GetOnlyFunc(sch->mod())->body.as<tir::BlockRealizeNode>();
       root_block_ = realize->block.get();
     }
@@ -532,13 +533,25 @@ class PostprocRewriteUnboundBlocks {
       if (block_) {
         return;
       }
+      String ann;
       if (Optional<String> opt_ann = GetBinding(sch_->GetSRef(loop))) {
-        String ann = opt_ann.value();
-        if (ann == "threadIdx.x" || ann == "blockIdx.x" || ann == "vthread") {
-          return;
+        ann = opt_ann.value();
+        if (ann == "threadIdx.x" || ann == "threadIdx.y" || ann == "threadIdx.z") {
+          ++n_thread_binding_;
+        } else if (ann == "blockIdx.x" || ann == "blockIdx.y" || ann == "blockIdx.z") {
+          ++n_block_binding_;
         }
       }
-      tir::StmtExprVisitor::VisitStmt_(loop);
+      if (!(n_thread_binding_ > 0 && n_block_binding_ > 0) && ann != "vthread") {
+        tir::StmtExprVisitor::VisitStmt_(loop);
+      }
+      if (ann.defined()) {
+        if (ann == "threadIdx.x" || ann == "threadIdx.y" || ann == "threadIdx.z") {
+          --n_thread_binding_;
+        } else if (ann == "blockIdx.x" || ann == "blockIdx.y" || ann == "blockIdx.z") {
+          --n_block_binding_;
+        }
+      }
     }
 
     void VisitStmt_(const tir::BlockNode* block) override {
@@ -552,6 +565,8 @@ class PostprocRewriteUnboundBlocks {
     const tir::Schedule& sch_;
     const tir::BlockNode* block_;
     const tir::BlockNode* root_block_;
+    int n_thread_binding_;
+    int n_block_binding_;
   };
 
   void BindThreadAxes(const Schedule& sch, const tir::StmtSRef& block_sref) const {
@@ -561,13 +576,33 @@ class PostprocRewriteUnboundBlocks {
     BlockRV block_rv = sch->GetBlock(block->name_hint);
     // Extract loops
     Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+    // Check whether the outer loops were bound to blockIdx or threadIdx
+    Array<tir::StmtSRef> loop_srefs;
+    bool has_block_binding = false;
+    bool has_thread_binding = false;
+    for (const LoopRV& loop_rv : loop_rvs) {
+      tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
+      loop_srefs.push_back(loop_sref);
+      if (Optional<String> opt_ann = GetBinding(loop_sref)) {
+        String ann = opt_ann.value();
+        if (ann == "threadIdx.x" || ann == "threadIdx.y" || ann == "threadIdx.z") {
+          has_thread_binding = true;
+        } else if (ann == "blockIdx.x" || ann == "blockIdx.y" || ann == "blockIdx.z") {
+          has_block_binding = true;
+        }
+      }
+    }
+    ICHECK(!(has_block_binding && has_thread_binding));
+    CHECK(!(has_block_binding && !has_thread_binding))
+        << "ValueError: Currently it is not allowed that a block has blockIdx outer loop but "
+           "doesn't have threadIdx outer loop";
     // Find the outer spatial loops
     // TODO(@junrushao1994): check if each loop has only one children, otherwise we cannot fuse
     int n_spatial_loops = 0;
-    for (const LoopRV& loop_rv : loop_rvs) {
-      tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
+    for (const tir::StmtSRef& loop_sref : loop_srefs) {
       tir::IterVarType iter_type = GetLoopIterType(sch->state(), loop_sref);
-      if (iter_type != tir::kDataPar || GetBinding(loop_sref).defined()) {
+      if (iter_type != tir::kDataPar || GetBinding(loop_sref).defined() ||
+          (n_spatial_loops > 0 && loop_sref->seq_index != -1)) {
         break;
       }
       ++n_spatial_loops;
@@ -575,10 +610,14 @@ class PostprocRewriteUnboundBlocks {
     CHECK_GT(n_spatial_loops, 0) << "ValueError: not supported when spatial loop doesn't exist";
     // Fuse the spatial loops
     LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + n_spatial_loops});
-    Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
-    ICHECK_EQ(splits.size(), 2);
-    sch->Bind(splits[0], "blockIdx.x");
-    sch->Bind(splits[1], "threadIdx.x");
+    if (!has_thread_binding) {
+      Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
+      ICHECK_EQ(splits.size(), 2);
+      sch->Bind(splits[0], "blockIdx.x");
+      sch->Bind(splits[1], "threadIdx.x");
+    } else {
+      sch->Bind(fused, "blockIdx.x");
+    }
   }
 
   bool Proc(const SearchTask& task, const Schedule& sch) const {
@@ -603,40 +642,106 @@ Postproc RewriteUnboundBlocks() {
 class PostprocRewriteReductionBlock {
  public:
   /*!
-   * \brief Check if the block has at least one reduction block var
-   * \param block_sref The block to be checked
-   * \return A boolean indicating if it has at least one reduction block var
+   * \brief An auxiliary class to help find reduction blocks whose init block is going to be
+   *        decomposed.
    */
-  static bool HasReductionIterVar(const tir::BlockNode* block) {
-    for (const tir::IterVar& var : block->iter_vars) {
-      if (var->iter_type == tir::kCommReduce) {
-        return true;
-      }
+  class Finder : public tir::StmtVisitor {
+   public:
+    static const tir::BlockNode* Find(const tir::Stmt& stmt) {
+      Finder finder;
+      finder.CollectBoundLoops(stmt);
+      finder.VisitStmt(stmt);
+      ICHECK(finder.result_ == nullptr || (finder.result_->init.defined() &&
+                                           finder.AllReductionIterVarAreUnbound(finder.result_)));
+      return finder.result_;
     }
-    return false;
-  }
 
-  static const tir::BlockNode* Find(const tir::Stmt& body) {
-    const tir::BlockNode* res = nullptr;
-    tir::PreOrderVisit(body, [&res](const ObjectRef& node) {
-      if (res) {
+   private:
+    Finder() : bound_loop_vars_(), stack_(), result_(nullptr) {}
+
+    /*!
+     * \brief Collect all the loops inside `stmt` that are bound to threadIdx or blockIdx.
+     * \param stmt The stmt to be inspected.
+     */
+    void CollectBoundLoops(const tir::Stmt& stmt) {
+      tir::PreOrderVisit(stmt, [this](const ObjectRef& node) {
+        if (const auto* loop = node.as<tir::ForNode>()) {
+          std::string thread_tag =
+              loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";
+          if (thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 8) == "blockIdx") {
+            ICHECK(thread_tag == "threadIdx.x" || thread_tag == "threadIdx.y" ||
+                   thread_tag == "threadIdx.z" || thread_tag == "blockIdx.x" ||
+                   thread_tag == "blockIdx.y" || thread_tag == "blockIdx.z");
+            bound_loop_vars_.insert(loop->loop_var.get());
+          }
+        }
         return false;
-      }
-      if (const auto* block = node.as<tir::BlockNode>()) {
-        // If a block doesn't have any reduction block var, there is no need to decompose reduction.
-        if (block->init.defined() && HasReductionIterVar(block)) {
-          res = block;
+      });
+    }
+
+    /*!
+     * \brief Check whether the two following conditions are both satisfied:
+     *   1. the block has at least one reduction block var, and
+     *   2. none of its reduction block var bindings is bound to threadIdx.
+     * \param block_sref The block to be checked
+     * \return A boolean indicating if it has at least one reduction block var
+     */
+    bool AllReductionIterVarAreUnbound(const tir::BlockNode* block) {
+      bool has_reduction_var = false;
+      CHECK(!stack_.empty() && stack_.back()->block.get() == block)
+          << "ValueError: the block has outer BlockRealize or the outer BlockRealize doesn't match "
+             "the block.";
+      const tir::BlockRealize& block_realize = GetRef<tir::BlockRealize>(stack_.back());
+      ICHECK_EQ(block_realize->iter_values.size(), block->iter_vars.size());
+      for (int i = 0; i < static_cast<int>(block->iter_vars.size()); ++i) {
+        const tir::IterVar& var = block->iter_vars[i];
+        const PrimExpr& binding = block_realize->iter_values[i];
+        if (var->iter_type == tir::kCommReduce && ContainsVar(binding, bound_loop_vars_)) {
           return false;
         }
       }
-      return true;
-    });
-    ICHECK(res == nullptr || (res->init.defined() && HasReductionIterVar(res)));
-    return res;
-  }
+      return has_reduction_var;
+    }
+
+    void VisitStmt_(const tir::BlockNode* block) override {
+      if (result_ != nullptr) {
+        return;
+      }
+      /* 1. If a block doesn't have any bound reduction block var, there is no need to
+       *    decompose reduction.
+       * 2. If some of its reduction block var bindings are bound to threadIdx, this indicates
+       *    that cross-thread-reduction is needed, and hence we should not decompose the init block.
+       */
+      if (block->init.defined() && AllReductionIterVarAreUnbound(block)) {
+        result_ = block;
+      } else {
+        tir::StmtVisitor::VisitStmt_(block);
+      }
+    }
+
+    void VisitStmt_(const tir::BlockRealizeNode* block_realize) override {
+      if (result_ != nullptr) {
+        return;
+      }
+      stack_.push_back(block_realize);
+      tir::StmtVisitor::VisitStmt_(block_realize);
+      ICHECK(!stack_.empty());
+      stack_.pop_back();
+    }
+
+    /*! \brief A set recording all the bound loop vars. */
+    std::unordered_set<const tir::VarNode*> bound_loop_vars_;
+    /*! \brief A stack recording all the BlockRealizes along the visiting path. */
+    std::vector<const tir::BlockRealizeNode*> stack_;
+    /*!
+     * \brief The result block which has at least one reduction block var and none of the block var
+     *        bindings is bound to threadIdx (i.e., cross-thread-reduction is not needed).
+     */
+    const tir::BlockNode* result_;
+  };
 
   bool Proc(const Schedule& sch) const {
-    while (const tir::BlockNode* block = Find(GetOnlyFunc(sch->mod())->body)) {
+    while (const tir::BlockNode* block = Finder::Find(GetOnlyFunc(sch->mod())->body)) {
       BlockRV block_rv = sch->GetBlock(block->name_hint);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
