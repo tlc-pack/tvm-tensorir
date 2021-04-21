@@ -127,9 +127,15 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
 
   void VisitExpr_(const VarNode* op) final { VisitBufferVar(GetRef<Var>(op)); }
 
-  void VisitExpr_(const LoadNode* op) final { VisitBufferVar(op->buffer_var); }
+  void VisitExpr_(const LoadNode* op) final {
+    StmtExprVisitor::VisitExpr_(op);
+    VisitBufferVar(op->buffer_var);
+  }
 
-  void VisitStmt_(const StoreNode* op) final { VisitBufferVar(op->buffer_var); }
+  void VisitStmt_(const StoreNode* op) final {
+    StmtExprVisitor::VisitStmt_(op);
+    VisitBufferVar(op->buffer_var);
+  }
 
   void VisitStmt_(const ForNode* op) final {
     ancestor_loops_.push_back(GetRef<For>(op));

@@ -233,6 +233,66 @@ def compacted_symbolic_func(a: ty.handle, c: ty.handle, n: ty.int32) -> None:
                     C[i * 8 + j] = B[j] * 2.0
 
 
+@tvm.script.tir
+def complex_func(a: ty.handle, c: ty.handle, n: ty.int32) -> None:
+    A = tir.match_buffer(a, (8, 8), "float32")
+    C = tir.match_buffer(c, (8, 8), "float32")
+    for i in range(0, 8):
+        with tir.block([]):
+            tir.reads(A[0, 8])
+            tir.writes(C[0, 8])
+            B = tir.alloc_buffer((8, 8), "float32")
+            for j in range(0, 4):
+                with tir.block([]) as []:
+                    D = tir.alloc_buffer((8, 8), "float32")
+                    tir.reads(A[i, j])
+                    tir.writes(B[i, j])
+                    for k in range(4, 8):
+                        D[k, j] = 1.0
+                    for k in range(2, 4):
+                        tir.store(B.data, j, A[i, j] + D[k, j])
+            for j in range(3, 5):
+                with tir.block([]) as []:
+                    tir.reads(B[i, j])
+                    tir.writes(C[i, j])
+                    C[i, j] = B[i, j]
+            for j in range(6, 8):
+                with tir.block([]) as []:
+                    tir.reads(B[i, j])
+                    tir.writes(C[i, j])
+                    C[i, j] = B[i, j]
+
+
+@tvm.script.tir
+def compacted_complex_func(a: ty.handle, c: ty.handle, n: ty.int32) -> None:
+    A = tir.match_buffer(a, (8, 8), "float32")
+    C = tir.match_buffer(c, (8, 8), "float32")
+    for i in range(0, 8):
+        with tir.block([]):
+            tir.reads(A[0, 8])
+            tir.writes(C[0, 8])
+            B = tir.alloc_buffer((1, 8), "float32")
+            for j in range(0, 4):
+                with tir.block([]) as []:
+                    D = tir.alloc_buffer((6, 1), "float32")
+                    tir.reads(A[i, j])
+                    tir.writes(B[0, j])
+                    for k in range(4, 8):
+                        D[k - 2, 0] = 1.0
+                    for k in range(2, 4):
+                        tir.store(B.data, j, A[i, j] + D[k - 2, 0])
+            for j in range(3, 5):
+                with tir.block([]) as []:
+                    tir.reads(B[0, j])
+                    tir.writes(C[i, j])
+                    C[i, j] = B[0, j]
+            for j in range(6, 8):
+                with tir.block([]) as []:
+                    tir.reads(B[0, j])
+                    tir.writes(C[i, j])
+                    C[i, j] = B[0, j]
+
+
 def test_elementwise():
     _check(elementwise_func, compacted_elementwise_func)
 
@@ -257,6 +317,10 @@ def test_symbolic():
     _check(symbolic_func, compacted_symbolic_func)
 
 
+def test_complex():
+    _check(complex_func, compacted_complex_func)
+
+
 if __name__ == "__main__":
     test_elementwise()
     test_unschedulable_block()
@@ -264,3 +328,4 @@ if __name__ == "__main__":
     test_shared_mem()
     test_warp_mem()
     test_symbolic()
+    test_complex()
