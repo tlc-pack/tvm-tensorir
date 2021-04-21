@@ -761,9 +761,10 @@ std::pair<int64_t, int64_t> GetCumulativeSpaceAndReductionLength(const tir::Sche
   return std::make_pair(cum_space_len, cum_reduce_len);
 }
 
-bool NeedsRFactor(const tir::ScheduleState& self, const tir::StmtSRef& block_sref,
-                  const SearchTask& task, const int& max_jobs_per_core,
-                  std::atomic<int>* warned_num_cores_missing) {
+bool NeedsRFactorOrCrossThreadReduction(const tir::ScheduleState& self,
+                                        const tir::StmtSRef& block_sref,
+                                        int64_t max_parallel_extent,
+                                        int64_t basic_parallel_extent) {
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
 
@@ -816,17 +817,16 @@ bool NeedsRFactor(const tir::ScheduleState& self, const tir::StmtSRef& block_sre
   }
 
   // Cond 6.
-  int target_num_cores = GetTargetNumCores(task->target, warned_num_cores_missing);
   if (NeedsMultiLevelTiling(self, block_sref)) {
-    // Do not use rfactor if we have enough parallelism on spatial loops.
-    if (cum_space_len > cum_reduce_len || cum_space_len > target_num_cores * max_jobs_per_core) {
+    // Do not use rfactor/cross-thread-reduction if we have enough parallelism on spatial loops.
+    if (cum_space_len >= cum_reduce_len || cum_space_len > max_parallel_extent) {
       return false;
     } else {
       return true;
     }
   } else if (cum_reduce_len > 1) {
-    // Always try rfactor for other reduction blocks.
-    return cum_reduce_len > target_num_cores;
+    // Always try rfactor/cross-thread-reduction for other reduction blocks.
+    return cum_reduce_len > basic_parallel_extent;
   }
 
   return false;
@@ -843,6 +843,103 @@ bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv, const int&
     }
   }
   return false;
+}
+
+bool IsConstShiftEqual(const tir::Var& var, const PrimExpr& expr) {
+  arith::PVar<PrimExpr> x;
+  arith::PVar<IntImm> c;
+
+  if (((x + c).Match(expr) || (x - c).Match(expr) || (c + x).Match(expr) || x.Match(expr)) &&
+      x.Eval().same_as(var)) {
+    return true;
+  }
+  return false;
+}
+
+int GetNumberCommonOutputDims(const tir::Block& producer, const tir::Block& consumer) {
+  // The producer and consumer are required to both have only one output buffer.
+  if (producer->writes.size() != 1 || consumer->writes.size() != 1) {
+    return 0;
+  }
+
+  const tir::Buffer& buf_producer = producer->writes[0]->buffer;
+  const tir::Buffer& buf_consumer = consumer->writes[0]->buffer;
+  const Array<PrimExpr>& shape_buf_producer = buf_producer->shape;
+  const Array<PrimExpr>& shape_buf_consumer = buf_consumer->shape;
+  // Step 1. Collect the BufferLoads with source buffer `buf_producer` and the BufferStores with
+  // destination buffer `buf_consumer` in the consumer block.
+  Array<tir::BufferLoad> buffer_loads;
+  Array<tir::BufferStore> buffer_stores;
+  tir::PreOrderVisit(consumer->body, [&buf_producer, &buf_consumer, &buffer_loads,
+                                      &buffer_stores](const ObjectRef& node) {
+    if (const auto* buffer_load = node.as<tir::BufferLoadNode>()) {
+      if (buffer_load->buffer.same_as(buf_producer)) {
+        buffer_loads.push_back(GetRef<tir::BufferLoad>(buffer_load));
+        return false;
+      }
+    }
+    if (const auto* buffer_store = node.as<tir::BufferStoreNode>()) {
+      if (buffer_store->buffer.same_as(buf_consumer)) {
+        buffer_stores.push_back(GetRef<tir::BufferStore>(buffer_store));
+        // Do not return, since there might be BufferLoads in the body of a BufferStore.
+      }
+    }
+    return true;
+  });
+  // Step 2. Collect the block vars of the consumer block.
+  std::unordered_set<const tir::VarNode*> consumer_iter_vars;
+  for (const tir::IterVar& iter_var : consumer->iter_vars) {
+    consumer_iter_vars.insert(iter_var->var.get());
+  }
+  // Step 3. Let `n_common` grow up from 0. For each `n_common`, check whether this dimension is a
+  // "common" one. If not, we terminate the loop.
+  arith::Analyzer analyzer;
+  int n_common;
+  for (n_common = 0; n_common < static_cast<int>(shape_buf_producer.size()) &&
+                     n_common < static_cast<int>(shape_buf_consumer.size()); ++n_common) {
+    // If the shapes of the two buffers don't match, this dimension cannot be common.
+    if (!tir::is_zero(
+            analyzer.Simplify(shape_buf_producer[n_common] - shape_buf_consumer[n_common]))) {
+      break;
+    }
+    // Collect the vars in the indices of the BufferStores.
+    std::vector<tir::Var> vars;
+    for (const tir::BufferStore& buffer_store : buffer_stores) {
+      tir::PreOrderVisit(buffer_store->indices[n_common], [&vars](const ObjectRef& node) {
+        if (const auto* var = node.as<tir::VarNode>()) {
+          vars.push_back(GetRef<tir::Var>(var));
+          return false;
+        }
+        return true;
+      });
+    }
+    // If this dimension is a common dimension, there should be only one variable in the index.
+    // Furthermore, this variable should be the corresponding variable of one consumer's block var.
+    if (vars.size() != 1 || !consumer_iter_vars.count(vars[0].get())) {
+      break;
+    }
+    // Check whether the indices of BufferLoads and BufferStores are of const shift pattern.
+    bool const_shift = true;
+    for (const tir::BufferStore& buffer_store : buffer_stores) {
+      if (!IsConstShiftEqual(vars[0], buffer_store->indices[n_common])) {
+        const_shift = false;
+        break;
+      }
+    }
+    if (!const_shift) {
+      break;
+    }
+    for (const tir::BufferLoad& buffer_load : buffer_loads) {
+      if (!IsConstShiftEqual(vars[0], buffer_load->indices[n_common])) {
+        const_shift = false;
+        break;
+      }
+    }
+    if (!const_shift) {
+      break;
+    }
+  }
+  return n_common;
 }
 
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
