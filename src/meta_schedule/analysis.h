@@ -188,24 +188,26 @@ TVM_DLL std::pair<int64_t, int64_t> GetCumulativeSpaceAndReductionLength(
     const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Check if the block needs rfactor. The conditions are:
+ * \brief Check if the block needs rfactor or cross-thread-reduction. The conditions are:
  *          1. The block is a reduction block and has trivial binding.
  *          2. Every the loop axis out side the block must be either spatial axis or reduction axis.
  *          3. There is at least one reduction loop.
  *          4. The outside loops are continuous, and the body of the innermost loop is exactly
  *             the block.
  *          5. The outside loops are not dynamic.
- *          6. a. For blocks which need MultiLevelTiling, don't perform rfactor if we have enough
- *                parallelism on spatial loops
- *             b. For other blocks, always try to perform rfactor.
- * \param task The search task
+ *          6. a. For blocks which need MultiLevelTiling, don't perform rfactor and
+ *                cross-thread-reduction if we have enough parallelism on spatial loops
+ *             b. For other blocks, always try to perform rfactor/cross-thread-reduction.
  * \param self The TIR schedule
  * \param block_sref The block to be analyzed
- * \return A boolean indicating if it needs rfactor
+ * \param max_parallel_extent The maximum parallel extent
+ * \param basic_parallel_extent The basic parallel extent
+ * \return A boolean indicating if it needs rfactor or cross-thread-reduction
  */
-TVM_DLL bool NeedsRFactor(const tir::ScheduleState& self, const tir::StmtSRef& block_sref,
-                          const SearchTask& task, const int& max_jobs_per_core,
-                          std::atomic<int>* warned_num_cores_missing);
+TVM_DLL bool NeedsRFactorOrCrossThreadReduction(const tir::ScheduleState& self,
+                                                const tir::StmtSRef& block_sref,
+                                                int64_t max_parallel_extent,
+                                                int64_t basic_parallel_extent);
 
 /*!
  * \brief Check if the block has its cache-write block
@@ -215,6 +217,26 @@ TVM_DLL bool NeedsRFactor(const tir::ScheduleState& self, const tir::StmtSRef& b
  * \return A boolean indicating if it has cache-write block
  */
 TVM_DLL bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv, const int& i);
+
+/*!
+ * \brief Given a var and an expression, check whether the expression is a constant shift of the
+ *        var. That is, `expr` equals `var` plus or minus some constant.
+ * \param var The input var
+ * \param expr The PrimExpr to be checked
+ * \return A boolean flag indicating whether the expression is a constant shift
+ */
+TVM_DLL bool IsConstShiftEqual(const tir::Var& var, const PrimExpr& expr);
+
+/*!
+ * \brief Get the number of common dimensions that the given producer and consumer have. We say one
+ *        dimension is "common" if the consumer use the same "const shift" index pattern to access
+ *        the producer's output buffer and its own output buffer at this dimension.
+ * \param producer The producer block
+ * \param consumer The consumer block
+ * \return The number of common dimensions
+ * \note The producer and consumer are required to both have only one output buffer.
+ */
+TVM_DLL int GetNumberCommonOutputDims(const tir::Block& producer, const tir::Block& consumer);
 
 }  // namespace meta_schedule
 }  // namespace tvm
