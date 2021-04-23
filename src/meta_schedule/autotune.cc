@@ -86,8 +86,7 @@ Array<MeasureResult> TuneContextNode::Measure(const Array<MeasureInput>& measure
     if (error_no == MeasureErrorNO::kNoError) {
       db->Add(measure_input->sch->trace, measure_input->sch,
               AsVector<FloatImm, double>(measure_result->costs),
-              measure_input->task->shape_vars,
-              measure_input->variant);
+              measure_input->variant, measure_input->task);
     }
     for (const MeasureCallback& callback : this->measure_callbacks) {
       callback->Callback(measure_input, measure_result);
@@ -112,7 +111,7 @@ Optional<Schedule> Autotune(SearchTask task,                           //
   if (strategy.defined()) {
     strategy.value()->Search();
   }
-  DatabaseNode::Entry best = database->GetBest(task);
+  Database::Entry best = database->GetBest(task);
   if (!best.trace.defined()) {
     return NullOpt;
   }

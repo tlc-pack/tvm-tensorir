@@ -59,6 +59,7 @@ struct WklInfoHasher {
 template<typename T>
 using InfoMap = std::unordered_map<WorkloadInfo, T, WklInfoHasher>;
 
+
 /*! \brief An abstract database storing all the tuning records. */
 class DatabaseNode : public runtime::Object {
  public:
@@ -69,19 +70,7 @@ class DatabaseNode : public runtime::Object {
     /*! \brief The string representation of the schedule */
     String repr;
     /*! \brief The running time of the schedule */
-    InfoMap<std::vector<double>> gflops;
-
-    double MeanGFlops() const {
-      if (gflops.empty()) {
-        return 0;
-      }
-      double sum = 0;
-      for (auto kv : gflops) {
-        const std::vector<double>& vec = kv.second;
-        sum += std::accumulate(vec.cbegin(), vec.cend(), 0.0) / vec.size();
-      }
-      return sum / gflops.size();
-    }
+    InfoMap<std::vector<double>> times;
   };
 
   /*! \brief Virtual destructor */
@@ -100,12 +89,13 @@ class DatabaseNode : public runtime::Object {
    * \param times The running time of the schedule
    */
   virtual void Add(const Trace& trace, const String& repr,
-                   const InfoMap<std::vector<double>>& gflops) = 0;
+                   const InfoMap<std::vector<double>>& gflops,
+                   const SearchTask& task) = 0;
 
   virtual void Add(const Trace& trace, const Schedule& sch,
                    const std::vector<double> times,
-                   const Optional<Array<String>>& shape_vars,
-                   const Optional<Array<IntImm>>& shape_variant) = 0;
+                   const Optional<Array<IntImm>>& shape_variant,
+                   const SearchTask& task) = 0;
 
   /*!
    * \brief Check if a schedule already exists in the database
@@ -146,6 +136,9 @@ class Database : public runtime::ObjectRef {
   using Entry = DatabaseNode::Entry;
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Database, runtime::ObjectRef, DatabaseNode);
 };
+
+
+double MeanGFlops(SearchTask task, const DatabaseNode::Entry& entry);
 
 /*!
  * \brief Create an in-memory database

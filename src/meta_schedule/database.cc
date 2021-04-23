@@ -91,13 +91,7 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask& task) {
   Array<FloatImm> times = Downcast<Array<FloatImm>>(record->at(5));
   ObjectRef trace_obj = record->at(6);
   String log_version = Downcast<String>(record->at(7));
-  // TODO(@junrushao1994): structural equality of target
-  if (task_name != task->task_name ||                  //
-      log_version != String(kLogVersion) ||            //
-      Target(target)->str() != task->target->str() ||  //
-      Target(target_host)->str() != task->target_host->str()) {
-    return Database::Entry{NullOpt, String(""), {}};
-  }
+
   tir::PrimFunc orig_func{nullptr};
   {
     std::string prim_func_b64 = Downcast<String>(record->at(8));
@@ -110,14 +104,14 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask& task) {
     orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
   }
 
-  task = SearchTask(orig_func, task_name, Target(target), Target(target_host), NullOpt);
   Schedule sch(orig_func);
   TraceNode::Deserialize(trace_obj, sch);
-  InfoMap<std::vector<double>> info2gflops; 
+
+  InfoMap<std::vector<double>> info2times; 
   WorkloadInfo info;
   if (variant.defined()) info.shape_variant = variant;
-  info2gflops[info] = CalculateGFlops(sch, shape_vars, variant, AsVector<FloatImm, double>(times));
-  return Database::Entry{sch->trace, Repr(sch), info2gflops};
+  info2times[info] = AsVector<FloatImm, double>(times);
+  return Database::Entry{sch->trace, Repr(sch), info2times};
 }
 
 }  // namespace json_io
@@ -128,16 +122,16 @@ struct EntryHasher {
   size_t operator()(const Database::Entry& entry) const { return std::hash<String>()(entry.repr); }
 };
 
-struct EntryPtrComparator {
-  bool operator()(Database::Entry* a, Database::Entry* b) const {
-    double a_gflops = a->MeanGFlops();
-    double b_gflops = b->MeanGFlops();
-    if (a_gflops != b_gflops) {
-      return a_gflops > b_gflops;
-    }
-    return a->repr.compare(b->repr) < 0;
-  }
-};
+// struct EntryPtrComparator {
+//   bool operator()(Database::Entry* a, Database::Entry* b) const {
+//     double a_gflops = a->MeanGFlops();
+//     double b_gflops = b->MeanGFlops();
+//     if (a_gflops != b_gflops) {
+//       return a_gflops > b_gflops;
+//     }
+//     return a->repr.compare(b->repr) < 0;
+//   }
+// };
 
 struct SearchTaskHasher {
   size_t operator()(const SearchTask& task) const {
@@ -180,13 +174,15 @@ class InMemoryDBNode : public DatabaseNode {
         const Entry& entry = records[i];
         if (entry.trace.defined()) {
           ++total_valid;
-          this->Add(entry.trace.value(), entry.repr, entry.gflops);
+          this->Add(entry.trace.value(), entry.repr, entry.times, tasks[i]);
         }
       }
       if (total_valid > 0) {
-        LOG(INFO) << "Loaded " << total_valid << " valid record(s). "
-                  << "Best gflops: " << this->GetBest().MeanGFlops() << ".";
-                  // << (task->flop_ct / this->best.MeanTime() / 1e9) << " GFLOPs";
+        LOG(INFO) << "Loaded " << total_valid << " valid record(s). ";
+        for (const auto& task : tasks) {
+          LOG(INFO) << "Best gflops of Task[" << task->task_name << "]: "
+            << MeanGFlops(task, this->GetBest(task)) << "."; 
+        }
       } else {
         LOG(INFO) << "No valid records found.";
       }
@@ -208,75 +204,48 @@ class InMemoryDBNode : public DatabaseNode {
    * \param repr The string representation of the schedule
    * \param time The running time of the schedule
    */
-  // void Add(const Database::Entry& entry) override {
-  //   ICHECK(!entry.times.empty());
-  //   entries_[entry.repr].push_back(entry);
-  // }
-
   Entry MergeEntry(const Entry& a, const Entry& b) {
     ICHECK_EQ(a.repr, b.repr);
-    InfoMap<std::vector<double>> gflops = a.gflops;
-    for (auto kv : b.gflops) {
-      auto it = gflops.find(kv.first);
-      if (it == gflops.end()) {
-        gflops[kv.first] = kv.second;
+    InfoMap<std::vector<double>> times = a.times;
+    for (auto kv : b.times) {
+      auto it = times.find(kv.first);
+      if (it == times.end()) {
+        times[kv.first] = kv.second;
       } else {
         for (size_t i = 0; i < kv.second.size(); ++i) {
-          gflops[kv.first].push_back(kv.second[i]);
+          times[kv.first].push_back(kv.second[i]);
         }
       } 
     }
-    return Entry{a.trace, a.repr, gflops};
+    return Entry{a.trace, a.repr, times};
   }
 
   void Add(const Trace& trace, const String& repr,
-           const InfoMap<std::vector<double>>& gflops) override {
-    ICHECK(!gflops.empty());
+           const InfoMap<std::vector<double>>& times,
+           const SearchTask& task) override {
+    ICHECK(!times.empty());
 
-    Entry entry{trace, repr, gflops}; 
-    if (entries_.find(repr) != entries_.end()) {
-      entry = MergeEntry(entry, entries_.at(repr));
+    Entry entry{trace, repr, times}; 
+    if (entries_[task].find(repr) != entries_[task].end()) {
+      entry = MergeEntry(entry, entries_[task].at(repr));
     }
-    entries_[repr] = entry;
-    sorted_.insert(&entries_[repr]);
-    if (!best.trace.defined() || best.MeanGFlops() < entry.MeanGFlops()) {
-      best = entry;
+    entries_[task][repr] = entry;
+    // sorted_.insert(&entries_[task][repr]);
+    if (!best[task].trace.defined() || MeanGFlops(task, GetBest(task)) < MeanGFlops(task, entry)) {
+      best[task] = entry;
     }
   }
 
   void Add(const Trace& trace, const Schedule& sch,
            const std::vector<double> times,
-           const Optional<Array<String>>& shape_vars,
-           const Optional<Array<IntImm>>& shape_variant) override {
-    InfoMap<std::vector<double>> info2gflops; 
+           const Optional<Array<IntImm>>& shape_variant,
+           const SearchTask& task) override {
+    InfoMap<std::vector<double>> info2times; 
     WorkloadInfo info;
     if (shape_variant.defined()) info.shape_variant = shape_variant.value();
-    info2gflops[info] = CalculateGFlops(sch, shape_vars, shape_variant, times);
-    this->Add(trace, Repr(sch), info2gflops);
+    info2times[info] = CalculateGFlops(task->workload, task->shape_vars, shape_variant, times);
+    this->Add(trace, Repr(sch), info2times, task);
   }
-
-  // void Add(const Trace& trace, const String& repr, const std::vector<double>& times,
-  //          Optional<Array<String>> shape_vars, Optional<Array<IntImm>> shape_varaint) override {
-  //   ICHECK(!times.empty());
-  //   Database::Entry& entry = entries_[repr];
-  //   double time = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
-  //   if (!entry.repr.empty()) {
-  //     if (entry.MeanTime() >= time) {
-  //       sorted_.erase(&entry);
-  //     } else {
-  //       return;
-  //     }
-  //   }
-  //   entry.trace = trace;
-  //   entry.repr = repr;
-  //   entry.times = times;
-  //   entry.shape_vars = shape_vars;
-  //   entry.shape_variant = shape_variant;
-  //   sorted_.insert(&entry);
-  //   if (!best.trace.defined() || best.MeanTime() > time) {
-  //     best = entry;
-  //   }
-  // }
 
   /*!
    * \brief Check if a schedule already exists in the database
@@ -295,21 +264,21 @@ class InMemoryDBNode : public DatabaseNode {
    * \param repr The string representation of the schedule
    */
   std::vector<Entry> GetTopK(int top_k, const SearchTask& task) const override {
-    std::vector<Entry> result;
-    result.reserve(top_k);
-    if (sorted_.count(task) == 0) {
-      return result;
-    }
-    auto iter = sorted_.at(task).cbegin();
-    for (int i = 0; i < top_k && iter != sorted_.at(task).cend(); ++i, ++iter) {
-      result.push_back(**iter);
-    }
-    return result;
+    LOG(FATAL) << "Not implemented yet.";
+    return {};
+  //   std::vector<Entry> result;
+  //   result.reserve(top_k);
+  //   if (sorted_.count(task) == 0) {
+  //     return result;
+  //   }
+  //   auto iter = sorted_.at(task).cbegin();
+  //   for (int i = 0; i < top_k && iter != sorted_.at(task).cend(); ++i, ++iter) {
+  //     result.push_back(**iter);
+  //   }
+  //   return result;
   }
 
-  Entry GetBest() const override { 
-    return best; 
-  }
+  Entry GetBest(const SearchTask& task) override { return best[task]; }
 
   int Size() const override {
     int size = 0;
@@ -331,9 +300,9 @@ class InMemoryDBNode : public DatabaseNode {
                      SearchTaskEqual>
       entries_;
   /*! \brief All the measured states */
-  std::unordered_map<SearchTask, std::multiset<Database::Entry*, EntryPtrComparator>,
-                     SearchTaskHasher, SearchTaskEqual>
-      sorted_;
+  // std::unordered_map<SearchTask, std::multiset<Database::Entry*, EntryPtrComparator>,
+  //                    SearchTaskHasher, SearchTaskEqual>
+  //     sorted_;
 };
 
 class InMemoryDB : public Database {
@@ -374,6 +343,18 @@ tir::PrimFunc ApplyTrace(Trace trace, SearchTask task, SearchSpace space) {
 TVM_REGISTER_GLOBAL("meta_schedule.ApplyTrace").set_body_typed(ApplyTrace);
 TVM_REGISTER_OBJECT_TYPE(DatabaseNode);
 TVM_REGISTER_GLOBAL("meta_schedule.GetInMemoryDB").set_body_typed(InitMemoryDB);
+
+double MeanGFlops(SearchTask task, const DatabaseNode::Entry& entry) {
+  ICHECK(entry.times.size() != 0);
+  double sum = 0;
+  for (auto kv : entry.times) {
+    Array<IntImm> variant = kv.first.shape_variant;
+    const std::vector<double>& times = kv.second;
+    std::vector<double> gflops = CalculateGFlops(task->workload, task->shape_vars, variant, times);
+    sum += std::accumulate(gflops.cbegin(), gflops.cend(), 0.0) / gflops.size();
+  }
+  return sum / entry.times.size();
+}
 
 }  // namespace meta_schedule
 }  // namespace tvm

@@ -239,39 +239,33 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
     for (int i = 0; i < ed - st; ++i) {
       const MeasureInput& measure_input = batch_measure_inputs[i];
       const MeasureResult& measure_result = batch_measure_results[i];
+      const SearchTask& task = measure_input->task;
       const String& task_name = measure_input->task->task_name;
-      double flop_ct = CalculateFlop(measure_input->sch, measure_input->task->shape_vars, measure_input->variant);
+      double flop_ct = CalculateFlop(measure_input->task->workload, measure_input->task->shape_vars, measure_input->variant);
       MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
       ++num_measures;
       if (error_no == MeasureErrorNO::kNoError) {
         double avg_time_cost = FloatArrayMean(measure_result->costs);
         db->Add(measure_input->sch->trace, measure_input->sch,
                 AsVector<FloatImm, double>(measure_result->costs),
-                measure_input->task->shape_vars,
-                measure_input->variant);
+                measure_input->variant, measure_input->task);
         // double best_time_cost = db->GetBest().MeanTime();
         StdCout(verbose) << std::fixed << std::setprecision(4)  //
                          << '[' << task_name << "] #" << num_measures
                          << "\tVariant: " << measure_input->variant 
                          << "\tTime: " << (avg_time_cost * 1000) << " ms, "
                          << (flop_ct / avg_time_cost / 1e9) << " GFLOPs"
-                         << " \tBest GFLOPS: " << db->GetBest().MeanGFlops() << std::endl;
-                         // << "\tBest time: " << (best_time_cost * 1000) << " ms, "
-                         // << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
+                         << " \tBest GFLOPS: " << MeanGFlops(task, db->GetBest(task)) << std::endl;
       } else if (error_no == MeasureErrorNO::kRunTimeoutError ||
                  error_no == MeasureErrorNO::kBuildTimeoutError) {
-        double best_time_cost = db->GetBest().MeanGFlops();
+        double best_time_cost = MeanGFlops(task, db->GetBest(task));
         StdCout(verbose) << std::fixed << std::setprecision(4)  //
                          << '[' << task_name << "] #" << num_measures
                          << "\tError: " << MeasureErrorNOToStr(error_no)
                          << "\tBest time: " << (best_time_cost * 1000) << " ms, "
                          << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else {
-<<<<<<< HEAD
-        double best_time_cost = db->GetBest(measure_input->task).MeanTime();
-=======
-        double best_time_cost = db->GetBest().MeanGFlops();
->>>>>>> 5640a7d97... Make database support dynamic program.
+        double best_time_cost = MeanGFlops(task, db->GetBest(task));
         StdCout(verbose) << std::fixed << std::setprecision(4)  //
                          << '[' << task_name << "] #" << num_measures
                          << "\tError: " << MeasureErrorNOToStr(error_no)

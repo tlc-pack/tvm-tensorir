@@ -179,11 +179,9 @@ inline Optional<tir::StmtSRef> FindBlockSRef(const tir::ScheduleState& sch, FPre
 
 double CountFlop(const tir::PrimFunc& func);
 
-inline double CalculateFlop(tir::Schedule sch,
+inline double CalculateFlop(tir::PrimFunc func,
                             Optional<Array<String>> optional_shape_vars,
                             Optional<Array<IntImm>> optional_variant) {
-  IRModule mod = sch->mod();
-  tir::PrimFunc func = Downcast<tir::PrimFunc>(mod->Lookup("main"));
   if (optional_shape_vars.defined() && optional_variant.defined()) {
     Array<String> shape_vars = optional_shape_vars.value();
     Array<IntImm> variant = optional_variant.value();
@@ -213,11 +211,11 @@ inline double CalculateFlop(tir::Schedule sch,
   return flop;
 }
 
-inline std::vector<double> CalculateGFlops(tir::Schedule sch,
+inline std::vector<double> CalculateGFlops(tir::PrimFunc func,
                                            Optional<Array<String>> shape_vars,
                                            Optional<Array<IntImm>> variant,
                                            std::vector<double> times) {
-  double flop = CalculateFlop(sch, shape_vars, variant);
+  double flop = CalculateFlop(func, shape_vars, variant);
   std::vector<double> gflops(times.size());
   std::transform(times.begin(), times.end(), gflops.begin(), [flop](double time) { return flop / time / std::pow(10, 9); });
   return gflops;

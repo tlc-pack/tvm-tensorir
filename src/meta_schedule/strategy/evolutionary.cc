@@ -723,8 +723,7 @@ Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTas
     const CachedTrace& trace = cached_traces[i];
     database->Add(trace.trace->Simplified(/*remove_postproc=*/true), trace.sch,
                   AsVector<FloatImm, double>(measure_result->costs),
-                  measure_input->task->shape_vars,
-                  measure_input->variant);
+                  measure_input->variant, measure_input->task);
   }
   // Update the cost model
   cost_model->Update(measure_inputs, measure_results);
