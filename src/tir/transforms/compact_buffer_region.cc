@@ -30,6 +30,7 @@
 #include <stack>
 
 #include "../../runtime/thread_storage_scope.h"
+#include "../../support/arena.h"
 #include "../../support/utils.h"
 
 namespace tvm {
@@ -113,7 +114,9 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
     auto it = buffer_var_in_scope_.find(op->buffer->data);
     if (it != buffer_var_in_scope_.end()) {
       ICHECK(op->buffer.same_as(it->second));
-      buffer_access_stack_.emplace(op->buffer, NDIntSetFromPoint(op->indices));
+      const BufferAccessInfo* info =
+          arena_.make<BufferAccessInfo>(op->buffer, NDIntSetFromPoint(op->indices));
+      buffer_access_stack_.push(info);
     }
   }
 
@@ -121,7 +124,9 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
     auto it = buffer_var_in_scope_.find(op->buffer->data);
     if (it != buffer_var_in_scope_.end()) {
       ICHECK(op->buffer.same_as(it->second));
-      buffer_access_stack_.emplace(op->buffer, NDIntSetFromPoint(op->indices));
+      const BufferAccessInfo* info =
+          arena_.make<BufferAccessInfo>(op->buffer, NDIntSetFromPoint(op->indices));
+      buffer_access_stack_.push(info);
     }
   }
 
@@ -138,11 +143,13 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
   }
 
   void VisitStmt_(const ForNode* op) final {
-    ancestor_loops_.push_back(GetRef<For>(op));
+    ancestor_loops_.push_back(op);
     StmtExprVisitor::VisitStmt_(op);
     ancestor_loops_.pop_back();
-    // Update loop dom after the recursive visiting.
-    iter_dom_map_[op->loop_var.get()] = IntSetFromMinExtent(op->min, op->extent);
+    // The iter_dom__map is updated by post DFS order.
+    // If the union point is under the for node, the loop var will not be relaxed.
+    // If the union point is outer of the for loop, the loop var should be relaxed.
+    iter_dom_map_on_post_order_[op->loop_var.get()] = IntSetFromMinExtent(op->min, op->extent);
   }
 
   void VisitStmt_(const BlockNode* op) final {
@@ -158,8 +165,9 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
     for (const Buffer& buffer : op->alloc_buffers) {
       buffer_var_in_scope.emplace(buffer->data, buffer);
     }
-    // Step 2.2 Recored current stack size
-    size_t n = buffer_access_stack_.size();
+    // Step 2.2 Record top stack element before recursive visiting.
+    const BufferAccessInfo* top_info =
+        buffer_access_stack_.empty() ? nullptr : buffer_access_stack_.top();
 
     // Step 2.3. Update the buffer_var_in_scope_ of visitor and visit recursively
     std::swap(buffer_var_in_scope, buffer_var_in_scope_);
@@ -168,7 +176,7 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
 
     // Step 2.4. Combine and relax access
     std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> relaxed_region =
-        CombineAndRelax(buffer_access_stack_.size() - n, false);
+        CombineAndRelax(top_info);
 
     // Step 2.5. Visit ancestor_loops and try to relax outer thread loops.
     for (const Buffer& buffer : op->alloc_buffers) {
@@ -176,9 +184,9 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
       ICHECK(it != relaxed_region.end());
       const NDIntSet& nd_int_set = it->second;
       std::unordered_map<const VarNode*, arith::IntSet> dom_map;
-      for (const For& loop : ancestor_loops_) {
+      for (const ForNode* loop : ancestor_loops_) {
         const VarNode* loop_var = loop->loop_var.get();
-        if (NeedRelaxThread(loop, runtime::StorageScope::Create(buffer->scope))) {
+        if (NeedRelaxThread(GetRef<For>(loop), runtime::StorageScope::Create(buffer->scope))) {
           dom_map[loop_var] = IntSetFromMinExtent(loop->min, loop->extent);
         }
       }
@@ -197,7 +205,9 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
     auto it = buffer_var_in_scope_.find(var);
     if (it != buffer_var_in_scope_.end()) {
       const Buffer& buffer = it->second;
-      buffer_access_stack_.emplace(buffer, NDIntSetFromShape(buffer->shape));
+      const BufferAccessInfo* info =
+          arena_.make<BufferAccessInfo>(buffer, NDIntSetFromShape(buffer->shape));
+      buffer_access_stack_.push(info);
     }
   }
 
@@ -208,8 +218,9 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
       auto it = buffer_var_in_scope_.find(buffer->data);
       if (it != buffer_var_in_scope_.end()) {
         const Buffer& buffer = it->second;
-
-        buffer_access_stack_.emplace(buffer, NDIntSetFromRegion(buffer_region->region));
+        const BufferAccessInfo* info =
+            arena_.make<BufferAccessInfo>(buffer, NDIntSetFromRegion(buffer_region->region));
+        buffer_access_stack_.push(info);
       }
     }
   }
@@ -218,40 +229,52 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
    * \brief Combine buffer accesses in the sub-tree
    * \details The access info is stored in a stack by DFS order, so that the accesses in the
    *          sub-tree are top-n elements in the stack.
-   * \param n The top n accesses shoule be combined.
-   * \param push_back Mark that if we push_back the combined result into the stack. Usually it is
-   *          false when we call it during visiting a block, otherwise it is true.
+   * \param stack_top The top element of the stack before visiting the sub-tree.
    */
   std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> CombineAndRelax(
-      size_t n, bool push_back = true) {
+      const BufferAccessInfo* stack_top) {
     std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> accesses;
-
-    for (size_t i = 0; i < n; i++) {
-      BufferAccessInfo info = buffer_access_stack_.top();
+    while (!buffer_access_stack_.empty()) {
+      const BufferAccessInfo* info = buffer_access_stack_.top();
+      if (info == stack_top) break;
       buffer_access_stack_.pop();
       NDIntSet nd_int_set;
-      nd_int_set.reserve(info.accessed_region.size());
-      for (const arith::IntSet& int_set : info.accessed_region) {
-        nd_int_set.push_back(arith::EvalSet(int_set, iter_dom_map_));
+      nd_int_set.reserve(info->accessed_region.size());
+      for (const arith::IntSet& int_set : info->accessed_region) {
+        nd_int_set.push_back(arith::EvalSet(int_set, iter_dom_map_on_post_order_));
       }
-      auto it = accesses.find(info.buffer);
+      auto it = accesses.find(info->buffer);
       if (it != accesses.end()) {
         NDIntSetUnionWith(&it->second, nd_int_set);
       } else {
-        accesses[info.buffer] = nd_int_set;
-      }
-    }
-
-    if (push_back) {
-      for (const auto& kv : accesses) {
-        const Buffer& buffer = kv.first;
-        const NDIntSet& int_set = kv.second;
-        buffer_access_stack_.emplace(buffer, int_set);
+        accesses[info->buffer] = nd_int_set;
       }
     }
     return accesses;
   }
 
+  /*!
+   * \brief Combine buffer accesses in the sub-tree and push the combined result into the stack.
+   * \details The access info is stored in a stack by DFS order, so that the accesses in the
+   *          sub-tree are top-n elements in the stack.
+   * \param stack_top The top element of the stack before visiting the sub-tree.
+   */
+  std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> CombineRelaxAndPushStack(
+      const BufferAccessInfo* stack_top) {
+    std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> accesses =
+        CombineAndRelax(stack_top);
+    for (const auto& kv : accesses) {
+      const Buffer& buffer = kv.first;
+      const NDIntSet& int_set = kv.second;
+      buffer_access_stack_.push(arena_.make<BufferAccessInfo>(buffer, int_set));
+    }
+    return accesses;
+  }
+
+  /*!
+   * \brief return the region collected by NDIntSet. return the oroginal buffer shape if the
+   *        int_set is empty.
+   */
   static Region NarrowBufferRegionFromNDIntSet(const NDIntSet& nd_int_set,
                                                const Array<PrimExpr>& original_shape) {
     Array<Range> result;
@@ -283,16 +306,18 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
   /**************** Class members ****************/
 
   /*! \brief Buffer access in DFS order. */
-  std::stack<BufferAccessInfo> buffer_access_stack_;
+  std::stack<const BufferAccessInfo*> buffer_access_stack_;
   /*! \brief The loops from the current node up to the root. */
-  std::vector<For> ancestor_loops_;
+  std::vector<const ForNode*> ancestor_loops_;
   /*! \brief The vars of the buffer allocated under the current block. */
   std::unordered_map<Var, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_var_in_scope_;
   /*! \brief The map from loop vars to their iter range. */
-  std::unordered_map<const VarNode*, arith::IntSet> iter_dom_map_;
-  /*! \brief The map from loop vars to their iter range. */
+  std::unordered_map<const VarNode*, arith::IntSet> iter_dom_map_on_post_order_;
+  /*! \brief The map from Buffer to it entire access region, used for returning. */
   std::unordered_map<Buffer, Region, ObjectPtrHash, ObjectPtrEqual> buffer_access_region_;
-};  // namespace tir
+  /*! \brief Internal arena. */
+  support::Arena arena_;
+};
 
 /*! \brief Reallocate the buffers with minimal region. */
 class BufferCompactor : public StmtExprMutator {

@@ -182,11 +182,11 @@ inline uint64_t HashCombine(uint64_t key, const T& value) {
 inline bool StartsWith(const String& str, const char* prefix) {
   size_t n = str.length();
   for (size_t i = 0; i < n; i++) {
-    if (!prefix[i]) return true;
-    if (str.at(i) != prefix[i]) return false;
+    if (prefix[i] == '\0') return true;
+    if (str[i] != prefix[i]) return false;
   }
   // return true if the str is equal to the prefix
-  return prefix[n + 1] == 0;
+  return prefix[n + 1] == '\0';
 }
 
 }  // namespace support

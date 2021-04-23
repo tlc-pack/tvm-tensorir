@@ -68,14 +68,14 @@ class OpaqueBlockConverter : public StmtExprMutator {
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
     const auto* block_op = realize->block.get();
     ICHECK(!block_op->init.defined());
-    // Step 1. Update "block vars => loop vars" for substitution, add reduction loop vars
+    // Step 1. Update "block vars => binding values" for substitution.
     ICHECK_EQ(block_op->iter_vars.size(), realize->iter_values.size());
     for (int i = 0, n = block_op->iter_vars.size(); i < n; ++i) {
       IterVar block_var = block_op->iter_vars[i];
       PrimExpr v = this->VisitExpr(realize->iter_values[i]);
       var_substitutes_.emplace(block_var->var.get(), v);
     }
-    // Step 2. Visit recursively
+    // Step 2. Visit recursively.
     Stmt stmt = StmtExprMutator::VisitStmt_(realize);
     realize = stmt.as<BlockRealizeNode>();
     ICHECK(realize != nullptr);
