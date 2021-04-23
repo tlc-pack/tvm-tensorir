@@ -166,8 +166,7 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
       buffer_var_in_scope.emplace(buffer->data, buffer);
     }
     // Step 2.2 Record top stack element before recursive visiting.
-    const BufferAccessInfo* top_info =
-        buffer_access_stack_.empty() ? nullptr : buffer_access_stack_.top();
+    size_t stack_size = buffer_access_stack_.size();
 
     // Step 2.3. Update the buffer_var_in_scope_ of visitor and visit recursively
     std::swap(buffer_var_in_scope, buffer_var_in_scope_);
@@ -176,7 +175,7 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
 
     // Step 2.4. Combine and relax access
     std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> relaxed_region =
-        CombineAndRelax(top_info);
+        CombineAndRelax(stack_size);
 
     // Step 2.5. Visit ancestor_loops and try to relax outer thread loops.
     for (const Buffer& buffer : op->alloc_buffers) {
@@ -226,17 +225,16 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
   }
 
   /*!
-   * \brief Combine buffer accesses in the sub-tree
+   * \brief Combine buffer accesses in the sub-tree.
    * \details The access info is stored in a stack by DFS order, so that the accesses in the
    *          sub-tree are top-n elements in the stack.
-   * \param stack_top The top element of the stack before visiting the sub-tree.
+   * \param stack_size The stack size before visiting the sub-tree.
    */
   std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> CombineAndRelax(
-      const BufferAccessInfo* stack_top) {
+      size_t stack_size) {
     std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> accesses;
-    while (!buffer_access_stack_.empty()) {
+    while (buffer_access_stack_.size() > stack_size) {
       const BufferAccessInfo* info = buffer_access_stack_.top();
-      if (info == stack_top) break;
       buffer_access_stack_.pop();
       NDIntSet nd_int_set;
       nd_int_set.reserve(info->accessed_region.size());
@@ -257,12 +255,12 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
    * \brief Combine buffer accesses in the sub-tree and push the combined result into the stack.
    * \details The access info is stored in a stack by DFS order, so that the accesses in the
    *          sub-tree are top-n elements in the stack.
-   * \param stack_top The top element of the stack before visiting the sub-tree.
+   * \param stack_size The top element of the stack before visiting the sub-tree.
    */
   std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> CombineRelaxAndPushStack(
-      const BufferAccessInfo* stack_top) {
+      size_t stack_size) {
     std::unordered_map<Buffer, NDIntSet, ObjectPtrHash, ObjectPtrEqual> accesses =
-        CombineAndRelax(stack_top);
+        CombineAndRelax(stack_size);
     for (const auto& kv : accesses) {
       const Buffer& buffer = kv.first;
       const NDIntSet& int_set = kv.second;
