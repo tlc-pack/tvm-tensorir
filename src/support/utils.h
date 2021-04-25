@@ -121,6 +121,22 @@ inline std::vector<std::string> Split(const std::string& str, char delim) {
 }
 
 /*!
+ * \brief Check whether the string starts with a given prefix.
+ * \param str The given string.
+ * \param prefix The given prefix.
+ * \return Whether the prefix matched.
+ */
+inline bool StartsWith(const String& str, const char* prefix) {
+  size_t n = str.length();
+  for (size_t i = 0; i < n; i++) {
+    if (prefix[i] == '\0') return true;
+    if (str.data()[i] != prefix[i]) return false;
+  }
+  // return true if the str is equal to the prefix
+  return prefix[n + 1] == '\0';
+}
+
+/*!
  * \brief EndsWith check whether the strings ends with
  * \param value The full string
  * \param end The end substring
@@ -171,22 +187,6 @@ template <typename T>
 inline uint64_t HashCombine(uint64_t key, const T& value) {
   std::hash<T> hash_func;
   return key ^ (hash_func(value) + 0x9e3779b9 + (key << 6) + (key >> 2));
-}
-
-/*!
- * \brief Check whether the string starts with a given prefix.
- * \param str The given string.
- * \param prefix The given prefix.
- * \return Whether the prefix matched.
- */
-inline bool StartsWith(const String& str, const char* prefix) {
-  size_t n = str.length();
-  for (size_t i = 0; i < n; i++) {
-    if (prefix[i] == '\0') return true;
-    if (str[i] != prefix[i]) return false;
-  }
-  // return true if the str is equal to the prefix
-  return prefix[n + 1] == '\0';
 }
 
 }  // namespace support

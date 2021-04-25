@@ -363,16 +363,18 @@ TVM_DLL Pass BufferFlatten();
 TVM_DLL Pass PlanAndUpdateBufferAllocationLocation();
 
 /*!
- * \brief Substitute expr via BlockRealize value bindings. Also lower blocks into opaque blocks
- *        which do not have block iter_vars and iter_values.
+ * \brief Substitute all the block vars with the PrimExprs they are bound to, indicated by the
+ *        corresponding iter_values in BlockRealize, and then convert the blocks into opaque 
+ *        ones by removing all the iter_values in BlockRealize and iter_vars in Block. 
  * \return The pass.
  */
 TVM_DLL Pass ConvertBlocksToOpaque();
 
 /*!
- * \brief Compact the buffer access region.
+ * \brief Compact the buffer access region. by removing the buffer regions that are not accessed,
+ *        i.e. narrowing the buffer shape and adjust the access region if necessary.
  * \example
- *  Before narrowing, the buffer contains full possible access region.
+ *  Before narrowing, `B` is a `[16, 16]` buffer, but only a skinny vector `B[i, 0:16]` is accessed.
  *  \code
  *
  *  for i in range(0, 16):
@@ -385,7 +387,9 @@ TVM_DLL Pass ConvertBlocksToOpaque();
  *
  *  \endcode
  *
- * After the narrowing, we can only alloc necessary region and try to reuse the buffer.
+ * This pass narrows the buffer shape and adjust its accessed region accordingly.
+ * In this particular case, because only a `1 * 16` vector of `B` is accessed,
+ * the pass narrows `B` to shape `[1, 16]`, and changes the access to `B[i, j]` to `B[0, j]`.
  *
  *  \code
  *

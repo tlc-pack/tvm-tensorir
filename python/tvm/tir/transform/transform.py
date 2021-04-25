@@ -548,8 +548,9 @@ def PlanAndUpdateBufferAllocationLocation():
 
 
 def ConvertBlocksToOpaque():
-    """Substitute expr via BlockRealize value bindings. Also lower blocks into opaque blocks
-    which do not have block iter_vars and iter_values.
+    """Substitute all the block vars with the PrimExprs they are bound to, indicated by 
+    the corresponding iter_values in BlockRealize, and then convert the blocks into 
+    opaque ones by removing all the iter_values in BlockRealize and iter_vars in Block.
 
     Returns
     -------
@@ -560,11 +561,12 @@ def ConvertBlocksToOpaque():
 
 
 def CompactBufferAllocation():
-    """Narrow the buffer access region.
+    """Compact the buffer access region. by removing the buffer regions that are not accessed,
+    i.e. narrowing the buffer shape and adjust the access region if necessary.
 
     Example
     -------
-    Before narrowing, the buffer contains full possible access region.
+    Before narrowing, `B` is a `[16, 16]` buffer, but only a skinny vector `B[i, 0:16]` is accessed.
     .. code-block:: python
 
         for i in range(0, 16):
@@ -574,7 +576,9 @@ def CompactBufferAllocation():
                     B[i, j] = A[i, j] + 1
                 for j in range(0, 16):
                     C[i, j] = B[i, j] + 1
-    After the narrowing, we can only alloc necessary region and try to reuse the buffer.
+    This pass narrows the buffer shape and adjust its accessed region accordingly.
+    In this particular case, because only a `1 * 16` vector of `B` is accessed,
+    the pass narrows `B` to shape `[1, 16]`, and changes the access to `B[i, j]` to `B[0, j]`.
     .. code-block:: python
 
         for i in range(0, 16):

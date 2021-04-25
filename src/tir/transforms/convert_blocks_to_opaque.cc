@@ -40,7 +40,7 @@ class OpaqueBlockConverter : public StmtExprMutator {
   }
 
  private:
-  explicit OpaqueBlockConverter() = default;
+  OpaqueBlockConverter() = default;
 
   PrimExpr VisitExpr_(const VarNode* var) final {
     auto it = var_substitutes_.find(var);
@@ -53,16 +53,11 @@ class OpaqueBlockConverter : public StmtExprMutator {
   Stmt VisitStmt_(const BlockNode* block) final {
     ICHECK(!block->init.defined())
         << "Block Init part is not allowed in pass ConvertBlocksToOpaque";
-    Stmt stmt = StmtExprMutator::VisitStmt_(block);
-    block = stmt.as<BlockNode>();
-    ICHECK(block != nullptr);
-    if (block->iter_vars.empty()) {
-      return stmt;
-    } else {
-      auto n = CopyOnWrite(block);
-      n->iter_vars = {};
-      return Stmt(n);
+    Block new_block = Downcast<Block>(StmtExprMutator::VisitStmt_(block));
+    if (!new_block->iter_vars.empty()) {
+      new_block.CopyOnWrite()->iter_vars.clear();
     }
+    return new_block;
   }
 
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
@@ -76,16 +71,11 @@ class OpaqueBlockConverter : public StmtExprMutator {
       var_substitutes_.emplace(block_var->var.get(), v);
     }
     // Step 2. Visit recursively.
-    Stmt stmt = StmtExprMutator::VisitStmt_(realize);
-    realize = stmt.as<BlockRealizeNode>();
-    ICHECK(realize != nullptr);
-    if (realize->iter_values.empty()) {
-      return stmt;
-    } else {
-      auto n = CopyOnWrite(realize);
-      n->iter_values = {};
-      return Stmt(n);
+    BlockRealize new_realize = Downcast<BlockRealize>(StmtExprMutator::VisitStmt_(realize));
+    if (!new_realize->iter_values.empty()) {
+      new_realize.CopyOnWrite()->iter_values.clear();
     }
+    return new_realize;
   }
 
   /*! \brief The map from block vars to thier binding values. */

@@ -1303,17 +1303,6 @@ class String : public ObjectRef {
   }
 
   /*!
-   * \brief Read an element without bound check.
-   * \param pos The position at which to read the character.
-   *
-   * \return The char at position
-   */
-  char operator[](size_t pos) const {
-    return data()[pos];
-  }
-
-
-  /*!
    * \brief Return the data pointer
    *
    * \return const char* data pointer

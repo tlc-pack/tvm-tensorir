@@ -67,18 +67,9 @@ bool IsThreadBound(const For& loop) {
   return false;
 }
 
-inline bool StrStartsWith(const String& str, const String& prefix) {
-  int n = prefix.size();
-  if (static_cast<int>(str.size()) < n) {
-    return false;
-  }
-  const char* data = str.data();
-  return std::equal(data, data + n, prefix.data());
-}
-
 bool IsReduceTempBuffer(const Buffer& buffer) {
-  return StrStartsWith(buffer->name, "normal_reduce_temp") ||  //
-         StrStartsWith(buffer->name, "reduce_temp");
+  return support::StartsWith(buffer->name, "normal_reduce_temp") ||  //
+         support::StartsWith(buffer->name, "reduce_temp");
 }
 
 PrimExpr BufferArea(const Buffer& buffer) {
