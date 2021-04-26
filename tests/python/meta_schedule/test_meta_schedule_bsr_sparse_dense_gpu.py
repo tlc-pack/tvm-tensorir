@@ -182,6 +182,8 @@ def sparse_dense_bsr_padded(
     M_blocks: ty.int32 = tir.floordiv(M, bs_r)
 
     with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
         for ax0_outer in range(
             0,
             tir.floordiv(M // bs_r + warp_size - 1, warp_size),
@@ -191,7 +193,6 @@ def sparse_dense_bsr_padded(
                 with tir.block(
                     [tir.floordiv(M // bs_r + warp_size - 1, warp_size), N_blocks],
                     "GPU_Block",
-                    exec_scope="gpu_block",
                 ) as [bx, by]:
                     w_indices_cache = tir.buffer_allocate((warp_size,), "int32", scope="warp")
                     w_data_cache = tir.buffer_allocate(
@@ -199,7 +200,7 @@ def sparse_dense_bsr_padded(
                     )
                     for ax0_inner in range(0, 32, annotation={"loop_type": "threadIdx.x"}):
                         for ax1_inner in range(0, 1, annotation={"loop_type": "threadIdx.y"}):
-                            with tir.block([32, 1], "GPU_Thread", exec_scope="gpu_thread") as [
+                            with tir.block([32, 1], "GPU_Thread") as [
                                 tx,
                                 ty,
                             ]:
@@ -288,6 +289,7 @@ def sparse_dense_bsr_padded(
                                                 ] = block[x, y]
 
 
+@tvm.testing.uses_gpu
 def test_sparse_dense_padded():
     M = 512
     N = 3072
@@ -400,6 +402,7 @@ def test_sparse_dense_padded():
         check_device(device)
 
 
+@tvm.testing.uses_gpu
 def test_sparse_dense():
     M = 512
     N = 3072
@@ -508,4 +511,6 @@ def test_sparse_dense():
         check_device(device)
 
 
-test_sparse_dense()
+if __name__=='__main__':
+    test_sparse_dense_padded()
+    test_sparse_dense()

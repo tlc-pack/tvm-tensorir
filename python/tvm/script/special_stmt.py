@@ -191,8 +191,8 @@ class BufferAllocate(SpecialStmt):
                 buffer_type,
                 span=span,
             )
-            self.context.block_scope().alloc_buffers.append(buffer)
-            self.context.update_symbol(self.node.lhs.id.name, buffer)
+            self.context.current_block_scope().alloc_buffers.append(buffer)
+            self.context.update_symbol(self.node.lhs.id.name, buffer, self.node)
 
         super().__init__(buffer_allocate, def_symbol=True)
 
