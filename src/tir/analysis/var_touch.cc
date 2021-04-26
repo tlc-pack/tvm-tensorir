@@ -60,5 +60,22 @@ bool ExprUseVar(const PrimExpr& e, std::function<bool(const VarNode*)> var_set) 
   return visitor.use_var_;
 }
 
+Array<Var> AllVars(const ObjectRef& stmt_or_expr) {
+  struct Collector : public StmtExprVisitor {
+    void VisitExpr_(const VarNode* var) final { result_.push_back(GetRef<Var>(var)); }
+    Array<Var> result_;
+  };
+  Collector collector;
+  if (const auto* expr = stmt_or_expr.as<PrimExprNode>()) {
+    collector(GetRef<PrimExpr>(expr));
+  } else if (const auto* stmt = stmt_or_expr.as<StmtNode>()) {
+    collector(GetRef<Stmt>(stmt));
+  } else {
+    ICHECK(false) << "TypeError: Expect Stmt or PrimExpr, but gets: "
+                  << (stmt_or_expr.defined() ? stmt_or_expr->GetTypeKey() : "None");
+  }
+  return std::move(collector.result_);
+}
+
 }  // namespace tir
 }  // namespace tvm
