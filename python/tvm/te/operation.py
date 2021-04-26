@@ -18,6 +18,8 @@
 # pylint: disable=invalid-name
 from numbers import Integral as _Integral
 
+from typing import List, Union
+
 import tvm._ffi
 import tvm.tir
 import tvm.tir._ffi_api
@@ -28,6 +30,7 @@ from tvm.runtime import convert
 from . import tag as _tag
 from . import tensor as _tensor
 from . import _ffi_api
+from .tensor import Operation
 
 
 def placeholder(shape, dtype=None, name="placeholder"):
@@ -426,3 +429,20 @@ def reduce_axis(dom, name="rv", thread_tag="", span=None):
         An iteration variable representing the value.
     """
     return tvm.tir.IterVar(dom, name, 2, thread_tag, span)
+
+
+def create_tir(ops: Union[Operation, List[Operation]]) -> tvm.tir.PrimFunc:
+    """Create a TensorIR PrimFunc from tensor expression
+    Parameters
+    ----------
+    ops : list of Operations
+        The source expression.
+
+    Returns
+    -------
+    func : tir.PrimFunc
+        The created function.
+    """
+    if not isinstance(ops, list):
+        ops = [ops]
+    return _ffi_api.CreateTIR(ops)
