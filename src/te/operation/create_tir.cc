@@ -86,7 +86,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
   // Analyzer for simplifying.
   arith::Analyzer analyzer;
 
-  // Step 4. Rewrite compute stages into blocks.
+  // Step 3. Rewrite compute stages into blocks.
   for (const te::Operation& op : order) {
     ICHECK_EQ(op->num_outputs(), 1);
     const te::Tensor& tensor = op.output(0);
@@ -102,7 +102,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       op2buffers[op] = input_buffer;
     } else if (const auto* compute_op = op.as<te::ComputeOpNode>()) {
       // Case 2. Compute stage (te.compute)
-      // Step 4.1. Push_back data_par axis and reduce_axis into block_vars.
+      // Step 3.1. Push_back data_par axis and reduce_axis into block_vars.
       Array<IterVar> block_vars;
       block_vars.reserve(compute_op->axis.size() + compute_op->reduce_axis.size());
       auto push_block_vars = [&analyzer, &block_vars](const Array<IterVar>& iters) {
@@ -115,21 +115,21 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       push_block_vars(compute_op->axis);
       push_block_vars(compute_op->reduce_axis);
 
-      // Step 4.2. Push_back data_par axis and reduce_axis into block_vars.
+      // Step 3.2. Push_back data_par axis and reduce_axis into block_vars.
       ICHECK_EQ(compute_op->body.size(), 1);
       const PrimExpr& expr = compute_op->body[0];
 
-      // Step 4.3. Declare buffer and update op2buffers
+      // Step 3.3. Declare buffer and update op2buffers
       Buffer buffer = decl_buffer(tensor->shape, tensor->dtype, compute_op->name);
       op2buffers[op] = buffer;
 
-      // Step 4.4. Calculate indices for BufferStore
+      // Step 3.4. Calculate indices for BufferStore
       Array<PrimExpr> indices;
       indices.reserve(compute_op->axis.size());
       for (const IterVar& iter_var : compute_op->axis)
         indices.push_back(analyzer.Simplify(iter_var->var));
 
-      // Step 4.5. Create block body.
+      // Step 3.5. Create block body.
       Optional<Stmt> init = NullOpt;
       Stmt body;
       if (const auto* reduce = expr.as<ReduceNode>()) {
@@ -145,7 +145,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
         body = BufferStore(buffer, analyzer.Simplify(translator(expr)), indices);
       }
 
-      // Step 4.6. Update func buffer_map or root allocation.
+      // Step 3.6. Update func buffer_map or root allocation.
       if (output_ops.count(op)) {
         // Case 1. It's a output stage then update Prim function's args.
         Var arg("var_" + op->name, PrimType(DataType::Handle()));
@@ -156,15 +156,15 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
         root_alloc.push_back(buffer);
       }
 
-      // Step 4.7. Add script_parsing_detect_access attr for auto complete the whole IR.
+      // Step 3.7. Add script_parsing_detect_access attr for auto complete the whole IR.
       Map<String, ObjectRef> annotations = op->attrs;
       annotations.Set(tir::attr::script_parsing_detect_access, IntImm(DataType::Int(32), 3));
 
-      // Step 4.8. Create nan iter_values for BlockRealize, which can be determined during
+      // Step 3.8. Create nan iter_values for BlockRealize, which can be determined during
       // completing.
       Array<PrimExpr> nan_bindings(block_vars.size(), FloatImm(DataType::Float(32), std::nan("")));
 
-      // Step 4.9. Create Block and BlockRealize and push_back to root stmts.
+      // Step 3.9. Create Block and BlockRealize and push_back to root stmts.
       BlockRealize realize(/*iter_values=*/std::move(nan_bindings),
                            /*predicate=*/Bool(true),
                            /*block=*/
@@ -184,7 +184,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
     }
   }
 
-  // Step 5. Create func and complete it.
+  // Step 4. Create func and complete it.
   PrimFunc func = PrimFunc(/*params=*/std::move(parameters),
                            /*body=*/SeqStmt::Flatten(root_stmts),
                            /*ret_type=*/VoidType(),
