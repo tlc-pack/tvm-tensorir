@@ -78,7 +78,7 @@ def transpose(x: ty.handle, x_t: ty.handle) -> None:
 
 
 def schedule_transpose_cuda(func):
-    s = tir.create_schedule(func)
+    s = tir.Schedule(func)
     warp_size = int(tvm.target.Target.current(allow_none=False).thread_warp_size)
     X_t = s.get_block("X_t")
     m, n = s.get_axes(X_t)
@@ -162,7 +162,6 @@ def sparse_dense_bsr_padded(
     N_blocks: ty.int32,
 ) -> None:
     # sparsed dense bsr on CUDA, ported from TOPI.
-    tir.func_attr({"tir.noalias": True})
     M = tir.var("int32")
     K = tir.var("int32")
     num_blocks = tir.var("int32")
@@ -198,8 +197,8 @@ def sparse_dense_bsr_padded(
                     w_data_cache = tir.buffer_allocate(
                         (warp_size, bs_r, bs_c), "float32", scope="warp"
                     )
-                    for ax0_inner in range(0, 32, annotation={"loop_type": "threadIdx.x"}):
-                        for ax1_inner in range(0, 1, annotation={"loop_type": "threadIdx.y"}):
+                    for ax0_inner in tir.thread_binding(0, 32, 'threadIdx.x'):
+                        for ax1_inner in tir.thread_binding(0, 1, 'threadIdx.y'):
                             with tir.block([32, 1], "GPU_Thread") as [
                                 tx,
                                 ty,
@@ -356,7 +355,7 @@ def test_sparse_dense_padded():
             func = transpose
             func = func.specialize(func.params[0], tir.decl_buffer([M, K]))
             s = schedule_transpose_cuda(func)
-            func = tvm.build(s.func)
+            func = tvm.build(s.mod['main'])
             X_t_tvm = tvm.nd.array(np.zeros(X_np.T.shape, dtype=X_np.dtype), ctx=ctx)
             func(tvm.nd.array(X_np, ctx=ctx), X_t_tvm)
             tvm.testing.assert_allclose(X_t_tvm.asnumpy(), X_np.T, atol=1e-5, rtol=1e-5)
@@ -371,8 +370,8 @@ def test_sparse_dense_padded():
             func = func.specialize(data, tir.decl_buffer(W_data.shape))
             func = func.specialize(N_blocks, N // BS_R).remove_const_param(N_blocks)
 
-            s = tir.create_schedule(func)
-            func = tvm.build(s.func)
+            s = tir.Schedule(func)
+            func = tvm.build(s.mod['main'])
             Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
             func(
                 tvm.nd.array(X_np.T, ctx=ctx),
@@ -482,7 +481,7 @@ def test_sparse_dense():
                 return [X, W_data, W_indices, W_indptr, Y]
 
             s = meta_schedule_sparse_dense_cuda(func, f_create_args)
-            func = tvm.build(s.sch.func)
+            func = tvm.build(s.mod['main'])
             Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
             func(
                 tvm.nd.array(X_np, ctx=ctx),
