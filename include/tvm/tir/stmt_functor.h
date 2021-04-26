@@ -366,6 +366,14 @@ TVM_DLL PrimExpr Substitute(PrimExpr expr, std::function<Optional<PrimExpr>(cons
 TVM_DLL Array<Range> Substitute(const Array<Range>& region, const Map<Var, PrimExpr>& vmap);
 
 /*!
+ * \brief Substitute statements according to the replace_plan
+ * \param stmt The AST to be replaced
+ * \param replace_plan The replacement plan
+ * \return The new AST after replacement
+ */
+TVM_DLL Stmt Substitute(const Stmt& stmt, const Map<Stmt, Stmt>& replace_plan);
+
+/*!
  * \brief Sugar for substitute via a given map.
  * \param input The input to be updated.
  * \param value_map The map of new values.

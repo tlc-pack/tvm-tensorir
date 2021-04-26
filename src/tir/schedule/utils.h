@@ -776,6 +776,46 @@ inline Array<Optional<TDst>> AsOptArray(const Array<TSrc>& array) {
   return res;
 }
 
+/**************** Array Misc ****************/
+
+template <class T>
+inline bool ArrayContains(const std::vector<T>& list, const T& element) {
+  for (const T& e : list) {
+    if (e.same_as(element)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+template <class T>
+inline bool ArrayContains(const Array<T>& list, const T& element) {
+  for (const T& e : list) {
+    if (e.same_as(element)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline Stmt RemoveFromSeqStmt(const SeqStmt& seq, const Stmt& to_remove) {
+  ICHECK_GT(seq->size(), 1);
+  Array<Stmt> new_stmts;
+  new_stmts.reserve(seq->size());
+  for (const Stmt& stmt : seq->seq) {
+    if (to_remove.same_as(stmt)) {
+      continue;
+    }
+    if (const auto* realize = stmt.as<BlockRealizeNode>()) {
+      if (to_remove.same_as(realize->block)) {
+        continue;
+      }
+    }
+    new_stmts.push_back(stmt);
+  }
+  return SeqStmt::Flatten(new_stmts);
+}
+
 }  // namespace tir
 }  // namespace tvm
 #endif  // TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_

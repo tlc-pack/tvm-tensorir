@@ -699,6 +699,23 @@ Array<Range> Substitute(const Array<Range>& region, const Map<Var, PrimExpr>& vm
   return result;
 }
 
+Stmt Substitute(const Stmt& stmt, const Map<Stmt, Stmt>& replace_plan) {
+  class Mutator : public StmtMutator {
+   public:
+    explicit Mutator(const Map<Stmt, Stmt>& replace_plan) : replace_plan(replace_plan) {}
+    Stmt VisitStmt(const Stmt& stmt) override {
+      auto it = replace_plan.find(stmt);
+      if (it == replace_plan.end()) {
+        return StmtMutator::VisitStmt(stmt);
+      } else {
+        return StmtMutator::VisitStmt((*it).second);
+      }
+    }
+    const Map<Stmt, Stmt>& replace_plan;
+  };
+  return Mutator(replace_plan)(stmt);
+}
+
 void PreOrderVisit(const ObjectRef& stmt_or_expr,
                    const std::function<bool(const ObjectRef&)>& fvisit,  //
                    bool visit_init_block) {
