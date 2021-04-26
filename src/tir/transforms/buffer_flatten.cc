@@ -23,6 +23,7 @@
 #include <tvm/tir/builtin.h>
 #include <tvm/tir/transform.h>
 
+#include "../../support/utils.h"
 #include "../schedule/utils.h"
 
 namespace tvm {
@@ -35,19 +36,9 @@ using SSet = std::unordered_set<K, ObjectPtrHash, ObjectPtrEqual>;
 
 using NDIntSet = std::vector<arith::IntSet>;
 
-arith::IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent) {
-  return arith::IntSet::FromRange(Range::FromMinExtent(min, extent));
-}
-
-void NDIntSetUnionWith(NDIntSet* lhs, const NDIntSet& rhs) {
-  ICHECK_EQ(lhs->size(), rhs.size());
-  int ndim = rhs.size();
-  for (int i = 0; i < ndim; ++i) {
-    arith::IntSet& int_set = lhs->at(i);
-    int_set = arith::Union({int_set, rhs.at(i)});
-  }
-}
-
+// These functions are written in narrow_buffer_region.cc.
+arith::IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent);
+void NDIntSetUnionWith(NDIntSet* lhs, const NDIntSet& rhs);
 Array<Range> NDIntSet2Region(const NDIntSet& nd_int_set) {
   Integer one(1);
   Array<Range> result;
@@ -59,37 +50,26 @@ Array<Range> NDIntSet2Region(const NDIntSet& nd_int_set) {
   }
   return result;
 }
-
-NDIntSet NDIntSetFromShape(const Array<PrimExpr>& shape) {
-  NDIntSet result;
-  for (const PrimExpr& extent : shape) {
-    result.push_back(IntSetFromMinExtent(Integer(0), extent));
-  }
-  return result;
-}
-
-NDIntSet NDIntSetEmpty(int ndim) {
-  return std::vector<arith::IntSet>(ndim, arith::IntSet::Nothing());
-}
-
+NDIntSet NDIntSetFromShape(const Array<PrimExpr>& shape);
+NDIntSet NDIntSetEmpty(int ndim);
 bool IsThreadBound(const For& loop) {
   if (loop->kind != ForKind::kThreadBinding) {
     return false;
   }
   ICHECK(loop->thread_binding.defined());
-  std::string thread_tag = loop->thread_binding.value()->thread_tag;
-  if (StartsWith(thread_tag, "threadIdx")) {
+  IterVar binding = loop->thread_binding.value();
+  if (support::StartsWith(binding->thread_tag, "threadIdx")) {
     return true;
   }
-  if (StartsWith(thread_tag, "vthread")) {
+  if (support::StartsWith(binding->thread_tag, "vthread")) {
     return true;
   }
   return false;
 }
 
 bool IsReduceTempBuffer(const Buffer& buffer) {
-  return StartsWith(buffer->name, "normal_reduce_temp") ||  //
-         StartsWith(buffer->name, "reduce_temp");
+  return support::StartsWith(buffer->name, "normal_reduce_temp") ||  //
+         support::StartsWith(buffer->name, "reduce_temp");
 }
 
 PrimExpr BufferArea(const Buffer& buffer) {
@@ -212,17 +192,17 @@ class LCACollector : public StmtExprVisitor {
   std::unordered_map<const BufferNode*, const ForNode*> buffer_lca_ = {};
 };
 
-class BufferAccessRewriter : public StmtExprMutator {
+class BufferRewriter : public StmtExprMutator {
  public:
   using FRewriteBufferAccess = std::function<void(Buffer* buffer, Array<PrimExpr>* indices)>;
 
   static Stmt Rewrite(Stmt stmt, const FRewriteBufferAccess& f_rewrite) {
-    BufferAccessRewriter rewriter(f_rewrite);
+    BufferRewriter rewriter(f_rewrite);
     return rewriter.VisitStmt(stmt);
   }
 
  private:
-  explicit BufferAccessRewriter(const FRewriteBufferAccess& f_rewrite) : f_rewrite_(f_rewrite) {}
+  explicit BufferRewriter(const FRewriteBufferAccess& f_rewrite) : f_rewrite_(f_rewrite) {}
 
   Stmt VisitStmt_(const BufferStoreNode* _op) final {
     BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(_op));
@@ -289,7 +269,7 @@ class BufferAllocator : public StmtExprMutator {
     }
     BufferAllocator alloc(std::move(buffer_info), std::move(loop_allocs));
     Stmt stmt = alloc.VisitStmt(f->body);
-    stmt = BufferAccessRewriter::Rewrite(
+    stmt = BufferRewriter::Rewrite(
         /*stmt=*/std::move(stmt),
         /*f_rewrite=*/std::bind(&BufferAllocator::RewriteBufferAccess,
                                 &alloc,                 //
