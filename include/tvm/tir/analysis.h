@@ -104,6 +104,13 @@ TVM_DLL CallEffectKind SideEffect(const PrimExpr& expr);
 TVM_DLL bool ExprUseVar(const PrimExpr& expr, std::function<bool(const VarNode*)> vset_contains);
 
 /*!
+ * \brief Get all variables from an Stmt or PrimExpr.
+ * \param stmt_or_expr The Stmt or PrimExpr
+ * \return List of all vars, in the PostDFS order in the expression.
+ */
+TVM_DLL Array<Var> AllVars(const ObjectRef& stmt_or_expr);
+
+/*!
  * \brief Whether e expression used var.
  * \param expr The expression to be checked.
  * \param var The variable.
