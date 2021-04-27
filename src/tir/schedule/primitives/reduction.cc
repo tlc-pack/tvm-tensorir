@@ -577,12 +577,10 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
       top = loops[i + 1];
       break;
     }
-    if (l != loop) {
-      // Copy this loop outside rfactor block.
-      For rf_loop = GetRef<For>(l);
-      rf_loop.CopyOnWrite()->body = rf_body;
-      rf_body = rf_loop;
-    }
+    // Copy this loop outside rfactor block.
+    For rf_loop = GetRef<For>(l);
+    rf_loop.CopyOnWrite()->body = rf_body;
+    rf_body = rf_loop;
     if (data_par_iters.count(l->loop_var.get())) {
       // Copy this loop outside write back block.
       wb_loop_var = l->loop_var.copy_with_suffix("");
@@ -590,9 +588,6 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
                     SubstituteInScope(wb_body, {{l->loop_var.get(), wb_loop_var.get()}}));
     }
   }
-  For rf_loop = GetRef<For>(loop);
-  rf_loop.CopyOnWrite()->body = rf_body;
-  rf_body = rf_loop;
   if (!top.defined()) {
     top = loops[0];
   }
