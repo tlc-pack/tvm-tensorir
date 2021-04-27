@@ -293,6 +293,50 @@ def compacted_complex_func(a: ty.handle, c: ty.handle, n: ty.int32) -> None:
                     C[i, j] = B[0, j]
 
 
+@tvm.script.tir
+def storage_align_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), "float32")
+    C = tir.match_buffer(c, (16, 16), "float32")
+    for i in range(0, 16):
+        with tir.block([]):
+            tir.reads(A[i, 0:16])
+            tir.writes(C[i, 0:16])
+            B = tir.alloc_buffer((16, 16), "float32")
+            for j in range(0, 16):
+                with tir.block([]) as []:
+                    tir.reads(A[i, j])
+                    tir.writes(B[i, j])
+                    tir.block_attr({"buffer_dim_align":[[[0, 16, 15]]]})
+                    B[i, j] = A[i, j] + 1.0
+            for j in range(0, 16):
+                with tir.block([]) as []:
+                    tir.reads(B[i, j])
+                    tir.writes(C[i, j])
+                    C[i, j] = B[i, j] * 2.0
+
+
+@tvm.script.tir
+def compacted_storage_align_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), "float32")
+    C = tir.match_buffer(c, (16, 16), "float32")
+    for i in range(0, 16):
+        with tir.block([]):
+            tir.reads(A[i, 0:16])
+            tir.writes(C[i, 0:16])
+            B = tir.alloc_buffer((1, 16), strides=(31, 1), dtypes="float32")
+            for j in range(0, 16):
+                with tir.block() as []:
+                    tir.reads(A[i, j])
+                    tir.writes(B[0, j])
+                    tir.block_attr({"buffer_dim_align":[[[0, 16, 15]]]})
+                    B[0, j] = A[i, j] + 1.0
+            for j in range(0, 16):
+                with tir.block() as []:
+                    tir.reads(B[0, j])
+                    tir.writes(C[i, j])
+                    C[i, j] = B[0, j] * 2.0
+
+
 def test_elementwise():
     _check(elementwise_func, compacted_elementwise_func)
 
@@ -321,6 +365,10 @@ def test_complex():
     _check(complex_func, compacted_complex_func)
 
 
+def test_storage_align():
+    _check(storage_align_func, compacted_storage_align_func)
+
+
 if __name__ == "__main__":
     test_elementwise()
     test_unschedulable_block()
@@ -329,3 +377,4 @@ if __name__ == "__main__":
     test_warp_mem()
     test_symbolic()
     test_complex()
+    test_storage_align()

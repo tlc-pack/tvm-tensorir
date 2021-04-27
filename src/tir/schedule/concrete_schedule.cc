@@ -495,6 +495,12 @@ void ConcreteScheduleNode::Pragma(const LoopRV& loop_rv, const String& pragma_ty
   this->state_->DebugVerify();
 }
 
+void ConcreteScheduleNode::StorageAlign(const BlockRV& block_rv, int i, int axis, int factor,
+                                        int offset) {
+  schedule::StorageAlign(state_, this->GetSRef(block_rv), i, axis, factor, offset);
+  this->state_->DebugVerify();
+}
+
 /******** Schedule: cache read/write ********/
 
 BlockRV ConcreteScheduleNode::CacheRead(const BlockRV& block_rv, int i,

@@ -689,6 +689,37 @@ struct SetScopeAttrs : public InstAttrsNode {
                                       "SetScope", false);
 };
 
+/*! \brief Attrs of the instruction that applies storage_align */
+struct StorageAlignAttrs : public InstAttrsNode {
+  /*! \brief The index of the buffer in block's write region */
+  int i;
+  int axis;
+  int factor;
+  int offset;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("i", &i);
+    v->Visit("axis", &axis);
+    v->Visit("factor", &factor);
+    v->Visit("offset", &offset);
+  }
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param The producer block of the buffer
+   * \param i The index of the buffer in block's write region
+   * \param axis The dimension to be specified for alignment.
+   * \param The factor multiple of alignment
+   * \param The required offset factor.
+   * \return The instruction created
+   */
+  static Instruction Make(const BlockRV& block, int i, int axis, int factor, int offset);
+  
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(StorageAlignAttrs,                        //
+                                      "meta_schedule.attrs.StorageAlignAttrs",  //
+                                      "storage_align", false);
+};
+
 /*! \brief Attrs of an NOP that indicates entrance of post processing */
 struct EnterPostProcAttrs : public InstAttrsNode {
   void VisitAttrs(tvm::AttrVisitor* v) {}
