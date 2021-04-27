@@ -26,7 +26,7 @@
 namespace tvm {
 namespace tir {
 
-/*! \brief The helper mutator for transformer from ProducerLoad to BufferLoad */
+/*! \brief The helper mutator that transforms ProducerLoad to BufferLoad */
 class ProducerToBufferTransformer : public ExprMutator {
  public:
   explicit ProducerToBufferTransformer(
