@@ -128,12 +128,12 @@ def meta_schedule_sparse_dense_cuda(func, f_create_args):
     def schedule_sparse_dense(s: ms.Schedule):
         sparse_dense = s.get_block("sparse_dense")
         m, n, bb, k = s.get_axes(sparse_dense)
-        k_tiles = s.sample_perfect_tile(loop=k, n_splits=2)
-        ko, ki = s.split(k, k_tiles)
+        k_tiles = s.sample_perfect_tile(loop=k, n=2)
+        ko, ki = s.split(k, factors=k_tiles)
         sparse_dense_rf = s.rfactor(ki, 2)  # rf is in global scope
         sparse_dense_rf_local = s.cache_write(sparse_dense_rf, 0, "local")
         ki_rf, m_rf, n_rf, bb_rf, ko_rf = s.get_axes(sparse_dense_rf_local)
-        s.reorder([m_rf, n_rf, ki_rf, bb_rf, ko_rf])
+        s.reorder(m_rf, n_rf, ki_rf, bb_rf, ko_rf)
         s.bind(m_rf, "blockIdx.x")
         s.bind(n_rf, "blockIdx.y")
         s.bind(ki_rf, "threadIdx.x")
