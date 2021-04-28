@@ -40,11 +40,6 @@ PrimExpr BufferArea(const Buffer& buffer) {
   return area;
 }
 
-bool IsReduceTempBuffer(const Buffer& buffer) {
-  return support::StartsWith(buffer->name, "normal_reduce_temp") ||  //
-         support::StartsWith(buffer->name, "reduce_temp");
-}
-
 /*!
  * \brief Transform multi-dimension BufferLoad/BufferStore into one-dimension Load/Store
  */
@@ -53,20 +48,19 @@ class BufferFlattener : public StmtExprMutator {
   static Stmt Flatten(const PrimFunc& f) { return BufferFlattener().VisitStmt(f->body); }
 
  private:
-  Stmt VisitStmt_(const BlockRealizeNode* realize) final {
-    ICHECK(realize->iter_values.empty());
+  Stmt VisitStmt_(const BlockRealizeNode* op) final {
+    ICHECK(op->iter_values.empty());
     // Step 1. Visit the body
-    Block new_block = Downcast<Block>(this->VisitStmt(realize->block));
-    PrimExpr predicate = this->VisitExpr(realize->predicate);
-    const BlockNode* block = new_block.get();
+    Block new_block = Downcast<Block>(this->VisitStmt(op->block));
+    PrimExpr predicate = this->VisitExpr(op->predicate);
     // Step 2. Transform the `predicate` to if-then-else
-    Stmt body = block->body;
+    Stmt body = new_block->body;
     if (!is_one(predicate)) {
-      body = IfThenElse(predicate, body);
+      body = IfThenElse(predicate, std::move(body));
     }
     // Step 4. Handle allocations
-    for (const Buffer& buffer : block->alloc_buffers) {
-      body = MakeAllocStmt(buffer, body);
+    for (const Buffer& buffer : new_block->alloc_buffers) {
+      body = MakeAllocStmt(buffer, std::move(body));
     }
     return body;
   }
@@ -75,8 +69,8 @@ class BufferFlattener : public StmtExprMutator {
     // Step 1. Update unit loop info.
     PrimExpr min = this->VisitExpr(op->min);
     PrimExpr extent = this->VisitExpr(op->extent);
-    if (is_one(extent)) {
-      unit_loop_vars_[op->loop_var.get()] = min;
+    if (is_one(extent) && op->annotations.empty()) {
+      unit_loop_vars_[op->loop_var] = min;
     }
     // Step 2. Visit recursively
     Stmt body = this->VisitStmt(op->body);
@@ -91,14 +85,14 @@ class BufferFlattener : public StmtExprMutator {
       return body;
     } else {
       // Case 3. An ordinary loop
-      body = For(op->loop_var, min, extent, op->kind, body);
+      body = For(op->loop_var, std::move(min), std::move(extent), op->kind, std::move(body));
     }
     // Step 4. Handle annotations
     for (const auto& annotation : op->annotations) {
       const String& ann_key = annotation.first;
       const ObjectRef& ann_value = annotation.second;
       if (attr::IsPragmaKey(ann_key)) {
-        body = AttrStmt(op->loop_var, ann_key, Downcast<PrimExpr>(ann_value), body);
+        body = AttrStmt(op->loop_var, ann_key, Downcast<PrimExpr>(ann_value), std::move(body));
       }
     }
     return body;
@@ -106,14 +100,14 @@ class BufferFlattener : public StmtExprMutator {
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(op));
-    op = store.get();
-    return op->buffer.vstore(op->indices, op->value);
+    return store->buffer.vstore(store->indices, store->value);
   }
 
   PrimExpr VisitExpr_(const VarNode* op) final {
-    auto it = unit_loop_vars_.find(op);
+    Var var = GetRef<Var>(op);
+    auto it = unit_loop_vars_.find(var);
     if (it == unit_loop_vars_.end()) {
-      return GetRef<PrimExpr>(op);
+      return std::move(var);
     } else {
       return it->second;
     }
@@ -121,10 +115,10 @@ class BufferFlattener : public StmtExprMutator {
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(op));
-    op = load.get();
-    return op->buffer.vload(op->indices, op->dtype);
+    return load->buffer.vload(load->indices, load->dtype);
   }
 
+  // This part will not upstream to mainline.
   PrimExpr VisitExpr_(const CallNode* op) final {
     if (op->op.same_as(builtin::get_elem_offset())) {
       // Handle `get_elem_offset`
@@ -140,31 +134,31 @@ class BufferFlattener : public StmtExprMutator {
   }
 
   static Stmt MakeAllocStmt(const Buffer& buffer, Stmt body) {
-    if (IsReduceTempBuffer(buffer)) {
-      return body;
-    }
     String storage_scope = buffer->scope;
     if (storage_scope.empty()) {
       storage_scope = "global";
     }
     PrimExpr area = BufferArea(buffer);
-    body = Allocate(buffer->data, buffer->dtype, {area}, const_true(), body);
-    body = AttrStmt(buffer->data, attr::storage_scope, StringImm(storage_scope), body);
+    body = Allocate(buffer->data, buffer->dtype, {area}, const_true(), std::move(body));
+    body = AttrStmt(buffer->data, attr::storage_scope, StringImm(storage_scope), std::move(body));
     return body;
   }
 
-  static Stmt MakeLaunchThread(const PrimExpr& min, const PrimExpr& extent, const Var& var,
-                               const String& thread_tag, Stmt body) {
+  static Stmt MakeLaunchThread(PrimExpr min, PrimExpr extent, Var var, String thread_tag,
+                               Stmt body) {
     IterVar iter_var(/*dom=*/Range::FromMinExtent(min, extent),
-                     /*var=*/var,
+                     /*var=*/std::move(var),
                      /*iter_type=*/IterVarType::kThreadIndex,
                      /*thread_tag=*/thread_tag);
     String attr_key = thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent;
-    body = AttrStmt(iter_var, attr_key, extent, body);
-    return body;
+    return AttrStmt(/*node=*/std::move(iter_var),
+                    /*attr_key=*/std::move(attr_key),
+                    /*value=*/std::move(extent),
+                    /*body=*/std::move(body));
   }
 
-  std::unordered_map<const VarNode*, PrimExpr> unit_loop_vars_;
+  /*! \brief Record the loop_var and loop start value of unit loops, which extent is one. */
+  std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> unit_loop_vars_;
 };
 
 PrimFunc FlattenBuffer(PrimFunc f) {
