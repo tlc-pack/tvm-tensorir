@@ -24,14 +24,14 @@ def test_unique_name():
     A = te.placeholder((16, 16), name="A")
     B = te.compute((16, 16), lambda x, y: A[x, y] * 2, name="main")
     C = te.compute((16, 16), lambda x, y: B[x, y] + 1, name="main")
-    func = te.create_tir(C)
+    func = te.create_prim_func(C)
     s = tir.Schedule(func, debug_mode=True)
     assert isinstance(s.get_sref(s.get_block("main")), tir.schedule.StmtSRef)
     assert isinstance(s.get_sref(s.get_block("main_1")), tir.schedule.StmtSRef)
 
 
 def _check_workload(te_workload, tir_workload):
-    func = te.create_tir(te_workload())
+    func = te.create_prim_func(te_workload())
     tvm.ir.assert_structural_equal(func, tir_workload)
     # make sure that we can create schedule from the func
     s = tir.Schedule(func, debug_mode=True)

@@ -57,7 +57,7 @@ String GetUniqueName(const String& prefix, std::unordered_map<String, int>* name
   return unique_prefix;
 }
 
-PrimFunc create_tir(const Array<te::Tensor>& tensors) {
+PrimFunc CreatePrimFunc(const Array<te::Tensor>& tensors) {
   // Step 1. Create tensor read graph.
   Array<te::Operation> ops;
   for (const auto& tensor : tensors) {
@@ -196,8 +196,8 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
   return (*complete)(func, root_alloc);
 }
 
-TVM_REGISTER_GLOBAL("te.CreateTIR").set_body_typed([](const Array<te::Tensor>& tensors) {
-  return create_tir(tensors);
+TVM_REGISTER_GLOBAL("te.CreatePrimFunc").set_body_typed([](const Array<te::Tensor>& tensors) {
+  return CreatePrimFunc(tensors);
 });
 
 }  // namespace tir

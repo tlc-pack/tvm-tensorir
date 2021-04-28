@@ -430,7 +430,7 @@ def reduce_axis(dom, name="rv", thread_tag="", span=None):
     return tvm.tir.IterVar(dom, name, 2, thread_tag, span)
 
 
-def create_tir(ops: Union[Operation, List[Operation]]) -> tvm.tir.PrimFunc:
+def create_prim_func(ops: Union[Operation, List[Operation]]) -> tvm.tir.PrimFunc:
     """Create a TensorIR PrimFunc from tensor expression
     Parameters
     ----------
@@ -444,4 +444,4 @@ def create_tir(ops: Union[Operation, List[Operation]]) -> tvm.tir.PrimFunc:
     """
     if not isinstance(ops, list):
         ops = [ops]
-    return _ffi_api.CreateTIR(ops)
+    return _ffi_api.CreatePrimFunc(ops)
