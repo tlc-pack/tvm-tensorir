@@ -77,7 +77,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
   Array<Var> parameters;
   // Transformer to rewrite Operation to Buffer.
   std::unordered_map<te::Operation, Buffer, ObjectPtrHash, ObjectPtrEqual> op2buffers;
-  ProducerToBufferTransformer translator(op2buffers);
+  ProducerToBufferTransformer transformer(op2buffers);
   // Root allocation and its body stmts.
   Array<Buffer> root_alloc;
   Array<Stmt> root_stmts;
@@ -136,13 +136,13 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
         // Case 2.1. Reduce compute
         ICHECK_EQ(reduce->source.size(), 1);
         const PrimExpr& lhs = BufferLoad(buffer, indices);
-        const PrimExpr& rhs = analyzer.Simplify(translator(reduce->source[0]));
+        const PrimExpr& rhs = analyzer.Simplify(transformer(reduce->source[0]));
         ICHECK(lhs->dtype == rhs->dtype);
         body = BufferStore(buffer, reduce->combiner.get()->operator()({lhs}, {rhs})[0], indices);
         init = BufferStore(buffer, reduce->combiner->identity_element[0], indices);
       } else {
         // Case 2.2. Data parallel compute
-        body = BufferStore(buffer, analyzer.Simplify(translator(expr)), indices);
+        body = BufferStore(buffer, analyzer.Simplify(transformer(expr)), indices);
       }
 
       // Step 3.6. Update func buffer_map or root allocation.
