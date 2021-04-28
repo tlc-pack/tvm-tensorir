@@ -17,7 +17,6 @@
 """ Operation class for computation declaration."""
 # pylint: disable=invalid-name
 from numbers import Integral as _Integral
-
 from typing import List, Union
 
 import tvm._ffi

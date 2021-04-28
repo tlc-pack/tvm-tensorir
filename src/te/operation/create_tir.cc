@@ -83,7 +83,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
   Array<Stmt> root_stmts;
   // Name count map to make block name unique.
   std::unordered_map<String, int> name_count;
-  // Analyzer for simplifying.
+  // Analyzer for simplification.
   arith::Analyzer analyzer;
 
   // Step 3. Rewrite compute stages into blocks.
@@ -105,15 +105,15 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       // Step 3.1. Push_back data_par axis and reduce_axis into block_vars.
       Array<IterVar> block_vars;
       block_vars.reserve(compute_op->axis.size() + compute_op->reduce_axis.size());
-      auto push_block_vars = [&analyzer, &block_vars](const Array<IterVar>& iters) {
+      auto f_push_block_vars = [&analyzer, &block_vars](const Array<IterVar>& iters) {
         for (IterVar iter_var : iters) {
           iter_var.CopyOnWrite()->dom = Range::FromMinExtent(
               analyzer.Simplify(iter_var->dom->min), analyzer.Simplify(iter_var->dom->extent));
           block_vars.push_back(IterVar(iter_var));
         }
       };
-      push_block_vars(compute_op->axis);
-      push_block_vars(compute_op->reduce_axis);
+      f_push_block_vars(compute_op->axis);
+      f_push_block_vars(compute_op->reduce_axis);
 
       // Step 3.2. Push_back data_par axis and reduce_axis into block_vars.
       ICHECK_EQ(compute_op->body.size(), 1);
