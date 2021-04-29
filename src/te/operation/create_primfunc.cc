@@ -62,13 +62,17 @@ String GetUniqueName(const String& prefix, std::unordered_map<String, int>* name
 /*! \brief Use Tensor Expression to create a schedulable TensorIR func. */
 PrimFunc CreatePrimFunc(const Array<te::Tensor>& arg_list) {
   // Step 1. Create tensor read graph.
-  Array<te::Operation> ops;
+  Array<te::Operation> arg_ops;
   for (const te::Tensor& arg : arg_list) {
-    ops.push_back(arg->op);
+    arg_ops.push_back(arg->op);
   }
-  const te::ReadGraph& g = te::CreateReadGraph(ops);
-  const Array<te::Operation>& order = te::PostDFSOrder(ops, g);
+  const te::ReadGraph& g = te::CreateReadGraph(arg_ops);
+  const Array<te::Operation>& order = te::PostDFSOrder(arg_ops, g);
 
+  // Step 2. Preparer parameters and buffer_map of the PrimFunc.
+  // Parameters and buffer_map for PrimFunc.
+  Map<Var, Buffer> buffer_map;
+  Array<Var> parameters;
   // Transformer to rewrite Operation to Buffer.
   std::unordered_map<te::Operation, Buffer, ObjectPtrHash, ObjectPtrEqual> op2buffers;
   ProducerToBufferTransformer transformer(op2buffers);
@@ -81,24 +85,16 @@ PrimFunc CreatePrimFunc(const Array<te::Tensor>& arg_list) {
   // Analyzer for simplification.
   arith::Analyzer analyzer;
 
-  // Step 2. Preparer parameters and buffer_map of the PrimFunc.
-  Map<Var, Buffer> buffer_map;
-  Array<Var> parameters;
-  for (const te::Tensor& arg_tensor : arg_list) {
-    const te::Operation& op = arg_tensor->op;
-    Var arg("var_" + op->name, PrimType(DataType::Handle()));
-    const Buffer& input_buffer = decl_buffer(op->shape, op->dtype, op->name);
-    parameters.push_back(arg);
-    buffer_map.Set(arg, input_buffer);
-    op2buffers[op] = input_buffer;
-  }
-
   // Step 3. Rewrite compute stages into blocks.
   for (const te::Operation& op : order) {
     ICHECK_EQ(op->num_outputs(), 1);
     const te::Tensor& tensor = op.output(0);
     if (const auto* placeholder = op.as<te::PlaceholderOpNode>()) {
-      continue;
+      Var arg("var_" + placeholder->name, PrimType(DataType::Handle()));
+      const Buffer& input_buffer =
+          decl_buffer(placeholder->shape, placeholder->dtype, placeholder->name);
+      buffer_map.Set(arg, input_buffer);
+      op2buffers[op] = input_buffer;
     } else if (const auto* compute_op = op.as<te::ComputeOpNode>()) {
       // Case 2. Compute stage (te.compute)
       // Step 3.1. Push_back data_par axis and reduce_axis into block_vars.
