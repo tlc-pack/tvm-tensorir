@@ -74,14 +74,14 @@ class BufferFlattener : public StmtExprMutator {
     }
     // Step 2. Visit recursively
     Stmt body = this->VisitStmt(op->body);
-    // Step 3. Add the for loop accordingly
+    // Step 3. Create new For loop accordingly
     if (op->kind == ForKind::kThreadBinding) {
       // Case 1. Thread binding
       ICHECK(op->thread_binding.defined());
       String thread_tag = op->thread_binding.value()->thread_tag;
       body = MakeLaunchThread(min, extent, op->loop_var, thread_tag, body);
     } else if (is_one(extent) && op->annotations.empty()) {
-      // Case 2. Handle unit loop
+      // Case 2. Unit loop
       return body;
     } else {
       // Case 3. An ordinary loop
