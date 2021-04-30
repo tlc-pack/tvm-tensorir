@@ -28,7 +28,7 @@ def _check(original, transformed):
 
 
 @tvm.script.tir
-def narrowed_elementwise_func(a: ty.handle, c: ty.handle) -> None:
+def compacted_elementwise_func(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32")
     C = tir.match_buffer(c, (16, 16), "float32")
     for i in range(0, 16):
@@ -55,14 +55,179 @@ def flattened_elementwise_func(a: ty.handle, c: ty.handle) -> None:
     for i in tir.serial(0, 16):
         B_new = tir.allocate([16], "float32", "global")
         for j in tir.serial(0, 16):
-            B_new[j] = (tir.load("float32", A.data, ((i * 16) + j)) + tir.float32(1))
+            B_new[j] = tir.load("float32", A.data, ((i * 16) + j)) + tir.float32(1)
         for j in tir.serial(0, 16):
-            C.data[((i * 16) + j)] = (tir.load("float32", B_new, j) * tir.float32(2))
+            C.data[((i * 16) + j)] = tir.load("float32", B_new, j) * tir.float32(2)
 
+
+@tvm.script.tir
+def compacted_gpu_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), "float32")
+    C = tir.match_buffer(c, (16, 16), "float32")
+    for i0 in tir.thread_binding(0, 4, thread="blockIdx.x"):
+        for i1 in tir.thread_binding(0, 2, thread="threadIdx.x"):
+            for i2 in tir.thread_binding(0, 2, thread="vthread"):
+                with tir.block([]):
+                    tir.reads(A[i0 * 4 + i1 * 2 + i2, 0:16])
+                    tir.writes(C[i0 * 4 + i1 * 2 + i2, 0:16])
+                    B = tir.alloc_buffer([1, 16], "float32", scope="local")
+                    for j in range(0, 16):
+                        with tir.block() as []:
+                            tir.reads(A[i0 * 4 + i1 * 2 + i2, j])
+                            tir.writes(B[0, j])
+                            B[0, j] = A[i0 * 4 + i1 * 2 + i2, j] + 1.0
+                    for j in range(0, 16):
+                        with tir.block() as []:
+                            tir.reads(B[0, j])
+                            tir.writes(C[i0 * 4 + i1 * 2 + i2, j])
+                            C[i0 * 4 + i1 * 2 + i2, j] = B[0, j] * 2.0
+
+
+@tvm.script.tir
+def flattened_gpu_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), "float32")
+    C = tir.match_buffer(c, (16, 16), "float32")
+
+    i0 = tir.env_thread("blockIdx.x")
+    i1 = tir.env_thread("threadIdx.x")
+    i2 = tir.env_thread("vthread")
+
+    tir.launch_thread(i0, 4)
+    tir.launch_thread(i1, 2)
+    tir.launch_thread(i2, 2)
+    B = tir.allocate([16], "float32", "local")
+    for j in range(0, 16):
+        B[j] = tir.load("float32", A.data, i0 * 64 + i1 * 32 + i2 * 16 + j) + tir.float32(1)
+    for j in range(0, 16):
+        C.data[i0 * 64 + i1 * 32 + i2 * 16 + j] = tir.load("float32", B, j) * tir.float32(2)
+
+
+@tvm.script.tir
+def compacted_symbolic_func(a: ty.handle, c: ty.handle, n: ty.int32, m: ty.int32) -> None:
+    A = tir.match_buffer(a, (n, m), "float32")
+    C = tir.match_buffer(c, (n, m), "float32")
+
+    for i in range(0, n):
+        with tir.block([]):
+            tir.reads(A[i, m])
+            tir.writes(C[i, m])
+            B = tir.alloc_buffer((m,), "float32")
+            for j in range(0, m):
+                with tir.block([]) as []:
+                    tir.reads(A[i, j])
+                    tir.writes(B[j])
+                    B[j] = A[i, j] + 1.0
+            for j in range(0, m):
+                with tir.block([]) as []:
+                    tir.reads(B[j])
+                    tir.writes(C[i, j])
+                    C[i, j] = B[j] * 2.0
+
+
+@tvm.script.tir
+def flattened_symbolic_func(a: ty.handle, c: ty.handle, n: ty.int32, m: ty.int32) -> None:
+    A = tir.match_buffer(a, (n, m), "float32")
+    C = tir.match_buffer(c, (n, m), "float32")
+
+    for i in range(0, n):
+        B = tir.allocate([m], "float32", "global")
+        for j in range(0, m):
+            B[j] = tir.load("float32", A.data, i * m + j) + tir.float32(1)
+        for j in range(0, m):
+            C.data[i * m + j] = tir.load("float32", B, j) * tir.float32(2)
+
+
+@tvm.script.tir
+def compacted_predicate_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (32), "float32")
+    C = tir.match_buffer(c, (32), "float32")
+
+    for i, j in tir.grid(5, 7):
+        with tir.block([]) as []:
+            tir.reads(A[i * 7 + j])
+            tir.writes(C[i * 7 + j])
+            tir.where(i * 7 + j < 32)
+            C[i * 7 + j] = A[i * 7 + j] + 1.0
+
+
+@tvm.script.tir
+def flattened_predicate_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (32), "float32")
+    C = tir.match_buffer(c, (32), "float32")
+
+    for i, j in tir.grid(5, 7):
+        if i * 7 + j < 32:
+            C.data[i * 7 + j] = tir.load("float32", A.data, i * 7 + j) + tir.float32(1)
+
+
+@tvm.script.tir
+def compacted_unit_loop_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (32), "float32")
+    C = tir.match_buffer(c, (32), "float32")
+
+    for x, y, z in tir.grid(4, 1, 8):
+        with tir.block([]) as []:
+            tir.reads(A[x * 8 + y * 8 + z])
+            tir.writes(C[x * 8 + y * 8 + z])
+            C[x * 8 + y * 8 + z] = A[x * 8 + y * 8 + z] + 1.0
+
+
+@tvm.script.tir
+def flattened_unit_loop_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (32), "float32")
+    C = tir.match_buffer(c, (32), "float32")
+
+    for x, z in tir.grid(4, 8):
+        C.data[x * 8 + z] = tir.load("float32", A.data, x * 8 + z) + tir.float32(1)
+
+
+@tvm.script.tir
+def compacted_pragma_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (32), "float32")
+    C = tir.match_buffer(c, (32), "float32")
+
+    for i in range(0, 32, annotations={"pragma_test": "test"}):
+        with tir.block([]) as []:
+            tir.reads(A[i])
+            tir.writes(C[i])
+            C[i] = A[i] + 1.0
+
+# @tvm.script.tir
+# def flattened_pragma_func(a: ty.handle, c: ty.handle) -> None:
+#     A = tir.match_buffer(a, (32), "float32")
+#     C = tir.match_buffer(c, (32), "float32")
+
+#     tir.attr(i, "pragma_test", "test")
+#     for i in range(0, 32):
+#         C.data[i] = tir.load("float32", A.data, i) + tir.float32(1)
 
 def test_elementwise():
-    _check(narrowed_elementwise_func, flattened_elementwise_func)
+    _check(compacted_elementwise_func, flattened_elementwise_func)
 
+
+def test_gpu_workload():
+    _check(compacted_gpu_func, flattened_gpu_func)
+
+
+def test_symbolic_shape():
+    _check(compacted_symbolic_func, flattened_symbolic_func)
+
+
+def test_predicate():
+    _check(compacted_predicate_func, flattened_predicate_func)
+
+
+def test_unit_loops():
+    _check(compacted_unit_loop_func, flattened_unit_loop_func)
+
+
+def test_pragma():
+    _check(compacted_pragma_func, flattened_pragma_func)
 
 if __name__ == "__main__":
     test_elementwise()
+    test_gpu_workload()
+    test_symbolic_shape()
+    test_predicate()
+    test_unit_loops()
+    # test_pragma()

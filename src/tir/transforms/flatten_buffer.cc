@@ -49,7 +49,9 @@ class BufferFlattener : public StmtExprMutator {
 
  private:
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
-    ICHECK(op->iter_values.empty());
+    // We have convert blocks into opaque blocks in previous passes.
+    ICHECK(op->iter_values.empty()) << "Non-opaque blocks are not allowed in FlattenBuffer. Please "
+                                       "call pass ConvertBlocksToOpaque before.";
     // Step 1. Visit the body
     Block new_block = Downcast<Block>(this->VisitStmt(op->block));
     PrimExpr predicate = this->VisitExpr(op->predicate);

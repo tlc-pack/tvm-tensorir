@@ -620,7 +620,8 @@ Doc TVMScriptPrinter::VisitStmt_(const AttrStmtNode* op) {
     }
   }
   // concise thread env
-  if (op->node->IsInstance<IterVarNode>() && op->attr_key == "thread_extent") {
+  if (op->node->IsInstance<IterVarNode>() &&
+      (op->attr_key == "thread_extent" || op->attr_key == "virtual_thread")) {
     const auto* iter_var = Downcast<IterVar>(op->node).get();
     var_not_in_headers.insert(iter_var->var.get());
     var_env_map_[iter_var->var] = iter_var->thread_tag;
@@ -949,8 +950,9 @@ Doc TVMScriptPrinter::PrintPrimFunc(const PrimFunc& primFunc) {
     header_reducer << Doc::NewLine() << it.second << " = tir.comm_reducer(";
     var_not_in_headers.insert(it.first->lhs[0].get());
     var_not_in_headers.insert(it.first->rhs[0].get());
-    header_reducer << "lambda " << Print(it.first->lhs[0]) << ", " << Print(it.first->rhs[0]) << ": "
-         << Print(it.first->result[0]) << ", " << Print(it.first->identity_element[0]);
+    header_reducer << "lambda " << Print(it.first->lhs[0]) << ", " << Print(it.first->rhs[0])
+                   << ": " << Print(it.first->result[0]) << ", "
+                   << Print(it.first->identity_element[0]);
     header_reducer << ")";
   }
   // print func attrs
