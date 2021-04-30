@@ -30,8 +30,22 @@ namespace schedule {
 
 using BufferRegionMap =
     std::unordered_map<Buffer, std::vector<Range>, ObjectPtrHash, ObjectPtrEqual>;
-using FBufferLoadReplacer = std::function<PrimExpr(BufferLoad)>;
-using FBlockReplacer = std::function<Stmt(Block, Block)>;
+
+/*!
+ * \brief A function that replaces a BufferLoad to a new PrimExpr, used in inlining.
+ * For example, if a BufferStore `A[...] = ...` is inlined,
+ * then any BufferLoad `A[...]` should be replaced with the RHS of the BufferStore
+ */
+using FBufferLoadReplacer = std::function<PrimExpr(BufferLoad load)>;
+
+/*!
+ * \brief A function that replaces a Block to a new Block, used in inlining
+ * `src_block` is the original block before any replacement or visiting its subtree.
+ * `tgt_block` is the resulting block after visiting its subtree.
+ * The function could mutate the `tgt_block` via copy-on-write.
+ */
+using FBlockReplacer =
+    std::function<Block(Block src_block, Block tgt_block, Map<Var, Buffer> buffer_var_map)>;
 
 /*!
  * \brief Construct a new AST, with a specific sref tree leaf removed.
@@ -59,7 +73,7 @@ bool WithLeafRemoved(const StmtSRef& leaf_sref, Stmt* src_stmt, Stmt* tgt_stmt) 
   if (const auto* block = sref->StmtAs<BlockNode>()) {
     if (const auto* seq = block->body.as<SeqStmtNode>()) {
       ObjectPtr<BlockNode> n = make_object<BlockNode>(*block);
-      n->body = RemoveFromSeqStmt(GetRef<SeqStmt>(seq), GetRef<Stmt>(last_stmt));
+      n->body = SeqStmtRemove(GetRef<SeqStmt>(seq), GetRef<Stmt>(last_stmt));
       *src_stmt = GetRef<Stmt>(block);
       *tgt_stmt = Stmt(std::move(n));
       return true;
@@ -68,7 +82,7 @@ bool WithLeafRemoved(const StmtSRef& leaf_sref, Stmt* src_stmt, Stmt* tgt_stmt) 
   if (const auto* loop = sref->StmtAs<ForNode>()) {
     if (const auto* seq = loop->body.as<SeqStmtNode>()) {
       ObjectPtr<ForNode> n = make_object<ForNode>(*loop);
-      n->body = RemoveFromSeqStmt(GetRef<SeqStmt>(seq), GetRef<Stmt>(last_stmt));
+      n->body = SeqStmtRemove(GetRef<SeqStmt>(seq), GetRef<Stmt>(last_stmt));
       *src_stmt = GetRef<Stmt>(loop);
       *tgt_stmt = Stmt(std::move(n));
       return true;
@@ -842,22 +856,39 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   }
 }
 
+/*!
+ * \brief Given a BufferStore, e.g. `A[i, j, k, ...] = ...` ,
+ * Return a function that could replace any BufferLoad `A[...]`
+ * to the corresponding RHS of the BufferStore statement
+ * \param store_stmt The BufferStore statement
+ * \return The function that replaces the corresponding BufferLoad.
+ * Nullptr is returned if the input is not valid.
+ */
 FBufferLoadReplacer MakeBufferLoadReplacer(const Stmt& store_stmt) {
   const auto* store = store_stmt.as<BufferStoreNode>();
   if (store == nullptr) {
     return nullptr;
   }
+  // Step 1. Extract all the indexing variables on the LHS of `A[...] = ...`
   Array<Var> lhs_vars;
+  std::unordered_set<const VarNode*> lhs_vars_set;
   lhs_vars.reserve(store->indices.size());
+  lhs_vars_set.reserve(store->indices.size());
   for (const PrimExpr& i : store->indices) {
     const auto* var = i.as<VarNode>();
     if (var == nullptr) {
       return nullptr;
     }
     lhs_vars.push_back(GetRef<Var>(var));
+    lhs_vars_set.insert(var);
   }
+  if (lhs_vars.size() != lhs_vars_set.size()) {
+    // Required that all atomic variables on the LHS are different from each other
+    return nullptr;
+  }
+  // Step 2. Checks if all the variables on the RHS do appear on the LHS
   for (const Var& rhs_var : AllVars(store->value)) {
-    if (!ArrayContains(lhs_vars, rhs_var)) {
+    if (!lhs_vars_set.count(rhs_var.get())) {
       return nullptr;
     }
   }
@@ -865,6 +896,7 @@ FBufferLoadReplacer MakeBufferLoadReplacer(const Stmt& store_stmt) {
     if (!load->buffer.same_as(store->buffer)) {
       return std::move(load);
     }
+    // Step 3. Replace all the LHS variabels with the indexing PrimExpr of the BufferLoad
     const Array<PrimExpr>& indices = load->indices;
     Map<Var, PrimExpr> sub_map;
     ICHECK_EQ(indices.size(), lhs_vars.size());
@@ -876,11 +908,25 @@ FBufferLoadReplacer MakeBufferLoadReplacer(const Stmt& store_stmt) {
   };
 }
 
+/*!
+ * \brief A helper class to inline a block. It returns an AST that
+ * 1) The corresponding block is removed
+ * 2) Any loading of the buffer it produces is replaced
+ * 3) Any block that allocates or read the buffer is updated
+ */
 class Inliner : public StmtExprMutator {
  public:
   PrimExpr VisitExpr_(const BufferLoadNode* load) final {
     BufferLoad new_load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(load));
     return f_load(std::move(new_load));
+  }
+
+  Stmt VisitStmt_(const ForNode* loop) final {
+    if (src_stmt.get() == loop) {
+      loop = tgt_stmt.as<ForNode>();
+      ICHECK(loop != nullptr);
+    }
+    return StmtExprMutator::VisitStmt_(loop);
   }
 
   Stmt VisitStmt_(const BlockNode* block) final {
@@ -889,48 +935,78 @@ class Inliner : public StmtExprMutator {
       block = tgt_stmt.as<BlockNode>();
       ICHECK(block != nullptr);
     }
+    AddBuffers(block);
     Block tgt_block = Downcast<Block>(StmtExprMutator::VisitStmt_(block));
-    return f_block(std::move(src_block), std::move(tgt_block));
+    return f_block(std::move(src_block), std::move(tgt_block), buffer_var_map);
   }
 
+  void AddBuffers(const BlockNode* block) {
+    for (const BufferRegion& buffer_region : block->reads) {
+      const Buffer& buffer = buffer_region->buffer;
+      buffer_var_map.Set(buffer->data, buffer);
+    }
+    for (const BufferRegion& buffer_region : block->writes) {
+      const Buffer& buffer = buffer_region->buffer;
+      buffer_var_map.Set(buffer->data, buffer);
+    }
+    for (const Buffer& buffer : block->alloc_buffers) {
+      buffer_var_map.Set(buffer->data, buffer);
+    }
+  }
+
+  /*! \brief The function that rewrites BufferLoad */
   FBufferLoadReplacer f_load{nullptr};
+  /*! \brief The function that rewrites Block */
   FBlockReplacer f_block{nullptr};
+  /*! \brief The Stmt to be replaced when removing the leaf block */
   Stmt src_stmt{nullptr};
+  /*! \brief The Stmt to be replaced to when removing the leaf block */
   Stmt tgt_stmt{nullptr};
+
+ private:
+  Map<Var, Buffer> buffer_var_map;
 };
 
 void ComputeInline(ScheduleState self, const StmtSRef& block_sref) {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  CHECK_EQ(block->writes.size(), 1)
-      << "ValueError: 'compute_inline' can only inline statement with one output";
-
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  CHECK_EQ(block->writes.size(), 1) << "ValueError: 'compute_inline' requires that the block only "
+                                       "produces a single buffer region";
+  // Step 0. Get the scope block
+  StmtSRef scope_block_sref{nullptr};
+  {
+    Optional<StmtSRef> opt_scope_block_sref = GetScopeRoot(block_sref);
+    CHECK(opt_scope_block_sref.defined())
+        << "ValueError: 'compute_inline' doesn't work on the root block";
+    scope_block_sref = opt_scope_block_sref.value();
+    CHECK(CompleteBlock(self, block_sref, scope_block_sref))
+        << "ValueError: 'compute_inline' requires a complete block";
+  }
   Map<Block, Block> block_reuse;
   Inliner inliner;
+  inliner.AddBuffers(block);
   // Step 1. Create a replacer that replaces any BufferLoad A[...] that
   inliner.f_load = MakeBufferLoadReplacer(block->body);
   CHECK(inliner.f_load)
       << "ValueError: 'compute_inline' requires the body of the block be in form of "
-         "'A[i, j, k, ...] = f(i, j, k, ...)', where the indices on the left are atomic "
-         "variables, and variables on the right must appear on the left";
+         "'A[i, j, k, ...] = f(i, j, k, ...)', where the indices on the left are distinct "
+         "atomic variables, and variables on the right must appear on the left";
   // Step 2. Create a plan that removes the leaf block to be inlined
   CHECK(WithLeafRemoved(block_sref, &inliner.src_stmt, &inliner.tgt_stmt))
       << "ValueError: 'compute_inline' doesn't work on the only child of a block";
-  StmtSRef scope_block_sref = GetScopeRoot(block_sref);
-  CHECK(CompleteBlock(self, block_sref, scope_block_sref))
-      << "ValueError: 'compute_inline' requires a complete block";
-  const Buffer& buffer = block->writes[0]->buffer;
-  inliner.f_block = [&buffer, &scope_block_sref, &block_reuse](Block src_block,
-                                                               Block tgt_block) -> Block {
+  inliner.f_block = [buffer = block->writes[0]->buffer,  //
+                     &scope_block_sref,                  //
+                     &block_reuse                        //
+  ](Block src_block, Block tgt_block, Map<Var, Buffer> buffer_var_map) -> Block {
     // Step 2.1. Remove allocation of the buffer defined in the removed block
     Array<Buffer> alloc_buffers = std::move(tgt_block->alloc_buffers);
     {
       ArrayNode* p = alloc_buffers.CopyOnWrite();
       int size = 0;
-      for (int i = 0, n = p->size(); i < n; ++i) {
-        const ObjectRef& obj = p->at(i);
-        if (!obj.same_as(buffer)) {
+      for (int i = 0, n = alloc_buffers.size(); i < n; ++i) {
+        const Buffer& alloc_buffer = alloc_buffers[i];
+        if (!alloc_buffer.same_as(buffer)) {
           if (size != i) {
-            p->SetItem(size, obj);
+            p->SetItem(size, alloc_buffer);
           }
           ++size;
         }
@@ -940,10 +1016,8 @@ void ComputeInline(ScheduleState self, const StmtSRef& block_sref) {
     // Step 2.2. Re-find the buffers read in the block
     Array<BufferRegion> reads = std::move(tgt_block->reads);
     if (src_block.get() != scope_block_sref->stmt) {
-      // TODO(@junrushao1994): didn't look into `BlockReadWriteCollector` yet
-      BlockReadWriteCollector block_read_write_collector(alloc_buffers);
-      block_read_write_collector(tgt_block->body);
-      reads = block_read_write_collector.reads();
+      // TODO(@junrushao1994): double-check this
+      reads = GetBlockAccessRegion(tgt_block, buffer_var_map)[0];
     }
     // Step 2.3. Assemble the result
     {
@@ -954,10 +1028,10 @@ void ComputeInline(ScheduleState self, const StmtSRef& block_sref) {
     block_reuse.Set(src_block, tgt_block);
     return tgt_block;
   };
-  // Step 3. Create an AST where the leaf `block_sref` points to is removed
-  // Step 4. Update other blocks who read from the removed block
+  // Step 3. Create an AST where the leaf `block_sref` points to is removed,
+  // and update other blocks who read from the removed block
   Stmt tgt_stmt = inliner(GetRef<Stmt>(scope_block_sref->stmt));
-  // Step 5. Finally mutate the AST and the sref tree in the schedule state
+  // Step 4. Mutate the AST and the sref tree in the schedule state
   self->Replace(scope_block_sref, tgt_stmt, block_reuse);
 }
 
