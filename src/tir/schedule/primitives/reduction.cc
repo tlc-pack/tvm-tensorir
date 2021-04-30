@@ -322,7 +322,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   // Check some conditions for rfactor. Get the block and block-realize.
   CHECK(loop) << "TypeError: Only support loop rfactor. But the input type is: "
               << loop_sref->stmt->GetTypeKey();
-  Array<StmtSRef> child_blocks = GetChildBlocks(self, loop_sref, false);
+  Array<StmtSRef> child_blocks = GetChildBlocks(self, loop_sref);
   CHECK_EQ(child_blocks.size(), 1) << "ValueError: The loop should have exactly one child block";
   StmtSRef block_sref = child_blocks[0];
   BlockRealize block_realize = GetBlockRealize(block_sref);
@@ -355,7 +355,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   std::unordered_set<const VarNode*> data_par_iters;
   /*! \brief The loop vars that are touched by at least one reduction block var */
   std::unordered_set<const VarNode*> reduce_iters;
-  /*! \brief The block vars which touch the rfactor loop. */
+  /*! \brief The block vars which touch the rfactor loop */
   std::unordered_set<const IterVarNode*> touch_iters;
 
   // Collect:
@@ -394,9 +394,14 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   Array<StmtSRef> loops = GetAxes(self, block_sref);
   for (const StmtSRef& l_sref : loops) {
     const auto* l = TVM_SREF_TO_FOR(l, l_sref);
-    CHECK(!(data_par_iters.count(l->loop_var.get()) && reduce_iters.count(l->loop_var.get())))
-        << "ValueError: It is not supported that loop \"" << l->loop_var
-        << "\" is touched by both data parallel block vars and reduction block vars";
+    if (l == loop) {
+      CHECK(!data_par_iters.count(l->loop_var.get()))
+          << "ValueError: The rfactor loop cannot be touched by data parallel block vars";
+    } else {
+      CHECK(!(data_par_iters.count(l->loop_var.get()) && reduce_iters.count(l->loop_var.get())))
+          << "ValueError: It is not supported that loop \"" << l->loop_var
+          << "\" is touched by both data parallel block vars and reduction block vars";
+    }
     loop_vars[l->loop_var.get()] = GetRef<For>(l);
   }
 
@@ -587,8 +592,8 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   // *****************************************************
 
   // Construct the loops outside the rfactor block and the write-back block.
-  Stmt rf_body = rf_block_realize;
-  Stmt wb_body = wb_block_realize;
+  Stmt rf_body = std::move(rf_block_realize);
+  Stmt wb_body = std::move(wb_block_realize);
   Var wb_loop_var = loop->loop_var.copy_with_suffix("");
   wb_body = For(wb_loop_var, loop->min, loop->extent, ForKind::kSerial,
                 SubstituteInScope(wb_body, {{loop->loop_var.get(), wb_loop_var.get()}}));
