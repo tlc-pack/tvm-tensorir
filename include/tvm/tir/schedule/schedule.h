@@ -372,10 +372,11 @@ class ScheduleNode : public runtime::Object {
 
   /******** Schedule: reduction ********/
   /*!
-   * \brief Factor a reduction axis into an explicit axis.
-   * \param loop_rv The loop to be factorized
-   * \param factor_axis The position where the new axis is placed
-   * \return The new block
+   * \brief Factor a reduction block by the specified loop
+   * \param loop_rv The loop outside block we want to do rfactor
+   * \param factor_axis The position where the new dimension is placed in the new generated rfactor
+ *                      buffer
+   * \return The rfactor block
    */
   virtual BlockRV RFactor(const LoopRV& loop_rv, int factor_axis) = 0;
   /*!
