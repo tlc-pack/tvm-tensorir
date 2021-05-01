@@ -207,7 +207,7 @@ def flattened_multi_alloc_func(a: ty.handle, d: ty.handle) -> None:
         C = tir.allocate((32,), "float32", "global")
         B[i] = tir.load("float32", A.data, i) + tir.float32(1)
         C[i] = tir.load("float32", A.data, i) + tir.load("float32", B, i)
-        D.data[i] = tir.load("float32", C, i)*tir.float32(2)
+        D.data[i] = tir.load("float32", C, i) * tir.float32(2)
 
 
 def test_elementwise():

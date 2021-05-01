@@ -592,7 +592,7 @@ class RangeHandler(ForScopeHandler):
             annotations: Optional[Mapping[str, Object]] = None,
             span: Optional[Span] = None,
         ):
-            return self.create_loop(egin, end, ForKind.SERIAL, annotations=annotations, span=span)
+            return self.create_loop(begin, end, ForKind.SERIAL, annotations=annotations, span=span)
 
         super().__init__(for_range)
 

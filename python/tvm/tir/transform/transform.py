@@ -35,7 +35,6 @@ def Apply(ftransform):
     fpass : tvm.transform.Pass
         The result pass
     """
-
     # pylint: disable=unused-argument
     def _transform(func, mod, ctx):
         return ftransform(func)
@@ -56,7 +55,6 @@ def Filter(fcond):
     fpass : tvm.transform.Pass
         The result pass
     """
-
     # pylint: disable=unused-argument
     def _transform(func, mod, ctx):
         return func if fcond(func) else None
@@ -550,8 +548,8 @@ def PlanAndUpdateBufferAllocationLocation():
 
 
 def ConvertBlocksToOpaque():
-    """Substitute all the block vars with the PrimExprs they are bound to, indicated by 
-    the corresponding iter_values in BlockRealize, and then convert the blocks into 
+    """Substitute all the block vars with the PrimExprs they are bound to, indicated by
+    the corresponding iter_values in BlockRealize, and then convert the blocks into
     opaque ones by removing all the iter_values in BlockRealize and iter_vars in Block.
 
     Returns
