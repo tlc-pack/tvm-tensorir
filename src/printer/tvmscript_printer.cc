@@ -88,6 +88,8 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
   int num_child_;
   /*! \brief the number of current node */
   int current_num_;
+  /*! \brief loop attr map */
+  std::unordered_map<String, PrimExpr, ObjectPtrHash, ObjectPtrEqual> loop_attrs_;
   /*! \brief loop stack without annotations */
   std::vector<For> loop_stack_;
 
@@ -634,6 +636,14 @@ Doc TVMScriptPrinter::VisitStmt_(const AttrStmtNode* op) {
     }
     return doc;
   }
+  // attr for a loop var
+  if (op->node->IsInstance<VarNode>() && op->body->IsInstance<ForNode>() &&
+      op->body.as<ForNode>()->loop_var.same_as(op->node)) {
+    ICHECK(loop_attrs_.empty());
+    loop_attrs_[op->attr_key] = op->value;
+    doc << PrintBody(op->body);
+    return doc;
+  }
   // default
   if (current_num_ != num_child_ - 1) {
     doc << "with tir.attr(" << Print(op->node) << ", " << Doc::StrLiteral(op->attr_key) << ", "
@@ -726,7 +736,8 @@ Doc TVMScriptPrinter::VisitStmt_(const ForNode* op) {
   Doc doc;
   var_not_in_headers.insert(op->loop_var.get());
   const auto* body = op->body.as<ForNode>();
-  bool simple_loop = op->kind == ForKind::kSerial && op->annotations.empty() && is_zero(op->min);
+  bool simple_loop = op->kind == ForKind::kSerial && op->annotations.empty() && is_zero(op->min) &&
+                     loop_attrs_.empty();
   if (simple_loop) loop_stack_.push_back(GetRef<For>(op));
   // It is a loop that can be compressed, let the loops below print it out
   if (simple_loop && body != nullptr) return Print(GetRef<For>(body));
@@ -1094,6 +1105,15 @@ Doc TVMScriptPrinter::PrintLoop(const For& loop) {
     res << ", annotation = {";
     res << PrintAnnotations(loop->annotations);
     res << "}";
+  }
+  if (!loop_attrs_.empty()) {
+    ICHECK(loop_attrs_.size() == 1);
+    const String& key = loop_attrs_.begin()->first;
+    const PrimExpr& value = loop_attrs_.begin()->second;
+    res << ", with_attr = {";
+    res << Doc::StrLiteral(key) << ": " << Print(value);
+    res << "}";
+    loop_attrs_.clear();
   }
   res << "):";
   return res;
