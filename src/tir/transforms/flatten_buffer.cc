@@ -64,7 +64,6 @@ class BufferFlattener : public StmtExprMutator {
     for (size_t i = new_block->alloc_buffers.size(); i > 0; --i) {
       const Buffer& buffer = new_block->alloc_buffers[i - 1];
       body = MakeAllocStmt(buffer, std::move(body));
-      LOG(INFO) << buffer;
     }
     return body;
   }
