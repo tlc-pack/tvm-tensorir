@@ -428,6 +428,7 @@ class ForScopeHandler(ScopeHandler):
         kind: ForKind,
         thread_binding: Optional[str] = None,
         annotations: Optional[Mapping[str, Object]] = None,
+        with_attr: Optional[Mapping[str, Object]] = None,
         span: Optional[Span] = None,
     ) -> tvm.tir.For:
         """
@@ -449,6 +450,10 @@ class ForScopeHandler(ScopeHandler):
 
         annotations : Optional[Mapping[str, Object]]
             Additional annotation hints.
+
+        with_attr : Optional[Mapping[str, Object]]
+            For generate outside attrs of the loop var.
+            Note that we are moving attrs to loop annotations.
 
         span : Optional[Span]
             The location of this for in the source code.
@@ -472,7 +477,7 @@ class ForScopeHandler(ScopeHandler):
                 key: tvm.tir.StringImm(val) if isinstance(val, str) else val
                 for key, val in annotations.items()
             }
-        return tvm.tir.For(
+        for_node: tir.For = tvm.tir.For(
             self.loop_vars[0],
             begin,
             extent,
@@ -482,37 +487,58 @@ class ForScopeHandler(ScopeHandler):
             annotations=annos,
             span=span,
         )
+        if with_attr is not None:
+            if len(with_attr) != 1:
+                self.context.report_error(
+                    f"Only allow one `with_attr` for one loop", self.node.span
+                )
+            attr_key: str = list(with_attr.keys())[0]
+            value: Object = list(with_attr.values())[0]
+            return tvm.tir.AttrStmt(
+                self.loop_vars[0], attr_key, value, for_node, span=span
+            )
+
+        return for_node
 
 
 @register
 class Serial(ForScopeHandler):
-    """ For scope handler tir.serial(begin, end, annotations)"""
+    """ For scope handler tir.serial(begin, end, annotations, with_attr)"""
 
     def __init__(self):
         def serial(
             begin: PrimExpr,
             end: PrimExpr,
             annotations: Optional[Mapping[str, Object]] = None,
+            with_attr: Optional[Mapping[str, Object]] = None,
             span: Optional[Span] = None,
         ):
-            return self.create_loop(begin, end, ForKind.SERIAL, annotations=annotations, span=span)
+            return self.create_loop(
+                begin, end, ForKind.SERIAL, annotations=annotations, with_attr=with_attr, span=span
+            )
 
         super().__init__(serial)
 
 
 @register
 class Parallel(ForScopeHandler):
-    """ For scope handler tir.parallel(begin, end, annotations)"""
+    """ For scope handler tir.parallel(begin, end, annotations, with_attr)"""
 
     def __init__(self):
         def parallel(
             begin: PrimExpr,
             end: PrimExpr,
             annotations: Optional[Mapping[str, Object]] = None,
+            with_attr: Optional[Mapping[str, Object]] = None,
             span: Optional[Span] = None,
         ):
             return self.create_loop(
-                begin, end, ForKind.PARALLEL, annotations=annotations, span=span
+                begin,
+                end,
+                ForKind.PARALLEL,
+                annotations=annotations,
+                with_attr=with_attr,
+                span=span,
             )
 
         super().__init__(parallel)
@@ -520,17 +546,23 @@ class Parallel(ForScopeHandler):
 
 @register
 class Vectorized(ForScopeHandler):
-    """ For scope handler tir.vectorized(begin, end, annotations)"""
+    """ For scope handler tir.vectorized(begin, end, annotations, with_attr)"""
 
     def __init__(self):
         def vectorized(
             begin: PrimExpr,
             end: PrimExpr,
             annotations: Optional[Mapping[str, Object]] = None,
+            with_attr: Optional[Mapping[str, Object]] = None,
             span: Optional[Span] = None,
         ):
             return self.create_loop(
-                begin, end, ForKind.VECTORIZED, annotations=annotations, span=span
+                begin,
+                end,
+                ForKind.VECTORIZED,
+                annotations=annotations,
+                with_attr=with_attr,
+                span=span,
             )
 
         super().__init__(vectorized)
@@ -538,17 +570,23 @@ class Vectorized(ForScopeHandler):
 
 @register
 class Unroll(ForScopeHandler):
-    """ For scope handler tir.unroll(begin, end, annotations)"""
+    """ For scope handler tir.unroll(begin, end, annotations, with_attr)"""
 
     def __init__(self):
         def unroll(
             begin: PrimExpr,
             end: PrimExpr,
             annotations: Optional[Mapping[str, Object]] = None,
+            with_attr: Optional[Mapping[str, Object]] = None,
             span: Optional[Span] = None,
         ):
             return self.create_loop(
-                begin, end, ForKind.UNROLLED, annotations=annotations, span=span
+                begin,
+                end,
+                ForKind.UNROLLED,
+                annotations=annotations,
+                with_attr=with_attr,
+                span=span,
             )
 
         super().__init__(unroll)
@@ -556,7 +594,7 @@ class Unroll(ForScopeHandler):
 
 @register
 class ThreadBinding(ForScopeHandler):
-    """ For scope handler tir.thread_binding(begin, end, thread, annotations)"""
+    """ For scope handler tir.thread_binding(begin, end, thread, annotations, with_attr)"""
 
     def __init__(self):
         def thread_binding(
@@ -564,6 +602,7 @@ class ThreadBinding(ForScopeHandler):
             end: PrimExpr,
             thread: str,
             annotations: Optional[Mapping[str, Object]] = None,
+            with_attr: Optional[Mapping[str, Object]] = None,
             span: Optional[Span] = None,
         ):
             thread_iter_var = IterVar(None, None, IterVar.ThreadIndex, thread, span=span)
@@ -573,6 +612,7 @@ class ThreadBinding(ForScopeHandler):
                 ForKind.THREAD_BINDING,
                 thread_binding=thread_iter_var,
                 annotations=annotations,
+                with_attr=with_attr,
                 span=span,
             )
 
@@ -581,7 +621,7 @@ class ThreadBinding(ForScopeHandler):
 
 @register
 class RangeHandler(ForScopeHandler):
-    """For scope handler range(begin, end, annotations)
+    """For scope handler range(begin, end, annotations, with_attr)
     Note that tir.range is totally the same as tir.serial
     """
 
@@ -590,9 +630,12 @@ class RangeHandler(ForScopeHandler):
             begin: PrimExpr,
             end: PrimExpr,
             annotations: Optional[Mapping[str, Object]] = None,
+            with_attr: Optional[Mapping[str, Object]] = None,
             span: Optional[Span] = None,
         ):
-            return self.create_loop(begin, end, ForKind.SERIAL, annotations=annotations, span=span)
+            return self.create_loop(
+                begin, end, ForKind.SERIAL, annotations=annotations, with_attr=with_attr, span=span
+            )
 
         super().__init__(for_range)
 

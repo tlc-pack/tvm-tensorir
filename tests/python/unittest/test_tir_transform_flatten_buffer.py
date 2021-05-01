@@ -24,6 +24,8 @@ def _check(original, transformed):
     mod = tvm.IRModule.from_expr(func)
     mod = tvm.tir.transform.FlattenBuffer()(mod)
     mod = tvm.tir.transform.Simplify()(mod)
+    print(mod["main"])
+    print(transformed)
     tvm.ir.assert_structural_equal(mod["main"], transformed, True)
 
 
@@ -192,14 +194,15 @@ def compacted_pragma_func(a: ty.handle, c: ty.handle) -> None:
             tir.writes(C[i])
             C[i] = A[i] + 1.0
 
-# @tvm.script.tir
-# def flattened_pragma_func(a: ty.handle, c: ty.handle) -> None:
-#     A = tir.match_buffer(a, (32), "float32")
-#     C = tir.match_buffer(c, (32), "float32")
 
-#     tir.attr(i, "pragma_test", "test")
-#     for i in range(0, 32):
-#         C.data[i] = tir.load("float32", A.data, i) + tir.float32(1)
+@tvm.script.tir
+def flattened_pragma_func(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (32), "float32")
+    C = tir.match_buffer(c, (32), "float32")
+
+    for i in range(0, 32, with_attr={"pragma_test": "test"}):
+        C.data[i] = tir.load("float32", A.data, i) + tir.float32(1)
+
 
 def test_elementwise():
     _check(compacted_elementwise_func, flattened_elementwise_func)
@@ -224,10 +227,11 @@ def test_unit_loops():
 def test_pragma():
     _check(compacted_pragma_func, flattened_pragma_func)
 
+
 if __name__ == "__main__":
-    test_elementwise()
-    test_gpu_workload()
-    test_symbolic_shape()
-    test_predicate()
-    test_unit_loops()
-    # test_pragma()
+    # test_elementwise()
+    # test_gpu_workload()
+    # test_symbolic_shape()
+    # test_predicate()
+    # test_unit_loops()
+    test_pragma()
