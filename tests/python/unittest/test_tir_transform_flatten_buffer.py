@@ -182,24 +182,32 @@ def flattened_unit_loop_func(a: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.script.tir
-def compacted_pragma_func(a: ty.handle, c: ty.handle) -> None:
+def compacted_multi_alloc_func(a: ty.handle, d: ty.handle) -> None:
     A = tir.match_buffer(a, (32), "float32")
-    C = tir.match_buffer(c, (32), "float32")
+    D = tir.match_buffer(d, (32), "float32")
 
-    for i in range(0, 32, annotations={"pragma_test": "test"}):
+    for i in range(0, 32):
         with tir.block([]) as []:
             tir.reads(A[i])
-            tir.writes(C[i])
-            C[i] = A[i] + 1.0
+            tir.writes(D[i])
+            B = tir.alloc_buffer((32,))
+            C = tir.alloc_buffer((32,))
+            B[i] = A[i] + 1.0
+            C[i] = A[i] + B[i]
+            D[i] = C[i] * 2.0
 
 
 @tvm.script.tir
-def flattened_pragma_func(a: ty.handle, c: ty.handle) -> None:
+def flattened_multi_alloc_func(a: ty.handle, d: ty.handle) -> None:
     A = tir.match_buffer(a, (32), "float32")
-    C = tir.match_buffer(c, (32), "float32")
+    D = tir.match_buffer(d, (32), "float32")
 
-    for i in range(0, 32, with_attr={"pragma_test": "test"}):
-        C.data[i] = tir.load("float32", A.data, i) + tir.float32(1)
+    for i in range(0, 32):
+        B = tir.allocate((32,), "float32", "global")
+        C = tir.allocate((32,), "float32", "global")
+        B[i] = tir.load("float32", A.data, i) + tir.float32(1)
+        C[i] = tir.load("float32", A.data, i) + tir.load("float32", B, i)
+        D.data[i] = tir.load("float32", C, i)*tir.float32(2)
 
 
 def test_elementwise():
@@ -222,8 +230,8 @@ def test_unit_loops():
     _check(compacted_unit_loop_func, flattened_unit_loop_func)
 
 
-def test_pragma():
-    _check(compacted_pragma_func, flattened_pragma_func)
+def test_multi_alloc():
+    _check(compacted_multi_alloc_func, flattened_multi_alloc_func)
 
 
 if __name__ == "__main__":
@@ -232,4 +240,4 @@ if __name__ == "__main__":
     test_symbolic_shape()
     test_predicate()
     test_unit_loops()
-    test_pragma()
+    test_multi_alloc()

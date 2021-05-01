@@ -60,9 +60,11 @@ class BufferFlattener : public StmtExprMutator {
     if (!is_one(predicate)) {
       body = IfThenElse(predicate, std::move(body));
     }
-    // Step 4. Handle allocations
-    for (const Buffer& buffer : new_block->alloc_buffers) {
+    // Step 3. Handle allocations in reverse order
+    for (size_t i = new_block->alloc_buffers.size(); i > 0; --i) {
+      const Buffer& buffer = new_block->alloc_buffers[i - 1];
       body = MakeAllocStmt(buffer, std::move(body));
+      LOG(INFO) << buffer;
     }
     return body;
   }
@@ -72,6 +74,7 @@ class BufferFlattener : public StmtExprMutator {
     PrimExpr min = this->VisitExpr(op->min);
     PrimExpr extent = this->VisitExpr(op->extent);
     if (is_one(extent) && op->annotations.empty()) {
+      // handling unit loop
       unit_loop_vars_[op->loop_var] = min;
     }
     // Step 2. Visit recursively
@@ -159,7 +162,7 @@ class BufferFlattener : public StmtExprMutator {
                     /*body=*/std::move(body));
   }
 
-  /*! \brief Record the loop_var and loop start value of unit loops, which extent is one. */
+  /*! \brief Record the loop_var and loop start value of unit loops, whose extent is one. */
   std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> unit_loop_vars_;
 };
 

@@ -2663,21 +2663,6 @@ def test_opt_conv_tensorcore_mod_host():
 
 
 @tvm.script.tir
-def loop_with_attr(a: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (32), "float32")
-    C = tir.match_buffer(c, (32), "float32")
-
-    for i in range(0, 32, with_attr={"attr_key": "attr_value"}):
-        C.data[i] = tir.load("float32", A.data, i) + tir.float32(1)
-
-
-def test_loop_with_attr():
-    func = loop_with_attr
-    rt_func = tvm.script.from_source(tvm.script.asscript(func, True))
-    tvm.ir.assert_structural_equal(func, rt_func, True)
-
-
-@tvm.script.tir
 def vthread_func(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32")
     C = tir.match_buffer(c, (16, 16), "float32")
@@ -2901,7 +2886,6 @@ if __name__ == "__main__":
     test_opt_conv_tensorcore_normalize()
     test_opt_conv_tensorcore_lower()
     test_opt_conv_tensorcore_mod_host()
-    test_loop_with_attr()
     test_vthread()
     test_module_define()
     test_matmul()
