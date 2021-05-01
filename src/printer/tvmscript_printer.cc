@@ -963,8 +963,9 @@ Doc TVMScriptPrinter::PrintPrimFunc(const PrimFunc& primFunc) {
     header_reducer << Doc::NewLine() << it.second << " = tir.comm_reducer(";
     var_not_in_headers.insert(it.first->lhs[0].get());
     var_not_in_headers.insert(it.first->rhs[0].get());
-    header_reducer << "lambda " << Print(it.first->lhs[0]) << ", " << Print(it.first->rhs[0]) << ": "
-         << Print(it.first->result[0]) << ", " << Print(it.first->identity_element[0]);
+    header_reducer << "lambda " << Print(it.first->lhs[0]) << ", " << Print(it.first->rhs[0])
+                   << ": " << Print(it.first->result[0]) << ", "
+                   << Print(it.first->identity_element[0]);
     header_reducer << ")";
   }
   // print func attrs
