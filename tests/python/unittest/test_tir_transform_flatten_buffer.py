@@ -24,8 +24,6 @@ def _check(original, transformed):
     mod = tvm.IRModule.from_expr(func)
     mod = tvm.tir.transform.FlattenBuffer()(mod)
     mod = tvm.tir.transform.Simplify()(mod)
-    print(mod["main"])
-    print(transformed)
     tvm.ir.assert_structural_equal(mod["main"], transformed, True)
 
 
@@ -229,9 +227,9 @@ def test_pragma():
 
 
 if __name__ == "__main__":
-    # test_elementwise()
-    # test_gpu_workload()
-    # test_symbolic_shape()
-    # test_predicate()
-    # test_unit_loops()
+    test_elementwise()
+    test_gpu_workload()
+    test_symbolic_shape()
+    test_predicate()
+    test_unit_loops()
     test_pragma()
