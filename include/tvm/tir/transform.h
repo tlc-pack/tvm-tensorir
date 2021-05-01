@@ -409,6 +409,14 @@ TVM_DLL Pass ConvertBlocksToOpaque();
 TVM_DLL Pass CompactBufferAllocation();
 
 /*!
+ * \brief Flatten the multi-dimensional BufferLoad and BufferStore
+ *        to single dimensional Load/Store. Also remove Block to
+ *        ensure that the flattened TIR can not be scheduled again.
+ * \return The pass.
+ */
+TVM_DLL Pass FlattenBuffer();
+
+/*!
  * \brief Hoist loop-invariant IfThenElse nodes to
  * outside the elligible loops.
  *
