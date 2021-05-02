@@ -36,9 +36,9 @@ class ProducerToBufferTransformer : public ExprMutator {
       : op2buffers_(op2buffers) {}
 
   PrimExpr VisitExpr_(const ProducerLoadNode* op) final {
-    const auto& tensor = Downcast<te::Tensor>(op->producer);
+    te::Tensor tensor = Downcast<te::Tensor>(op->producer);
     auto it = op2buffers_.find(tensor->op);
-    ICHECK(it != op2buffers_.end()) << "Cannot find the tensor " << tensor;
+    ICHECK(it != op2buffers_.end()) << "IndexError: Cannot find the tensor " << tensor;
     const Buffer& buffer = it->second;
     return BufferLoad(buffer, op->indices);
   }
@@ -51,9 +51,8 @@ class ProducerToBufferTransformer : public ExprMutator {
 String GetUniqueName(const String& prefix, std::unordered_map<String, int>* name_count) {
   String unique_prefix = prefix;
   auto it = name_count->find(prefix);
-  if (it != name_count->end()) {
-    while (name_count->count(unique_prefix = prefix + "_" + std::to_string(++it->second)) > 0)
-      ;
+  while (name_count->count(unique_prefix)) {
+    unique_prefix = prefix + "_" + std::to_string(++it->second);
   }
   (*name_count)[unique_prefix] = 0;
   return unique_prefix;
@@ -69,14 +68,15 @@ PrimFunc CreatePrimFunc(const Array<te::Tensor>& arg_list) {
   const te::ReadGraph& g = te::CreateReadGraph(arg_ops);
   const Array<te::Operation>& order = te::PostDFSOrder(arg_ops, g);
 
-  // Step 2. Preparer parameters and buffer_map of the PrimFunc.
-  // Parameters and buffer_map for PrimFunc.
-  Map<Var, Buffer> buffer_map;
-  Array<Var> parameters;
+  auto f_is_arg = [&arg_ops](const te::Operation& op) -> bool {
+    return std::any_of(arg_ops.begin(), arg_ops.end(),
+                       [&op](const te::Operation& op_) { return op_ == op; });
+  };
+
+  // Step 2. Preparer temporary data structural.
   // Transformer to rewrite Operation to Buffer.
   std::unordered_map<te::Operation, Buffer, ObjectPtrHash, ObjectPtrEqual> op2buffers;
   ProducerToBufferTransformer transformer(op2buffers);
-
   // Root allocation and its body stmts.
   Array<Buffer> root_alloc;
   Array<Stmt> root_stmts;
@@ -90,11 +90,10 @@ PrimFunc CreatePrimFunc(const Array<te::Tensor>& arg_list) {
     ICHECK_EQ(op->num_outputs(), 1);
     const te::Tensor& tensor = op.output(0);
     if (const auto* placeholder = op.as<te::PlaceholderOpNode>()) {
-      Var arg("var_" + placeholder->name, PrimType(DataType::Handle()));
-      const Buffer& input_buffer =
-          decl_buffer(placeholder->shape, placeholder->dtype, placeholder->name);
-      buffer_map.Set(arg, input_buffer);
-      op2buffers[op] = input_buffer;
+      // Check op is in op list
+      ICHECK(f_is_arg(op));
+      const Buffer& buffer = decl_buffer(placeholder->shape, placeholder->dtype, placeholder->name);
+      op2buffers[op] = buffer;
     } else if (const auto* compute_op = op.as<te::ComputeOpNode>()) {
       // Case 2. Compute stage (te.compute)
       // Step 3.1. Push_back data_par axis and reduce_axis into block_vars.
@@ -110,7 +109,7 @@ PrimFunc CreatePrimFunc(const Array<te::Tensor>& arg_list) {
       f_push_block_vars(compute_op->axis);
       f_push_block_vars(compute_op->reduce_axis);
 
-      // Step 3.2. Push_back data_par axis and reduce_axis into block_vars.
+      // Step 3.2. Get the compute body. Only one output is allowed.
       ICHECK_EQ(compute_op->body.size(), 1);
       const PrimExpr& expr = compute_op->body[0];
 
@@ -121,8 +120,9 @@ PrimFunc CreatePrimFunc(const Array<te::Tensor>& arg_list) {
       // Step 3.4. Calculate indices for BufferStore
       Array<PrimExpr> indices;
       indices.reserve(compute_op->axis.size());
-      for (const IterVar& iter_var : compute_op->axis)
+      for (const IterVar& iter_var : compute_op->axis) {
         indices.push_back(analyzer.Simplify(iter_var->var));
+      }
 
       // Step 3.5. Create block body.
       Optional<Stmt> init = NullOpt;
@@ -140,55 +140,63 @@ PrimFunc CreatePrimFunc(const Array<te::Tensor>& arg_list) {
         body = BufferStore(buffer, analyzer.Simplify(transformer(expr)), indices);
       }
 
-      // Step 3.6. Update func buffer_map or root allocation.
-      if (!std::any_of(arg_list.begin(), arg_list.end(),
-                       [&op](te::Tensor arg) { return arg->op == op; })) {
+      // Step 3.6. Update root allocation.
+      if (!f_is_arg(op)) {
         root_alloc.push_back(buffer);
-
-        // Step 3.7. Add script_parsing_detect_access attr for auto complete the whole IR.
-        Map<String, ObjectRef> annotations = op->attrs;
-        annotations.Set(tir::attr::script_parsing_detect_access, IntImm(DataType::Int(32), 3));
-
-        // Step 3.8. Create nan iter_values for BlockRealize, which can be determined during
-        // completing.
-        Array<PrimExpr> nan_bindings(block_vars.size(),
-                                     FloatImm(DataType::Float(32), std::nan("")));
-
-        // Step 3.9. Create Block and BlockRealize and push_back to root stmts.
-        BlockRealize realize(/*iter_values=*/std::move(nan_bindings),
-                             /*predicate=*/Bool(true),
-                             /*block=*/
-                             Block(/*iter_vars=*/std::move(block_vars),
-                                   /*reads=*/{},
-                                   /*writes=*/{},
-                                   /*name_hint=*/GetUniqueName(op->name, &name_count),
-                                   /*body=*/std::move(body),
-                                   /*init=*/std::move(init),
-                                   /*alloc_buffers=*/{},
-                                   /*match_buffers=*/{},
-                                   /*annotations=*/annotations));
-
-        root_stmts.push_back(realize);
-      } else {
-        ICHECK(false) << "Unsupported OperationNode";
       }
+
+      // Step 3.7. Add script_parsing_detect_access attr for auto complete the whole IR.
+      Map<String, ObjectRef> annotations = op->attrs;
+      annotations.Set(tir::attr::script_parsing_detect_access, IntImm(DataType::Int(32), 3));
+
+      // Step 3.8. Create nan iter_values for BlockRealize, which can be determined during
+      // completing.
+      Array<PrimExpr> nan_bindings(block_vars.size(), FloatImm(DataType::Float(32), std::nan("")));
+
+      // Step 3.9. Create Block and BlockRealize and push_back to root stmts.
+      BlockRealize realize(/*iter_values=*/std::move(nan_bindings),
+                           /*predicate=*/Bool(true),
+                           /*block=*/
+                           Block(/*iter_vars=*/std::move(block_vars),
+                                 /*reads=*/{},
+                                 /*writes=*/{},
+                                 /*name_hint=*/GetUniqueName(op->name, &name_count),
+                                 /*body=*/std::move(body),
+                                 /*init=*/std::move(init),
+                                 /*alloc_buffers=*/{},
+                                 /*match_buffers=*/{},
+                                 /*annotations=*/annotations));
+
+      root_stmts.push_back(realize);
+    } else {
+      ICHECK(false) << "Unsupported OperationNode";
     }
-
-    // Step 4. Create func and complete it.
-    PrimFunc func = PrimFunc(/*params=*/std::move(parameters),
-                             /*body=*/SeqStmt::Flatten(root_stmts),
-                             /*ret_type=*/VoidType(),
-                             /*buffer_map=*/std::move(buffer_map));
-
-    const auto* complete = runtime::Registry::Get("script.Complete");
-    ICHECK(complete);
-
-    return (*complete)(func, root_alloc);
   }
 
-  TVM_REGISTER_GLOBAL("te.CreatePrimFunc").set_body_typed([](const Array<te::Tensor>& tensors) {
-    return CreatePrimFunc(tensors);
-  });
+  // Step 4. Create func and complete it.
+  Array<Var> parameters;
+  Map<Var, Buffer> buffer_map;
+  for (const te::Operation& op : arg_ops) {
+    Var arg("var_" + op->name, PrimType(DataType::Handle()));
+    parameters.push_back(arg);
+    auto it = op2buffers.find(op);
+    ICHECK(it != op2buffers.end());
+    buffer_map.Set(arg, it->second);
+  }
+  PrimFunc func = PrimFunc(/*params=*/std::move(parameters),
+                           /*body=*/SeqStmt::Flatten(root_stmts),
+                           /*ret_type=*/VoidType(),
+                           /*buffer_map=*/std::move(buffer_map));
+
+  const auto* complete = runtime::Registry::Get("script.Complete");
+  ICHECK(complete);
+
+  return (*complete)(func, root_alloc);
+}  // namespace tir
+
+TVM_REGISTER_GLOBAL("te.CreatePrimFunc").set_body_typed([](const Array<te::Tensor>& tensors) {
+  return CreatePrimFunc(tensors);
+});
 
 }  // namespace tir
-}  // namespace tir
+}  // namespace tvm
