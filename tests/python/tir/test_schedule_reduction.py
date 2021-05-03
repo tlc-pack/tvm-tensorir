@@ -133,7 +133,7 @@ def matmul_rfactor(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [128, 128])
     C_rf = tir.alloc_buffer([4, 128, 128])
 
-    for i2_inner_inner, i0, i1, i2_outer, i2_inner_outer in tir.grid(4, 128, 128, 4, 8):
+    for i0, i1, i2_outer, i2_inner_outer, i2_inner_inner in tir.grid(128, 128, 4, 8, 4):
         with tir.block([4, 128, 128, tir.reduce_axis(0, 4), tir.reduce_axis(0, 8)], "update_rf") as [vi2_inner_inner, vi, vj, vi2_outer, vi2_inner_outer]:
             tir.bind(vi2_inner_inner, i2_inner_inner)
             tir.bind(vi, i0)
@@ -171,7 +171,7 @@ def square_sum_rfactor(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [16])
     C_rf = tir.alloc_buffer([16, 256])
 
-    for i2, i0, i1 in tir.grid(256, 16, 256):
+    for i0, i1, i2 in tir.grid(16, 256, 256):
         with tir.block([256, 16, tir.reduce_axis(0, 256)], "C_rf") as [vi2, b, i]:
             tir.bind(vi2, i2)
             tir.bind(b, i0)
@@ -211,7 +211,7 @@ def square_sum_square_root_rfactor(a: ty.handle, d: ty.handle) -> None:
     C = tir.alloc_buffer([16])
     C_rf = tir.alloc_buffer([1, 16])
 
-    for i1_i2_fused_inner, i0, i1_i2_fused_outer in tir.grid(1, 16, 65536):
+    for i0, i1_i2_fused_outer, i1_i2_fused_inner in tir.grid(16, 65536, 1):
         with tir.block([1, 16, tir.reduce_axis(0, 256), tir.reduce_axis(0, 256)], "C_rf") as [vi1_i2_fused_inner, b, i, j]:
             tir.bind(vi1_i2_fused_inner, i1_i2_fused_inner)
             tir.bind(b, i0)
@@ -410,8 +410,7 @@ def test_reduction_allreduce_4():
     B_block = s.get_block("B")
     _, ax_i, _ = s.get_axes(B_block)
     B_rf = s.rfactor(ax_i, 0)
-    ax_i_rf, ax_ii_rf, ax_j_rf = s.get_axes(B_rf)
-    s.reorder(ax_ii_rf, ax_i_rf, ax_j_rf)
+    ax_ii_rf, ax_i_rf, ax_j_rf = s.get_axes(B_rf)
     ax_i_rf_o, _ = s.split(ax_i_rf, factor=4)
     s.bind(ax_ii_rf, tir.thread_axis("blockIdx.x"))
     s.bind(ax_i_rf_o, tir.thread_axis("threadIdx.x"))
