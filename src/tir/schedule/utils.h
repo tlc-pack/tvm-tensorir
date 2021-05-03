@@ -655,7 +655,7 @@ inline bool ArrayContains(const Array<T>& list, const T& element) {
   return false;
 }
 
-inline Stmt RemoveFromSeqStmt(const SeqStmt& seq, const Stmt& to_remove) {
+inline Stmt SeqStmtRemove(const SeqStmt& seq, const Stmt& to_remove) {
   ICHECK_GT(seq->size(), 1);
   Array<Stmt> new_stmts;
   new_stmts.reserve(seq->size());
