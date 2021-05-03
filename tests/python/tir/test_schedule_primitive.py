@@ -163,11 +163,8 @@ def element_wise_reverse_inline(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     C = tir.match_buffer(c, (128, 128), "float32")
 
-    with tir.block([], "root") as []:
-        tir.reads([A[0:128, 0:128]])
-        tir.writes([C[0:128, 0:128]])
-        with tir.block([128, 128], "B") as [vi, vj]:
-            C[vi, vj] = (A[vi, vj] * 2.0) + 1.0
+    with tir.block([128, 128], "B") as [vi, vj]:
+        C[vi, vj] = (A[vi, vj] * 2.0) + 1.0
 
 
 @tvm.script.tir
@@ -634,7 +631,7 @@ def test_compute_inline():
     s.compute_inline(B)
 
     inlined_func = inline_element_wise
-
+    print(tvm.script.asscript(inline_element_wise))
     tvm.ir.assert_structural_equal(inlined_func, s.mod["main"])
 
 
@@ -813,23 +810,23 @@ def test_set_scope():
 
 
 if __name__ == "__main__":
-    test_fuse()
-    test_split_fuse()
-    test_fuse_loop_sref()
-    test_reorder_normal()
-    test_compute_at()
-    test_reverse_compute_at()
-    test_compute_at_with_consumer_predicate()
-    test_reverse_compute_at_with_producer_predicate()
-    test_compute_inline()
+    # test_fuse()
+    # test_split_fuse()
+    # test_fuse_loop_sref()
+    # test_reorder_normal()
+    # test_compute_at()
+    # test_reverse_compute_at()
+    # test_compute_at_with_consumer_predicate()
+    # test_reverse_compute_at_with_producer_predicate()
+    # test_compute_inline()
     test_reverse_compute_inline()
-    test_compute_at_fail()
-    test_reduction()
-    test_cache_read()
-    test_cache_write()
-    test_cache_read_write()
-    test_blockize()
-    test_blockize_schedule()
-    test_pragma()
-    test_double_buffer()
-    test_set_scope()
+    # test_compute_at_fail()
+    # test_reduction()
+    # test_cache_read()
+    # test_cache_write()
+    # test_cache_read_write()
+    # test_blockize()
+    # test_blockize_schedule()
+    # test_pragma()
+    # test_double_buffer()
+    # test_set_scope()
