@@ -29,7 +29,6 @@ from tvm.runtime import convert
 from . import tag as _tag
 from . import tensor as _tensor
 from . import _ffi_api
-from .tensor import Operation
 
 
 def placeholder(shape, dtype=None, name="placeholder"):
@@ -430,11 +429,11 @@ def reduce_axis(dom, name="rv", thread_tag="", span=None):
     return tvm.tir.IterVar(dom, name, 2, thread_tag, span)
 
 
-def create_prim_func(ops: Union[Operation, List[Operation]]) -> tvm.tir.PrimFunc:
+def create_prim_func(ops: List[_tensor.Tensor]) -> tvm.tir.PrimFunc:
     """Create a TensorIR PrimFunc from tensor expression
     Parameters
     ----------
-    ops : list of Operations
+    ops : List[Tensor]
         The source expression.
 
     Returns

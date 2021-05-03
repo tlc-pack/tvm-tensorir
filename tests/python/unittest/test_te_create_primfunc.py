@@ -58,6 +58,10 @@ def tir_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         C[i, j] += A[i, k] * B[j, k]
 
 
+def test_matmul():
+    _check_workload(te_matmul, tir_matmul)
+
+
 def te_element_wise():
     A = te.placeholder((128, 128), name="A")
     B = te.compute((128, 128), lambda x, y: A[x, y] * 2, name="B")
@@ -75,10 +79,6 @@ def tir_element_wise(a: ty.handle, c: ty.handle) -> None:
         B[i, j] = A[i, j] * 2.0
     with tir.block([128, 128]) as [i, j]:
         C[i, j] = B[i, j] + 1.0
-
-
-def test_matmul():
-    _check_workload(te_matmul, tir_matmul)
 
 
 def test_element_wise():
@@ -235,10 +235,35 @@ def test_extern():
     _check_workload(te_extern, tir_extern)
 
 
+def te_reordered_matmul():
+    k = te.reduce_axis((0, 128), "k")
+    A = te.placeholder((128, 128), name="A")
+    B = te.placeholder((128, 128), name="B")
+    C = te.compute((128, 128), lambda x, y: te.sum(A[x, k] * B[y, k], axis=k), name="C")
+    return [C, A, B]
+
+
+@tvm.script.tir
+def tir_reordered_matmul(c: ty.handle, a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    B = tir.match_buffer(b, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
+
+    with tir.block([128, 128, tir.reduce_axis(0, 128)]) as [i, j, k]:
+        with tir.init():
+            C[i, j] = 0.0
+        C[i, j] += A[i, k] * B[j, k]
+
+
+def test_arg_order():
+    _check_workload(te_reordered_matmul, tir_reordered_matmul)
+
+
 if __name__ == "__main__":
-    # test_unique_name()
-    # test_matmul()
-    # test_element_wise()
-    # test_conv2d()
-    # test_multi_output()
+    test_unique_name()
+    test_matmul()
+    test_element_wise()
+    test_conv2d()
+    test_multi_output()
     test_extern()
+    test_arg_order()
