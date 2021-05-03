@@ -163,11 +163,8 @@ def element_wise_reverse_inline(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     C = tir.match_buffer(c, (128, 128), "float32")
 
-    with tir.block([], "root") as []:
-        tir.reads([A[0:128, 0:128]])
-        tir.writes([C[0:128, 0:128]])
-        with tir.block([128, 128], "B") as [vi, vj]:
-            C[vi, vj] = (A[vi, vj] * 2.0) + 1.0
+    with tir.block([128, 128], "B") as [vi, vj]:
+        C[vi, vj] = (A[vi, vj] * 2.0) + 1.0
 
 
 @tvm.script.tir
@@ -634,7 +631,6 @@ def test_compute_inline():
     s.compute_inline(B)
 
     inlined_func = inline_element_wise
-
     tvm.ir.assert_structural_equal(inlined_func, s.mod["main"])
 
 
