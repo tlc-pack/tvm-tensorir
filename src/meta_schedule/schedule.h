@@ -236,14 +236,14 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
   void Pragma(const LoopRV& loop_rv, const String& pragma_type, const ExprRV& pragma_value) final;
   /*!
    * \brief Set alignment requirement for specific dimension such that
-   *        stride[axis] == k * factor + offset for some k.
+   *        stride[axis] == k * factor + offset for some k
    * \param The producer block of the buffer
-   * \param i The index of the buffer in block's write region
-   * \param axis The dimension to be specified for alignment.
+   * \param buffer_index The index of the buffer in block's write region
+   * \param axis The dimension to be specified for alignment
    * \param The factor multiple of alignment
-   * \param The required offset factor.
+   * \param The required offset factor
    */
-  void StorageAlign(const BlockRV& block_rv, int i, int axis, int factor, int offset) final;
+  void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor, int offset) final;
 
   /******** Schedule: cache read/write ********/
   /*!

@@ -439,9 +439,10 @@ Instruction SetScopeAttrs::Make(const BlockRV& block, int i, const String& stora
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction StorageAlignAttrs::Make(const BlockRV& block, int i, int axis, int factor, int offset) {
+Instruction StorageAlignAttrs::Make(const BlockRV& block, int buffer_index, int axis, int factor,
+                                    int offset) {
   ObjectPtr<StorageAlignAttrs> n = make_object<StorageAlignAttrs>();
-  n->i = i;
+  n->buffer_index = buffer_index;
   n->axis = axis;
   n->factor = factor;
   n->offset = offset;
@@ -781,7 +782,7 @@ Array<ObjectRef> StorageAlignAttrs::Apply(const Schedule& sch, //
   ICHECK(!decision.defined());
   ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  sch->StorageAlign(block, i, axis, factor, offset);
+  sch->StorageAlign(block, buffer_index, axis, factor, offset);
   return {};
 }
 
@@ -1148,7 +1149,7 @@ void StorageAlignAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                  const Array<String>& outputs, const Optional<ObjectRef>& decision) const {
   PythonAPICall py("storage_align");
   py.AddArgInput("block", inputs[0]);
-  py.AddArgAttr("i", i);
+  py.AddArgAttr("buffer_index", buffer_index);
   py.AddArgAttr("axis", axis);
   py.AddArgAttr("factor", factor);
   py.AddArgAttr("offset", offset);
@@ -1262,7 +1263,7 @@ void SetScopeAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef
 
 void StorageAlignAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
-  record->push_back(Integer(this->i));
+  record->push_back(Integer(this->buffer_index));
   record->push_back(Integer(this->axis));
   record->push_back(Integer(this->factor));
   record->push_back(Integer(this->offset));
@@ -1393,7 +1394,7 @@ InstAttrs SetScopeAttrs::Deserialize(const Array<ObjectRef>& record,
 InstAttrs StorageAlignAttrs::Deserialize(const Array<ObjectRef>& record,
                                          Optional<ObjectRef>* decision) {
   ObjectPtr<StorageAlignAttrs> n = make_object<StorageAlignAttrs>();
-  n->i = Downcast<Integer>(record[3]);
+  n->buffer_index = Downcast<Integer>(record[3]);
   n->axis = Downcast<Integer>(record[4]);
   n->factor = Downcast<Integer>(record[5]);
   n->factor = Downcast<Integer>(record[6]);

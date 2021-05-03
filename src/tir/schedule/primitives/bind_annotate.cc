@@ -421,12 +421,13 @@ void SetScope(ScheduleState self, const StmtSRef& block_sref, int i, const Strin
   self->Replace(allocate_site_sref, new_block, block_reuse_map);
 }
 
-void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int i, int axis, int factor, int offset) {
+void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_index, int axis,
+                  int factor, int offset) {
   const auto* block_ptr = block_sref->StmtAs<BlockNode>();
-  CHECK_GE(i, 0) << "ValueError: index out of range";
-  CHECK_LT(i, block_ptr->writes.size()) << "ValueError: Index out of range";
+  CHECK_GE(buffer_index, 0) << "ValueError: index out of range";
+  CHECK_LT(buffer_index, block_ptr->writes.size()) << "ValueError: Index out of range";
   CHECK_GT(factor, 0) << "ValueError: The factor of stroage align should be positive.";
-  Buffer buffer = block_ptr->writes[i]->buffer;
+  Buffer buffer = block_ptr->writes[buffer_index]->buffer;
   if (axis < 0) {
     axis += buffer->shape.size();
   }
@@ -457,7 +458,7 @@ void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int i, int axi
   }
 
   // Step 2: Update the annotation value
-  Array<Array<Integer>> dim_aligns = storage_align[i];
+  Array<Array<Integer>> dim_aligns = storage_align[buffer_index];
   bool found = false;
   for (size_t j = 0; j < dim_aligns.size(); j++) {
     ICHECK(dim_aligns[j].size() == 3);
@@ -470,7 +471,7 @@ void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int i, int axi
   if (!found) {
     dim_aligns.push_back({Integer(axis), Integer(factor), Integer(offset)});
   }
-  storage_align.Set(i, std::move(dim_aligns));
+  storage_align.Set(buffer_index, std::move(dim_aligns));
 
   // Step 3: Replace the block with the new annotation
   Block new_block = WithAnnotation(block_ptr, attr::buffer_dim_align, storage_align);

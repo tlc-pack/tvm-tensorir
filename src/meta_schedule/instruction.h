@@ -689,16 +689,22 @@ struct SetScopeAttrs : public InstAttrsNode {
                                       "SetScope", false);
 };
 
-/*! \brief Attrs of the instruction that applies storage_align */
+/*! \brief Attrs of the instruction that applies storage_align
+ *  Set alignment requirement for specific dimension such that 
+ *  stride[axis] == k * factor + offset for some k.
+ */
 struct StorageAlignAttrs : public InstAttrsNode {
   /*! \brief The index of the buffer in block's write region */
-  int i;
+  int buffer_index;
+  /*! The dimension to be specified for alignment */
   int axis;
+  /*! The factor multiple of alignment */
   int factor;
+  /*! The required offset factor */
   int offset;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("i", &i);
+    v->Visit("buffer_index", &buffer_index);
     v->Visit("axis", &axis);
     v->Visit("factor", &factor);
     v->Visit("offset", &offset);
@@ -707,13 +713,13 @@ struct StorageAlignAttrs : public InstAttrsNode {
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param The producer block of the buffer
-   * \param i The index of the buffer in block's write region
-   * \param axis The dimension to be specified for alignment.
+   * \param buffer_index The index of the buffer in block's write region
+   * \param axis The dimension to be specified for alignment
    * \param The factor multiple of alignment
-   * \param The required offset factor.
+   * \param The required offset factor
    * \return The instruction created
    */
-  static Instruction Make(const BlockRV& block, int i, int axis, int factor, int offset);
+  static Instruction Make(const BlockRV& block, int buffer_index, int axis, int factor, int offset);
   
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(StorageAlignAttrs,                        //
                                       "meta_schedule.attrs.StorageAlignAttrs",  //
