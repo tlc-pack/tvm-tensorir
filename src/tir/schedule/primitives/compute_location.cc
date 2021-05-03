@@ -30,8 +30,29 @@ namespace schedule {
 
 using BufferRegionMap =
     std::unordered_map<Buffer, std::vector<Range>, ObjectPtrHash, ObjectPtrEqual>;
-using FBufferLoadReplacer = std::function<PrimExpr(BufferLoad)>;
-using FBlockReplacer = std::function<Stmt(Block, Block)>;
+
+/*!
+ * \brief A function that replaces a BufferLoad to a new PrimExpr, used in inlining.
+ * For example, if a BufferStore `A[...] = ...` is inlined,
+ * then any BufferLoad `A[...]` will be replaced with the RHS of the BufferStore
+ */
+using FBufferLoadReplacer = std::function<PrimExpr(BufferLoad load)>;
+
+/*!
+ * \brief A function that replaces a BufferStore to a new Stmt, used in reverse inlining.
+ * For example, if a BufferStore `A[...] = ... B[...] ....` is reverse inlined,
+ * then any BufferStore `B[...] = ...` will be replaced with `A[...] = ...` where B is inlined
+ */
+using FBufferStoreReplacer = std::function<Stmt(BufferStore store)>;
+
+/*!
+ * \brief A function that replaces a Block to a new Block, used in inlining
+ * `src_block` is the original block before any replacement or visiting its subtree.
+ * `tgt_block` is the resulting block after visiting its subtree.
+ * The function could mutate the `tgt_block` via copy-on-write.
+ */
+using FBlockReplacer =
+    std::function<Block(Block src_block, Block tgt_block, Map<Var, Buffer> buffer_var_map)>;
 
 /*!
  * \brief Construct a new AST, with a specific sref tree leaf removed.
@@ -59,7 +80,7 @@ bool WithLeafRemoved(const StmtSRef& leaf_sref, Stmt* src_stmt, Stmt* tgt_stmt) 
   if (const auto* block = sref->StmtAs<BlockNode>()) {
     if (const auto* seq = block->body.as<SeqStmtNode>()) {
       ObjectPtr<BlockNode> n = make_object<BlockNode>(*block);
-      n->body = RemoveFromSeqStmt(GetRef<SeqStmt>(seq), GetRef<Stmt>(last_stmt));
+      n->body = SeqStmtRemove(GetRef<SeqStmt>(seq), GetRef<Stmt>(last_stmt));
       *src_stmt = GetRef<Stmt>(block);
       *tgt_stmt = Stmt(std::move(n));
       return true;
@@ -68,7 +89,7 @@ bool WithLeafRemoved(const StmtSRef& leaf_sref, Stmt* src_stmt, Stmt* tgt_stmt) 
   if (const auto* loop = sref->StmtAs<ForNode>()) {
     if (const auto* seq = loop->body.as<SeqStmtNode>()) {
       ObjectPtr<ForNode> n = make_object<ForNode>(*loop);
-      n->body = RemoveFromSeqStmt(GetRef<SeqStmt>(seq), GetRef<Stmt>(last_stmt));
+      n->body = SeqStmtRemove(GetRef<SeqStmt>(seq), GetRef<Stmt>(last_stmt));
       *src_stmt = GetRef<Stmt>(loop);
       *tgt_stmt = Stmt(std::move(n));
       return true;
@@ -434,98 +455,6 @@ bool CheckCompactDataFlow(const ScheduleState& self, const StmtSRef& block_sref,
   return IsCompactDataFlow(self, scope_root, children);
 }
 
-class StatementInliner : public StmtExprMutator {
- public:
-  explicit StatementInliner(const BlockNode* block, Map<Block, Block>* block_sref_map,
-                            const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map)
-      : block_(block), block_sref_map_(block_sref_map), replace_map_(replace_map) {
-    const auto store = block_->body.as<BufferStoreNode>();
-    value_ = store->value;
-    ICHECK_EQ(block_->writes.size(), 1);
-    for (const auto& index : store->indices) {
-      const auto* variable = index.as<VarNode>();
-      CHECK(variable) << "Only support inline direct access block";
-      Var var = GetRef<Var>(variable);
-      vars_.push_back(var);
-    }
-    Array<Var> value_vars = GatherVars(value_);
-    for (const auto& x : value_vars) {
-      ICHECK(std::find_if(vars_.begin(), vars_.end(),
-                          [=](const Var& var) -> bool { return var.same_as(x); }) != vars_.end())
-          << "Not All variable in value can be replaced by index vars";
-    }
-  }
-
-  Stmt VisitStmt_(const BlockNode* op) final {
-    // Find the original block before leaf removing
-    bool is_scope_block = is_scope_block_;
-    is_scope_block_ = false;
-    const StmtNode* node = op;
-    for (const auto& pair : replace_map_) {
-      if (pair.second == op) {
-        node = pair.first;
-        break;
-      }
-    }
-    Block origin_block = Downcast<Block>(GetRef<Stmt>(node));
-    Stmt stmt = StmtExprMutator::VisitStmt_(op);
-    op = stmt.as<BlockNode>();
-    ICHECK(op != nullptr);
-
-    // Update Allocation
-    const Buffer& buffer = block_->writes[0]->buffer;
-    Array<Buffer> alloc_buffers;
-    for (const auto alloc_buf : op->alloc_buffers) {
-      if (alloc_buf != buffer) alloc_buffers.push_back(alloc_buf);
-    }
-
-    Array<BufferRegion> reads(nullptr);
-    if (is_scope_block) {
-      reads = op->reads;
-    } else {
-      // Update read region only for none-scope block
-      Map<Var, Buffer> var_map;
-      BlockReadWriteCollector block_read_write_collector(alloc_buffers);
-      block_read_write_collector(op->body);
-      reads = block_read_write_collector.reads();
-    }
-
-    auto block_node = make_object<BlockNode>(*op);
-    block_node->reads = reads;
-    block_node->alloc_buffers = alloc_buffers;
-    Block block(block_node);
-
-    block_sref_map_->Set(origin_block, block);
-    return std::move(block);
-  }
-
-  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
-    const Buffer& buffer = block_->writes[0]->buffer;
-    if (buffer.same_as(op->buffer)) {
-      std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> v_map;
-      for (size_t i = 0; i < op->indices.size(); ++i) {
-        v_map[vars_[i]] = op->indices[i];
-      }
-      return Substitute(value_, v_map);
-    } else {
-      return StmtExprMutator::VisitExpr_(op);
-    }
-  }
-
- private:
-  /*! The block realize of the block to be inlined*/
-  const BlockNode* block_;
-  /*! The block vars of the block to be inlined*/
-  Array<Var> vars_;
-  /*! The buffer store value*/
-  PrimExpr value_;
-  /*! The block sref map using in Replace */
-  Map<Block, Block>* block_sref_map_;
-  const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map_;
-  /*! Whether this block is the scope block (first visited block)*/
-  bool is_scope_block_ = true;
-};
-
 class ReverseStatementInliner : public StmtExprMutator {
  public:
   explicit ReverseStatementInliner(const BlockNode* block, const BlockNode* producer,
@@ -842,22 +771,39 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   }
 }
 
+/*!
+ * \brief Given a BufferStore, e.g. `A[i, j, k, ...] = ...` ,
+ * Return a function that could replace any BufferLoad `A[...]`
+ * to the corresponding RHS of the BufferStore statement
+ * \param store_stmt The BufferStore statement
+ * \return The function that replaces the corresponding BufferLoad.
+ * Nullptr is returned if the input is not valid.
+ */
 FBufferLoadReplacer MakeBufferLoadReplacer(const Stmt& store_stmt) {
   const auto* store = store_stmt.as<BufferStoreNode>();
   if (store == nullptr) {
     return nullptr;
   }
+  // Step 1. Extract all the indexing variables on the LHS of `A[...] = ...`
   Array<Var> lhs_vars;
+  std::unordered_set<const VarNode*> lhs_vars_set;
   lhs_vars.reserve(store->indices.size());
+  lhs_vars_set.reserve(store->indices.size());
   for (const PrimExpr& i : store->indices) {
-    const auto* var = i.as<VarNode>();
-    if (var == nullptr) {
+    if (const auto* var = i.as<VarNode>()) {
+      lhs_vars.push_back(GetRef<Var>(var));
+      lhs_vars_set.insert(var);
+    } else {
       return nullptr;
     }
-    lhs_vars.push_back(GetRef<Var>(var));
   }
+  if (lhs_vars.size() != lhs_vars_set.size()) {
+    // Required that all atomic variables on the LHS are different from each other
+    return nullptr;
+  }
+  // Step 2. Checks if all the variables on the RHS do appear on the LHS
   for (const Var& rhs_var : AllVars(store->value)) {
-    if (!ArrayContains(lhs_vars, rhs_var)) {
+    if (!lhs_vars_set.count(rhs_var.get())) {
       return nullptr;
     }
   }
@@ -865,6 +811,7 @@ FBufferLoadReplacer MakeBufferLoadReplacer(const Stmt& store_stmt) {
     if (!load->buffer.same_as(store->buffer)) {
       return std::move(load);
     }
+    // Step 3. Replace all the LHS variabels with the indexing PrimExpr of the BufferLoad
     const Array<PrimExpr>& indices = load->indices;
     Map<Var, PrimExpr> sub_map;
     ICHECK_EQ(indices.size(), lhs_vars.size());
@@ -876,61 +823,22 @@ FBufferLoadReplacer MakeBufferLoadReplacer(const Stmt& store_stmt) {
   };
 }
 
-class Inliner : public StmtExprMutator {
- public:
-  PrimExpr VisitExpr_(const BufferLoadNode* load) final {
-    BufferLoad new_load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(load));
-    return f_load(std::move(new_load));
-  }
-
-  Stmt VisitStmt_(const BlockNode* block) final {
-    Block src_block = GetRef<Block>(block);
-    if (src_block.same_as(src_stmt)) {
-      block = tgt_stmt.as<BlockNode>();
-      ICHECK(block != nullptr);
-    }
-    Block tgt_block = Downcast<Block>(StmtExprMutator::VisitStmt_(block));
-    return f_block(std::move(src_block), std::move(tgt_block));
-  }
-
-  FBufferLoadReplacer f_load{nullptr};
-  FBlockReplacer f_block{nullptr};
-  Stmt src_stmt{nullptr};
-  Stmt tgt_stmt{nullptr};
-};
-
-void ComputeInline(ScheduleState self, const StmtSRef& block_sref) {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  CHECK_EQ(block->writes.size(), 1)
-      << "ValueError: 'compute_inline' can only inline statement with one output";
-
-  Map<Block, Block> block_reuse;
-  Inliner inliner;
-  // Step 1. Create a replacer that replaces any BufferLoad A[...] that
-  inliner.f_load = MakeBufferLoadReplacer(block->body);
-  CHECK(inliner.f_load)
-      << "ValueError: 'compute_inline' requires the body of the block be in form of "
-         "'A[i, j, k, ...] = f(i, j, k, ...)', where the indices on the left are atomic "
-         "variables, and variables on the right must appear on the left";
-  // Step 2. Create a plan that removes the leaf block to be inlined
-  CHECK(WithLeafRemoved(block_sref, &inliner.src_stmt, &inliner.tgt_stmt))
-      << "ValueError: 'compute_inline' doesn't work on the only child of a block";
-  StmtSRef scope_block_sref = GetScopeRoot(block_sref);
-  CHECK(CompleteBlock(self, block_sref, scope_block_sref))
-      << "ValueError: 'compute_inline' requires a complete block";
-  const Buffer& buffer = block->writes[0]->buffer;
-  inliner.f_block = [&buffer, &scope_block_sref, &block_reuse](Block src_block,
-                                                               Block tgt_block) -> Block {
+FBlockReplacer MakeBlockReplacer(Buffer buffer, StmtSRef scope_block_sref,
+                                 Map<Block, Block>* block_reuse) {
+  return [buffer = std::move(buffer),                      //
+          scope_block_sref = std::move(scope_block_sref),  //
+          block_reuse                                      //
+  ](Block src_block, Block tgt_block, Map<Var, Buffer> buffer_var_map) -> Block {
     // Step 2.1. Remove allocation of the buffer defined in the removed block
     Array<Buffer> alloc_buffers = std::move(tgt_block->alloc_buffers);
     {
       ArrayNode* p = alloc_buffers.CopyOnWrite();
       int size = 0;
-      for (int i = 0, n = p->size(); i < n; ++i) {
-        const ObjectRef& obj = p->at(i);
-        if (!obj.same_as(buffer)) {
+      for (int i = 0, n = alloc_buffers.size(); i < n; ++i) {
+        const Buffer& alloc_buffer = alloc_buffers[i];
+        if (!alloc_buffer.same_as(buffer)) {
           if (size != i) {
-            p->SetItem(size, obj);
+            p->SetItem(size, alloc_buffer);
           }
           ++size;
         }
@@ -939,89 +847,288 @@ void ComputeInline(ScheduleState self, const StmtSRef& block_sref) {
     }
     // Step 2.2. Re-find the buffers read in the block
     Array<BufferRegion> reads = std::move(tgt_block->reads);
+    Array<BufferRegion> writes = std::move(tgt_block->writes);
     if (src_block.get() != scope_block_sref->stmt) {
-      // TODO(@junrushao1994): didn't look into `BlockReadWriteCollector` yet
-      BlockReadWriteCollector block_read_write_collector(alloc_buffers);
-      block_read_write_collector(tgt_block->body);
-      reads = block_read_write_collector.reads();
+      // TODO(@junrushao1994): double-check this
+      Array<Array<BufferRegion>> inspected = GetBlockAccessRegion(tgt_block, buffer_var_map);
+      reads = std::move(inspected[0]);
+      writes = std::move(inspected[1]);
     }
     // Step 2.3. Assemble the result
     {
       BlockNode* n = tgt_block.CopyOnWrite();
       n->reads = std::move(reads);
+      n->writes = std::move(writes);
       n->alloc_buffers = std::move(alloc_buffers);
     }
-    block_reuse.Set(src_block, tgt_block);
+    block_reuse->Set(src_block, tgt_block);
     return tgt_block;
   };
-  // Step 3. Create an AST where the leaf `block_sref` points to is removed
-  // Step 4. Update other blocks who read from the removed block
+}
+
+/*!
+ * \brief A helper class to inline a block. It returns an AST that
+ * 1) The corresponding block is removed
+ * 2) Any loading of the buffer it produces is replaced
+ * 3) Any block that allocates or read the buffer is updated
+ */
+class Inliner : public StmtExprMutator {
+ public:
+  PrimExpr VisitExpr_(const BufferLoadNode* _load) final {
+    BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_load));
+    return f_load(std::move(load));
+  }
+
+  Stmt VisitStmt_(const BufferStoreNode* _store) final {
+    BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(_store));
+    return f_store(std::move(store));
+  }
+
+  Stmt VisitStmt_(const ForNode* loop) final {
+    if (src_stmt.get() == loop) {
+      loop = tgt_stmt.as<ForNode>();
+      ICHECK(loop != nullptr);
+    }
+    return StmtExprMutator::VisitStmt_(loop);
+  }
+
+  Stmt VisitStmt_(const BlockNode* block) final {
+    ICHECK(f_block != nullptr);
+    Block src_block = GetRef<Block>(block);
+    if (src_block.same_as(src_stmt)) {
+      block = tgt_stmt.as<BlockNode>();
+      ICHECK(block != nullptr);
+    }
+    AddBuffers(block);
+    Block tgt_block = Downcast<Block>(StmtExprMutator::VisitStmt_(block));
+    return f_block(std::move(src_block), std::move(tgt_block), buffer_var_map);
+  }
+
+  void AddBuffers(const BlockNode* block) {
+    for (const BufferRegion& buffer_region : block->reads) {
+      const Buffer& buffer = buffer_region->buffer;
+      buffer_var_map.Set(buffer->data, buffer);
+    }
+    for (const BufferRegion& buffer_region : block->writes) {
+      const Buffer& buffer = buffer_region->buffer;
+      buffer_var_map.Set(buffer->data, buffer);
+    }
+    for (const Buffer& buffer : block->alloc_buffers) {
+      buffer_var_map.Set(buffer->data, buffer);
+    }
+  }
+
+  /*! \brief The function that rewrites BufferLoad */
+  FBufferLoadReplacer f_load = [](BufferLoad load) -> BufferLoad { return load; };
+  /*! \brief The function that rewrites BufferStore */
+  FBufferStoreReplacer f_store = [](BufferStore store) -> BufferStore { return store; };
+  /*! \brief The function that rewrites Block */
+  FBlockReplacer f_block{nullptr};
+  /*! \brief The Stmt to be replaced when removing the leaf block */
+  Stmt src_stmt{nullptr};
+  /*! \brief The Stmt to be replaced to when removing the leaf block */
+  Stmt tgt_stmt{nullptr};
+
+ private:
+  Map<Var, Buffer> buffer_var_map;
+};
+
+void ComputeInline(ScheduleState self, const StmtSRef& block_sref) {
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  CHECK_EQ(block->writes.size(), 1) << "ValueError: 'compute_inline' requires that the block only "
+                                       "produces a single buffer region";
+  // Step 0. Get the scope block
+  StmtSRef scope_block_sref{nullptr};
+  {
+    Optional<StmtSRef> opt_scope_block_sref = GetScopeRoot(block_sref);
+    CHECK(opt_scope_block_sref.defined())
+        << "ValueError: 'compute_inline' doesn't work on the root block";
+    scope_block_sref = opt_scope_block_sref.value();
+    CHECK(CompleteBlock(self, block_sref, scope_block_sref))
+        << "ValueError: 'compute_inline' requires a complete block";
+  }
+  Map<Block, Block> block_reuse;
+  Inliner inliner;
+  inliner.AddBuffers(block);
+  // Step 1. Create a replacer that replaces any BufferLoad A[...] that
+  inliner.f_load = MakeBufferLoadReplacer(block->body);
+  CHECK(inliner.f_load)
+      << "ValueError: 'compute_inline' requires the body of the block be in form of "
+         "'A[i, j, k, ...] = f(i, j, k, ...)', where the indices on the left are distinct "
+         "atomic variables, and variables on the right must appear on the left";
+  // Step 2. Create a plan that removes the leaf block to be inlined
+  CHECK(WithLeafRemoved(block_sref, &inliner.src_stmt, &inliner.tgt_stmt))
+      << "ValueError: 'compute_inline' doesn't work on the only child of a block";
+  inliner.f_block = MakeBlockReplacer(block->writes[0]->buffer, scope_block_sref, &block_reuse);
+  // Step 3. Create an AST where the leaf `block_sref` points to is removed,
+  // and update other blocks who read from the removed block
   Stmt tgt_stmt = inliner(GetRef<Stmt>(scope_block_sref->stmt));
-  // Step 5. Finally mutate the AST and the sref tree in the schedule state
+  // Step 4. Mutate the AST and the sref tree in the schedule state
   self->Replace(scope_block_sref, tgt_stmt, block_reuse);
 }
 
-void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref) {
+FBufferStoreReplacer MakeBufferStoreReplacer(const Stmt& store_stmt, const Buffer& buffer) {
+  const auto* store = store_stmt.as<BufferStoreNode>();
+  if (store == nullptr) {
+    return nullptr;
+  }
+  // Step 1. Extract all the indexing variables on `A[...]` in the consumer `B[...] = ... A[...]`,
+  // where `A[...]` is the intermediate buffer to be eliminated.
+  bool mismatch = false;
+  Array<Var> idx_vars{nullptr};
+  std::unordered_set<const VarNode*> all_vars;
+  PostOrderVisit(store_stmt, [&buffer, &idx_vars, &mismatch, &all_vars](const ObjectRef& obj) {
+    if (mismatch) {
+      return;
+    }
+    if (const auto* var = obj.as<VarNode>()) {
+      all_vars.insert(var);
+      return;
+    }
+    const auto* load = obj.as<BufferLoadNode>();
+    if (load == nullptr || !load->buffer.same_as(buffer)) {
+      return;
+    }
+    Array<Var> idx;
+    std::unordered_set<const VarNode*> idx_set;
+    idx.reserve(load->indices.size());
+    idx_set.reserve(load->indices.size());
+    for (const PrimExpr& i : load->indices) {
+      if (const auto* var = i.as<VarNode>()) {
+        idx.push_back(GetRef<Var>(var));
+        idx_set.insert(var);
+      } else {
+        mismatch = true;
+        return;
+      }
+    }
+    if (idx.size() != idx_set.size()) {
+      mismatch = true;
+      return;
+    }
+    if (!idx_vars.defined()) {
+      idx_vars = std::move(idx);
+      return;
+    }
+    for (int i = 0, n = idx.size(); i < n; ++i) {
+      if (!idx_vars[i].same_as(idx[i])) {
+        mismatch = true;
+        return;
+      }
+    }
+  });
+  if (mismatch || !idx_vars.defined() || all_vars.size() > idx_vars.size()) {
+    return nullptr;
+  }
+  ICHECK_EQ(all_vars.size(), idx_vars.size());
+  // Step 3. Make the replacer
+  struct Substituter : public StmtExprMutator {
+    PrimExpr VisitExpr_(const VarNode* var) final {
+      auto it = idx_sub.find(GetRef<Var>(var));
+      ICHECK(it != idx_sub.end());
+      return (*it).second;
+    }
+
+    PrimExpr VisitExpr_(const BufferLoadNode* _load) final {
+      BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_load));
+      return load->buffer.same_as(buffer) ? buffer_load_sub : load;
+    }
+
+    Buffer buffer;
+    std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> idx_sub;
+    PrimExpr buffer_load_sub{nullptr};
+  } sub;
+  sub.buffer = buffer;
+  sub.idx_sub.reserve(idx_vars.size());
+  for (const Var& idx_var : idx_vars) {
+    sub.idx_sub.emplace(idx_var, PrimExpr{nullptr});
+  }
+  return [sub = std::move(sub),                  //
+          buffer = std::move(buffer),            //
+          idx_vars = std::move(idx_vars),        //
+          consumer = GetRef<BufferStore>(store)  //
+  ](BufferStore producer) mutable -> Stmt {
+    // For each BufferStore producer `A[...] = f(...)`
+    if (!producer->buffer.same_as(sub.buffer)) {
+      return std::move(producer);
+    }
+    const Array<PrimExpr>& indices = producer->indices;
+    ICHECK_EQ(indices.size(), idx_vars.size());
+    for (int i = 0, n = idx_vars.size(); i < n; ++i) {
+      sub.idx_sub[idx_vars[i]] = indices[i];
+    }
+    sub.buffer_load_sub = producer->value;
+    BufferStore result = consumer;
+    return sub(std::move(result));
+  };
+}
+
+void ReverseComputeInline(ScheduleState self, const StmtSRef& consumer_block_sref) {
   /*!
    * Check:
-   *    1. block_sref is complete
-   *    2. The inner stmt of block_sref is a BufferStore
-   *    3. block_sref has only one producer
+   *    1. consumer_block_sref is complete
+   *    2. The inner stmt of consumer_block_sref is a BufferStore
+   *    3. consumer_block_sref has only one producer
    *    4. The producer is complete
    *    5. The inner stmt of producer is a BufferStore
-   *    6. The producer has only one consumer(which is block_sref)
+   *    6. The producer has only one consumer(which is consumer_block_sref)
    */
-  const auto* block = block_sref->StmtAs<BlockNode>();
-  CHECK(block != nullptr)
-      << "TypeError: 'reverse_compute_at' expects 'block' to be a block, but get type: "
-      << block_sref->stmt->GetTypeKey();
-  const StmtSRef& scope_block_sref = GetScopeRoot(block_sref);
-  const auto* scope_block = scope_block_sref->StmtAs<BlockNode>();
-  const BlockScope& scope = self->GetBlockScope(scope_block_sref);
-  // Cond 1. Check block_sref is complete
-  CHECK(CompleteBlock(self, block_sref, scope_block_sref))
-      << "ValueError: 'reverse_compute_inline' expects the 'block' to be a complete block";
-  // Cond 2. The inner stmt of block_sref if a BufferStore
-  CHECK(block->body.as<BufferStoreNode>())
-      << "ValueError: 'reverse_compute_inline' expects the 'block' contains a single BufferStore";
-  // Cond 3. block_sref has only one RAW producer
-  Array<Dependency> producers = scope->GetDepsByDst(block_sref);
-  CHECK_EQ(producers.size(), 1)
-      << "ValueError: 'reverse_compute_inline' expects the 'block' has only one producer";
-  CHECK(producers[0]->kind == DepKind::kRAW)
-      << "ValueError: 'reverse_compute_inline' expects the 'block' has only one producer";
-  const StmtSRef& producer_sref = producers[0]->src;
-  // Cond 4. The producer is complete
-  CHECK(CompleteBlock(self, producer_sref, scope_block_sref))
-      << "ValueError: 'reverse_compute_inline' expects the producer of 'block' to be complete";
-  // Cond 5. The inner stmt of producer is a BufferStore
-  const auto* producer = producer_sref->StmtAs<BlockNode>();
-  CHECK(producer->body.as<BufferStoreNode>())
-      << "ValueError: 'reverse_compute_inline' expects the producer of 'block' to contain a single "
-         "BufferStore";
-  // Cond 6. The producer has only one consumer(which is block_sref)
-  Array<Dependency> consumers = scope->GetDepsBySrc(producer_sref);
-  CHECK_EQ(consumers.size(), 1) << "ValueError: 'reverse_compute_inline' expects 'block' is the "
-                                   "only consumer of its producer";
-  CHECK_EQ(consumers[0]->dst, block_sref) << "ValueError: 'reverse_compute_inline' expects 'block' "
-                                             "is the only consumer of its producer";
-
-  // Remove leaf
-  std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, scope_block_sref);
-  std::unordered_map<const StmtNode*, const StmtNode*> replace_map = {
-      {removed.first.get(), removed.second.get()}};
-  Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(scope_block));
-  // Inline
-  Map<Block, Block> block_sref_map;
-  ReverseStatementInliner inliner(block, producer, &block_sref_map);
-  Stmt inlined_stmt = inliner(replaced);
-  if (const auto* inlined_block = inlined_stmt.as<BlockNode>()) {
-    const auto* src_stmt = TVM_SREF_TO_BLOCK(src_stmt, scope_block_sref);
-    block_sref_map.Set(GetRef<Block>(src_stmt), GetRef<Block>(inlined_block));
+  const BlockNode* consumer_block = TVM_SREF_TO_BLOCK(consumer_block, consumer_block_sref);
+  CHECK_EQ(consumer_block->reads.size(), 1) << "ValueError: 'reverse_compute_inline' requires that "
+                                               "the block only consumers a single buffer region";
+  // Step 0. Get the scope block
+  StmtSRef scope_block_sref{nullptr};
+  BlockScope scope{nullptr};
+  {
+    Optional<StmtSRef> opt_scope_block_sref = GetScopeRoot(consumer_block_sref);
+    CHECK(opt_scope_block_sref.defined())
+        << "ValueError: 'reverse_compute_inline' doesn't work on the root block";
+    scope_block_sref = opt_scope_block_sref.value();
+    scope = self->GetBlockScope(scope_block_sref);
+    CHECK(CompleteBlock(self, consumer_block_sref, scope_block_sref))
+        << "ValueError: 'reverse_compute_inline' requires a complete block";
   }
-  ICHECK(replaced->IsInstance<BlockNode>());
-  ICHECK(inlined_stmt->IsInstance<BlockNode>());
-  self->Replace(scope_block_sref, inlined_stmt, block_sref_map);
+
+  StmtSRef producer_block_sref{nullptr};
+  const BlockNode* producer_block = nullptr;
+  {
+    Array<Dependency> producers = scope->GetDepsByDst(consumer_block_sref);
+    CHECK(producers.size() == 1 && producers[0]->kind == DepKind::kRAW)
+        << "ValueError: 'reverse_compute_inline' expects 'block' has only one read-after-write "
+           "producer";
+    producer_block_sref = producers[0]->src;
+    producer_block = TVM_SREF_TO_BLOCK(producer_block, producer_block_sref);
+    CHECK_EQ(producer_block->writes.size(), 1)
+        << "ValueError: 'reverse_compute_inline' requires that the producer of the block only "
+           "producers a single buffer region";
+    CHECK(CompleteBlock(self, producer_block_sref, scope_block_sref))
+        << "ValueError: 'reverse_compute_inline' expects the producer of 'block' to be complete";
+    Array<Dependency> consumers = scope->GetDepsBySrc(producer_block_sref);
+    CHECK(consumers.size() == 1 && consumers[0]->dst.same_as(consumer_block_sref))
+        << "ValueError: 'reverse_compute_inline' expects 'block' is the only consumer of its "
+           "producer";
+  }
+
+  Map<Block, Block> block_reuse;
+  Inliner inliner;
+  inliner.AddBuffers(consumer_block);
+  // Step 1. Create a replacer that replaces any BufferLoad A[...] that
+  inliner.f_store = MakeBufferStoreReplacer(consumer_block->body, consumer_block->reads[0]->buffer);
+  CHECK(inliner.f_store)
+      << "ValueError: 'reverse_compute_inline' requires the body of the block be in form of "
+         "'B[f(i, j, k, ...)] = f(i, j, k, A[i, j, k, ...] ...)', where A is the only buffer the "
+         "block consumes, and the indices to A are distinct atomic variables. Additionally, all "
+         "variables in the Stmt must appear in A's indices";
+  // Step 2. Create a plan that removes the leaf block to be inlined
+  CHECK(WithLeafRemoved(consumer_block_sref, &inliner.src_stmt, &inliner.tgt_stmt))
+      << "ValueError: 'reverse_compute_inline' doesn't work on the only child of a block";
+  inliner.f_block =
+      MakeBlockReplacer(producer_block->writes[0]->buffer, scope_block_sref, &block_reuse);
+  // Step 3. Create an AST where the leaf `consumer_block` is removed, and update other blocks who
+  // read from the removed block
+  Stmt tgt_stmt = inliner(GetRef<Stmt>(scope_block_sref->stmt));
+  // Step 4. Mutate the AST and the sref tree in the schedule state
+  self->Replace(scope_block_sref, tgt_stmt, block_reuse);
 }
 
 }  // namespace schedule
