@@ -436,6 +436,28 @@ def create_prim_func(ops: List[_tensor.Tensor]) -> tvm.tir.PrimFunc:
     ops : List[Tensor]
         The source expression.
 
+    Example
+    -------
+    We define a matmul kernel using following code:
+    .. code-block:: python
+        k = te.reduce_axis((0, 128), "k")
+        A = te.placeholder((128, 128), name="A")
+        B = te.placeholder((128, 128), name="B")
+        C = te.compute((128, 128), lambda x, y: te.sum(A[x, k] * B[y, k], axis=k), name="C")
+    If we want to use TensorIR schedule to do transformations on such kernel,
+    we need to use `create_prim_func([A, B, C])` to create a schedulable PrimFunc.
+    The generated function looks like:
+    .. code-block:: python
+        def tir_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+            A = tir.match_buffer(a, (128, 128))
+            B = tir.match_buffer(b, (128, 128))
+            C = tir.match_buffer(c, (128, 128))
+
+            with tir.block([128, 128, tir.reduce_axis(0, 128)]) as [i, j, k]:
+                with tir.init():
+                    C[i, j] = 0.0
+                C[i, j] += A[i, k] * B[j, k]
+
     Returns
     -------
     func : tir.PrimFunc
