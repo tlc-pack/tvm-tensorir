@@ -179,7 +179,6 @@ Stmt GenerateStmtFromCompute(const te::ComputeOp& compute_op, CreateFuncInfo* in
   Stmt body = SeqStmt::Flatten(seq_stmt);
 
   // Step 3. Generate loop nesting.
-
   for (size_t i = axes.size(); i > 0; --i) {
     const IterVar& axis = axes[i - 1];
     const Var& loop_var = Downcast<Var>(bindings[i - 1]);
@@ -187,6 +186,56 @@ Stmt GenerateStmtFromCompute(const te::ComputeOp& compute_op, CreateFuncInfo* in
   }
 
   return body;
+}
+
+Stmt GenerateStmtFromExternOp(const te::ExternOp& extern_op, CreateFuncInfo* info) {
+  // Step 1. Check all inputs are visited before and update var_map.
+  std::unordered_map<const VarNode*, PrimExpr> var_map;
+  ICHECK_EQ(extern_op->inputs.size(), extern_op->input_placeholders.size());
+  for (size_t i = 0; i < extern_op->inputs.size(); ++i) {
+    const Buffer& placeholder = extern_op->input_placeholders[i];
+    const te::Tensor& input_tensor = extern_op->inputs[i];
+    auto it = info->tensor2buffers.find(input_tensor);
+    ICHECK(it != info->tensor2buffers.end());
+    var_map[placeholder->data.get()] = it->second->data;
+  }
+
+  // Step 2. Update info with its output tensor and placeholder buffer.
+  ICHECK_EQ(extern_op->num_outputs(), extern_op->output_placeholders.size());
+  for (int i = 0; i < extern_op->num_outputs(); ++i) {
+    const Buffer& placeholder = extern_op->output_placeholders[i];
+    const te::Tensor& output_tensor = extern_op.output(i);
+    info->tensor2buffers[output_tensor] = placeholder;
+    if (!info->IsArg(output_tensor)) {
+      info->root_alloc.push_back(placeholder);
+    }
+  }
+
+  // Step 3. Collect Access Region
+  Array<BufferRegion> reads, writes;
+  for (const te::Tensor& tensor : extern_op->inputs) {
+    // We have ICHECK before so it is not needed here.
+    reads.push_back(BufferRegion::FullRegion(info->tensor2buffers[tensor]));
+  }
+  for (const Buffer& buffer : extern_op->output_placeholders) {
+    writes.push_back(BufferRegion::FullRegion(buffer));
+  }
+
+  Stmt body = Substitute(extern_op->body, var_map);
+
+  // Step 4. Generate opaque block as body.
+  return BlockRealize(/*iter_values=*/{},
+                      /*predicate=*/Bool(true),
+                      /*block=*/
+                      Block(/*iter_vars=*/{},
+                            /*reads=*/std::move(reads),
+                            /*writes=*/std::move(writes),
+                            /*name_hint=*/info->GetUniqueName(extern_op->name),
+                            /*body=*/std::move(body),
+                            /*init=*/NullOpt,
+                            /*alloc_buffers=*/{},
+                            /*match_buffers=*/{},
+                            /*annotations=*/extern_op->attrs));
 }
 
 /*! \brief Use Tensor Expression to create a schedulable TensorIR func. */
@@ -219,10 +268,7 @@ PrimFunc CreatePrimFunc(const Array<te::Tensor>& arg_list) {
       root_stmts.push_back(GenerateStmtFromCompute(GetRef<te::ComputeOp>(compute_op), &info));
     } else if (const auto extern_op = op.as<te::ExternOpNode>()) {
       // Case 3. ExternOp (te.extern)
-      LOG(INFO) << extern_op->body;
-      LOG(INFO) << extern_op->inputs;
-      LOG(INFO) << extern_op->input_placeholders;
-      LOG(INFO) << extern_op->output_placeholders;
+      root_stmts.push_back(GenerateStmtFromExternOp(GetRef<te::ExternOp>(extern_op), &info));
     } else {
       ICHECK(false) << "Unsupported OperationNode";
     }

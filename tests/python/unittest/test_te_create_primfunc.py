@@ -182,21 +182,53 @@ def te_extern():
         ),
         name="C",
     )
-    s = te.create_schedule(C.op)
-    print(tvm.lower(s, [A, B, C], simple_mode=True))
     return [A, B, C]
 
 
 @tvm.script.tir
 def tir_extern(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128))
+    B = tir.match_buffer(b, (128, 128))
     C = tir.match_buffer(c, (128, 128))
-    B = tir.alloc_buffer((128, 128))
-
-    with tir.block([128, 128]) as [i, j]:
-        B[i, j] = A[i, j] * 2.0
-    with tir.block([128, 128]) as [i, j]:
-        B[i, j] = A[i, j] * 2.0
+    # body
+    with tir.block([], "C"):
+        tir.reads([A[0:128, 0:128], B[0:128, 0:128]])
+        tir.writes([C[0:128, 0:128]])
+        tir.evaluate(
+            tir.tvm_call_packed(
+                "tvm.contrib.cblas.matmul",
+                tir.tvm_stack_make_array(
+                    A.data,
+                    tir.tvm_stack_make_shape(128, 128, dtype="handle"),
+                    0,
+                    2,
+                    0.0,
+                    0,
+                    dtype="handle",
+                ),
+                tir.tvm_stack_make_array(
+                    B.data,
+                    tir.tvm_stack_make_shape(128, 128, dtype="handle"),
+                    0,
+                    2,
+                    0.0,
+                    0,
+                    dtype="handle",
+                ),
+                tir.tvm_stack_make_array(
+                    C.data,
+                    tir.tvm_stack_make_shape(128, 128, dtype="handle"),
+                    0,
+                    2,
+                    0.0,
+                    0,
+                    dtype="handle",
+                ),
+                0,
+                0,
+                dtype="int32",
+            )
+        )
 
 
 def test_extern():
@@ -204,9 +236,9 @@ def test_extern():
 
 
 if __name__ == "__main__":
-    test_unique_name()
-    test_matmul()
-    test_element_wise()
-    test_conv2d()
-    test_multi_output()
-    # test_extern()
+    # test_unique_name()
+    # test_matmul()
+    # test_element_wise()
+    # test_conv2d()
+    # test_multi_output()
+    test_extern()
