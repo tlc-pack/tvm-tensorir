@@ -105,6 +105,7 @@ def form_irmodule(sch, args, name, binds):
     sch = sch.normalize()
     bounds = schedule.InferBound(sch)
     stmt = schedule.ScheduleOps(sch, bounds)
+    print(stmt)
 
     compact = schedule.VerifyCompactBuffer(stmt)
     binds, arg_list = get_binds(args, compact, binds)
