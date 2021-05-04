@@ -17,7 +17,7 @@
 """ Operation class for computation declaration."""
 # pylint: disable=invalid-name
 from numbers import Integral as _Integral
-from typing import List, Union
+from typing import List
 
 import tvm._ffi
 import tvm.tir
@@ -439,15 +439,24 @@ def create_prim_func(ops: List[_tensor.Tensor]) -> tvm.tir.PrimFunc:
     Example
     -------
     We define a matmul kernel using following code:
+
     .. code-block:: python
-        k = te.reduce_axis((0, 128), "k")
+    
+        import tvm
+        from tvm import te
+
         A = te.placeholder((128, 128), name="A")
         B = te.placeholder((128, 128), name="B")
         C = te.compute((128, 128), lambda x, y: te.sum(A[x, k] * B[y, k], axis=k), name="C")
+        func = create_prim_func([A, B, C])
+        print(tvm.script.asscript(func))
+
     If we want to use TensorIR schedule to do transformations on such kernel,
     we need to use `create_prim_func([A, B, C])` to create a schedulable PrimFunc.
     The generated function looks like:
+    
     .. code-block:: python
+
         def tir_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             A = tir.match_buffer(a, (128, 128))
             B = tir.match_buffer(b, (128, 128))

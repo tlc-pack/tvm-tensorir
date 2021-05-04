@@ -248,12 +248,20 @@ PrimFunc CreatePrimFunc(const Array<te::Tensor>& arg_list) {
   te::ReadGraph g = te::CreateReadGraph(arg_ops);
   Array<te::Operation> order = te::PostDFSOrder(arg_ops, g);
 
+  // Step 2. Checking all Operations are supported.
+  for (const te::Operation& op : order) {
+    if (!(op->IsInstance<te::PlaceholderOpNode>() || op->IsInstance<te::ComputeOpNode>() ||
+          op->IsInstance<te::ExternOpNode>()))
+      LOG(FATAL) << "TypeError: Unsupported Operation: " << op->GetTypeKey() << ". "
+                 << "Only te.placeholder and te.compute are allowed for now.";
+  }
+
   // Infomations used in CreatePrimFunc and its sub-funtions.
   CreateFuncInfo info(arg_list);
   // Root body stmts.
   Array<Stmt> root_stmts;
 
-  // Step 2. Rewrite compute stages into blocks.
+  // Step 3. Rewrite compute stages into blocks.
   for (const te::Operation& op : order) {
     if (const auto* placeholder = op.as<te::PlaceholderOpNode>()) {
       // Case 1. PlaceholderOp (te.placeholder)

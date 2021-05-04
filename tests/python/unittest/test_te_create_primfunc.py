@@ -259,6 +259,28 @@ def test_arg_order():
     _check_workload(te_reordered_matmul, tir_reordered_matmul)
 
 
+def te_scan():
+    m = te.var("m")
+    n = te.var("n")
+    X = te.placeholder((m, n), name="X")
+    s_state = te.placeholder((m, n))
+    s_init = te.compute((1, n), lambda _, i: X[0, i])
+    s_update = te.compute((m, n), lambda t, i: s_state[t - 1, i] + X[t, i])
+    s_scan = tvm.te.scan(s_init, s_update, s_state, inputs=[X])
+    return [X, s_scan]
+
+
+def test_error_reporting():
+    try:
+        te.create_prim_func(te_scan())
+        assert False
+    except TypeError as e:
+        error_message = str(e)
+        assert error_message.find("Unsupported Operation: ScanOp.") != -1
+        return
+    assert False
+
+
 if __name__ == "__main__":
     test_unique_name()
     test_matmul()
@@ -267,3 +289,4 @@ if __name__ == "__main__":
     test_multi_output()
     test_extern()
     test_arg_order()
+    test_error_reporting()
