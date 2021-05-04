@@ -200,6 +200,10 @@ TVM_DLL StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref);
 TVM_DLL void Tensorize(ScheduleState self, const StmtSRef& loop_sref,
                        const TensorIntrin& intrinsic);
 
+/******** Misc ********/
+
+TVM_DLL void InlineArgument(ScheduleState self, int i, const String& func_name);
+
 }  // namespace schedule
 }  // namespace tir
 }  // namespace tvm

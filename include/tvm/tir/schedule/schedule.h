@@ -412,6 +412,9 @@ class ScheduleNode : public runtime::Object {
    * \param intrin_name Name of the tensor intrinsic
    */
   virtual void Tensorize(const LoopRV& loop_rv, const String& intrin_name) = 0;
+
+  /******** Schedule: Misc ********/
+  virtual void InlineArgument(int i, const String& func_name) = 0;
 };
 
 class Schedule : public runtime::ObjectRef {

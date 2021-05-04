@@ -563,6 +563,13 @@ void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin
   this->state_->DebugVerify();
 }
 
+/******** Schedule: Misc ********/
+
+void ConcreteScheduleNode::InlineArgument(int i, const String& func_name) {
+  schedule::InlineArgument(state_, i, func_name);
+  this->state_->DebugVerify();
+}
+
 /******** FFI ********/
 
 TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);

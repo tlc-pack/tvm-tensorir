@@ -278,11 +278,14 @@ class Schedule(Object):
     ########## Schedule: blockize / tensorize ##########
 
     def blockize(self, loop: LoopRV) -> BlockRV:
-        return _ffi_api_schedule.ScheduleBlockize(  # pylint: disable=no-member
-            self, loop
-        )
+        return _ffi_api_schedule.ScheduleBlockize(self, loop)  # pylint: disable=no-member
 
     def tensorize(self, loop: LoopRV, intrin: Union[str, TensorIntrin]) -> None:
         if isinstance(intrin, str):
             intrin = String(intrin)
         _ffi_api_schedule.ScheduleTensorize(self, loop, intrin)  # pylint: disable=no-member
+
+    ########## Schedule: Misc ##########
+
+    def inline_argument(self, i: int, func_name: str = "main"):
+        _ffi_api_schedule.ScheduleInlineArgument(self, i, func_name)  # pylint: disable=no-member

@@ -198,5 +198,10 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")
       throw;
     });
 
+/***** (FFI) Schedule: Misc *****/
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleInlineArgument")
+    .set_body_method<Schedule>(&ScheduleNode::InlineArgument);
+
 }  // namespace tir
 }  // namespace tvm

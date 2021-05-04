@@ -506,6 +506,30 @@ def element_wise_set_scope(a: ty.handle, c: ty.handle) -> None:
                 C[vi_1, vj_1] = B_shared[vi_1, vj_1] + tir.float32(1)
 
 
+@tvm.script.tir
+def ewise_arg_inlined(a: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root"):
+        tir.reads([])
+        tir.writes([])
+        B = tir.alloc_buffer([128, 128], elem_offset=0, align=128, offset_factor=1)
+        for i0, i1 in tir.grid(128, 128):
+            with tir.block([128, 128], "B") as [vi, vj]:
+                tir.bind(vi, i0)
+                tir.bind(vj, i1)
+                tir.reads([A[vi, vj]])
+                tir.writes([B[vi, vj]])
+                B[vi, vj] = (A[vi, vj]*tir.float32(2))
+        for i0_1, i1_1 in tir.grid(128, 128):
+            with tir.block([128, 128], "C") as [vi_1, vj_1]:
+                tir.bind(vi_1, i0_1)
+                tir.bind(vj_1, i1_1)
+                tir.reads([B[vi_1, vj_1]])
+                tir.writes([C[vi_1, vj_1]])
+                C[vi_1, vj_1] = (B[vi_1, vj_1] + tir.float32(1))
+
 # pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
 # fmt: on
 
@@ -808,6 +832,15 @@ def test_set_scope():
     tvm.ir.assert_structural_equal(element_wise_set_scope, s.mod["main"])
 
 
+def test_inline_argument():
+    s = tir.Schedule(util.ewise2, debug_mode=True)
+    s.inline_argument(1)
+    expected = util.element_wise_stmt()
+    tvm.ir.assert_structural_equal(expected, s.mod["main"])
+    s.compute_inline(s.get_block("B"))
+    tvm.ir.assert_structural_equal(inline_element_wise, s.mod["main"])
+
+
 if __name__ == "__main__":
     test_fuse()
     test_split_fuse()
@@ -829,3 +862,4 @@ if __name__ == "__main__":
     test_pragma()
     test_double_buffer()
     test_set_scope()
+    test_inline_argument()
