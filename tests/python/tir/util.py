@@ -60,6 +60,20 @@ def element_wise(a: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = B[vi, vj] + 1.0
 
 
+
+@tvm.script.tir
+def ewise2(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128), "float32")
+    B = tir.match_buffer(b, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+
+    with tir.block([128, 128], "B") as [vi, vj]:
+        B[vi, vj] = A[vi, vj] * 2.0
+
+    with tir.block([128, 128], "C") as [vi, vj]:
+        C[vi, vj] = B[vi, vj] + 1.0
+
+
 @tvm.script.tir
 def predicate(b: ty.handle, c: ty.handle) -> None:
     B = tir.match_buffer(b, (16, 16), "float32")

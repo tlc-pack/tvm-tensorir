@@ -255,6 +255,10 @@ class ScheduleNode : public runtime::Object {
    * \return A list of loops above the given block in its scope, from outer to inner
    */
   virtual Array<LoopRV> GetLoops(const BlockRV& block_rv) = 0;
+  virtual void Tensorize(const LoopRV& loop_rv, const String& intrin_name) = 0;
+
+  /******** Schedule: Misc ********/
+  virtual void InlineArgument(int i, const String& func_name) = 0;
 };
 
 /*!
