@@ -189,6 +189,9 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   void Tensorize(const LoopRV& loop_rv, const String& intrin_name) override;
 
+  /******** Schedule: Misc ********/
+  void InlineArgument(int i, const String& func_name) override;
+
   /******** Utility functions ********/
  protected:
   void MakeCopy(ScheduleState* new_state, TSymbolTable* new_symbol_table) const;
