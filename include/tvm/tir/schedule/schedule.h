@@ -313,6 +313,10 @@ class ScheduleNode : public runtime::Object {
   /******** Schedule: cache read/write ********/
   /******** Schedule: reduction ********/
   /******** Schedule: blockize & tensorize ********/
+  virtual void Tensorize(const LoopRV& loop_rv, const String& intrin_name) = 0;
+
+  /******** Schedule: Misc ********/
+  virtual void InlineArgument(int i, const String& func_name) = 0;
 };
 
 /*!

@@ -508,5 +508,11 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")
       LOG(FATAL) << "TypeError: Cannot handle type: " << intrin->GetTypeKey();
       throw;
     });
+
+/***** (FFI) Schedule: Misc *****/
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleInlineArgument")
+    .set_body_method<Schedule>(&ScheduleNode::InlineArgument);
+
 }  // namespace tir
 }  // namespace tvm

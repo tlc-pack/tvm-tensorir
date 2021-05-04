@@ -456,6 +456,13 @@ void ConcreteScheduleNode::ReverseComputeInline(const BlockRV& block_rv) {
 /******** Schedule: reduction ********/
 /******** Schedule: blockize & tensorize ********/
 
+/******** Schedule: Misc ********/
+
+void ConcreteScheduleNode::InlineArgument(int i, const String& func_name) {
+  schedule::InlineArgument(state_, i, func_name);
+  this->state_->DebugVerify();
+}
+
 /******** FFI ********/
 
 TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);

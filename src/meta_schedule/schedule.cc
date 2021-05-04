@@ -293,6 +293,13 @@ void ScheduleNode::MarkBlock(const BlockRV& block_rv, const String& ann_key,
 
 void ScheduleNode::EnterPostProc() { this->trace->Append(EnterPostProcAttrs::Make()); }
 
+/******** Misc ********/
+
+void ScheduleNode::InlineArgument(int i, const String& func_name) {
+  tir::ConcreteScheduleNode::InlineArgument(i, func_name);
+  // TODO: add trace
+}
+
 /**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
