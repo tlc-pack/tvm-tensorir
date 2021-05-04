@@ -598,32 +598,46 @@ protected:
 
       if (blockIdx_div_pred_.defined() && blockIdx_mod_pred_.defined()) {
 
-        BlockIdxDivReplacer blockIdx_div_replacer(blockIdx_div_max_);
-        BlockIdxModReplacer blockIdx_mod_replacer(blockIdx_mod_max_);
+        // BlockIdxDivReplacer blockIdx_div_replacer(blockIdx_div_max_);
+        // BlockIdxModReplacer blockIdx_mod_replacer(blockIdx_mod_max_);
 
+        // stmt = IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
+        //                   blockIdx_div_elim(blockIdx_mod_elim(op->body)),
+        //                   IfThenElse(!blockIdx_div_pred_,
+        //                              blockIdx_mod_replacer(blockIdx_div_elim(op->body)),
+        //                              IfThenElse(!blockIdx_mod_pred_,
+        //                                         blockIdx_div_replacer(blockIdx_mod_elim(op->body)),
+        //                                         blockIdx_div_replacer(blockIdx_mod_replacer(op->body))
+        //                                         )
+        //                              )
+        //                   );
         stmt = IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
                           blockIdx_div_elim(blockIdx_mod_elim(op->body)),
                           IfThenElse(!blockIdx_div_pred_,
-                                     blockIdx_mod_replacer(blockIdx_div_elim(op->body)),
+                                     blockIdx_div_elim(op->body),
                                      IfThenElse(!blockIdx_mod_pred_,
-                                                blockIdx_div_replacer(blockIdx_mod_elim(op->body)),
-                                                blockIdx_div_replacer(blockIdx_mod_replacer(op->body))
+                                                blockIdx_mod_elim(op->body),
+                                                op->body
                                                 )
                                      )
                           );
 
       } else if (blockIdx_div_pred_.defined()) {
 
-        BlockIdxDivReplacer blockIdx_div_replacer(blockIdx_div_max_);
+        // BlockIdxDivReplacer blockIdx_div_replacer(blockIdx_div_max_);
 
+        // stmt = IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
+        //                   blockIdx_div_replacer(op->body));
         stmt = IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
-                          blockIdx_div_replacer(op->body));
+                          op->body);
       } else if (blockIdx_mod_pred_.defined()) {
 
-        BlockIdxModReplacer blockIdx_mod_replacer(blockIdx_mod_max_);
+        // BlockIdxModReplacer blockIdx_mod_replacer(blockIdx_mod_max_);
 
+        // stmt = IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
+        //                   blockIdx_mod_replacer(op->body));
         stmt = IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
-                          blockIdx_mod_replacer(op->body));
+                          op->body);
       }
 
       if (stmt.defined()) {
@@ -696,7 +710,7 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
   // <bojian/TVM-SymbolicTuning>
   if (blockIdx_partitioning) {
     if (var->name_hint == "blockIdx.x") {
-      if (dmlc::GetEnv("SYMTUNE_SCHED_OPT_NO_BLOCKIDX_PARTITION", 0)) {
+      if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT_BLOCKIDX_PARTITION", 0)) {
         return Stmt();
       }
       LOG(INFO) << "Doing blockIdx.x partitioning";
@@ -911,7 +925,8 @@ Pass LoopPartition() {
     
                             // <bojian/TVM-SymbolicTuning>
                             // cfg.value()->partition_const_loop,
-                            (bool)(dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0) != 0),
+                            (bool)(dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0) != 0) || 
+                            (bool)(dmlc::GetEnv("SYMTUNE_SCHED_OPT_BLOCKIDX_PARTITION", 0)),
 
                             cfg.value()->no_unroll_loop_with_extent_one);
     return f;
