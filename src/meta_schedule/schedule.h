@@ -311,6 +311,9 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
   void MarkBlock(const BlockRV& block_rv, const String& ann_key, const PrimExpr& ann_val);
   /*! \brief An NOP indicating entrance of post processing */
   void EnterPostProc();
+
+  /******** Schedule: Misc ********/
+  void InlineArgument(int i, const String& func_name) override;
 };
 
 class Schedule : public tir::Schedule {
