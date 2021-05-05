@@ -91,7 +91,7 @@ BlockRealize GenerateBlockFromTensor(const te::ComputeOp& compute_op, const te::
   auto f_push_block_vars = [&info, &iter_vars, &var_map](const Array<IterVar>& iters) {
     for (IterVar iter_var : iters) {
       // Create new var
-      Var new_var(iter_var->var->name_hint);
+      Var new_var(iter_var->var->name_hint, iter_var->var->dtype);
       var_map[iter_var->var.get()] = new_var;
 
       IterVarNode* iter_var_node = iter_var.CopyOnWrite();
@@ -278,7 +278,8 @@ PrimFunc CreatePrimFunc(const Array<te::Tensor>& arg_list) {
       // Case 3. ExternOp (te.extern)
       root_stmts.push_back(GenerateStmtFromExternOp(GetRef<te::ExternOp>(extern_op), &info));
     } else {
-      ICHECK(false) << "Unsupported OperationNode";
+      ICHECK(false) << "TypeError: Unsupported Operation: " << op->GetTypeKey() << ". "
+                    << "Only te.placeholder and te.compute are allowed for now.";
     }
   }
 
