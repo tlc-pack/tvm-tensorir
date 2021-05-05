@@ -104,6 +104,10 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask& task) {
     orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
   }
 
+  Array<Array<IntImm>> variants;
+  variants.push_back(variant);
+  task = SearchTask(orig_func, task_name, Target(target), Target(target_host), NullOpt,
+                    shape_vars, variants, NullOpt);
   Schedule sch(orig_func);
   TraceNode::Deserialize(trace_obj, sch);
 
@@ -179,9 +183,12 @@ class InMemoryDBNode : public DatabaseNode {
       }
       if (total_valid > 0) {
         LOG(INFO) << "Loaded " << total_valid << " valid record(s). ";
-        for (const auto& task : tasks) {
-          LOG(INFO) << "Best gflops of Task[" << task->task_name << "]: "
+        std::unordered_set<SearchTask, SearchTaskHasher, SearchTaskEqual> task_set(tasks.begin(), tasks.end());
+        for (const auto& task : task_set) {
+          LOG(INFO) << "Best GFlops of Task[" << task->task_name << "]: "
             << MeanGFlops(task, this->GetBest(task)) << "."; 
+          Entry best = this->GetBest(task);
+          LOG(INFO) << "\nTrace:\n" << best.trace.value()->Stringify() << "\nSchedule:\n" << best.repr;
         }
       } else {
         LOG(INFO) << "No valid records found.";
@@ -226,6 +233,7 @@ class InMemoryDBNode : public DatabaseNode {
     ICHECK(!times.empty());
 
     Entry entry{trace, repr, times}; 
+    auto map = entries_[task];
     if (entries_[task].find(repr) != entries_[task].end()) {
       entry = MergeEntry(entry, entries_[task].at(repr));
     }
@@ -243,7 +251,7 @@ class InMemoryDBNode : public DatabaseNode {
     InfoMap<std::vector<double>> info2times; 
     WorkloadInfo info;
     if (shape_variant.defined()) info.shape_variant = shape_variant.value();
-    info2times[info] = CalculateGFlops(task->workload, task->shape_vars, shape_variant, times);
+    info2times[info] = times;
     this->Add(trace, Repr(sch), info2times, task);
   }
 

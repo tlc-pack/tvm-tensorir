@@ -249,7 +249,6 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
         db->Add(measure_input->sch->trace, measure_input->sch,
                 AsVector<FloatImm, double>(measure_result->costs),
                 measure_input->variant, measure_input->task);
-        // double best_time_cost = db->GetBest().MeanTime();
         StdCout(verbose) << std::fixed << std::setprecision(4)  //
                          << '[' << task_name << "] #" << num_measures
                          << "\tVariant: " << measure_input->variant 
