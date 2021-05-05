@@ -125,7 +125,7 @@ def tir_conv2d(a: ty.handle, w: ty.handle, b: ty.handle) -> None:
 
     with tir.block([16, 16, 16, 16], "Apad") as [nn, cc, yy, xx]:
         Apad[nn, cc, yy, xx] = tir.if_then_else(
-            1 <= yy and yy < 15 and 1 <= xx and xx < 15,
+            yy >= 1 and yy - 1 < 14 and xx >= 1 and xx - 1 < 14,
             A[nn, cc, yy - 1, xx - 1],
             0.0,
             dtype="float32",

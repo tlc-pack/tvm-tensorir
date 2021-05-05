@@ -59,8 +59,6 @@ struct CreateFuncInfo {
   Array<Buffer> root_alloc;
   /*! \brief The count map to make block name unique. */
   std::unordered_map<String, int> name_count;
-  /*! \brief The analyzer for simplification. */
-  arith::Analyzer analyzer;
 
   CreateFuncInfo(Array<te::Tensor> arg_list)
       : arg_list(std::move(arg_list)), transformer(tensor2buffers) {}
@@ -95,8 +93,7 @@ BlockRealize GenerateBlockFromTensor(const te::ComputeOp& compute_op, const te::
       var_map[iter_var->var.get()] = new_var;
 
       IterVarNode* iter_var_node = iter_var.CopyOnWrite();
-      iter_var_node->dom = Range::FromMinExtent(info->analyzer.Simplify(iter_var->dom->min),
-                                                info->analyzer.Simplify(iter_var->dom->extent));
+      iter_var_node->dom = Range::FromMinExtent(iter_var->dom->min, iter_var->dom->extent);
       iter_var_node->var = new_var;
       iter_vars.push_back(iter_var);
     }
@@ -129,16 +126,13 @@ BlockRealize GenerateBlockFromTensor(const te::ComputeOp& compute_op, const te::
     // Case 1. Reduce compute
     ICHECK_EQ(reduce->source.size(), 1);
     const PrimExpr& lhs = BufferLoad(buffer, indices);
-    const PrimExpr& rhs =
-        info->analyzer.Simplify(Substitute(info->transformer(reduce->source[0]), var_map));
+    const PrimExpr& rhs = Substitute(info->transformer(reduce->source[0]), var_map);
     ICHECK(lhs->dtype == rhs->dtype);
     body = BufferStore(buffer, reduce->combiner.get()->operator()({lhs}, {rhs})[0], indices);
     init = BufferStore(buffer, reduce->combiner->identity_element[0], indices);
   } else {
     // Case 2. Data parallel compute
-    body = BufferStore(buffer,
-                       info->analyzer.Simplify(Substitute(info->transformer(expr_body), var_map)),
-                       indices);
+    body = BufferStore(buffer, Substitute(info->transformer(expr_body), var_map), indices);
   }
 
   // Step 6. Add script_parsing_detect_access attr for auto complete the whole IR.
