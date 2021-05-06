@@ -917,6 +917,9 @@ class TVMScriptParser(Transformer):
         symbol = self.context.lookup_symbol(name)
         if symbol is not None:
             return symbol
+        global_symbols = globals()
+        if name in global_symbols:
+            return global_symbols[name]
         self.report_error(f"Unknown identifier {name}.", node.span)
 
     def transform_TypeVar(self, node):
