@@ -204,7 +204,7 @@ def test_opt_gemm_mod_host():
 
 @tvm.script.tir
 class Module4:
-    def ctpop(a: ty.handle, b: ty.handle)->None:
+    def ctpop(a: ty.handle, b: ty.handle) -> None:
         A = tir.match_buffer(a, (16,), 'uint8')
         B = tir.match_buffer(b, (16,), 'uint8')
         with tir.block([], 'root'):
