@@ -353,6 +353,17 @@ class ScheduleNode : public runtime::Object {
    */
   virtual void Pragma(const LoopRV& loop_rv, const String& pragma_type,
                       const ExprRV& pragma_value) = 0;
+  /*!
+   * \brief Set alignment requirement for specific dimension such that
+   *        stride[axis] == k * factor + offset for some k.
+   * \param block_rv The producer block of the buffer
+   * \param buffer_index The index of the buffer in block's write region
+   * \param axis The dimension to be specified for alignment
+   * \param factor The factor multiple of alignment
+   * \param offset The required offset factor
+   */
+  virtual void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
+                            int offset) = 0;
 
   /******** Schedule: cache read/write ********/
   /*!
