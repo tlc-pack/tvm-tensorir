@@ -223,6 +223,11 @@ void ScheduleNode::Pragma(const LoopRV& loop_rv, const String& pragma_type,
   // TODO
 }
 
+void ScheduleNode::StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor, int offset) {
+  tir::ConcreteScheduleNode::StorageAlign(block_rv, buffer_index, axis, factor, offset);
+  this->trace->Append(StorageAlignAttrs::Make(block_rv, buffer_index, axis, factor, offset));
+}
+
 /******** Schedule: cache read/write ********/
 
 BlockRV ScheduleNode::CacheRead(const BlockRV& block_rv, int i, const String& storage_scope) {

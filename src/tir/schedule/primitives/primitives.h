@@ -135,6 +135,18 @@ TVM_DLL void SetScope(ScheduleState self, const StmtSRef& block_sref, int i,
 TVM_DLL void Pragma(ScheduleState self, const StmtSRef& loop_sref, const String& pragma_type,
                     const PrimExpr& pragma_value);
 
+/*!
+ * \brief Set alignment requirement for specific dimension such that
+ *        stride[axis] == k * factor + offset for some k
+ * \param block_sref The producer block of the buffer
+ * \param buffer_index The index of the buffer in block's write region
+ * \param axis The dimension to be specified for alignment
+ * \param factor The factor multiple of alignment
+ * \param offset The required offset factor
+ */
+TVM_DLL void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_index, int axis,
+                          int factor, int offset);
+
 /******** Schedule: cache read/write ********/
 
 /*!
