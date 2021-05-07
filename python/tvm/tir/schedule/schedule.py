@@ -290,6 +290,12 @@ class Schedule(Object):
             self, loop, pragma_type, pragma_value
         )
 
+    def storage_align(self, block: BlockRV, buffer_index: int, axis: int, factor: int,
+                      offset: int) -> None:
+        _ffi_api_schedule.ScheduleStorageAlign(  # pylint: disable=no-member
+            self, block, buffer_index, axis, factor, offset
+        )
+
     ########## Schedule: cache read/write ##########
 
     def cache_read(self, block: BlockRV, i: int, storage_scope: str) -> BlockRV:

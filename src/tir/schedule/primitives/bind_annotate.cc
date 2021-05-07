@@ -354,6 +354,45 @@ void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref) {
   self->Replace(block_sref, new_block, {{GetRef<Block>(block_ptr), new_block}});
 }
 
+/*!
+ * \brief Find the defining site of the buffer in the given block and its ancestors
+ * \param block_sref The block sref
+ * \param buffer The buffer
+ * \return The defining site of the buffer and whether the buffer is allocated (otherwise the
+ *         buffer is from match_buffer).
+ */
+std::pair<StmtSRef, bool> GetBufferDefiningSite(const StmtSRef& block_sref, const Buffer& buffer) {
+  // Climb up along the sref tree, and find the block where `buffer` is in alloc_buffers or
+  // match_buffers.
+  const StmtSRefNode* defining_site_sref = block_sref.get();
+  while (defining_site_sref != nullptr) {
+    const auto* block = defining_site_sref->StmtAs<BlockNode>();
+    // If this sref is not a block sref, skip it.
+    if (block == nullptr) {
+      defining_site_sref = defining_site_sref->parent;
+      continue;
+    }
+    // Try to find the buffer in `allloc_buffers`
+    for (const Buffer& alloc_buffer : block->alloc_buffers) {
+      if (buffer.same_as(alloc_buffer)) {
+        return {GetRef<StmtSRef>(defining_site_sref), true};
+      }
+    }
+    // We do not allow the buffer being defined in `match_buffer`.
+    for (const MatchBufferRegion match_buffer : block->match_buffers) {
+      if (buffer.same_as(match_buffer)) {
+        return {GetRef<StmtSRef>(defining_site_sref), false};
+      }
+    }
+    defining_site_sref = defining_site_sref->parent;
+  }
+  // If we cannot find the defining site block, it means that the buffer must be in the function's
+  // buffer_map, which isn't an intermediate buffer. In this case we should report error.
+  LOG(FATAL)
+      << "ValueError: The buffer is expected to be an intermediate buffer defined in some block";
+  throw;
+}
+
 void SetScope(ScheduleState self, const StmtSRef& block_sref, int i, const String& storage_scope) {
   const auto* block_ptr = block_sref->StmtAs<BlockNode>();
   CHECK(block_ptr) << "TypeError: set_scope expects a block as its first argument";
@@ -364,42 +403,13 @@ void SetScope(ScheduleState self, const StmtSRef& block_sref, int i, const Strin
   if (buffer->scope == storage_scope) {
     return;
   }
-  // Climb up along the sref tree, and find the block where `buffer` is allocated.
-  const StmtSRefNode* allocate_site_sref = block_sref.get();
-  {
-    while (allocate_site_sref != nullptr) {
-      const auto* block = allocate_site_sref->StmtAs<BlockNode>();
-      // If this sref is not a block sref, skip it.
-      if (block == nullptr) {
-        allocate_site_sref = allocate_site_sref->parent;
-        continue;
-      }
-      // Try to find the buffer in `allloc_buffers`
-      bool allocated_here = false;
-      for (const Buffer& alloc_buffer : block->alloc_buffers) {
-        if (buffer.same_as(alloc_buffer)) {
-          allocated_here = true;
-          break;
-        }
-      }
-      // We do not allow the buffer being defined in `match_buffer`.
-      for (const MatchBufferRegion match_buffer : block->match_buffers) {
-        CHECK(!match_buffer->buffer.same_as(buffer))
-            << "ValueError: Set the storage scope of a buffer defined in MatchBufferRegion is not "
-               "allowed. You might want to set the storage scope of its source buffer if you "
-               "really want to change its storage scope.";
-      }
-      // If the buffer is allocated in this block, break the while-loop.
-      if (allocated_here) {
-        break;
-      }
-      allocate_site_sref = allocate_site_sref->parent;
-    }
-  }
-  // If we cannot find the allocate site block, it means that the buffer must be in the function's
-  // buffer_map, which isn't an intermediate buffer. In this case we should report error.
-  CHECK_NE(allocate_site_sref, nullptr)
-      << "ValueError: The buffer is expected to be an intermediate buffer allocated in some block";
+  StmtSRef allocate_site_sref;
+  bool is_alloc;
+  std::tie(allocate_site_sref, is_alloc) = GetBufferDefiningSite(block_sref, buffer);
+  // We do not allow the buffer being defined in `match_buffer`.
+  CHECK(is_alloc) << "ValueError: Set the storage scope of a buffer defined in MatchBufferRegion is"
+                     " not allowed. You might want to set the storage scope of its source buffer if"
+                     " you really want to change its storage scope.";
   const auto* allocate_site = allocate_site_sref->StmtAs<BlockNode>();
   // The allocate site must be a block.
   ICHECK_NE(allocate_site, nullptr);
@@ -408,7 +418,64 @@ void SetScope(ScheduleState self, const StmtSRef& block_sref, int i, const Strin
   Map<Block, Block> block_reuse_map;
   Block new_block = StorageScopeMutator::Mutate(GetRef<Block>(allocate_site), buffer, storage_scope,
                                                 &block_reuse_map);
-  self->Replace(GetRef<StmtSRef>(allocate_site_sref), new_block, block_reuse_map);
+  self->Replace(allocate_site_sref, new_block, block_reuse_map);
+}
+
+void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_index, int axis,
+                  int factor, int offset) {
+  const auto* block_ptr = block_sref->StmtAs<BlockNode>();
+  CHECK_GE(buffer_index, 0) << "ValueError: index out of range";
+  CHECK_LT(buffer_index, block_ptr->writes.size()) << "ValueError: Index out of range";
+  CHECK_GT(factor, 0) << "ValueError: The factor of stroage align should be positive.";
+  Buffer buffer = block_ptr->writes[buffer_index]->buffer;
+  if (axis < 0) {
+    axis += buffer->shape.size();
+  }
+  CHECK(0 <= axis && axis < static_cast<int>(buffer->shape.size()))
+      << "ValueError: Axis exceeds the dimension of the buffer.";
+
+  // Step 0: Check the buffer allocation site exists
+  StmtSRef allocate_site_sref;
+  bool is_alloc;
+  std::tie(allocate_site_sref, is_alloc) = GetBufferDefiningSite(block_sref, buffer);
+  // We do not allow the buffer being defined in `match_buffer`.
+  CHECK(is_alloc) << "ValueError: Set the storage alignment of a buffer defined in "
+                     "MatchBufferRegion is not allowed.";
+
+  // Step 1: Get existing or create new annotation value.
+  auto annotation = block_ptr->annotations.Get(attr::buffer_dim_align);
+
+  // Use an array to store the storage alignement information for each output tensor.
+  // For each output tensor, we use an array of tuples (axis, factor, offset) to specify storage
+  // alignment for each dimension.
+  Array<Array<Array<Integer>>> storage_align;
+
+  if (annotation.defined()) {
+    storage_align = Downcast<Array<Array<Array<Integer>>>>(annotation.value());
+    ICHECK(storage_align.size() == block_ptr->writes.size());
+  } else {
+    storage_align.resize(block_ptr->writes.size());
+  }
+
+  // Step 2: Update the annotation value
+  Array<Array<Integer>> dim_aligns = storage_align[buffer_index];
+  bool found = false;
+  for (size_t j = 0; j < dim_aligns.size(); ++j) {
+    ICHECK(dim_aligns[j].size() == 3);
+    if (dim_aligns[j][0] == axis) {
+      dim_aligns.Set(j, {Integer(axis), Integer(factor), Integer(offset)});
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    dim_aligns.push_back({Integer(axis), Integer(factor), Integer(offset)});
+  }
+  storage_align.Set(buffer_index, std::move(dim_aligns));
+
+  // Step 3: Replace the block with the new annotation
+  Block new_block = WithAnnotation(block_ptr, attr::buffer_dim_align, storage_align);
+  self->Replace(block_sref, new_block, {{GetRef<Block>(block_ptr), new_block}});
 }
 
 }  // namespace schedule
