@@ -166,6 +166,9 @@ class ConcreteScheduleNode : public ScheduleNode {
   void Pragma(const LoopRV& loop_rv, const String& pragma_type,
               const ExprRV& pragma_value) override;
 
+  void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
+                    int offset) override;
+
   /******** Schedule: cache read/write ********/
 
   BlockRV CacheRead(const BlockRV& block_rv, int i, const String& storage_scope) override;

@@ -480,6 +480,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSetScope")
     .set_body_method<Schedule>(&ScheduleNode::SetScope);
 TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma")  //
     .set_body_method<Schedule>(&ScheduleNode::Pragma);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStorageAlign")
+    .set_body_method<Schedule>(&ScheduleNode::StorageAlign);
 
 /***** (FFI) Schedule: cache read/write *****/
 
