@@ -211,10 +211,11 @@ class Module4:
             for i in range(0, 16):
                 with tir.block((16,), 'A') as [vi]:
                     tir.bind(vi, i)
-                    B[vi] = tvm.tir.call_llvm_pure_intrin("uint8x8", "llvm.ctpop.i8", tir.uint32(1), A[vi])
+                    B[vi] = tir.call_llvm_pure_intrin(tir.llvm_lookup_intrinsic_id("llvm.ctpop.i8"), 
+                                                      tir.uint32(1), A[vi], dtype='uint8')
     
 
-def test_global_symbol_call():
+def test_llvm_intrin_call():
     mod = Module4()
     rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod, True)
@@ -599,4 +600,4 @@ if __name__ == "__main__":
     test_matmul_original()
     test_element_wise()
     test_predicate()
-    test_global_symbol()
+    test_llvm_intrin_call()
