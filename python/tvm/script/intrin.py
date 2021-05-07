@@ -19,6 +19,7 @@
 from typing import List, Any
 
 import tvm.tir
+from ..target import codegen
 from .registry import register
 from .utils import get_param_list, tvm_span_from_synr
 
@@ -196,3 +197,9 @@ class StoreIntrin(Intrin):
             return tvm.tir.Store(var, value, index, predicate, span)
 
         super().__init__(store, stmt=True)
+
+
+@register
+def llvm_lookup_intrinsic_id(name, span):
+    # pylint: disable=unused-argument
+    return codegen.llvm_lookup_intrinsic_id(name)
