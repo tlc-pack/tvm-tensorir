@@ -203,6 +203,25 @@ def test_opt_gemm_mod_host():
 
 
 @tvm.script.tir
+class Module4:
+    def ctpop(a: ty.handle, b: ty.handle) -> None:
+        A = tir.match_buffer(a, (16,), 'uint8')
+        B = tir.match_buffer(b, (16,), 'uint8')
+        with tir.block([], 'root'):
+            for i in range(0, 16):
+                with tir.block((16,), 'A') as [vi]:
+                    tir.bind(vi, i)
+                    B[vi] = tir.call_llvm_pure_intrin(tir.llvm_lookup_intrinsic_id("llvm.ctpop.i8"), 
+                                                      tir.uint32(1), A[vi], dtype='uint8')
+    
+
+def test_llvm_intrin_call():
+    mod = Module4()
+    rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
+    tvm.ir.assert_structural_equal(mod, rt_mod, True)
+
+
+@tvm.script.tir
 def opt_conv_tensorcore_normalize(A: ty.handle, W: ty.handle, Conv: ty.handle) -> None:
     # function attr dict
     tir.func_attr({"global_symbol": "default_function", "tir.noalias": True})
@@ -581,3 +600,4 @@ if __name__ == "__main__":
     test_matmul_original()
     test_element_wise()
     test_predicate()
+    test_llvm_intrin_call()
