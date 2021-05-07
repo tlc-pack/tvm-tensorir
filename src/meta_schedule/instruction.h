@@ -689,10 +689,7 @@ struct SetScopeAttrs : public InstAttrsNode {
                                       "SetScope", false);
 };
 
-/*! \brief Attrs of the instruction that applies storage_align
- *  Set alignment requirement for specific dimension such that 
- *  stride[axis] == k * factor + offset for some k.
- */
+/*! \brief Attrs of the instruction that applies storage_align */
 struct StorageAlignAttrs : public InstAttrsNode {
   /*! \brief The index of the buffer in block's write region */
   int buffer_index;
@@ -712,11 +709,11 @@ struct StorageAlignAttrs : public InstAttrsNode {
 
   /*!
    * \brief Create instruction given the inputs and outputs
-   * \param The producer block of the buffer
+   * \param block The producer block of the buffer
    * \param buffer_index The index of the buffer in block's write region
    * \param axis The dimension to be specified for alignment
-   * \param The factor multiple of alignment
-   * \param The required offset factor
+   * \param factor The factor multiple of alignment
+   * \param offset The required offset factor
    * \return The instruction created
    */
   static Instruction Make(const BlockRV& block, int buffer_index, int axis, int factor, int offset);

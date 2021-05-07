@@ -460,7 +460,7 @@ void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_ind
   // Step 2: Update the annotation value
   Array<Array<Integer>> dim_aligns = storage_align[buffer_index];
   bool found = false;
-  for (size_t j = 0; j < dim_aligns.size(); j++) {
+  for (size_t j = 0; j < dim_aligns.size(); ++j) {
     ICHECK(dim_aligns[j].size() == 3);
     if (dim_aligns[j][0] == axis) {
       dim_aligns.Set(j, {Integer(axis), Integer(factor), Integer(offset)});

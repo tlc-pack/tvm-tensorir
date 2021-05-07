@@ -321,9 +321,9 @@ class StorageAlignCollector : public StmtVisitor {
   void VisitStmt_(const BlockNode* op) final {
     auto it = op->annotations.find(attr::buffer_dim_align);
     if (it != op->annotations.end()) {
-      const auto& storage_align = Downcast<Array<Array<Array<PrimExpr>>>>((*it).second);
+      const auto& storage_align = Downcast<Array<Array<Array<Integer>>>>(it->second);
       ICHECK(storage_align.size() == op->writes.size());
-      for (size_t i = 0; i < storage_align.size(); i++) {
+      for (size_t i = 0; i < storage_align.size(); ++i) {
         storage_align_.emplace(op->writes[i]->buffer, storage_align[i]);
       }
     }

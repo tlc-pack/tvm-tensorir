@@ -237,11 +237,11 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
   /*!
    * \brief Set alignment requirement for specific dimension such that
    *        stride[axis] == k * factor + offset for some k
-   * \param The producer block of the buffer
+   * \param block_rv The producer block of the buffer
    * \param buffer_index The index of the buffer in block's write region
    * \param axis The dimension to be specified for alignment
-   * \param The factor multiple of alignment
-   * \param The required offset factor
+   * \param factor The factor multiple of alignment
+   * \param offset The required offset factor
    */
   void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor, int offset) final;
 
