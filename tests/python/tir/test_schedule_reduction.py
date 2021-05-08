@@ -246,6 +246,17 @@ def rowsum_allreduce(a: ty.handle, b: ty.handle) -> None:
         B[vii] = B[vii] + A[vii, vi, vj]
 
 
+@tvm.script.tir
+def non_multiple_allreduce(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (256, 250), "float32")
+    B = tir.match_buffer(b, (256,), "float32")
+
+    with tir.block([256, tir.reduce_axis(0, 250)], "B") as [i, k]:
+        with tir.init():
+            B[i] = tir.float32(0)
+        B[i] = B[i] + A[i, k]
+
+
 # fmt: on
 # pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name,unexpected-keyword-arg
 
@@ -427,6 +438,23 @@ def test_reduction_allreduce_4():
     np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
 
 
+def test_reduction_allreduce_5():
+    ctx = tvm.gpu(0)
+    s = tir.Schedule(non_multiple_allreduce, debug_mode=True)
+    B = s.get_block("B")
+    _, k = s.get_axes(B)
+    _, ki = s.split(k, factor=32)
+    s.bind(ki, "threadIdx.x")
+
+    f = tvm.build(s.mod["main"], target="cuda")
+    a_np = np.random.uniform(size=(256, 250)).astype("float32")
+    a = tvm.nd.array(a_np, ctx)
+    b = tvm.nd.array(np.zeros((256,), dtype="float32"), ctx)
+    f(a, b)
+    b_np = np.sum(a_np, axis=(1,))
+    np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
+
+
 if __name__ == "__main__":
     test_reduction_roundtrip()
     test_reduction_decompose()
@@ -440,3 +468,4 @@ if __name__ == "__main__":
     test_reduction_allreduce_2()
     test_reduction_allreduce_3()
     test_reduction_allreduce_4()
+    test_reduction_allreduce_5()

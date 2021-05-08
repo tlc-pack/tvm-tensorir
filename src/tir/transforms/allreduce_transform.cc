@@ -430,7 +430,7 @@ class AllReduceTransformer : public StmtExprMutator {
       }
 
       // Add store predicate.
-      PrimExpr predicate = op->predicate;
+      PrimExpr predicate = const_true();
       for (size_t i = par_idx + 1; i < stmt_stack_.size(); ++i) {
         const auto* loop = stmt_stack_[i].as<ForNode>();
         ICHECK(loop != nullptr);
@@ -510,7 +510,7 @@ class AllReduceTransformer : public StmtExprMutator {
       }
 
       // Add store predicate.
-      PrimExpr predicate = op->predicate;
+      PrimExpr predicate = const_true();
       for (size_t i = par_idx + 1; i < stmt_stack_.size(); ++i) {
         const auto* loop = stmt_stack_[i].as<ForNode>();
         ICHECK(loop != nullptr);
