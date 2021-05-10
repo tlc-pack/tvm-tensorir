@@ -131,12 +131,14 @@ struct SearchTaskHasher {
   size_t operator()(const SearchTask& task) const {
     size_t hash = std::hash<String>()(task->task_name);
     hash ^= std::hash<String>()(task->target->str());
+    hash ^= StructuralHash()(task->workload);
     return hash;
   }
 };
 struct SearchTaskEqual {
   TVM_DLL bool operator()(const SearchTask& task1, const SearchTask& task2) const {
-    return task1->task_name == task2->task_name && task1->target->str() == task2->target->str();
+    return task1->task_name == task2->task_name && task1->target->str() == task2->target->str()
+           && StructuralEqual()(task1->workload,task2->workload);
   }
 };
 
