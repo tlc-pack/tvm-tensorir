@@ -172,55 +172,50 @@ BufferRegion SubstituteBufferRegion(const BufferRegion& buffer_region,
   return BufferRegion(new_buffer_region);
 }
 
-// Only Block and Loop are allowed here.
-template <typename T>
-Stmt GetStmtFromSeq(const T* op, const Stmt& target,
-                    const std::function<bool(const Stmt&, const Stmt&)>& f_equal,
-                    int64_t seq_index) {
-  if (const auto* seq = op->body.template as<SeqStmtNode>()) {
-    if (seq_index >= 0) {
-      // fast path
-      ICHECK(f_equal((*seq)[seq_index], target));
-      return (*seq)[seq_index];
-    } else {
-      // apply slow path when seq_index == -1
-      for (const auto& s : seq->seq) {
-        if (f_equal(s, target)) return s;
-      }
-      LOG(FATAL) << "Can not find target stmt";
-    }
-  } else {
-    ICHECK(f_equal(op->body, target));
-    return op->body;
-  }
-  return NullValue<Stmt>();
-}
-
 BlockRealize GetBlockRealize(const StmtSRef& block_sref) {
-  Stmt s = GetRef<Stmt>(block_sref->stmt);
-  ICHECK(GetRef<Stmt>(block_sref->stmt).as<BlockNode>());
-  const auto* parent = block_sref->parent;
-  ICHECK(parent != nullptr);
-  Stmt parent_stmt = GetRef<Stmt>(parent->stmt);
-
-  auto f_equal = [](const Stmt& s, const Stmt& target) {
-    ICHECK(target.as<BlockNode>());
-    const auto* block_realize = s.as<BlockRealizeNode>();
-    if (block_realize != nullptr) {
-      return block_realize->block.same_as(target);
-    } else {
-      return false;
-    }
-  };
-
-  if (const auto* block = parent_stmt.as<BlockNode>()) {
-    return Downcast<BlockRealize>(GetStmtFromSeq(block, s, f_equal, block_sref->seq_index));
-  } else if (const auto* loop = parent_stmt.as<ForNode>()) {
-    return Downcast<BlockRealize>(GetStmtFromSeq(loop, s, f_equal, block_sref->seq_index));
+  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  // We cannot support getting the BlockRealize of the root block, since the parent sref of the root
+  // block sref is `nullptr`.
+  CHECK(block_sref->parent != nullptr)
+      << "ValueError: Get the BlockRealize of the root block is not supported";
+  // Step 1. Get the stmt corresponding to the parent sref of the input block.
+  Stmt parent = GetRef<Stmt>(block_sref->parent->stmt);
+  // Step 2. Get the body of the parent stmt, given that the parent is either a Block or a For.
+  Stmt child;
+  if (const auto* block_parent = parent.as<BlockNode>()) {
+    child = block_parent->body;
+  } else if (const auto* loop_parent = parent.as<ForNode>()) {
+    child = loop_parent->body;
   } else {
-    LOG(FATAL) << "Unknown SRef Type";
+    ICHECK(false) << "TypeError: A StmtSRef can only points to a Block or a For";
   }
-  return NullValue<BlockRealize>();
+  // Step 3.
+  //  - If the child stmt is a BlockRealize, it indicates that the input block sref is the only
+  //    child of the parent sref. In this case this BlockRealize is exactly what we want.
+  //  - If the child stmt is a SeqStmt, it indicates that the input block sref is one child among
+  //    the parent block's children. In this case we can find the wanted BlockRealize according to
+  //    the `seq_index` of the input block sref, which must be non-negative.
+  //  - None of the other cases could happen - the child stmt cannot be any other kind of Stmt.
+  if (child->IsInstance<BlockRealizeNode>()) {
+    BlockRealize block_realize = Downcast<BlockRealize>(child);
+    ICHECK_EQ(block_realize->block.get(), block)
+      << "ValueError: The BlockRealize is expected to have the input block as its body block";
+    return block_realize;
+  } else if (child->IsInstance<SeqStmtNode>()) {
+    SeqStmt seq_stmt = Downcast<SeqStmt>(child);
+    ICHECK_GE(block_sref->seq_index, 0) << "ValueError: `seq_index` is out of range";
+    ICHECK_LT(block_sref->seq_index, static_cast<int64_t>(seq_stmt->seq.size()))
+      << "ValueError: `seq_index` is out of range";
+    const auto* block_realize = seq_stmt->seq[block_sref->seq_index].as<BlockRealizeNode>();
+    ICHECK(block_realize)
+      << "TypeError: The stmt indicated by `seq_index` is expected to be a BlockRealize";
+    ICHECK_EQ(block_realize->block.get(), block)
+      << "ValueError: The BlockRealize is expected to have the input block as its body block";
+    return GetRef<BlockRealize>(block_realize);
+  } else {
+    LOG(FATAL) << "TypeError: The child stmt can only be a BlockRealize or a SeqStmt here";
+    throw;
+  }
 }
 
 StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef& root) {
