@@ -501,8 +501,9 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   support::parallel_persist_for(0, results.size(), f_proc_measured);
   // Pick unmeasured states
   std::atomic<int> fail_ct(0);
+  std::atomic<int> success_ct(0);
   auto f_proc_unmeasured = [this, &results, &thread_samplers, &fail_ct, &task, &space, &support,
-                            thread_workloads](int thread_id, int i) -> void {
+                            &success_ct, thread_workloads](int thread_id, int i) -> void {
     Sampler* sampler = &thread_samplers[thread_id];
     for (;;) {
       const Trace& support_trace = support[sampler->SampleInt(0, support.size())]->trace;
@@ -514,6 +515,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
           Trace trace(sch->trace->insts, sch->trace->decisions);
           this->AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
           results[i] = std::move(trace);
+          success_ct++;
           break;
         } else {
           fail_ct++;
@@ -521,13 +523,22 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
       } catch (const dmlc::Error& e) {
         fail_ct++;
       }
+      if (success_ct > 64) {
+        break;
+      }
     }
   };
   num_measured = results.size();
   results.resize(this->population, Trace(nullptr));
   support::parallel_persist_for(num_measured, this->population, f_proc_unmeasured);
+  std::vector<Trace> pruned_results;
+  for (const auto& result : results) {
+    if (result.defined()) {
+      pruned_results.push_back(result);
+    }
+  }
   LOG(INFO) << "fail count: " << fail_ct;
-  return results;
+  return pruned_results;
 }
 
 Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,

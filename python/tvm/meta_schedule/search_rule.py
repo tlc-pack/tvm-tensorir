@@ -317,3 +317,15 @@ def cross_thread_reduction() -> SearchRule:
         The rule created
     """
     return _ffi_api_search_rule.CrossThreadReduction()  # pylint: disable=no-member
+
+
+def special_compute_location_gpu():
+    """A rule that handles special cases in Winograd transformation for GPU. We need to change the compute
+     location of the producers of compute ops that perform "fake reduction" with const tensors.
+
+    Returns
+    ----------
+    rule: SearchRule
+        The search rule created
+    """
+    return _ffi_api_search_rule.SpecialComputeLocationGPU()  # pylint: disable=no-member

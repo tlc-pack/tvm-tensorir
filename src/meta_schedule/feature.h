@@ -30,7 +30,8 @@ TVM_DLL runtime::NDArray PerBlockFeature(const Schedule& sch, int max_num_buffer
 
 TVM_DLL Array<runtime::NDArray> PerBlockFeatureBatched(const Array<Schedule>& schs,
                                                        int max_num_buffer_access_features);
-
+TVM_DLL Array<runtime::NDArray> PerStoreFeatureBatched(const Array<Schedule>& schs,
+                                                       int max_num_buffer_access_features);
 TVM_DLL Array<String> PerBlockFeatureNames(int max_num_buffer_access_features);
 
 }  // namespace meta_schedule

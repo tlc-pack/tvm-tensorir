@@ -305,10 +305,12 @@ class BufferAllocator : public StmtExprMutator {
     if (is_one(extent)) {
       var_substitutes_[loop->loop_var] = min;
     }
+
     // Step 3. Visit recursively
     ancestor_loops_.push_back(GetRef<For>(loop));
     Stmt body = this->VisitStmt(loop->body);
     ancestor_loops_.pop_back();
+
     // Step 4. Add allocation
     Array<Buffer> alloc_buffers = AllocBufferUnderLoop(GetRef<For>(loop));
     if (!alloc_buffers.empty()) {
@@ -465,8 +467,9 @@ class BufferAllocator : public StmtExprMutator {
       // Calculate `info.new_buffer`
       Array<PrimExpr> shape;
       shape.reserve(info.region.size());
+      arith::Analyzer ana;
       for (const Range& range : info.region) {
-        shape.push_back(range->extent);
+        shape.push_back(ana.Simplify(range->extent));
       }
       ObjectPtr<BufferNode> new_buffer = make_object<BufferNode>(*buffer.get());
       new_buffer->shape = std::move(shape);
@@ -490,8 +493,9 @@ class BufferAllocator : public StmtExprMutator {
     int ndim = info.region.size();
     Array<PrimExpr> new_indices;
     new_indices.reserve(ndim);
+    arith::Analyzer ana;
     for (int i = 0; i < ndim; ++i) {
-      new_indices.push_back((*indices)[i] - info.region[i]->min);
+      new_indices.push_back(ana.Simplify((*indices)[i] - info.region[i]->min));
     }
     *buffer = info.new_buffer;
     *indices = std::move(new_indices);
@@ -516,7 +520,11 @@ class BufferAllocator : public StmtExprMutator {
  */
 class Flattener : public StmtExprMutator {
  public:
-  static Stmt Flatten(const PrimFunc& f) { return Flattener().VisitStmt(f->body); }
+  static Stmt Flatten(const PrimFunc& f, bool lower_buffer = true) {
+    Flattener flattener;
+    flattener.lower_buffer = lower_buffer;
+    return flattener.VisitStmt(f->body);
+  }
 
  private:
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
@@ -537,9 +545,11 @@ class Flattener : public StmtExprMutator {
       double_buffered_.insert(write);
     }
     // Step 4. Handle allocations
+
     for (const Buffer& buffer : block->alloc_buffers) {
       body = MakeAllocStmt(buffer, body, double_buffered_.count(buffer));
     }
+
     return body;
   }
 
@@ -547,13 +557,30 @@ class Flattener : public StmtExprMutator {
     // Step 1. Visit recursively
     PrimExpr min = this->VisitExpr(op->min);
     PrimExpr extent = this->VisitExpr(op->extent);
+    bool in_blockidx = this->in_blockidx, in_threadidx = this->in_threadidx;
+    if (op->thread_binding.defined()) {
+      if (std::string(op->thread_binding.value()->thread_tag).find("blockIdx") !=
+          std::string::npos) {
+        in_blockidx = true;
+      } else if (std::string(op->thread_binding.value()->thread_tag).find("threadIdx") !=
+                 std::string::npos) {
+        in_threadidx = true;
+      }
+      thread_rename[op->loop_var.get()] =
+          Var(op->thread_binding.value()->thread_tag, op->loop_var.dtype());
+    }
+    std::swap(this->in_blockidx, in_blockidx);
+    std::swap(this->in_threadidx, in_threadidx);
     Stmt body = this->VisitStmt(op->body);
+    std::swap(this->in_threadidx, in_threadidx);
+    std::swap(this->in_blockidx, in_blockidx);
     // Step 2. Add the for loop accordingly
     if (op->kind == ForKind::kThreadBinding) {
       // Case 1. Thread binding
       ICHECK(op->thread_binding.defined());
       String thread_tag = op->thread_binding.value()->thread_tag;
-      body = MakeLaunchThread(min, extent, op->loop_var, thread_tag, body);
+      //      op->loop_var->name_hint=thread_tag;
+      body = MakeLaunchThread(min, extent, thread_rename[op->loop_var.get()], thread_tag, body);
     } else if (is_one(extent) && op->annotations.empty()) {
       // Case 2. Handle unit loop
       return body;
@@ -572,14 +599,27 @@ class Flattener : public StmtExprMutator {
     return body;
   }
 
+  PrimExpr VisitExpr_(const VarNode* op) final {
+    if (thread_rename.count(op)) {
+      return thread_rename[op];
+    }
+    return GetRef<PrimExpr>(op);
+  }
+
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(op));
+    if (!lower_buffer) {
+      return std::move(store);
+    }
     op = store.get();
     return op->buffer.vstore(op->indices, op->value);
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(op));
+    if (!lower_buffer) {
+      return std::move(load);
+    }
     op = load.get();
     return op->buffer.vload(op->indices, op->dtype);
   }
@@ -596,18 +636,40 @@ class Flattener : public StmtExprMutator {
     }
     return StmtExprMutator::VisitExpr_(op);
   }
-
-  static Stmt MakeAllocStmt(const Buffer& buffer, Stmt body, bool is_double_buffer) {
+  PrimExpr VisitExpr_(const SelectNode* op) final {
+    if (!lower_buffer) {
+      return make_const(op->dtype, 1.0f);
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+  Stmt MakeAllocStmt(const Buffer& buffer, Stmt body, bool is_double_buffer) {
     if (IsReduceTempBuffer(buffer)) {
       return body;
     }
     String storage_scope = buffer->scope;
-    if (storage_scope.empty()) {
-      storage_scope = "global";
+    if (storage_scope.empty() || buffer->scope == "global") {
+      if (in_threadidx) {
+        storage_scope = "local";
+      } else if (in_blockidx) {
+        storage_scope = "shared";
+      } else {
+        storage_scope = "global";
+      }
     }
+
     PrimExpr area = BufferArea(buffer);
-    body = Allocate(buffer->data, buffer->dtype, {area}, const_true(), body);
-    body = AttrStmt(buffer->data, attr::storage_scope, StringImm(storage_scope), body);
+
+    if (!lower_buffer) {
+      Array<Range> bounds;
+      for (auto& shape : buffer->shape) {
+        bounds.push_back(Range::FromMinExtent(0, shape));
+      }
+      body = BufferRealize(buffer, bounds, const_true(), body);
+      body = AttrStmt(buffer->data, attr::realize_scope, StringImm(storage_scope), body);
+    } else {
+      body = Allocate(buffer->data, buffer->dtype, {area}, const_true(), body);
+      body = AttrStmt(buffer->data, attr::storage_scope, StringImm(storage_scope), body);
+    }
     if (is_double_buffer) {
       body = AttrStmt(buffer->data, attr::double_buffer_scope, Integer(1), body);
     }
@@ -636,6 +698,11 @@ class Flattener : public StmtExprMutator {
   }
 
   SSet<Buffer> double_buffered_;
+  bool in_blockidx = false;
+  bool in_threadidx = false;
+
+  std::unordered_map<const VarNode*, Var> thread_rename;
+  bool lower_buffer = true;
 };
 
 PrimFunc BufferFlatten(PrimFunc f) {
@@ -648,7 +715,16 @@ PrimFunc BufferFlatten(PrimFunc f) {
   fptr->body = Flattener::Flatten(f);
   return f;
 }
-
+PrimFunc PartialBufferFlatten(PrimFunc f) {
+  PrimFuncNode* fptr = f.CopyOnWrite();
+  // Step 1. Transform the reduction calls to BufferStore
+  fptr->body = ReductionTransformer::Transform(f);
+  // Step 2. Recalculate the buffer region
+  fptr->body = BufferAllocator::Alloc(f);
+  // Step 3. Transform BufferLoad/BufferStore into Load/Store
+  fptr->body = BufferFlattener::Flatten(f, false);
+  return f;
+}
 namespace transform {
 
 Pass BufferFlatten() {
@@ -656,6 +732,13 @@ Pass BufferFlatten() {
     return BufferFlatten(std::move(f));
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.BufferFlatten", {});
+}
+
+Pass PartialBufferFlatten() {
+  auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
+    return PartialBufferFlatten(std::move(f));
+  };
+  return CreatePrimFuncPass(pass_func, 0, "tir.PartialBufferFlatten", {});
 }
 
 TVM_REGISTER_GLOBAL("tir.transform.BufferFlatten").set_body_typed(BufferFlatten);

@@ -66,6 +66,14 @@ def per_block_feature_batched(
     )
     return [x.asnumpy() for x in result]
 
+def per_store_feature_batched(
+        inputs: List[Schedule],
+        max_num_buffer_access_features: int = 5,
+) -> List[np.ndarray]:
+    result = _ffi_api.PerStoreFeatureBatched(  # pylint: disable=no-member
+        inputs, max_num_buffer_access_features
+    )
+    return [x.asnumpy() for x in result]
 
 def per_bloc_feature_names(max_num_buffer_access_features: int = 5) -> List[str]:
     return _ffi_api.PerBlockFeatureNames(  # pylint: disable=no-member
