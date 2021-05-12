@@ -238,7 +238,7 @@ class InMemoryDBNode : public DatabaseNode {
       entry = MergeEntry(entry, entries_[task].at(repr));
     }
     entries_[task][repr] = entry;
-    // sorted_.insert(&entries_[task][repr]);
+    InsertSortedEntry(task, &entries_[task][repr]);
     if (!best[task].trace.defined() || MeanGFlops(task, GetBest(task)) < MeanGFlops(task, entry)) {
       best[task] = entry;
     }
@@ -272,18 +272,16 @@ class InMemoryDBNode : public DatabaseNode {
    * \param repr The string representation of the schedule
    */
   std::vector<Entry> GetTopK(int top_k, const SearchTask& task) const override {
-    LOG(FATAL) << "Not implemented yet.";
-    return {};
-  //   std::vector<Entry> result;
-  //   result.reserve(top_k);
-  //   if (sorted_.count(task) == 0) {
-  //     return result;
-  //   }
-  //   auto iter = sorted_.at(task).cbegin();
-  //   for (int i = 0; i < top_k && iter != sorted_.at(task).cend(); ++i, ++iter) {
-  //     result.push_back(**iter);
-  //   }
-  //   return result;
+    std::vector<Entry> result;
+    result.reserve(top_k);
+    if (sorted_.count(task) == 0) {
+      return result;
+    }
+    auto iter = sorted_.at(task).cbegin();
+    for (int i = 0; i < top_k && iter != sorted_.at(task).cend(); ++i, ++iter) {
+      result.push_back(**iter);
+    }
+    return result;
   }
 
   Entry GetBest(const SearchTask& task) override { return best[task]; }
@@ -303,11 +301,24 @@ class InMemoryDBNode : public DatabaseNode {
   std::unordered_map<SearchTask, Entry, SearchTaskHasher, SearchTaskEqual> best;
 
  private:
+  void InsertSortedEntry(const SearchTask& task,
+                         Database::Entry* entry) {
+    std::vector<Database::Entry*>& vec = sorted_[task];
+
+    auto comp = [&task](Database::Entry* elem, Database::Entry* value) {
+      return MeanGFlops(task, *elem) > MeanGFlops(task, *value);
+    };
+    auto it = std::lower_bound(vec.begin(), vec.end(), entry, comp);
+    vec.insert(it, entry);
+  }
   /*! \brief All the measured states, de-duplicated by the string repr */
   std::unordered_map<SearchTask, std::unordered_map<String, Database::Entry>, SearchTaskHasher,
                      SearchTaskEqual>
       entries_;
   /*! \brief All the measured states */
+  std::unordered_map<SearchTask, std::vector<Database::Entry*>,
+                     SearchTaskHasher, SearchTaskEqual>
+      sorted_;
   // std::unordered_map<SearchTask, std::multiset<Database::Entry*, EntryPtrComparator>,
   //                    SearchTaskHasher, SearchTaskEqual>
   //     sorted_;
