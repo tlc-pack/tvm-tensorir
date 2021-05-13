@@ -117,7 +117,7 @@ struct EntryHasher {
 };
 
 struct EntryPtrComparator {
-  bool operator()(Database::Entry* a, Database::Entry* b) const {
+  bool operator()(std::shared_ptr<Database::Entry> a, std::shared_ptr<Database::Entry> b) const {
     double a_time = a->MeanTime();
     double b_time = b->MeanTime();
     if (a_time != b_time) {
@@ -198,21 +198,26 @@ class InMemoryDBNode : public DatabaseNode {
   void Add(const Trace& trace, const String& repr, const std::vector<double>& times,
            const SearchTask& task) override {
     ICHECK(!times.empty());
-    Database::Entry& entry = entries_[task][repr];
+    std::shared_ptr<Database::Entry> entry;
+    if (entries_[task].count(repr)) {
+      entry = entries_[task][repr];
+    } else {
+      entry = entries_[task][repr] = std::make_shared<Database::Entry>();
+    }
     double time = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
-    if (!entry.repr.empty()) {
-      if (entry.MeanTime() >= time) {
-        sorted_[task].erase(&entry);
+    if (!entry->repr.empty()) {
+      if (entry->MeanTime() >= time) {
+        sorted_[task].erase(entry);
       } else {
         return;
       }
     }
-    entry.trace = trace;
-    entry.repr = repr;
-    entry.times = times;
-    sorted_[task].insert(&entry);
+    entry->trace = trace;
+    entry->repr = repr;
+    entry->times = times;
+    sorted_[task].insert(entry);
     if (!best[task].trace.defined() || best[task].MeanTime() > time) {
-      best[task] = entry;
+      best[task] = *entry;
     }
   }
 
@@ -263,11 +268,13 @@ class InMemoryDBNode : public DatabaseNode {
 
  private:
   /*! \brief All the measured states, de-duplicated by the string repr */
-  std::unordered_map<SearchTask, std::unordered_map<String, Database::Entry>, SearchTaskHasher,
+  std::unordered_map<SearchTask, std::unordered_map<String, std::shared_ptr<Database::Entry>>,
+      SearchTaskHasher,
                      SearchTaskEqual>
       entries_;
   /*! \brief All the measured states */
-  std::unordered_map<SearchTask, std::multiset<Database::Entry*, EntryPtrComparator>,
+  std::unordered_map<SearchTask, std::multiset<std::shared_ptr<Database::Entry>,
+                                               EntryPtrComparator>,
                      SearchTaskHasher, SearchTaskEqual>
       sorted_;
 };
