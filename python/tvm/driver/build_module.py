@@ -81,8 +81,8 @@ def get_binds(args, compact=False, binds=None):
         elif isinstance(x, tvm.tir.Var):
             arg_list.append(x)
 
-        # <bojian/TVM-SymbolicTuning>
-        elif isinstance(x, tvm.tir.DyAxis):
+        # <bojian/DietCode>
+        elif isinstance(x, tvm.tir.DynamicAxis):
             arg_list.append(x)
 
         else:
@@ -297,9 +297,6 @@ def _build_for_device(input_mod, target, target_host):
     ]
     mod_mixed = tvm.transform.Sequential(opt_mixed)(mod_mixed)
 
-    # <bojian/TVM-SymbolicTuning>
-    # print("Checkpoint 1: ", mod_mixed)
-
     # device optimizations
     opt_device = tvm.transform.Sequential(
         [
@@ -315,9 +312,6 @@ def _build_for_device(input_mod, target, target_host):
         ]
     )
     mod_dev = opt_device(mod_mixed)
-
-    # <bojian/TVM-SymbolicTuning>
-    # print("Checkpoint 2: ", mod_dev)
 
     # host optimizations
     opt_host = tvm.transform.Sequential(
@@ -335,9 +329,6 @@ def _build_for_device(input_mod, target, target_host):
         ]
     )
     mod_host = opt_host(mod_mixed)
-
-    # <bojian/TVM-SymbolicTuning>
-    # print("Checkpoint 3: ", mod_host)
 
     if device_type == ndarray.cpu(0).device_type and target_host == target:
         assert len(mod_dev.functions) == 0
@@ -480,8 +471,6 @@ def build(
 
     device_modules = []
     for tar, input_mod in target_input_mod.items():
-        # <bojian/TVM-SymbolicTuning>
-        # mod_host, mdev = _build_for_device(input_mod, tar, target_host)
         mod_host, mdev = _build_for_device(input_mod, tar, target_host)
         mod_host_all.update(mod_host)
         device_modules.append(mdev)

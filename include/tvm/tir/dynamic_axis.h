@@ -1,4 +1,4 @@
-// <bojian/TVM-SymbolicTuning>
+// <bojian/DietCode>
 #pragma once
 
 #include <tvm/tir/var.h>
@@ -8,20 +8,20 @@ namespace tvm {
 namespace tir {
 
 
-class DyAxisNode : public VarNode {
+class DynamicAxisNode : public VarNode {
  public:
   Array<IntImm> possible_values;
 
-  static constexpr const char* _type_key = "tir.DyAxis";
-  TVM_DECLARE_FINAL_OBJECT_INFO(DyAxisNode, VarNode);
+  static constexpr const char* _type_key = "tir.DynamicAxis";
+  TVM_DECLARE_FINAL_OBJECT_INFO(DynamicAxisNode, VarNode);
 };
 
 
-class DyAxis : public Var {
+class DynamicAxis : public Var {
  public:
-  TVM_DLL DyAxis(String name, Array<IntImm> possible_values);
+  TVM_DLL DynamicAxis(String name, Array<IntImm> possible_values);
 
-  TVM_DEFINE_OBJECT_REF_METHODS(DyAxis, Var, DyAxisNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(DynamicAxis, Var, DynamicAxisNode);
 };
 
 

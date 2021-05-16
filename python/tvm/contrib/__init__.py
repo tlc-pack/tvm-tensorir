@@ -20,5 +20,5 @@ Contrib API provides many useful not core features.
 Some of these are useful utilities to interact with
 thirdparty libraries and tools.
 """
-# <bojian/TVM-SymbolicTuning>
+# <bojian/DietCode>
 from . import cutlass

@@ -36,7 +36,7 @@
 #include "ir_utils.h"
 
 
-// <bojian/TVM-SymbolicTuning>
+// <bojian/DietCode>
 #include <tvm/tir/dynamic_axis_functor.h>
 
 
@@ -133,19 +133,7 @@ class CandidateSelector final : public StmtExprVisitor {
       ICHECK(iv);
       Var var = iv->var;
       runtime::ThreadScope scope = runtime::ThreadScope::Create(iv->thread_tag);
-
-
-      // <bojian/TVM-SymbolicTuning>
-      // LOG(INFO) << "Partitioning thread extent " << GetRef<AttrStmt>(op);
-      // if (iv->var->name_hint == "blockIdx.x") {
-      //   LOG(INFO) << "Partitioning blockIdx.x";
-      // }
-
-
       if ((scope.rank == 0) && (!is_const_int(op->value) || partition_const_loop_)) {
-
-        // LOG(INFO) << "Partitioning thread extent " << GetRef<AttrStmt>(op);
-
         record_.insert({var.get(), false});
         StmtExprVisitor::VisitStmt_(op);
         if (record_.at(var.get()) && !no_split_) {
@@ -248,33 +236,6 @@ class PartitionFinder : public StmtExprVisitor {
     if (op->op.same_as(builtin::likely())) {
       PrimExpr cond = op->args[0];
       if (ExprUseVars(cond, std::unordered_set<const VarNode*>({current_var_.get()}))) {
-
-        // <bojian/TVM-SymbolicTuning>
-        if (current_var_->name_hint == "blockIdx.x") {
-          LOG(INFO) << "Partitioning blockIdx.x for cond=" << cond;
-          LOG(INFO) << "blockIdx.x ∈ [" << "0, " << hint_map_[current_var_.get()].max() << "]";
-
-          BlockIdxDivFinder blockIdx_div_finder;
-          BlockIdxModFinder blockIdx_mod_finder;
-
-          blockIdx_div_finder(cond);
-          blockIdx_mod_finder(cond);
-          if (const FloorDivNode *floor_div = blockIdx_div_finder.floor_div) {
-            blockIdx_div_max =
-                analyzer_.Simplify(FloorDiv(hint_map_[current_var_.get()].max(), floor_div->b));
-            blockIdx_div_pred = GetRef<FloorDiv>(floor_div) == blockIdx_div_max;
-            LOG(INFO) << "Preparing FloorDiv pred=" << blockIdx_div_pred;
-          }
-          if (const FloorModNode *floor_mod = blockIdx_mod_finder.floor_mod) {
-            blockIdx_mod_max = (floor_mod->b - 1);
-            blockIdx_mod_pred = GetRef<FloorMod>(floor_mod) == blockIdx_mod_max;
-            LOG(INFO) << "Preparing FloorMod pred=" << blockIdx_mod_pred;
-          }
-
-          return StmtExprVisitor::VisitExpr_(op);
-        }
-
-
         // For cond, find out the interval, if exists, in which we can prove that cond is
         // true. Also find the interval, if exists, in which we can prove that cond is
         // false.
@@ -296,17 +257,6 @@ class PartitionFinder : public StmtExprVisitor {
       StmtExprVisitor::VisitExpr_(op);
     }
   }
-
-
-  // <bojian/TVM-SymbolicTuning>
- private:
-  arith::Analyzer analyzer_;
- public:
-  PrimExpr blockIdx_div_pred,
-           blockIdx_div_max,
-           blockIdx_mod_pred,
-           blockIdx_mod_max;
-
 
   Partition partitions;
 
@@ -394,12 +344,12 @@ class ThreadPartitionInserter : public StmtMutator {
 class LoopPartitioner : public StmtMutator {
  public:
   explicit LoopPartitioner(bool partition_const_loop, bool no_unroll_loop_with_extent_one
-                           // <bojian/TVM-SymbolicTuning>
+                           // <bojian/DietCode>
                          , bool blockIdx_partitioning = false
                            )
       : selector(CandidateSelector(partition_const_loop)),
         no_unroll_loop_with_extent_one_(no_unroll_loop_with_extent_one)
-        // <bojian/TVM-SymbolicTuning>
+        // <bojian/DietCode>
       , blockIdx_partitioning(blockIdx_partitioning) {}
 
   Stmt VisitAndMutate(Stmt stmt) {
@@ -469,7 +419,7 @@ class LoopPartitioner : public StmtMutator {
   CandidateSelector selector;
   bool no_unroll_loop_with_extent_one_;
 
-  // <bojian/TVM-SymbolicTuning>
+  // <bojian/DietCode>
   bool blockIdx_partitioning;
 };
 
@@ -493,164 +443,6 @@ std::pair<IntSet, ExpressionSet> LoopPartitioner::GetIntervalAndCondset(
   IntSet interval = sets.empty() ? IntSet::Nothing() : Intersect(sets);
   return std::make_pair(interval, cond_set);
 }
-
-
-// <bojian/TVM-SymbolicTuning>
-class BlockIdxDivEliminator : public StmtExprMutator {
-protected:
-  Stmt VisitStmt_(const IfThenElseNode *op) override {
-    BlockIdxDivFinder blockIdx_div_finder;
-    blockIdx_div_finder(op->condition);
-    // LOG(INFO) << "Verifying condition " << op->condition;
-    if (blockIdx_div_finder.floor_div) {
-      // LOG(INFO) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
-      return op->then_case;
-    }
-    return StmtExprMutator::VisitStmt_(op);
-  }
-};
-
-
-class BlockIdxModEliminator : public StmtExprMutator {
-protected:
-  Stmt VisitStmt_(const IfThenElseNode *op) override {
-    BlockIdxModFinder blockIdx_mod_finder;
-    blockIdx_mod_finder(op->condition);
-    // LOG(INFO) << "Verifying condition " << op->condition;
-    if (blockIdx_mod_finder.floor_mod) {
-      // LOG(INFO) << "Optimizing " << GetRef<Stmt>(op) << " into " << op->then_case;
-      return op->then_case;
-    }
-    return StmtExprMutator::VisitStmt_(op);
-  }
-};
-
-
-class BlockIdxDivReplacer : public StmtExprMutator {
-private:
-  // const FloorDivNode *op_;
-  const PrimExpr expr_;
-public:
-  BlockIdxDivReplacer(const PrimExpr expr) : expr_(expr) {}
-protected:
-  PrimExpr VisitExpr_(const FloorDivNode *op) override {
-    if (const VarNode *const var = op->a.as<VarNode>()) {
-      if (var->name_hint == "blockIdx.x") {
-        return expr_;
-      }
-    }
-    return StmtExprMutator::VisitExpr_(op);
-  }
-};
-
-
-class BlockIdxModReplacer : public StmtExprMutator {
-private:
-  // const FloorModNode *op_;
-  const PrimExpr expr_;
-public:
-  BlockIdxModReplacer(const PrimExpr expr) : expr_(expr) {}
-protected:
-  PrimExpr VisitExpr_(const FloorModNode *op) override {
-    if (const VarNode *const var = op->a.as<VarNode>()) {
-      if (var->name_hint == "blockIdx.x") {
-        return expr_;
-      }
-    }
-    return StmtExprMutator::VisitExpr_(op);
-  }
-};
-
-
-class BlockIdxPartitioner : public StmtExprMutator {
-private:
-  PrimExpr blockIdx_div_pred_, 
-           blockIdx_div_max_,
-           blockIdx_mod_pred_,
-           blockIdx_mod_max_;
-  bool kernel_body_start_ = false;
-  BlockIdxDivEliminator blockIdx_div_elim;
-  BlockIdxModEliminator blockIdx_mod_elim;
-public:
-  BlockIdxPartitioner(PrimExpr blockIdx_div_pred, PrimExpr blockIdx_div_max,
-                      PrimExpr blockIdx_mod_pred, PrimExpr blockIdx_mod_max)
-      : blockIdx_div_pred_(blockIdx_div_pred), blockIdx_div_max_(blockIdx_div_max), 
-        blockIdx_mod_pred_(blockIdx_mod_pred), blockIdx_mod_max_(blockIdx_mod_max) {}
-protected:
-  Stmt VisitStmt_(const AllocateNode* op) override {
-    // if (op->attr_key == attr::thread_extent) {
-    //   const IterVarNode* iv = op->node.as<IterVarNode>();
-    //   Var var = iv->var;
-    std::string var_name = op->buffer_var->name_hint;
-    if (var_name.find(".local") != std::string::npos &&
-        !kernel_body_start_) {
-      kernel_body_start_ = true;
-      // LOG(INFO) << "**************************************************************";
-      // LOG(INFO) << "* Raw";
-      // LOG(INFO) << "**************************************************************";
-      // LOG(INFO) << op->body;
-      // LOG(INFO) << "**************************************************************";
-      // LOG(INFO) << "* blockIdxDiv";
-      // LOG(INFO) << "**************************************************************";
-      // LOG(INFO) << blockIdx_mod_elim(op->body);
-
-      Stmt stmt;
-
-      if (blockIdx_div_pred_.defined() && blockIdx_mod_pred_.defined()) {
-
-        // BlockIdxDivReplacer blockIdx_div_replacer(blockIdx_div_max_);
-        // BlockIdxModReplacer blockIdx_mod_replacer(blockIdx_mod_max_);
-
-        // stmt = IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
-        //                   blockIdx_div_elim(blockIdx_mod_elim(op->body)),
-        //                   IfThenElse(!blockIdx_div_pred_,
-        //                              blockIdx_mod_replacer(blockIdx_div_elim(op->body)),
-        //                              IfThenElse(!blockIdx_mod_pred_,
-        //                                         blockIdx_div_replacer(blockIdx_mod_elim(op->body)),
-        //                                         blockIdx_div_replacer(blockIdx_mod_replacer(op->body))
-        //                                         )
-        //                              )
-        //                   );
-        stmt = IfThenElse(!blockIdx_div_pred_ && !blockIdx_mod_pred_,
-                          blockIdx_div_elim(blockIdx_mod_elim(op->body)),
-                          IfThenElse(!blockIdx_div_pred_,
-                                     blockIdx_div_elim(op->body),
-                                     IfThenElse(!blockIdx_mod_pred_,
-                                                blockIdx_mod_elim(op->body),
-                                                op->body
-                                                )
-                                     )
-                          );
-
-      } else if (blockIdx_div_pred_.defined()) {
-
-        // BlockIdxDivReplacer blockIdx_div_replacer(blockIdx_div_max_);
-
-        // stmt = IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
-        //                   blockIdx_div_replacer(op->body));
-        stmt = IfThenElse(!blockIdx_div_pred_, blockIdx_div_elim(op->body),
-                          op->body);
-      } else if (blockIdx_mod_pred_.defined()) {
-
-        // BlockIdxModReplacer blockIdx_mod_replacer(blockIdx_mod_max_);
-
-        // stmt = IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
-        //                   blockIdx_mod_replacer(op->body));
-        stmt = IfThenElse(!blockIdx_mod_pred_, blockIdx_mod_elim(op->body),
-                          op->body);
-      }
-
-      if (stmt.defined()) {
-        // return AttrStmt(op->node, op->attr_key, op->value, stmt);
-        return Allocate(op->buffer_var, op->dtype, op->extents, op->condition,
-                        stmt);
-      }
-    }
-    // }
-    return StmtExprMutator::VisitStmt_(op);
-  }
-};
-
 
 /*
  * Tries to recursively partition the range of the variable (given by var) of
@@ -707,35 +499,8 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
   PartitionFinder finder(var, hint_map_, relax_map_);
   finder(body);
 
-  // <bojian/TVM-SymbolicTuning>
-  if (blockIdx_partitioning) {
-    if (var->name_hint == "blockIdx.x") {
-      if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT_BLOCKIDX_PARTITION", 0)) {
-        return Stmt();
-      }
-      LOG(INFO) << "Doing blockIdx.x partitioning";
-      BlockIdxPartitioner blockIdx_partitioner(finder.blockIdx_div_pred,
-                                               finder.blockIdx_div_max,
-                                               finder.blockIdx_mod_pred,
-                                               finder.blockIdx_mod_max);
-      Stmt new_kernel_body = blockIdx_partitioner(stmt);
-      // LOG(INFO) << "After blockIdx partitioning: " << new_kernel_body;
-      return new_kernel_body;
-    } else {
-      return Stmt();
-    }
-  }
-
-
   hint_map_.erase(var.get());
-  if (finder.partitions.empty()) {
-
-
-    // <bojian/TVM-SymbolicTuning>
-    // LOG(INFO) << "Cannot find a valid partition for " << var;
-
-    return Stmt();
-  }
+  if (finder.partitions.empty()) return Stmt();
 
   arith::IntervalSet for_interval(min, max);
   bool cond_value;
@@ -749,17 +514,10 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
     // conditions on var are false
     std::tie(middle_interval, cond_set) =
         GetIntervalAndCondset(finder.partitions, for_interval, false);
-    if (middle_interval.IsNothing()) {
+    if (middle_interval.IsNothing())
       // we couldn't find an interval in which the conditions are provably true or false
       // Therefore, we can't partition the loop based on those conds
-
-
-      // <bojian/TVM-SymbolicTuning>
-      // LOG(INFO) << "Cannot find a valid partition for " << var;
-
-
       return Stmt();
-    }
     cond_value = false;
   } else {
     cond_value = true;
@@ -768,11 +526,11 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
   IntervalSet middle_interval_i = Downcast<IntervalSet>(middle_interval);
 
 
-  // <bojian/TVM-SymbolicTuning>
+  // <bojian/DietCode>
   LOG(INFO) << "Partitioning interval " << middle_interval_i << " of var " << var;
   std::string var_name = var->name_hint;
   if (var_name.find(".inner") != std::string::npos) {
-    LOG(INFO) << "Skipping inner loop tiles";
+    LOG(INFO) << "Skipping inner loop tiles as partitioning them leads to weird behavior";
     return Stmt();
   }
 
@@ -816,12 +574,7 @@ Stmt LoopPartitioner::TryPartition(const Stmt& stmt, Var var, PrimExpr min, Prim
     if (!analyzer_.CanProve(middle_interval.max() == max)) {
       // require the extent to be non-negative
       PrimExpr cond = (max - post_doubt_begin + 1 >= 0);
-
-      // <bojian/TVM-SymbolicTuning>
       if (!analyzer_.CanProve(cond)) {
-      // if (!canProveForAllDyAxes(analyzer_, cond)) {
-
-
         LOG(WARNING) << "Cannot prove: " << cond << ", when generating the post doubt loop";
         post_doubt_begin = Min(post_doubt_begin, max + 1);
         // stop recursing on this interval if we can't prove it has non-negative length
@@ -897,17 +650,10 @@ class RemoveLikelyTags : public StmtExprMutator {
 
 Stmt LoopPartition(Stmt stmt, bool partition_const_loop, bool no_unroll_loop_with_extent_one) {
   stmt = LoopPartitioner(partition_const_loop, no_unroll_loop_with_extent_one
-             // <bojian/TVM-SymbolicTuning>
-           , false)
-             .VisitAndMutate(std::move(stmt));
-  stmt = LoopPartitioner(partition_const_loop, no_unroll_loop_with_extent_one
-             // <bojian/TVM-SymbolicTuning>
-           , true)
+                         // <bojian/DietCode>
+                       , (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT_BLOCKIDX_PARTITION", 0)))
              .VisitAndMutate(std::move(stmt));
   stmt = RemoveLikelyTags()(std::move(stmt));
-
-  // <bojian/TVM-SymbolicTuning>
-  // LOG(INFO) << "LoopPartition: " << stmt;
 
   return stmt;
 }
@@ -923,10 +669,10 @@ Pass LoopPartition() {
     }
     n->body = LoopPartition(std::move(n->body),
     
-                            // <bojian/TVM-SymbolicTuning>
+                            // <bojian/DietCode>
                             // cfg.value()->partition_const_loop,
-                            (bool)(dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0) != 0) || 
-                            (bool)(dmlc::GetEnv("SYMTUNE_SCHED_OPT_BLOCKIDX_PARTITION", 0)),
+                            (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT", 0) != 0) || 
+                            (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT_BLOCKIDX_PARTITION", 0)),
 
                             cfg.value()->no_unroll_loop_with_extent_one);
     return f;

@@ -34,8 +34,8 @@
 #include "../../tir/transforms/ir_utils.h"
 #include "../operation/op_utils.h"
 #include "graph.h"
-// <bojian/TVM-SymbolicTuning>
-#include "../symtune.h"
+// <bojian/DietCode>
+#include "../DietCode_helper.h"
 
 
 namespace tvm {
@@ -345,8 +345,8 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage s = sch->stages[i - 1];
 
-    // <bojian/TVM-SymbolicTuning>
-    if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+    // <bojian/DietCode>
+    if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
       LOG(INFO) << "Scheduling for " << s;
     }
 
@@ -384,14 +384,8 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
           << body;
     }
   }
-  // <bojian/TVM-SymbolicTuning>
-  // if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
-  //   LOG(INFO) << "BodyStmt=" << body;
-  // }
-
   SchedulePostProc post_proc;
   post_proc.Init(sch);
-
   return post_proc(std::move(body));
 }
 

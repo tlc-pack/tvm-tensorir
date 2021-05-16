@@ -30,8 +30,8 @@
 #include "../../tir/transforms/ir_utils.h"
 #include "message_passing.h"
 #include "operation_inline.h"
-// <bojian/TVM-SymbolicTuning>
-#include "../symtune.h"
+// <bojian/DietCode>
+#include "../DietCode_helper.h"
 
 
 namespace tvm {
@@ -236,8 +236,8 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
     PassUpIndex(orig_stage, dom_map, &value_map, true);
     predicates = MakeBoundCheck(orig_stage, dom_map, value_map, true, skip_bound_check);
 
-    // <bojian/TVM-SymbolicTuning> Added the logging of predicates.
-    if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+    // <bojian/DietCode> Added the logging of predicates.
+    if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
       LOG(INFO) << "Introducing predicates=" << exprs_tostr(predicates);
     }
 
@@ -448,8 +448,8 @@ Array<Tensor> Schedule::cache_write(const Array<Tensor>& tensor_array, const std
   (*this)->InvalidateCache();
   ICHECK(tensor_array.size() > 0) << "size of tensor_array must be greater than 0";
 
-  // <bojian/TVM-SymbolicTuning> Added the logging for cache_write steps.
-  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+  // <bojian/DietCode> Added the logging for cache_write steps.
+  if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
     LOG(INFO) << "Caching tensors " << exprs_tostr(tensor_array);
   }
 

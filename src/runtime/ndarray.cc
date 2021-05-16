@@ -199,36 +199,6 @@ NDArray NDArray::Empty(std::vector<int64_t> shape, DLDataType dtype, Device dev,
   return ret;
 }
 
-
-// <bojian/TVM-SymbolicTuning>
-
-inline size_t GetDataSizeExt(const DLTensor& arr,
-                             std::vector<int64_t> shape_tile) {
-  size_t size = 1;
-  for (tvm_index_t i = 0; i < arr.ndim; ++i) {
-    size *= static_cast<size_t>((arr.shape[i] + shape_tile[i] - 1) / shape_tile[i]
-                                * shape_tile[i]);
-  }
-  size *= (arr.dtype.bits * arr.dtype.lanes + 7) / 8;
-  return size;
-}
-
-
-NDArray NDArray::EmptyExt(std::vector<int64_t> shape,
-                          std::vector<int64_t> shape_tile,
-                          DLDataType dtype, DLContext ctx) {
-  NDArray ret = Internal::Create(shape, dtype, ctx);
-  // setup memory content
-  size_t size = GetDataSizeExt(ret.get_mutable()->dl_tensor, shape_tile);
-  size_t size_wo_tiling = GetDataSize(ret.get_mutable()->dl_tensor);
-  LOG(INFO) << "Storage Overhead: " << (size * 1.0 / size_wo_tiling - 1) * 100 << "%";
-  size_t alignment = GetDataAlignment(ret.get_mutable()->dl_tensor);
-  ret.get_mutable()->dl_tensor.data =
-      DeviceAPI::Get(ret->ctx)->AllocDataSpace(ret->ctx, size, alignment, ret->dtype);
-  return ret;
-}
-
-
 NDArray NDArray::FromDLPack(DLManagedTensor* tensor) {
   NDArray::Container* data = new NDArray::Container();
   // construct header
@@ -320,28 +290,6 @@ TVM_REGISTER_GLOBAL("runtime.TVMArrayAllocWithScope").set_body([](TVMArgs args, 
   auto ndarray = NDArray::Empty(shape, dtype, dev, mem_scope);
   *ret = ndarray;
 });
-
-// <bojian/DietCode>
-// int TVMArrayAllocExt(const tvm_index_t* shape, const tvm_index_t* shape_tile, int ndim,
-//                      int dtype_code, int dtype_bits, int dtype_lanes,
-//                      int device_type, int device_id, TVMArrayHandle* out) {
-//   API_BEGIN();
-//   DLDataType dtype;
-//   dtype.code = static_cast<uint8_t>(dtype_code);
-//   dtype.bits = static_cast<uint8_t>(dtype_bits);
-//   dtype.lanes = static_cast<uint16_t>(dtype_lanes);
-//   DLContext ctx;
-//   ctx.device_type = static_cast<DLDeviceType>(device_type);
-//   ctx.device_id = device_id;
-//   auto ndarray = NDArray::EmptyExt(std::vector<int64_t>(shape, shape + ndim),
-//                                    std::vector<int64_t>(shape_tile, shape_tile + ndim),
-//                                    dtype, ctx);
-
-//   *out = NDArray::Internal::MoveToFFIHandle(ndarray);
-//   API_END();
-// }
-
-
 
 int TVMArrayFree(TVMArrayHandle handle) {
   API_BEGIN();

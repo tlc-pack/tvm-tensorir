@@ -354,11 +354,11 @@ class Var(PrimExprWithOp):
         self.__init_handle_by_constructor__(_ffi_api.Var, name, dtype, span)
 
 
-# <bojian/TVM-SymbolicTuning>
-@tvm._ffi.register_object("tir.DyAxis")
-class DyAxis(PrimExprWithOp):
+# <bojian/DietCode>
+@tvm._ffi.register_object("tir.DynamicAxis")
+class DynamicAxis(PrimExprWithOp):
     def __init__(self, name, possible_values):
-        self.__init_handle_by_constructor__(_ffi_api.DyAxis, name,
+        self.__init_handle_by_constructor__(_ffi_api.DynamicAxis, name,
                                             [IntImm("int32", i) for i in sorted(possible_values)])
 
 

@@ -27,8 +27,7 @@
 #include "../cblas/gemm_common.h"
 #include "cublas_utils.h"
 
-// <bojian/TVM-SymbolicTuning>
-// #include "cutlass/gemm/device/gemm.h"
+// <bojian/DietCode>
 #include "cutlass/library/handle.h"
 
 
@@ -55,7 +54,7 @@ inline void CUBLASTryEnableTensorCore(cublasHandle_t hdl) {
   // TensorCores are only supported in cublas 9.0 or higher
   int version;
   CHECK_CUBLAS_ERROR(cublasGetVersion(hdl, &version));
-  // <bojian/TVM-SymbolicTuning> Disabled tensor cores for fair comparison.
+  // <bojian/DietCode> Disabled tensor cores for fair comparison.
   // if (version >= 9000) CHECK_CUBLAS_ERROR(cublasSetMathMode(hdl, CUBLAS_TENSOR_OP_MATH));
 }
 
@@ -85,7 +84,7 @@ struct CublasSgemmOp {
   }
 };
 
-// <bojian/TVM-SymbolicTuning>
+// <bojian/DietCode>
 struct CutlassSgemmOp {
   ::cutlass::library::Handle* handle;
 
@@ -176,9 +175,6 @@ TVM_REGISTER_GLOBAL("tvm.contrib.cutlass.matmul")
 
       ICHECK(TypeMatch(B->dtype, kDLFloat, bit_depth));
       ICHECK(TypeMatch(C->dtype, kDLFloat, bit_depth));
-      // <bojian/TVM-SymbolicTuning>
-      // double alpha = args.size() > 5 ? args[5] : 1.0;
-      // double beta = args.size() > 6 ? args[6] : 0.0;
 
       CuTlassThreadEntry* entry_ptr = CuTlassThreadEntry::ThreadLocal();
       CutlassSgemmOp op(&entry_ptr->handle);

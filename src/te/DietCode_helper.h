@@ -1,4 +1,4 @@
-// <bojian/TVM-SymbolicTuning>
+// <bojian/DietCode>
 #pragma once
 
 #include <sstream>
@@ -6,9 +6,6 @@
 #include <vector>
 
 #include <tvm/runtime/container.h>
-
-
-// #define SYMTUNE_DEBUG_TRACE
 
 
 template<typename PrimExprT>

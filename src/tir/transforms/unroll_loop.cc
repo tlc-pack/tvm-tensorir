@@ -160,18 +160,6 @@ class LoopUnroller : public StmtExprMutator {
     return StmtMutator::VisitSeqStmt_(op, false, fmutate);
   }
 
-
-  // <bojian/TVM-SymbolicTuning>
-  // Stmt VisitStmt_(const IfThenElseNode* op) override {
-  //   if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
-  //     LOG(INFO) << GetRef<IfThenElse>(op);
-  //   }
-  //   Stmt stmt = StmtMutator::VisitStmt_(op);
-  //   LOG(INFO) << stmt;
-  //   return stmt;
-  // }
-
-
   Stmt Unroll(const ForNode* op) {
     int value = GetExtent(op);
     // For loop must have a constant integer extent

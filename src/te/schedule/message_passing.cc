@@ -26,9 +26,9 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/expr.h>
 
-// <bojian/TVM-SymbolicTuning>
-#include "../symtune.h"
-#include <tvm/node/container.h>
+// <bojian/DietCode>
+#include "../DietCode_helper.h"
+#include <tvm/runtime/container.h>
 #include <tvm/tir/dynamic_axis_functor.h>
 #include <tvm/tir/expr_functor.h>
 
@@ -487,7 +487,7 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
                       std::unordered_map<IterVar, bool>* p_state, arith::Analyzer* analyzer) {
   auto& state = *p_state;
 
-  // <bojian/TVM-SymbolicTuning>
+  // <bojian/DietCode>
   const Stage& stage = s;
 
   for (size_t i = s->relations.size(); i != 0; --i) {
@@ -502,8 +502,8 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
         if (outer || inner) {
           state[s->parent] = true;
 
-          // <bojian/TVM-SymbolicTuning>
-          if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+          // <bojian/DietCode>
+          if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
             LOG(INFO) << "Bound checking is required for " << stage;
           }
 
@@ -511,14 +511,15 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
           if (analyzer->CanProve(dom_map.at(s->parent)->extent == factor * step)) {
             state[s->parent] = false;
 
-            // <bojian/TVM-SymbolicTuning>
-            // LOG(INFO) << stage << ": " << dom_map.at(s->parent)->extent << "==" << factor * step;
+            // <bojian/DietCode>
+            // LOG(INFO) << stage << ": " << dom_map.at(s->parent)->extent
+            //           << "==" << factor * step;
 
           } else {
             state[s->parent] = true;
 
-            // <bojian/TVM-SymbolicTuning>
-            if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+            // <bojian/DietCode>
+            if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
               LOG(INFO) << "Bound checking is required for " << stage;
             }
 
@@ -527,8 +528,8 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
       } else {
         state[s->parent] = true;
 
-        // <bojian/TVM-SymbolicTuning>
-        if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+        // <bojian/DietCode>
+        if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
           LOG(INFO) << "Bound checking is required for " << stage;
         }
 
@@ -555,25 +556,12 @@ bool IsRangeSame(const Range input_1, const Range input_2) {
           analyzer.CanProve(input_1->extent == input_2->extent));
 }
 
-// <bojian/TVM-SymbolicTuning>
-// class ContainsBlockIdx : public ExprVisitor {
-//  public:
-//   bool has_blockIdx = false;
-//  protected:
-//   void VisitExpr_(const VarNode* op) override {
-//     if (op->name_hint == "blockIdx.x") {
-//       has_blockIdx = true;
-//     }
-//   }
-// };
-
-
 std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Range>& dom_map,
                                      const std::unordered_map<IterVar, PrimExpr>& value_map,
                                      bool skip_ivar_domain,
                                      const std::unordered_set<IterVar>& skip_iter) {
-  // <bojian/TVM-SymbolicTuning>
-  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+  // <bojian/DietCode>
+  if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
     LOG(INFO) << "Making bound check for " << stage;
   }
 
@@ -597,34 +585,11 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
     analyzer.Bind(entry.first->var, entry.second);
   }
 
-  // <bojian/TVM-SymbolicTuning>
-  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+  // <bojian/DietCode>
+  if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
     LOG(INFO) <<  "all_iter_vars=" << exprs_tostr(stage->all_iter_vars) << ", "
               << "root_iter_vars=" << exprs_tostr(stage->op->root_iter_vars());
   }
-
-  // <bojian/TVM-SymbolicTuning>
-  // #if defined(SYMTUNE_SCHED_OPT_NO_DUP_IF_CHECKS)
-  
-  
-  // PrimExpr prev_predicate;
-
-
-  // ContainsBlockIdx blockidx_checker;
-  // DyAxisMaxReplacer dyaxis_max_replacer;
-  // DyAxisMinReplacer dyaxis_min_replacer;
-  // DyAxisSubstituter dyaxis_substituter;
-  // DyAxisFinder dyaxis_finder;
-
-  // std::ostringstream strout;
-  // for (const std::pair<IterVar, PrimExpr>& iv_expr_pair : value_map) {
-  //   strout << iv_expr_pair.second;
-  //   if (strout.str() == "blockIdx.x") {
-  //     IntSet iset = iset_dmap.at(Downcast<Var>(iv_expr_pair.second));
-  //     LOG(INFO) << analyzer.Simplify(dyaxis_max_replacer(iset.max()));
-  //   }
-  //   strout.str("");
-  // }
 
   for (const IterVar& iv : stage->all_iter_vars) {
     if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
@@ -633,114 +598,20 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = analyzer.int_set(value, iset_dmap).max();
 
-
-      // <bojian/TVM-SymbolicTuning>
-      // dyaxis_finder.dy_axes.clear();
-      // dyaxis_finder(vmax < dom->extent);
-      // for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
-      //   LOG(INFO) << GetRef<DyAxis>(dy_axis);
-      // }
-      // bool can_ignore_bound_check = true;
-
-      // if (dyaxis_finder.dy_axes.empty()) {
-      //   can_ignore_bound_check = analyzer.CanProve(vmax < dom->extent);
-      // } else {
-        // for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
-        //   for (const IntImm& v : dy_axis->possible_values) {
-        //     dyaxis_substituter.op = dy_axis;
-        //     dyaxis_substituter.v = v->value;
-        //     // LOG(INFO) << value;
-        //     // IntSet s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
-        //     // recompute vmax
-        //     // vmax = s.max();
-        //     // PrimExpr new_cond = dyaxis_substituter(vmax < dom->extent);
-        //     // LOG(INFO) << "Checking condition " << new_cond;
-        //     LOG(INFO) << analyzer.Simplify(dyaxis_max_replacer(dyaxis_substituter(vmax))) << " vs. "
-        //               << analyzer.Simplify(dyaxis_min_replacer(dyaxis_substituter(dom->extent)));
-        //     can_ignore_bound_check &= analyzer.CanProve(
-        //         dyaxis_max_replacer(dyaxis_substituter(vmax)) <
-        //         dyaxis_min_replacer(dyaxis_substituter(dom->extent))
-        //         );
-        //   }
-        // }
-        // LOG(INFO) << "Can ignore bound check (" << value << "<" << dom->extent << ")?: "
-        //           << std::boolalpha << can_ignore_bound_check
-        //           << std::noboolalpha;
-        // can_ignore_bound_check = canProveForAllDyAxes(analyzer, vmax < dom->extent);
-      // }
-      bool can_ignore_bound_check = canProveForAllDyAxes(analyzer, vmax < dom->extent);
-
+      bool can_ignore_bound_check = canProveForAllDynamicAxes(analyzer, vmax < dom->extent);
 
       if (vmax.dtype() != value.dtype() || !can_ignore_bound_check) {
-        if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
-          // if (prev_predicate.defined()) {
-          //   LOG(WARNING) << "Predicate (" << value << "<" << dom->extent << ") "
-          //                << "is assumed to be a subset of "
-          //                << "(" << prev_predicate << ") in stage "
-          //                << stage->origin_op->name;
-          //   continue;
-          // }
-          bool can_ignore_bound_check = false;
-          for (const PrimExpr &pred : preds) {
-            BlockIdxDivFinder blockIdx_div_i, blockIdx_div_ii;
-            BlockIdxModFinder blockIdx_mod_i, blockIdx_mod_ii;
-            blockIdx_div_i(pred); blockIdx_div_ii(value);
-            blockIdx_mod_i(pred); blockIdx_mod_ii(value);
-            if (blockIdx_div_i.floor_div != nullptr && blockIdx_div_ii.floor_div != nullptr) {
-              can_ignore_bound_check = true;
-            }
-            if (blockIdx_mod_i.floor_mod != nullptr && blockIdx_mod_ii.floor_mod != nullptr) {
-              can_ignore_bound_check = true;
-            }
-          }
-          if (can_ignore_bound_check) {
-            continue;
-          }
+        if (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0)) {
+          LOG(INFO) << "Creating boundary check for iv=" << iv;
         }
-
-
-        // <bojian/TVM-SymbolicTuning>
-        // if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
-        //   if (stage->origin_op->name.find("shared") != std::string::npos
-        //       ) {
-        //     if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT_NO_LOCAL_PADDING", 0)) {
-        //       LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
-        //                       "Assuming it is a cache write whose boundary check "
-        //                       "(" << value << "<" << dom->extent << ") can be neglected.";
-        //       continue;
-        //     } else {
-        //       LOG(WARNING) << "Local padding has been disabled";
-        //     }
-        //   }
-        // }
-
 
         preds.emplace_back(value < dom->extent);
 
-        // <bojian/TVM-SymbolicTuning>
-        // if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
-        //   prev_predicate = preds.back();
-        // }
-        if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
-          LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent 
+        // <bojian/DietCode>
+        if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
+          LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent
                     << ") for " << stage;
         }
-
-        // ContainsBlockIdxDiv blockIdx_div;
-        // ContainsBlockIdxMod blockIdx_mod;
-        // blockIdx_div(value);
-        // blockIdx_mod(value);
-        // if (blockIdx_div.floor_div) {
-        //   LOG(INFO) << "Preparing predicate " << (blockIdx_div.floor_div->a) << " < floor(blockIdx.x, "
-        //                                       << (blockIdx_div.floor_div->b) << ")";
-        // } else if (blockIdx_mod.floor_mod) {
-        //   LOG(INFO) << "Preparing predicate " << (blockIdx_mod.floor_mod->a == blockIdx_mod.floor_mod->b - 1);
-        // }
-        // LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent 
-        //           << ") for " << stage;
-
-        // LOG(INFO) <<  "all_iter_vars=" << exprs_tostr(stage->all_iter_vars) << ", "
-        //           << "root_iter_vars=" << exprs_tostr(stage->op->root_iter_vars());
 
       }
     }
@@ -755,77 +626,26 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr vmin = s.min();
       PrimExpr vmax = s.max();
       // The range of `value` resides in [vmin, vmax]
-      // <bojian/TVM-SymbolicTuning>
-      // if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
 
-      // <bojian/TVM-SymbolicTuning> Ignored the lower bound check.
+      // <bojian/DietCode> Ignored the lower bound check.
       // bool can_ignore_lower_bound_check = canProveForAllDyAxes(analyzer, vmin >= 0);
-
       // if (vmin.dtype() != value.dtype() || !can_ignore_lower_bound_check) {
       //   preds.emplace_back(value >= 0);
       // }
       //   LOG(INFO) << "Neglecting the bound check (" << value << ">=" << "0)";
       // }
 
-      // <bojian/TVM-SymbolicTuning>
-      // dyaxis_finder.dy_axes.clear();
-      // dyaxis_finder(vmax < iv->dom->extent);
-      // for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
-      //   LOG(INFO) << GetRef<DyAxis>(dy_axis);
-      // }
-      // bool can_ignore_bound_check = true;
-
-      // if (dyaxis_finder.dy_axes.empty()) {
-      //   can_ignore_bound_check = analyzer.CanProve(vmax < iv->dom->extent);
-      // } else {
-        // for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
-        //   for (const IntImm& v : dy_axis->possible_values) {
-        //     dyaxis_substituter.op = dy_axis;
-        //     dyaxis_substituter.v = v->value;
-        //     // LOG(INFO) << value;
-        //     // s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
-        //     // recompute vmax
-        //     // vmax = s.max();
-        //     // PrimExpr new_cond = dyaxis_substituter(vmax < iv->dom->extent);
-        //     // LOG(INFO) << "Checking condition " << new_cond;
-        //     LOG(INFO) << analyzer.Simplify(dyaxis_max_replacer(dyaxis_substituter(vmax))) << " vs. "
-        //               << analyzer.Simplify(dyaxis_min_replacer(dyaxis_substituter(iv->dom->extent)));
-        //     can_ignore_bound_check &= analyzer.CanProve(
-        //         dyaxis_max_replacer(dyaxis_substituter(vmax)) <
-        //         dyaxis_min_replacer(dyaxis_substituter(iv->dom->extent))
-        //         );
-        //   }
-        // }
-        // LOG(INFO) << "Can ignore bound check (" << value << "<" << iv->dom->extent << ")?: "
-        //           << std::boolalpha << can_ignore_bound_check
-        //           << std::noboolalpha;
-        // can_ignore_bound_check = canProveForAllDyAxes(analyzer, vmax < iv->dom->extent);
-      // }
-      bool can_ignore_upper_bound_check = canProveForAllDyAxes(analyzer, vmax < iv->dom->extent);
+      bool can_ignore_upper_bound_check =
+          canProveForAllDynamicAxes(analyzer, vmax < iv->dom->extent);
 
       if (vmax.dtype() != value.dtype() || !can_ignore_upper_bound_check) {
 
-        // <bojian/TVM-SymbolicTuning>
-        if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
-          if (stage->origin_op->name.find(".local") != std::string::npos
-              // Uncommenting the following line might give you better performance,
-              // but it can also potentially bring illegal memory accesses.
-              // || stage->origin_op->name.find("shared") != std::string::npos
-              ) {
-            // blockidx_checker.has_blockIdx = false;
-            // blockidx_checker(value);
-            // if (blockidx_checker.has_blockIdx) {
-            //   LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
-            //                   "Assuming it is a cache write whose boundary check "
-            //                   "(" << value << "<" << iv->dom->extent << ") can be neglected.";
-            //   continue;
-            // } else {
-            //   LOG(WARNING) << "The predicate (" << value << "<" << iv->dom->extent
-            //                << ")is preserved";
-            // }
-            if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT_NO_LOCAL_PADDING", 0)) {
-              LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
-                              "Assuming it is a cache write whose boundary check "
+        // <bojian/DietCode>
+        if (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0)) {
+          if (stage->origin_op->name.find(".local") != std::string::npos) {
+            if (!dmlc::GetEnv("DIETCODE_SCHED_OPT_NO_LOCAL_PADDING", 0)) {
+              LOG(WARNING) << "\'.local\' spotted in " << stage->origin_op->name << ". "
+                              "Assuming it is a local compute  operation whose boundary check "
                               "(" << value << "<" << iv->dom->extent << ") can be neglected.";
               continue;
             } else {
@@ -836,8 +656,8 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
 
         preds.emplace_back(value < iv->dom->extent);
 
-        // <bojian/TVM-SymbolicTuning>
-        if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+        // <bojian/DietCode>
+        if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
           LOG(INFO) << "Inserting predicate (" << value << "<" << iv->dom->extent
                     << ") for " << stage;
         }
@@ -846,8 +666,8 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
     }
   }
 
-  // <bojian/TVM-SymbolicTuning>
-  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+  // <bojian/DietCode>
+  if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
     LOG(INFO) << "Inserting predicates=" << exprs_tostr(preds);
   }
 

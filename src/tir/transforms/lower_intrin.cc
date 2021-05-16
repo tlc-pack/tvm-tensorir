@@ -32,7 +32,7 @@
 #include "../../arith/ir_mutator_with_analyzer.h"
 #include "../../arith/pattern_match.h"
 
-// <bojian/TVM-SymbolicTuning>
+// <bojian/DietCode>
 #include <tvm/tir/dynamic_axis_functor.h>
 
 
@@ -112,21 +112,16 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
       return op->a >> make_const(dtype, shift);
     }
 
-    // <bojian/TVM-SymbolicTuning>
-    // Maybe consider replacing this implementation with canProveForAllDyAxes instead?
-    // DyAxisMinReplacer dyaxis_min_replacer;
-
-    // if (analyzer_->CanProveGreaterEqual(
-    //       // <bojian/TVM-SymbolicTuning>
-    //       dyaxis_min_replacer(op->b), 0)) {
-    if (canProveForAllDyAxes(*analyzer_, op->b >= 0)) {
+    // <bojian/DietCode> Fixed the boundary check when lowering intrinsics.
+    // if (analyzer_->CanProveGreaterEqual(op->b, 0)) {
+    if (canProveForAllDynamicAxes(*analyzer_, op->b >= 0)) {
+      
       // Common path, positive divisor
-      // if (analyzer_->CanProveGreaterEqual(
-      //       // <bojian/TVM-SymbolicTuning>
-      //       dyaxis_min_replacer(op->a), 0) ||
-      //     analyzer_->CanProveGreaterEqual(
-      //       dyaxis_min_replacer(e), 0)) {
-      if (canProveForAllDyAxes(*analyzer_, op->a >= 0)) {
+      
+      // <bojian/DietCode>
+      // if (analyzer_->CanProveGreaterEqual(op->a, 0) || analyzer_->CanProveGreaterEqual(e, 0)) {
+      if (canProveForAllDynamicAxes(*analyzer_, op->a >= 0)) {
+      
         return truncdiv(op->a, op->b);
       } else {
         DLOG(INFO) << "LowerFloorDiv: Cannot decide the sign of divident";
@@ -177,19 +172,16 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
       return op->a & make_const(dtype, mask);
     }
 
-    // <bojian/TVM-SymbolicTuning>
-    // DyAxisMinReplacer dyaxis_min_replacer;
-    // DyAxisFinder dyaxis_finder;
-    // dyaxis_finder(op->a);
-    // dyaxis_finder.dy_axes.clear();
-
-    // if (analyzer_->CanProveGreaterEqual(
-    //       dyaxis_min_replacer(op->b), 0)) {
-    if (canProveForAllDyAxes(*analyzer_, op->b >= 0)) {
+    // <bojian/DietCode>
+    // if (analyzer_->CanProveGreaterEqual(op->b, 0)) {
+    if (canProveForAllDynamicAxes(*analyzer_, op->b >= 0)) {
+      
       // Common pass, positive divisor
-      // if (analyzer_->CanProveGreaterEqual(
-      //       dyaxis_min_replacer(op->a), 0)) {
-      if (canProveForAllDyAxes(*analyzer_, op->a >= 0)) {
+   
+      // <bojian/DietCode>
+      // if (analyzer_->CanProveGreaterEqual(op->a, 0)) {
+      if (canProveForAllDynamicAxes(*analyzer_, op->a >= 0)) {
+
         return truncmod(op->a, op->b);
       } else {
         DLOG(INFO) << "LowerFloorMod: Cannot decide the sign of divident";

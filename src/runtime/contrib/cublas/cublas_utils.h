@@ -30,7 +30,7 @@
 #include <dlpack/dlpack.h>
 #include <tvm/runtime/logging.h>
 
-// <bojian/TVM-SymbolicTuning>
+// <bojian/DietCode>
 #include "cutlass/library/handle.h"
 
 #include <cstdint>
@@ -81,7 +81,7 @@ struct CuBlasThreadEntry {
 };  // CuBlasThreadEntry
 
 
-// <bojian/TVM-SymbolicTuning>
+// <bojian/DietCode>
 struct CuTlassThreadEntry {
   CuTlassThreadEntry() = default;
   ::cutlass::library::Handle handle;

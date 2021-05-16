@@ -21,7 +21,7 @@ find_cuda(${USE_CUDA} ${USE_CUDNN})
 if(CUDA_FOUND)
   # always set the includedir when cuda is available
   # avoid global retrigger of cmake
-	include_directories(SYSTEM ${CUDA_INCLUDE_DIRS}
+  include_directories(SYSTEM ${CUDA_INCLUDE_DIRS}
                              ${CMAKE_SOURCE_DIR}/../3rdparty/CUTLASS/include
                              ${CMAKE_SOURCE_DIR}/../3rdparty/CUTLASS/tools/library/include)
 endif(CUDA_FOUND)
@@ -51,7 +51,7 @@ if(USE_CUDA)
   if(USE_CUBLAS)
     message(STATUS "Build with cuBLAS/CUTLASS support")
     
-    # <bojian/TVM-SymbolicTuning>
+    # <bojian/DietCode>
     # enable_language(CUDA)
 
     file(GLOB CONTRIB_CUBLAS_SRCS src/runtime/contrib/cublas/*.cc)

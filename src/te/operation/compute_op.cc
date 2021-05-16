@@ -38,8 +38,8 @@
 #include "../../arith/interval_set.h"
 #include "../schedule/message_passing.h"
 #include "op_utils.h"
-// <bojian/TVM-SymbolicTuning>
-#include "../symtune.h"
+// <bojian/DietCode>
+#include "../DietCode_helper.h"
 
 
 namespace tvm {
@@ -371,8 +371,8 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
       provide = MergeNest(common, SeqStmt::Flatten(init, provide));
     }
 
-    // <bojian/TVM-SymbolicTuning>
-    if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+    // <bojian/DietCode>
+    if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
       LOG(INFO) << "Making ComputeStmt for " << stage << " with "
                 << "main_predicates=" << exprs_tostr(n.main_predicates) << " and "
                 << "init_predicates=" << exprs_tostr(n.init_predicates);
@@ -449,8 +449,8 @@ Stmt ComputeOpNode::BuildProvide(const Stage& stage,
 ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Stage& stage,
                                         const std::unordered_map<IterVar, Range>& dom_map,
                                         bool debug_keep_trivial_loop) {
-  // <bojian/TVM-SymbolicTuning> Added the logging for the creation of ComputeLoopNest.
-  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+  // <bojian/DietCode> Added the logging for the creation of ComputeLoopNest.
+  if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
     std::cout << std::endl;
     LOG(INFO) << "Creating the ComputeLoopNest for " << stage;
   }
@@ -463,8 +463,8 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
   ret.main_predicates =
       MakeBoundCheck(stage, dom_map, ret.main_vmap, false, std::unordered_set<IterVar>());
 
-  // <bojian/TVM-SymbolicTuning>
-  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+  // <bojian/DietCode>
+  if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
     LOG(INFO) << "Finished creating the main predicates";
   }
 
@@ -473,8 +473,8 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
   }
   if (stage->store_predicate.defined()) {
 
-    // <bojian/TVM-SymbolicTuning>
-    if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+    // <bojian/DietCode>
+    if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
       LOG(INFO) << "store_predicate=" << stage->store_predicate;
     }
 
@@ -523,8 +523,8 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
   }
   // copy elison here.
 
-  // <bojian/TVM-SymbolicTuning>
-  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+  // <bojian/DietCode>
+  if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
     LOG(INFO) << "Finished the creation of ComputeLoopNest";
     std::cout << std::endl;
   }

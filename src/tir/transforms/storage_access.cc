@@ -177,7 +177,7 @@ void StorageAccessVisitor::VisitStmt_(const IfThenElseNode* op) {
   if (op->else_case.defined()) {
     scope_.push_back(std::vector<StmtEntry>());
 
-    // <bojian/TVM-SymbolicTuning> Added the missing visit to the else case.
+    // <bojian/DietCode> Added the missing visit to the else case.
     this->VisitStmt(op->else_case);
 
     auto v = Summarize(std::move(scope_.back()), nullptr);

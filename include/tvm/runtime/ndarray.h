@@ -144,11 +144,6 @@ class NDArray : public ObjectRef {
   TVM_DLL static NDArray Empty(std::vector<int64_t> shape, DLDataType dtype, Device dev,
                                Optional<String> mem_scope = NullOpt);
 
-  // <bojian/DietCode>
-  // TVM_DLL static NDArray EmptyExt(std::vector<int64_t> shape,
-  //                                 std::vector<int64_t> shape_tile,
-  //                                 DLDataType dtype, DLContext ctx);
-
   /*!
    * \brief Create a NDArray backed by a dlpack tensor.
    *

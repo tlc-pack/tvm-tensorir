@@ -1,4 +1,4 @@
-# <bojian/TVM-SymbolicTuning>
+# <bojian/DietCode>
 import tvm
 from tvm import te
 

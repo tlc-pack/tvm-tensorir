@@ -58,13 +58,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
     for (size_t i = 0; i < seq.size(); ++i) {
       const StmtEntry& s = seq[i];
       // check if sync before statement is needed.
-
-
-      // <bojian/TVM-SymbolicTuning>
       bool sync_before_stmt = (syncs_inserted_.count(s.stmt) != 0);
-      // bool sync_before_stmt = true;
-
-
       // Apply the syncs added already.
       if (sync_before_stmt) {
         reads.clear();
@@ -103,7 +97,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         }
       }
       if (sync_before_stmt) {
-        // <bojian/TVM-SymbolicTuning> Ignored the check on conditions.
+        // <bojian/DietCode> Ignored the check on conditions.
         // ICHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition";
         syncs_inserted_.insert(s.stmt);
       }
@@ -113,13 +107,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         const StmtEntry& s = seq[i];
         if (syncs_inserted_.count(s.stmt) != 0) break;
         if (reads.empty() && writes.empty()) break;
-        
-        
-        // <bojian/TVM-SymbolicTuning>
         bool sync_before_stmt = false;
-        // bool sync_before_stmt = true;
-        
-        
         for (const AccessEntry& acc : s.access) {
           if (acc.type == kRead) {
             if (FindConflict(writes, acc, true)) {
@@ -137,18 +125,13 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           }
         }
         if (sync_before_stmt) {
-          // <bojian/TVM-SymbolicTuning> Ignored the check on conditions.
+          // <bojian/DietCode> Ignored the check on conditions.
           // ICHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition";
           syncs_inserted_.insert(s.stmt);
           break;
         }
       }
     }
-
-    // <bojian/TVM-SymbolicTuning>
-    // LOG(INFO) << "ATTENTION!!! Number of syncs inserted: " << syncs_inserted_.size();
-
-
     // return the exposed entries, remove unecessary ones.
     int sync_count = 0;
     // head are before first sync, tail are after last sync
@@ -191,11 +174,6 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         e.double_buffer_write = false;
       }
     }
-
-    // <bojian/TVM-SymbolicTuning>
-    // LOG(INFO) << "ATTENTION!!! Number of syncs after optimization: " << sync_count;
-
-
     return head;
   }
 

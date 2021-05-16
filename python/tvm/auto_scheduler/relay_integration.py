@@ -174,7 +174,7 @@ class TracingEnvironment:
         self.wkl_key_to_input_names = {}
 
 
-    # <bojian/TVM-SymbolicTuning>
+    # <bojian/DietCode>
     def gather_all_conv2d_workloads(self, t):
         padded_tensor = t.op.input_tensors[0]
         X = padded_tensor.op.input_tensors[0]
@@ -261,7 +261,7 @@ def traverse_to_get_io_tensors(outs):
     visited = set()
 
 
-    # <bojian/TVM-SymbolicTuning>
+    # <bojian/DietCode>
     tracing_env = TracingEnvironment.current
 
     def traverse(t):
@@ -273,7 +273,7 @@ def traverse_to_get_io_tensors(outs):
         if t.handle.value in visited:
             return
 
-        # <bojian/TVM-SymbolicTuning>
+        # <bojian/DietCode>
         # from tvm import topi
         # try:
         #     input_tensors = ['{}'.format(topi.utils.get_const_tuple(_t.shape))
@@ -287,7 +287,7 @@ def traverse_to_get_io_tensors(outs):
         elif isinstance(t.op, ComputeOp):
             has_complex_op = has_complex_op or any([isinstance(e, Reduce) for e in t.op.body])
 
-            # <bojian/TVM-SymbolicTuning>
+            # <bojian/DietCode>
             if "conv2d" in t.op.tag:
                 tracing_env.gather_all_conv2d_workloads(t)
 

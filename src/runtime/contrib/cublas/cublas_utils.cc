@@ -48,7 +48,7 @@ CuBlasThreadEntry* CuBlasThreadEntry::ThreadLocal() {
   return retval;
 }
 
-// <bojian/TVM-SymbolicTuning>
+// <bojian/DietCode>
 typedef dmlc::ThreadLocalStore<CuTlassThreadEntry> CuTlassThreadStore;
 
 CuTlassThreadEntry* CuTlassThreadEntry::ThreadLocal() {

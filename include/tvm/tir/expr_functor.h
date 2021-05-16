@@ -28,7 +28,7 @@
 #include <tvm/node/functor.h>
 #include <tvm/tir/expr.h>
 
-// <bojian/TVM-SymbolicTuning>
+// <bojian/DietCode>
 #include <tvm/tir/dynamic_axis.h>
 
 #include <utility>
@@ -121,10 +121,15 @@ class ExprFunctor<R(const PrimExpr& n, Args...)> {
   virtual R VisitExpr_(const SizeVarNode* op, Args... args) {
     return VisitExpr_(static_cast<const VarNode*>(op), std::forward<Args>(args)...);
   }
-  virtual R VisitExpr_(const DyAxisNode* op, Args... args) {
+
+
+  // <bojian/DietCode>
+  virtual R VisitExpr_(const DynamicAxisNode* op, Args... args) {
     return VisitExpr_(static_cast<const VarNode*>(op),
                       std::forward<Args>(args)...);
   }
+
+
   virtual R VisitExpr_(const BufferLoadNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const ProducerLoadNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const LoadNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
@@ -170,7 +175,10 @@ class ExprFunctor<R(const PrimExpr& n, Args...)> {
     // Set dispatch
     IR_EXPR_FUNCTOR_DISPATCH(VarNode);
     IR_EXPR_FUNCTOR_DISPATCH(SizeVarNode);
-    IR_EXPR_FUNCTOR_DISPATCH(DyAxisNode)
+
+    // <bojian/DietCode>
+    IR_EXPR_FUNCTOR_DISPATCH(DynamicAxisNode);
+    
     IR_EXPR_FUNCTOR_DISPATCH(LoadNode);
     IR_EXPR_FUNCTOR_DISPATCH(BufferLoadNode);
     IR_EXPR_FUNCTOR_DISPATCH(ProducerLoadNode);

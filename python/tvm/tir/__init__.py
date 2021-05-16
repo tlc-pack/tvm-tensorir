@@ -22,7 +22,7 @@ from tvm.runtime import const
 from .buffer import Buffer, decl_buffer, DataProducer
 from .data_layout import Layout, BijectiveLayout, bijective_layout, layout
 from .expr import Var, SizeVar, Reduce, FloatImm, IntImm, StringImm, Cast \
-                  , DyAxis  # <bojian/TVM-SymbolicTuning>
+                  , DynamicAxis  # <bojian/DietCode>
 from .expr import Add, Sub, Mul, Div, Mod, FloorDiv, FloorMod
 from .expr import Min, Max, EQ, NE, LT, LE, GT, GE, And, Or, Not
 from .expr import Select, BufferLoad, ProducerLoad, Load, Ramp, Broadcast, Shuffle
