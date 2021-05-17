@@ -1,4 +1,6 @@
 // <bojian/DietCodes>
+#include <dmlc/parameter.h>
+
 #include <tvm/arith/analyzer.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/dynamic_axis.h>
@@ -47,9 +49,9 @@ void canProveForEachDynamicAxis(arith::Analyzer& analyzer, PrimExpr predicate, b
                                 const std::unordered_set<const DynamicAxisNode*>::iterator& dyaxes_end) {
   if (dyaxes_iter == dyaxes_end) {
     bool analyzer_result = analyzer.CanProve(predicate);
-    // if (!analyzer_result) {
-    //   LOG(WARNING) << "Unable to show that (" << predicate << ") is always true";
-    // }
+    if (!analyzer_result && dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
+      LOG(WARNING) << "Unable to show that (" << predicate << ") is always true";
+    }
     (*can_prove) &= analyzer_result;
     return;
   }

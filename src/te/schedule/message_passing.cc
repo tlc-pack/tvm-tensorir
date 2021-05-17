@@ -488,7 +488,7 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
   auto& state = *p_state;
 
   // <bojian/DietCode>
-  const Stage& stage = s;
+  // const Stage& stage = s;
 
   for (size_t i = s->relations.size(); i != 0; --i) {
     IterVarRelation rel = s->relations[i - 1];
@@ -503,9 +503,9 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
           state[s->parent] = true;
 
           // <bojian/DietCode>
-          if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
-            LOG(INFO) << "Bound checking is required for " << stage;
-          }
+          // if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
+          //   LOG(INFO) << "Bound checking is required for " << stage;
+          // }
 
         } else {
           if (analyzer->CanProve(dom_map.at(s->parent)->extent == factor * step)) {
@@ -519,9 +519,9 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
             state[s->parent] = true;
 
             // <bojian/DietCode>
-            if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
-              LOG(INFO) << "Bound checking is required for " << stage;
-            }
+            // if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
+            //   LOG(INFO) << "Bound checking is required for " << stage;
+            // }
 
           }
         }
@@ -529,9 +529,9 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
         state[s->parent] = true;
 
         // <bojian/DietCode>
-        if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
-          LOG(INFO) << "Bound checking is required for " << stage;
-        }
+        // if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
+        //   LOG(INFO) << "Bound checking is required for " << stage;
+        // }
 
       }
     } else if (const FuseNode* s = rel.as<FuseNode>()) {
@@ -604,12 +604,12 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       if (vmax.dtype() != value.dtype() || !can_ignore_bound_check) {
         if (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0)) {
 
-          LOG(INFO) << "Inserting predicate for iv=" << iv;
+          // LOG(INFO) << "Inserting predicate for iv=" << iv;
 
           bool bound_check_already_covered = false;
           for (const IterVar& iv_w_pred : ivs_w_pred) {
-            if (iv->var->name_hint ==
-                iv_w_pred->var->name_hint + ".outer") {
+            if (iv->var->name_hint == iv_w_pred->var->name_hint + ".outer" ||
+                iv->var->name_hint == iv_w_pred->var->name_hint + ".outer.outer") {
               bound_check_already_covered = true;
             }
           }
@@ -623,7 +623,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         // <bojian/DietCode>
         ivs_w_pred.insert(iv);
         if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
-          LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent
+          LOG(INFO) << "Inserting predicate (" << preds.back()
                     << ") for " << stage;
         }
 
@@ -672,7 +672,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
 
         // <bojian/DietCode>
         if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
-          LOG(INFO) << "Inserting predicate (" << value << "<" << iv->dom->extent
+          LOG(INFO) << "Inserting predicate (" << preds.back()
                     << ") for " << stage;
         }
 
