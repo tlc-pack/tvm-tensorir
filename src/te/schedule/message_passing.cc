@@ -586,10 +586,11 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   }
 
   // <bojian/DietCode>
-  if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
-    LOG(INFO) <<  "all_iter_vars=" << exprs_tostr(stage->all_iter_vars) << ", "
-              << "root_iter_vars=" << exprs_tostr(stage->op->root_iter_vars());
-  }
+  // if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
+  //   LOG(INFO) <<  "all_iter_vars=" << exprs_tostr(stage->all_iter_vars) << ", "
+  //             << "root_iter_vars=" << exprs_tostr(stage->op->root_iter_vars());
+  // }
+  std::unordered_set<IterVar> ivs_w_pred;
 
   for (const IterVar& iv : stage->all_iter_vars) {
     if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
@@ -602,12 +603,25 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
 
       if (vmax.dtype() != value.dtype() || !can_ignore_bound_check) {
         if (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0)) {
-          LOG(INFO) << "Creating boundary check for iv=" << iv;
+
+          LOG(INFO) << "Inserting predicate for iv=" << iv;
+
+          bool bound_check_already_covered = false;
+          for (const IterVar& iv_w_pred : ivs_w_pred) {
+            if (iv->var->name_hint ==
+                iv_w_pred->var->name_hint + ".outer") {
+              bound_check_already_covered = true;
+            }
+          }
+          if (bound_check_already_covered) {
+            continue;
+          }
         }
 
         preds.emplace_back(value < dom->extent);
 
         // <bojian/DietCode>
+        ivs_w_pred.insert(iv);
         if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
           LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent
                     << ") for " << stage;

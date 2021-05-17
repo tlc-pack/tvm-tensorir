@@ -344,12 +344,6 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
   // reverse the post DFS order.
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage s = sch->stages[i - 1];
-
-    // <bojian/DietCode>
-    if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
-      LOG(INFO) << "Scheduling for " << s;
-    }
-
     ICHECK_NE(s->attach_type, kInline) << "call schedule.normalize before scheduleops";
     ICHECK(s->op.defined());
     // no need to specify place holder op.

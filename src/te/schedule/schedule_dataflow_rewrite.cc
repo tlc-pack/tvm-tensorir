@@ -235,12 +235,6 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
     }
     PassUpIndex(orig_stage, dom_map, &value_map, true);
     predicates = MakeBoundCheck(orig_stage, dom_map, value_map, true, skip_bound_check);
-
-    // <bojian/DietCode> Added the logging of predicates.
-    if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
-      LOG(INFO) << "Introducing predicates=" << exprs_tostr(predicates);
-    }
-
     // The root axis
     for (IterVar iv : op->axis) {
       if (value_map.count(iv)) {
@@ -447,12 +441,6 @@ Array<Tensor> CacheWriteWithReLayoutTensor(Schedule sch, const Array<Tensor>& te
 Array<Tensor> Schedule::cache_write(const Array<Tensor>& tensor_array, const std::string& scope) {
   (*this)->InvalidateCache();
   ICHECK(tensor_array.size() > 0) << "size of tensor_array must be greater than 0";
-
-  // <bojian/DietCode> Added the logging for cache_write steps.
-  if (dmlc::GetEnv("DIETCODE_DEBUG_TRACE", 0)) {
-    LOG(INFO) << "Caching tensors " << exprs_tostr(tensor_array);
-  }
-
   Tensor tensor = tensor_array[0];
   Stage orig_stage = operator[](tensor->op);
   const ComputeOpNode* compute = tensor->op.as<ComputeOpNode>();
