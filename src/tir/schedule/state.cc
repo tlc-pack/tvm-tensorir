@@ -242,10 +242,10 @@ class StateCreator : private StmtVisitor {
     const StmtSRefNode* limit = scope_root->parent;
     bool stage_pipeline = true;
     // Step 1. Unbind the read/write regions of each child block
-    std::unordered_map<const StmtSRefNode*, Array<BufferRegion>> block_reads;
-    std::unordered_map<const StmtSRefNode*, Array<BufferRegion>> block_writes;
-    block_reads.reserve(child_block_srefs.size());
-    block_writes.reserve(child_block_srefs.size());
+    std::unordered_map<const StmtSRefNode*, Array<BufferRegion>> block_reads_with_bindings_inlined;
+    std::unordered_map<const StmtSRefNode*, Array<BufferRegion>> block_writes_with_bindings_inlined;
+    block_reads_with_bindings_inlined.reserve(child_block_srefs.size());
+    block_writes_with_bindings_inlined.reserve(child_block_srefs.size());
     for (const StmtSRef& block_sref : child_block_srefs) {
       const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
       Map<Var, PrimExpr> binding = GetBindings(block2realize_.at(block));
@@ -255,14 +255,14 @@ class StateCreator : private StmtVisitor {
       for (const BufferRegion& region : block->reads) {
         reads.push_back(BufferRegion(region->buffer, Substitute(region->region, binding)));
       }
-      block_reads.emplace(block_sref.get(), std::move(reads));
+      block_reads_with_bindings_inlined.emplace(block_sref.get(), std::move(reads));
       // Step 1.2. Unbind write regions
       Array<BufferRegion> writes;
       writes.reserve(block->writes.size());
       for (const BufferRegion& region : block->writes) {
         writes.push_back(BufferRegion(region->buffer, Substitute(region->region, binding)));
       }
-      block_writes.emplace(block_sref.get(), std::move(writes));
+      block_writes_with_bindings_inlined.emplace(block_sref.get(), std::move(writes));
     }
     // Step 2. For each consumer, check the region cover property
     for (const auto& kv : info.scope->dst2deps) {
@@ -308,7 +308,8 @@ class StateCreator : private StmtVisitor {
         // For each buffer, record the regions generated under this loop
         std::unordered_map<const BufferNode*, std::vector<Array<arith::IntSet>>> touched_regions;
         // Step 2.3.1. Find all the regions read by the consumer
-        for (const BufferRegion& region : block_reads.at(consumer_block_sref.get())) {
+        for (const BufferRegion& region :
+             block_reads_with_bindings_inlined.at(consumer_block_sref.get())) {
           const BufferNode* buffer = region->buffer.get();
           touched_regions[buffer] = {};
         }
@@ -319,7 +320,8 @@ class StateCreator : private StmtVisitor {
               /*low_inclusive=*/GetRef<StmtSRef>(producer_block_sref->parent),
               /*high_exclusive=*/GetRef<StmtSRef>(lca));
           const BlockRealize& producer_realize = block2realize_.at(producer_block_sref->stmt);
-          for (const BufferRegion& region : block_writes.at(producer_block_sref)) {
+          for (const BufferRegion& region :
+               block_writes_with_bindings_inlined.at(producer_block_sref)) {
             auto it = touched_regions.find(region->buffer.get());
             // Skip the regions that is not read by the consumer
             if (it == touched_regions.end()) {
@@ -346,7 +348,8 @@ class StateCreator : private StmtVisitor {
         Map<Var, arith::IntSet> consumer_dom = AsIntSet(LoopDomainOfSRefTreePath(
             /*low_inclusive=*/GetRef<StmtSRef>(consumer_block_sref->parent),
             /*high_exclusive=*/GetRef<StmtSRef>(lca)));
-        for (const BufferRegion& region : block_reads.at(consumer_block_sref.get())) {
+        for (const BufferRegion& region :
+             block_reads_with_bindings_inlined.at(consumer_block_sref.get())) {
           const BufferNode* buffer = region->buffer.get();
           const std::vector<Array<arith::IntSet>>& touched_region = touched_regions.at(buffer);
           if (touched_region.empty()) {
