@@ -20,11 +20,15 @@
 #define TVM_TIR_SCHEDULE_UTILS_H_
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/arith/iter_affine_map.h>
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/schedule/state.h>
 #include <tvm/tir/stmt_functor.h>
+
+#include <unordered_map>
+#include <utility>
 
 #include "./analysis.h"
 
@@ -86,6 +90,64 @@ namespace tir {
   TVM_TYPE_AS_OR_ERR(Result, From, Type)                                          \
       << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
       << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
+
+/******** Integer set ********/
+
+/*!
+ * \brief Converts the Ranges to IntSets
+ * \param var_dom The ranges of variables
+ * \return The integer sets of the variables
+ */
+inline Map<Var, arith::IntSet> AsIntSet(const Map<Var, Range>& var_dom) {
+  std::unordered_map<Var, arith::IntSet, ObjectPtrHash, ObjectPtrEqual> result;
+  result.reserve(var_dom.size());
+  for (auto kv : var_dom) {
+    Var& var = kv.first;
+    Range& range = kv.second;
+    result.emplace(std::move(var), arith::IntSet::FromRange(std::move(range)));
+  }
+  return {result.begin(), result.end()};
+}
+
+/*!
+ * \brief Converts an N-dimensional integer set to N-dimensional region
+ * \param nd_int_set The integer set
+ * \return The region as the result of conversion
+ */
+inline Array<Range> AsRegion(const Array<arith::IntSet>& nd_int_set, arith::Analyzer* analyzer) {
+  Array<Range> result;
+  result.reserve(nd_int_set.size());
+  for (const arith::IntSet& int_set : nd_int_set) {
+    PrimExpr min = analyzer->Simplify(int_set.min());
+    PrimExpr extent = analyzer->Simplify(int_set.max() - int_set.min() + 1);
+    result.push_back(Range::FromMinExtent(std::move(min), std::move(extent)));
+  }
+  return result;
+}
+
+/*!
+ * \brief The union of N-dimensional integer sets
+ * \param nd_int_sets A list of N-dimensional integer sets
+ * \return An N-dimensional integer set as the result of union
+ */
+inline Array<arith::IntSet> Union(const Array<Array<arith::IntSet>>& nd_int_sets) {
+  if (nd_int_sets.empty()) {
+    return {};
+  }
+  int n = nd_int_sets.size();
+  int ndim = nd_int_sets[0].size();
+  Array<arith::IntSet> result;
+  result.reserve(ndim);
+  for (int i = 0; i < ndim; ++i) {
+    Array<arith::IntSet> candidates;
+    candidates.reserve(n);
+    for (int j = 0; j < n; ++j) {
+      candidates.push_back(nd_int_sets[j][i]);
+    }
+    result.push_back(arith::Union(candidates));
+  }
+  return result;
+}
 
 }  // namespace tir
 }  // namespace tvm

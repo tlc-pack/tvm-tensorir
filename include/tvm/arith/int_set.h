@@ -190,6 +190,14 @@ IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_m
  * \return An integer set that can cover all the possible values of e.
  */
 IntSet EvalSet(Range r, const std::unordered_map<const VarNode*, IntSet>& dom_map);
+/*!
+ * \brief Same as EvalSet, but takes Array<Range>
+ *
+ * \param region The range to be evaluated.
+ * \param dom_map The domain of each variable.
+ * \return An array of integer sets that can cover all the possible values.
+ */
+Array<IntSet> EvalSet(const Array<Range>& region, const Map<Var, IntSet>& dom_map);
 /*! \brief Map from Expr to IntSet */
 using ExprIntSetMap = std::unordered_map<PrimExpr, IntSet, ObjectPtrHash, ObjectPtrEqual>;
 /*!

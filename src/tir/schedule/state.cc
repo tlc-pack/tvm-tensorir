@@ -108,6 +108,42 @@ const PrimFuncNode* GetRootPrimFunc(const IRModule& mod, const StmtNode* root_bl
   throw;
 }
 
+/*!
+ * \brief Analyze the region with affine map
+ * \param region The region to be analyzed
+ * \param var_dom The ranges of the variables
+ * \param predicate The predicate for the affine map
+ * \param analyzer The analyzer used
+ * \return NullOpt if the detection fails, or an array of arith::IntSet as the result of analysis
+ */
+Optional<Array<arith::IntSet>> ExactRegion(const Array<Range>& region,
+                                           const Map<Var, Range>& var_dom,
+                                           const PrimExpr& predicate, arith::Analyzer* analyzer) {
+  Array<arith::IntSet> result;
+  result.reserve(region.size());
+  for (const Range& range : region) {
+    Array<arith::IterSumExpr> iter_sum_exprs = arith::DetectIterMap(
+        /*indices=*/{range->min}, /*input_iters=*/var_dom,
+        /*predicate=*/predicate, /*require_bijective=*/false, analyzer);
+    if (iter_sum_exprs.empty()) {
+      return NullOpt;
+    }
+    ICHECK_EQ(iter_sum_exprs.size(), 1);
+    const arith::IterSumExpr& sum_expr = iter_sum_exprs[0];
+    ICHECK_LE(sum_expr->args.size(), 1);
+    if (sum_expr->args.empty()) {
+      result.push_back(arith::IntSet::SinglePoint(sum_expr->base));
+      continue;
+    }
+    const arith::IterSplitExpr& split = sum_expr->args[0];
+    if (!analyzer->CanProve(range->extent >= split->scale)) {
+      return NullOpt;
+    }
+    const PrimExpr& base = sum_expr->base;
+    result.push_back(arith::IntSet::Interval(base, (split->extent - 1) * split->scale + base));
+  }
+  return result;
+}
 /**************** Creation ****************/
 
 /*! \brief A helper class to create a new ScheduleStateNode from an IRModule */
@@ -137,7 +173,7 @@ class StateCreator : private StmtVisitor {
 
  private:
   explicit StateCreator(ScheduleStateNode* self)
-      : self_(self), srefs_{}, realizes_{}, block_frames_{} {
+      : self_(self), srefs_{}, block2realize_{}, block_frames_{} {
     block_frames_.emplace({});
   }
 
@@ -170,18 +206,166 @@ class StateCreator : private StmtVisitor {
   }
 
   void MakeBlockInfo(StmtSRef scope_root) {
+    bool is_root_block = srefs_.empty();
     // Calculate `BlockInfo::scope`
     Array<StmtSRef> child_block_srefs = std::move(block_frames_.back());
     BlockInfo& info =
-        self_->block_info.emplace(std::move(scope_root), BlockInfo(BlockScope(child_block_srefs)))
+        self_->block_info.emplace(scope_root, BlockInfo(BlockScope(child_block_srefs)))
             .first->second;
-    // TODO(@junrushao1994): calculate the flags
     // Set `affine_binding`
-    info.affine_binding = false;
-    // Set `region_cover`
-    info.region_cover = false;
-    // Set `stage_pipeline`
-    info.scope->stage_pipeline = false;
+    if (is_root_block) {
+      info.affine_binding = true;
+    } else {
+      info.affine_binding =
+          IsAffineBinding(/*realize=*/block2realize_.at(scope_root->stmt),
+                          /*loop_var_ranges=*/LoopDomainOfSRefTreePath(srefs_.back()),
+                          /*analyzer=*/&analyzer_);
+    }
+    // Set `region_cover` to true, will be updated on its scope block
+    info.region_cover = true;
+    // Set `stage_pipeline` and `region_cover` for its intermediate children
+    info.scope->stage_pipeline =
+        CheckRegionCoverAndStagePipeline(info, scope_root, child_block_srefs);
+  }
+
+  bool CheckRegionCoverAndStagePipeline(const BlockInfo& info, const StmtSRef& scope_root,
+                                        const Array<StmtSRef>& child_block_srefs) {
+    const StmtSRefNode* limit = scope_root->parent;
+    bool stage_pipeline = true;
+    // Step 1. Unbind the read/write regions of each child block
+    std::unordered_map<const StmtSRefNode*, Array<BufferRegion>> block_reads;
+    std::unordered_map<const StmtSRefNode*, Array<BufferRegion>> block_writes;
+    block_reads.reserve(child_block_srefs.size());
+    block_writes.reserve(child_block_srefs.size());
+    for (const StmtSRef& block_sref : child_block_srefs) {
+      const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+      Map<Var, PrimExpr> binding = GetBindings(block2realize_.at(block));
+      // Step 1.1. Unbind read regions
+      Array<BufferRegion> reads;
+      reads.reserve(block->reads.size());
+      for (const BufferRegion& region : block->reads) {
+        reads.push_back(BufferRegion(region->buffer, Substitute(region->region, binding)));
+      }
+      block_reads.emplace(block_sref.get(), std::move(reads));
+      // Step 1.2. Unbind write regions
+      Array<BufferRegion> writes;
+      writes.reserve(block->writes.size());
+      for (const BufferRegion& region : block->writes) {
+        writes.push_back(BufferRegion(region->buffer, Substitute(region->region, binding)));
+      }
+      block_writes.emplace(block_sref.get(), std::move(writes));
+    }
+    // Step 2. For each consumer, check the region cover property
+    for (const auto& kv : info.scope->dst2deps) {
+      const StmtSRef& consumer_block_sref = kv.first;
+      const Array<Dependency>& deps = kv.second;
+      // Step 2.1. Extract the path to the scope root
+      std::unordered_map<const StmtSRefNode*, std::vector<const StmtSRefNode*>> lca_loc;
+      for (const StmtSRefNode* p = consumer_block_sref.get(); p != limit; p = p->parent) {
+        ICHECK(p != nullptr);
+        lca_loc[p] = {};
+      }
+      // Step 2.2. For each producer, find the LCA of the consumer
+      for (const Dependency& dep : deps) {
+        if (dep->kind == DepKind::kWAR || dep->kind == DepKind::kOpaque) {
+          stage_pipeline = false;
+        }
+        // Only care about producer-consumer relationship
+        if (dep->kind != DepKind::kRAW) {
+          continue;
+        }
+        const StmtSRef& producer = dep->src;
+        for (const StmtSRefNode* p = producer.get();; p = p->parent) {
+          ICHECK(p != nullptr);
+          auto it = lca_loc.find(p);
+          // Find the first (lowest) position in the ancestor of the consumer,
+          // which is the LCA by definition
+          if (it != lca_loc.end()) {
+            it->second.push_back(producer.get());
+            break;
+          }
+        }
+      }
+      // Step 2.3. For each LCA, gather the produced regions,
+      // then check if it could cover the consumed region
+      bool& region_cover = self_->block_info.at(consumer_block_sref).region_cover = true;
+      for (const StmtSRefNode* lca = consumer_block_sref.get(); region_cover && lca != limit;
+           lca = lca->parent) {
+        const std::vector<const StmtSRefNode*>& producer_block_srefs = lca_loc.at(lca);
+        // Skip empty LCA positions
+        if (producer_block_srefs.empty()) {
+          continue;
+        }
+        // For each buffer, record the regions generated under this loop
+        std::unordered_map<const BufferNode*, std::vector<Array<arith::IntSet>>> touched_regions;
+        // Step 2.3.1. Find all the regions read by the consumer
+        for (const BufferRegion& region : block_reads.at(consumer_block_sref.get())) {
+          const BufferNode* buffer = region->buffer.get();
+          touched_regions[buffer] = {};
+        }
+        // Step 2.3.2. Find all the regions written by each producer
+        for (const StmtSRefNode* producer_block_sref : producer_block_srefs) {
+          // The loop domain of the producer block under the LCA
+          Map<Var, Range> producer_dom = LoopDomainOfSRefTreePath(
+              /*low_inclusive=*/GetRef<StmtSRef>(producer_block_sref->parent),
+              /*high_exclusive=*/GetRef<StmtSRef>(lca));
+          Map<Var, arith::IntSet> producer_dom_int_set = AsIntSet(producer_dom);
+          const BlockRealize& producer_realize = block2realize_.at(producer_block_sref->stmt);
+          for (const BufferRegion& region : block_writes.at(producer_block_sref)) {
+            auto it = touched_regions.find(region->buffer.get());
+            // Skip the regions that is not read by the consumer
+            if (it == touched_regions.end()) {
+              continue;
+            }
+            std::vector<Array<arith::IntSet>>& touched_region = it->second;
+            // Detect the region
+            if (Optional<Array<arith::IntSet>> exact_region = ExactRegion(
+                    region->region, producer_dom, producer_realize->predicate, &this->analyzer_)) {
+              touched_region.push_back(exact_region.value());
+            } else {
+              LOG(WARNING) << "Affine map detection failed. Use relaxed analysis instead for the "
+                              "producer '"
+                           << producer_realize->block->name_hint << "'";
+              Array<arith::IntSet> relaxed_region =
+                  arith::EvalSet(region->region, producer_dom_int_set);
+              touched_region.push_back(relaxed_region);
+            }
+          }
+        }
+        // Step 2.3.3. For each buffer, check the region cover property
+        Map<Var, arith::IntSet> consumer_dom = AsIntSet(LoopDomainOfSRefTreePath(
+            /*low_inclusive=*/GetRef<StmtSRef>(consumer_block_sref->parent),
+            /*high_exclusive=*/GetRef<StmtSRef>(lca)));
+        for (const BufferRegion& region : block_reads.at(consumer_block_sref.get())) {
+          const BufferNode* buffer = region->buffer.get();
+          const std::vector<Array<arith::IntSet>>& touched_region = touched_regions.at(buffer);
+          if (touched_region.empty()) {
+            continue;
+          }
+          Array<arith::IntSet> consumed_region = arith::EvalSet(region->region, consumer_dom);
+          Array<arith::IntSet> produced_region =
+              Union({touched_region.begin(), touched_region.end()});
+          ICHECK_EQ(produced_region.size(), consumed_region.size());
+          int ndim = produced_region.size();
+          for (int i = 0; i < ndim; ++i) {
+            Range buffer_size = Range::FromMinExtent(0, buffer->shape[i]);
+            const Range& produced = produced_region[i].CoverRange(buffer_size);
+            const Range& consumed = consumed_region[i].CoverRange(buffer_size);
+            PrimExpr produced_min = produced->min;
+            PrimExpr produced_max = produced->min + produced->extent - 1;
+            PrimExpr consumed_min = consumed->min;
+            PrimExpr consumed_max = consumed->min + consumed->extent - 1;
+            PrimExpr cond = (produced_min <= consumed_min) && (consumed_max <= produced_max);
+            if (!analyzer_.CanProve(cond)) {
+              region_cover = false;
+              break;
+            }
+          }
+        }
+      }
+      stage_pipeline = stage_pipeline && region_cover;
+    }
+    return stage_pipeline;
   }
 
   void VisitStmt_(const ForNode* loop) final {
@@ -191,9 +375,9 @@ class StateCreator : private StmtVisitor {
   }
 
   void VisitStmt_(const BlockRealizeNode* realize) final {
-    realizes_.push_back(realize);
     block_frames_.emplace_back();
     const BlockNode* block = realize->block.get();
+    block2realize_.emplace(block, GetRef<BlockRealize>(realize));
     // Recursive visit
     PushSRef(block);
     VisitStmt(block->body);  // `block->init` is not visited
@@ -203,7 +387,6 @@ class StateCreator : private StmtVisitor {
     // Update parent scope
     block_frames_.pop_back();
     block_frames_.back().push_back(sref);
-    realizes_.pop_back();
   }
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
@@ -216,10 +399,12 @@ class StateCreator : private StmtVisitor {
   ScheduleStateNode* self_;
   /*! \brief The stack frame used to indicate the current scope */
   std::vector<StmtSRef> srefs_;
-  /*! \brief The BlockRealize in the ancestors */
-  std::vector<const BlockRealizeNode*> realizes_;
+  /*! \brief The BlockRealize corresponding to blocks */
+  std::unordered_map<const StmtNode*, BlockRealize> block2realize_;
   /*! \brief The stack frames of blocks in the DFS visit. */
   std::vector<Array<StmtSRef>> block_frames_;
+  /*! \brief The auxilary analyzer */
+  arith::Analyzer analyzer_;
 };
 
 /**************** Constructor ****************/
@@ -536,6 +721,7 @@ class SRefUpdater : public StmtVisitor {
     } else {
       // Insertion didn't take place, because the entry has been there before.
       // In this case, we assume that flags are still valid so intentionally keep them unchanged
+      new_info.scope->stage_pipeline = info.scope->stage_pipeline;
       info.scope = std::move(new_info.scope);
     }
   }
@@ -806,29 +992,24 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     new_map->at(g_var) = std::move(ref_new_func);
     this->mod = GetRef<IRModule>(new_mod);
   }
-  constexpr int kVerifySRefTree = static_cast<int>(ScheduleDebugMask::kVerifySRefTree);
-  if (debug_mode == -1 || (debug_mode & kVerifySRefTree)) {
+  uint32_t flag = (debug_mode != -1)                       //
+                      ? static_cast<uint32_t>(debug_mode)  //
+                      : std::numeric_limits<uint32_t>::max();
+  if (flag & ScheduleDebugMask::kVerifySRefTree) {
     VerifySRefTree(GetRef<ScheduleState>(this));
   }
 }
 
 void ScheduleStateNode::DebugVerify() const {
-  constexpr int kVerifySRefTree = static_cast<int>(ScheduleDebugMask::kVerifySRefTree);
-  constexpr int kVerifyAffineBinding = static_cast<int>(ScheduleDebugMask::kVerifyAffineBinding);
-  constexpr int kVerifyRegionCover = static_cast<int>(ScheduleDebugMask::kVerifyRegionCover);
-  constexpr int kVerifyStagePipeline = static_cast<int>(ScheduleDebugMask::kVerifyStagePipeline);
   ICHECK_GE(debug_mode, -1);
-  if (debug_mode == -1 || (debug_mode & kVerifySRefTree)) {
+  uint32_t flag = (debug_mode != -1)                       //
+                      ? static_cast<uint32_t>(debug_mode)  //
+                      : std::numeric_limits<uint32_t>::max();
+  if (flag & ScheduleDebugMask::kVerifySRefTree) {
     VerifySRefTree(GetRef<ScheduleState>(this));
   }
-  if (debug_mode == -1 || (debug_mode & kVerifyAffineBinding)) {
-    // TODO(@junrushao1994): Verify affine block binding
-  }
-  if (debug_mode == -1 || (debug_mode & kVerifyRegionCover)) {
-    // TODO(@junrushao1994): Verify region cover
-  }
-  if (debug_mode == -1 || (debug_mode & kVerifyStagePipeline)) {
-    // TODO(@junrushao1994): Verify stage pipeline
+  if (flag & ScheduleDebugMask::kVerifyCachedFlags) {
+    VerifyCachedFlags(GetRef<ScheduleState>(this));
   }
 }
 
@@ -841,6 +1022,13 @@ BlockInfo ScheduleStateNode::GetBlockInfo(const StmtSRef& block_sref) const {
       << "IndexError: Cannot find the corresponding BlockScope to the block sref:\n"
       << GetRef<Stmt>(block_sref->stmt);
   return it->second;
+}
+
+TVM_DLL Array<Bool> GetCachedFlags(const ScheduleState& self, const StmtSRef& block_sref) {
+  const BlockInfo& info = self->GetBlockInfo(block_sref);
+  return {Bool(info.affine_binding),  //
+          Bool(info.region_cover),    //
+          Bool(info.scope->stage_pipeline)};
 }
 
 /**************** FFI ****************/
@@ -865,6 +1053,7 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetSRef")
       auto it = self->stmt2ref.find(stmt.get());
       return it != self->stmt2ref.end() ? it->second : Optional<StmtSRef>(NullOpt);
     });
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetCachedFlags").set_body_typed(GetCachedFlags);
 
 }  // namespace tir
 }  // namespace tvm

@@ -208,7 +208,7 @@ template <class T>
 inline T ConcreteScheduleNode::CreateRV(const StmtSRef& sref) {
   T rv;
   this->symbol_table_.Set(rv, sref);
-  return rv;
+  return std::move(rv);
 }
 
 inline IntRV ConcreteScheduleNode::CreateRV(int64_t number) {
