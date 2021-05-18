@@ -22,7 +22,7 @@ from tvm.script import ty
 from tvm.tir.schedule.state import CachedFlags
 from tvm.tir.stmt_functor import post_order_visit
 
-# pylint: disable=no-member,invalid-name,unused-variable
+# pylint: disable=no-member,invalid-name,unused-variable,unexpected-keyword-arg
 
 
 @tvm.script.tir
@@ -76,14 +76,25 @@ def write_after_read(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128))
     B = tir.match_buffer(b, (128, 128))
     C = tir.match_buffer(c, (128, 128))
-    for i, j in tir.grid(128, 128):
-        with tir.block([128, 128], "C") as [vi, vj]:
-            C[vi, vj] = B[vi, vj] + 1.0
-        with tir.block([128, 128], "B") as [vi, vj]:
-            B[vi, vj] = A[vi, vj] * 2.0
+    with tir.block([128, 128], "C") as [vi, vj]:
+        C[vi, vj] = B[vi, vj] + 1.0
+    with tir.block([128, 128], "B") as [vi, vj]:
+        B[vi, vj] = A[vi, vj] * 2.0
 
 
-# pylint: enable=no-member,invalid-name,unused-variable
+@tvm.script.tir
+def loop_carried_dependency(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128,))
+    B = tir.match_buffer(b, (128,))
+    C = tir.match_buffer(c, (128,))
+    for i in range(0, 128):
+        with tir.block([128], "B") as vi:
+            B[vi] = A[vi] * 2.0
+        with tir.block([128], "C") as vi:
+            C[vi] = tir.if_then_else(vi >= 1, B[vi - 1] + 1.0, 0.0, dtype="float32")
+
+
+# pylint: enable=no-member,invalid-name,unused-variable,unexpected-keyword-arg
 
 
 def _get_block(s: tir.ScheduleState, name_hint: str) -> tir.StmtSRef:
@@ -194,8 +205,30 @@ def test_cached_flag_write_after_read():
     # pylint: disable=protected-access
 
 
+def test_cached_flag_loop_carried_dependency():
+    s = tir.ScheduleState(loop_carried_dependency, debug_mode=True)
+    # pylint: disable=protected-access
+    assert s._get_cached_flags(_get_block(s, "B")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "C")) == CachedFlags(
+        affine_binding=True,
+        region_cover=False,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "root")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=False,
+    )
+    # pylint: disable=protected-access
+
+
 if __name__ == "__main__":
     test_cached_flag_elementwise()
     test_cached_flag_matmul()
     test_cached_flag_block_in_opaque_block()
     test_cached_flag_write_after_read()
+    test_cached_flag_loop_carried_dependency()
