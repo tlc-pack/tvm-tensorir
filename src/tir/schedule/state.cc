@@ -119,28 +119,37 @@ const PrimFuncNode* GetRootPrimFunc(const IRModule& mod, const StmtNode* root_bl
 Optional<Array<arith::IntSet>> ExactRegion(const Array<Range>& region,
                                            const Map<Var, Range>& var_dom,
                                            const PrimExpr& predicate, arith::Analyzer* analyzer) {
-  Array<arith::IntSet> result;
-  result.reserve(region.size());
-  for (const Range& range : region) {
-    Array<arith::IterSumExpr> iter_sum_exprs = arith::DetectIterMap(
-        /*indices=*/{range->min}, /*input_iters=*/var_dom,
-        /*predicate=*/predicate, /*require_bijective=*/false, analyzer);
-    if (iter_sum_exprs.empty()) {
-      return NullOpt;
+  int ndim = region.size();
+  Array<arith::IterSumExpr> iter_sum_exprs{nullptr};
+  {
+    Array<PrimExpr> affine_indices;
+    affine_indices.reserve(ndim);
+    for (const Range& range : region) {
+      affine_indices.push_back(range->min);
     }
-    ICHECK_EQ(iter_sum_exprs.size(), 1);
-    const arith::IterSumExpr& sum_expr = iter_sum_exprs[0];
-    ICHECK_LE(sum_expr->args.size(), 1);
+    iter_sum_exprs = arith::DetectIterMap(
+        /*indices=*/affine_indices, /*input_iters=*/var_dom,
+        /*predicate=*/predicate, /*require_bijective=*/false, analyzer);
+  }
+  if (iter_sum_exprs.empty()) {
+    return NullOpt;
+  }
+  ICHECK_EQ(iter_sum_exprs.size(), ndim);
+  Array<arith::IntSet> result;
+  result.reserve(ndim);
+  for (int i = 0; i < ndim; ++i) {
+    const arith::IterSumExpr& sum_expr = iter_sum_exprs[i];
     if (sum_expr->args.empty()) {
       result.push_back(arith::IntSet::SinglePoint(sum_expr->base));
       continue;
     }
+    ICHECK_EQ(sum_expr->args.size(), 1);
     const arith::IterSplitExpr& split = sum_expr->args[0];
-    if (!analyzer->CanProve(range->extent >= split->scale)) {
+    if (!analyzer->CanProve(region[i]->extent >= split->scale)) {
       return NullOpt;
     }
     const PrimExpr& base = sum_expr->base;
-    result.push_back(arith::IntSet::Interval(base, (split->extent - 1) * split->scale + base));
+    result.push_back(arith::IntSet::Interval(base, split->extent * split->scale + base - 1));
   }
   return result;
 }
