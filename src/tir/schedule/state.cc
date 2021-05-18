@@ -309,7 +309,6 @@ class StateCreator : private StmtVisitor {
           Map<Var, Range> producer_dom = LoopDomainOfSRefTreePath(
               /*low_inclusive=*/GetRef<StmtSRef>(producer_block_sref->parent),
               /*high_exclusive=*/GetRef<StmtSRef>(lca));
-          Map<Var, arith::IntSet> producer_dom_int_set = AsIntSet(producer_dom);
           const BlockRealize& producer_realize = block2realize_.at(producer_block_sref->stmt);
           for (const BufferRegion& region : block_writes.at(producer_block_sref)) {
             auto it = touched_regions.find(region->buffer.get());
@@ -323,11 +322,13 @@ class StateCreator : private StmtVisitor {
                     region->region, producer_dom, producer_realize->predicate, &this->analyzer_)) {
               touched_region.push_back(exact_region.value());
             } else {
+              const BlockNode* producer_block =
+                  TVM_SREF_TO_BLOCK(producer_block, producer_block_sref);
               LOG(WARNING) << "Affine map detection failed. Use relaxed analysis instead for the "
                               "producer '"
-                           << producer_realize->block->name_hint << "'";
+                           << producer_block->name_hint << "'";
               Array<arith::IntSet> relaxed_region =
-                  arith::EvalSet(region->region, producer_dom_int_set);
+                  arith::EvalSet(region->region, AsIntSet(producer_dom));
               touched_region.push_back(relaxed_region);
             }
           }
