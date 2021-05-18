@@ -108,51 +108,6 @@ const PrimFuncNode* GetRootPrimFunc(const IRModule& mod, const StmtNode* root_bl
   throw;
 }
 
-/*!
- * \brief Analyze the region with affine map
- * \param region The region to be analyzed
- * \param var_dom The ranges of the variables
- * \param predicate The predicate for the affine map
- * \param analyzer The analyzer used
- * \return NullOpt if the detection fails, or an array of arith::IntSet as the result of analysis
- */
-Optional<Array<arith::IntSet>> ExactRegion(const Array<Range>& region,
-                                           const Map<Var, Range>& var_dom,
-                                           const PrimExpr& predicate, arith::Analyzer* analyzer) {
-  int ndim = region.size();
-  Array<arith::IterSumExpr> iter_sum_exprs{nullptr};
-  {
-    Array<PrimExpr> affine_indices;
-    affine_indices.reserve(ndim);
-    for (const Range& range : region) {
-      affine_indices.push_back(range->min);
-    }
-    iter_sum_exprs = arith::DetectIterMap(
-        /*indices=*/affine_indices, /*input_iters=*/var_dom,
-        /*predicate=*/predicate, /*require_bijective=*/false, analyzer);
-  }
-  if (iter_sum_exprs.empty()) {
-    return NullOpt;
-  }
-  ICHECK_EQ(iter_sum_exprs.size(), ndim);
-  Array<arith::IntSet> result;
-  result.reserve(ndim);
-  for (int i = 0; i < ndim; ++i) {
-    const arith::IterSumExpr& sum_expr = iter_sum_exprs[i];
-    if (sum_expr->args.empty()) {
-      result.push_back(arith::IntSet::SinglePoint(sum_expr->base));
-      continue;
-    }
-    ICHECK_EQ(sum_expr->args.size(), 1);
-    const arith::IterSplitExpr& split = sum_expr->args[0];
-    if (!analyzer->CanProve(region[i]->extent >= split->scale)) {
-      return NullOpt;
-    }
-    const PrimExpr& base = sum_expr->base;
-    result.push_back(arith::IntSet::Interval(base, split->extent * split->scale + base - 1));
-  }
-  return result;
-}
 /**************** Creation ****************/
 
 /*! \brief A helper class to create a new ScheduleStateNode from an IRModule */
@@ -329,7 +284,7 @@ class StateCreator : private StmtVisitor {
             }
             std::vector<Array<arith::IntSet>>& touched_region = it->second;
             // Detect the region
-            if (Optional<Array<arith::IntSet>> exact_region = ExactRegion(
+            if (Optional<Array<arith::IntSet>> exact_region = EstimateRegionLowerBound(
                     region->region, producer_dom, producer_realize->predicate, &this->analyzer_)) {
               touched_region.push_back(exact_region.value());
             } else {

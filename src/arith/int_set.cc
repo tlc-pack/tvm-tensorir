@@ -22,6 +22,7 @@
  * \brief The integer set functions
  */
 #include <tvm/arith/int_set.h>
+#include <tvm/arith/iter_affine_map.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/expr_functor.h>
@@ -741,6 +742,45 @@ ExprIntSetMap EvalSetForEachSubExpr(PrimExpr e,
 
 IntSet EvalSet(Range r, const Map<IterVar, IntSet>& dom_map) {
   return EvalSet(r, ConvertDomMap(dom_map));
+}
+
+Optional<Array<arith::IntSet>> EstimateRegionLowerBound(const Array<Range>& region,
+                                                        const Map<Var, Range>& var_dom,
+                                                        const PrimExpr& predicate,
+                                                        arith::Analyzer* analyzer) {
+  int ndim = region.size();
+  Array<arith::IterSumExpr> iter_sum_exprs{nullptr};
+  {
+    Array<PrimExpr> affine_indices;
+    affine_indices.reserve(ndim);
+    for (const Range& range : region) {
+      affine_indices.push_back(range->min);
+    }
+    iter_sum_exprs = arith::DetectIterMap(
+        /*indices=*/affine_indices, /*input_iters=*/var_dom,
+        /*predicate=*/predicate, /*require_bijective=*/false, analyzer);
+  }
+  if (iter_sum_exprs.empty()) {
+    return NullOpt;
+  }
+  ICHECK_EQ(iter_sum_exprs.size(), ndim);
+  Array<arith::IntSet> result;
+  result.reserve(ndim);
+  for (int i = 0; i < ndim; ++i) {
+    const arith::IterSumExpr& sum_expr = iter_sum_exprs[i];
+    if (sum_expr->args.empty()) {
+      result.push_back(arith::IntSet::SinglePoint(sum_expr->base));
+      continue;
+    }
+    ICHECK_EQ(sum_expr->args.size(), 1);
+    const arith::IterSplitExpr& split = sum_expr->args[0];
+    if (!analyzer->CanProve(region[i]->extent >= split->scale)) {
+      return NullOpt;
+    }
+    const PrimExpr& base = sum_expr->base;
+    result.push_back(arith::IntSet::Interval(base, split->extent * split->scale + base - 1));
+  }
+  return result;
 }
 
 TVM_REGISTER_NODE_TYPE(IntervalSetNode);
