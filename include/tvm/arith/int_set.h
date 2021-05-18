@@ -235,10 +235,10 @@ IntSet Intersect(const Array<IntSet>& sets);
  * \param analyzer The analyzer used
  * \return NullOpt if the detection fails, or an array of arith::IntSet as the result of analysis
  */
-TVM_DLL Optional<Array<arith::IntSet>> EstimateRegionLowerBound(const Array<Range>& region,
-                                                                const Map<Var, Range>& var_dom,
-                                                                const PrimExpr& predicate,
-                                                                arith::Analyzer* analyzer);
+TVM_DLL Optional<Array<IntSet>> EstimateRegionLowerBound(const Array<Range>& region,
+                                                         const Map<Var, Range>& var_dom,
+                                                         const PrimExpr& predicate,
+                                                         arith::Analyzer* analyzer);
 
 }  // namespace arith
 }  // namespace tvm

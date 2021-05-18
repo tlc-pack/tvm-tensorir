@@ -773,12 +773,14 @@ Optional<Array<arith::IntSet>> EstimateRegionLowerBound(const Array<Range>& regi
       continue;
     }
     ICHECK_EQ(sum_expr->args.size(), 1);
+    const Range& range = region[i];
     const arith::IterSplitExpr& split = sum_expr->args[0];
-    if (!analyzer->CanProve(region[i]->extent >= split->scale)) {
+    if (!analyzer->CanProve(range->extent >= split->scale)) {
       return NullOpt;
     }
     const PrimExpr& base = sum_expr->base;
-    result.push_back(arith::IntSet::Interval(base, split->extent * split->scale + base - 1));
+    result.push_back(arith::IntSet::Interval(
+        base, (split->extent - 1) * split->scale + range->extent + base - 1));
   }
   return result;
 }
@@ -805,6 +807,13 @@ TVM_REGISTER_GLOBAL("arith.IntervalSetGetMax").set_body_method(&IntSet::max);
 TVM_REGISTER_GLOBAL("arith.IntSetIsNothing").set_body_method(&IntSet::IsNothing);
 
 TVM_REGISTER_GLOBAL("arith.IntSetIsEverything").set_body_method(&IntSet::IsEverything);
+
+TVM_REGISTER_GLOBAL("arith.EstimateRegionLowerBound")
+    .set_body_typed([](Array<Range> region, Map<Var, Range> var_dom,
+                       PrimExpr predicate) -> Optional<Array<IntSet>> {
+      Analyzer analyzer;
+      return EstimateRegionLowerBound(region, var_dom, predicate, &analyzer);
+    });
 
 }  // namespace arith
 }  // namespace tvm
