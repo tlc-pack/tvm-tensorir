@@ -27,6 +27,7 @@
 #include <tvm/tir/expr_functor.h>
 #include <tvm/tir/op.h>
 
+#include "../support/arena.h"
 #include "../support/utils.h"
 #include "const_fold.h"
 #include "pattern_match.h"
@@ -443,9 +444,12 @@ class IterMapRewriter : public ExprMutator {
   IterSumExpr NormalizeToIterOnBoundExpr(IterSumExpr expr,
                                          const PrimExpr& predicate_induced_extent) {
     // We are normalizing the left hand side of iter constraint(iter < predicate_induced_extent)
+    LOG(INFO) << expr;
+    LOG(INFO) << predicate_induced_extent;
     Optional<IterSplitExpr> opt = TryFuseIters(expr);
     // scale should be 1
     if (opt.defined() && is_one(opt.value()->scale)) {
+      LOG(INFO) << opt.value();
       IterSumExpr sum = Downcast<IterSumExpr>(opt.value()->source->source);
       // get the flattened form
       auto it = flattened_map_.find(sum);
@@ -487,19 +491,6 @@ class IterMapRewriter : public ExprMutator {
     } else {
       ++unresolved_count_;
       return expr;
-    } else {
-      if (expr->args.size() <= 1) return expr;
-      PrimExpr base = expr->base;
-      expr.CopyOnWrite()->base = make_zero(expr->dtype);
-      auto opt = TryFuseIters(expr);
-      expr.CopyOnWrite()->base = base;
-      if (opt) {
-        expr.CopyOnWrite()->args = Array<IterSplitExpr>({opt.value()});
-        return expr;
-      } else {
-        ++unresolved_count_;
-        return expr;
-      }
     }
   }
 
@@ -531,7 +522,7 @@ class IterMapRewriter : public ExprMutator {
    */
   Optional<IterSplitExpr> TryFuseIters(IterSumExpr expr) {
     if (!is_zero(expr->base)) return NullOpt;
-    if (expr->args.size() == 1) return expr->args[0];
+    // if (expr->args.size() == 1) return expr->args[0];
     // select the iterators in order
     std::vector<bool> visited(expr->args.size(), false);
     std::vector<IterSplitExpr> flattened_iters, grouped_iters;
@@ -541,7 +532,7 @@ class IterMapRewriter : public ExprMutator {
     size_t base_index = 0;
     for (size_t i = 0; i < expr->args.size(); ++i) {
       if (const auto* op = expr->args[i]->scale.as<IntImmNode>()) {
-        if (!base_scale.defined() || op->value < base_scale->value) {
+        if (!base_scale.defined() || op->value < base_scale.value()->value) {
           base_scale = GetRef<IntImm>(op);
           base_index = i;
         }
@@ -627,15 +618,14 @@ class IterMapRewriter : public ExprMutator {
   }
 
   bool CanProveDivisible(const PrimExpr& lhs, const PrimExpr& rhs) {
-    if (CanProveEqual(lhs, rhs)) return true;
     const auto* clhs = lhs.as<IntImmNode>();
     const auto* crhs = rhs.as<IntImmNode>();
     if (clhs && crhs) return clhs->value % crhs->value == 0;
     return analyzer_->CanProveEqual(lhs, rhs) || analyzer_->CanProve(floormod(lhs, rhs) == 0);
   }
 
-  PrimExpr SplitFloorDivConst(IterSplitExpr lhs, PrimExpr rhs, const PrimExpr &orig);
-  PrimExpr SplitFloorModConst(IterSplitExpr lhs, PrimExpr rhs, const PrimExpr &orig);
+  PrimExpr SplitFloorDivConst(IterSplitExpr lhs, PrimExpr rhs, const PrimExpr& orig);
+  PrimExpr SplitFloorModConst(IterSplitExpr lhs, PrimExpr rhs, const PrimExpr& orig);
 
   static void AddToLhs(IterSumExprNode* lhs, IterSplitExpr rhs, int sign) {
     tir::ExprDeepEqual equal;
@@ -741,14 +731,16 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   IterMapRewriter rewriter(analyzer, input_iters);
   // Step0.0: rewrite constraints in the order from size-small ones to size-big ones
   for (const IterConstraint& constraint : constraints) {
+    LOG(INFO) << constraint.iter;
+    LOG(INFO) << constraint.upper_bound;
     PrimExpr res = rewriter.RewriteIterConstraint(constraint.iter, constraint.upper_bound);
     if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
   }
   if (!rewriter.CheckConstraints()) return Array<IterSumExpr>();
   // Step0.1: rewrite indices
   Array<IterSumExpr> results;
-  for (PrimExpr binding : bindings) {
-    results.push_back(rewriter.Rewrite(binding));
+  for (PrimExpr value : indices) {
+    results.push_back(rewriter.Rewrite(value));
     if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
   }
   // Step1: IterIndependenceChecker checks if the iterator are independent.
@@ -758,42 +750,11 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
 }
 
 TVM_REGISTER_GLOBAL("arith.DetectIterMap")
-    .set_body_typed([](const Array<IterVar>& leaf_iters, const Array<PrimExpr>& bindings,
-                       const Map<Var, Range>& root_iters, const PrimExpr& predicate) {
-      arith::Analyzer ana;
-      return DetectIterMap(leaf_iters, bindings, root_iters, predicate, &ana);
-    });
-
-Optional<IterSumExpr> DetectIter(const PrimExpr& index, const Map<Var, Range>& input_iters,
-                                 arith::Analyzer* analyzer) {
-  IterMapRewriter rewriter(analyzer, input_iters);
-  IterSumExpr result = rewriter.Rewrite(index);
-  if (rewriter.unresolved_count() != 0) return NullOpt;
-  CHECK(result->args.size() <= 1);
-  return result;
-}
-
-TVM_REGISTER_GLOBAL("arith.DetectIterMap")
     .set_body_typed([](const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
                        const PrimExpr& input_pred, bool is_bijective) {
       arith::Analyzer ana;
       return DetectIterMap(indices, input_iters, input_pred, is_bijective, &ana);
     });
-
-Array<PrimExpr> IterMapRewriteSimplify(const Array<PrimExpr>& indices,
-                                       const Map<Var, Range>& input_iters,
-                                       const PrimExpr& predicate) {
-  Analyzer analyzer;
-  auto rewrite = DetectIterMap(leaf_iters, bindings, root_iters, predicate, &analyzer);
-  if (rewrite.empty()) {
-    return bindings;
-  } else {
-    std::vector<PrimExpr> res;
-    IterVarMapConverter converter(&analyzer);
-    for (const auto& expr : rewrite) res.push_back(converter.Convert(expr));
-    return res;
-  }
-}
 
 PrimExpr IterMapRewriter::VisitExpr_(const VarNode* op) {
   auto var = GetRef<Var>(op);
@@ -916,7 +877,8 @@ PrimExpr IterMapRewriter::VisitExpr_(const MulNode* op) {
   }
 }
 
-PrimExpr IterMapRewriter::SplitFloorDivConst(IterSplitExpr lhs, PrimExpr rhs, const PrimExpr &orig) {
+PrimExpr IterMapRewriter::SplitFloorDivConst(IterSplitExpr lhs, PrimExpr rhs,
+                                             const PrimExpr& orig) {
   // floordiv(x*scale, rhs)
   if (is_one(rhs)) return std::move(lhs);
   if (!is_one(lhs->scale)) {
@@ -1000,7 +962,8 @@ PrimExpr IterMapRewriter::VisitExpr_(const FloorDivNode* op) {
   }
 }
 
-PrimExpr IterMapRewriter::SplitFloorModConst(IterSplitExpr lhs, PrimExpr rhs, const PrimExpr &orig) {
+PrimExpr IterMapRewriter::SplitFloorModConst(IterSplitExpr lhs, PrimExpr rhs,
+                                             const PrimExpr& orig) {
   // floormod(x*scale, rhs)
   if (is_one(rhs)) return make_zero(lhs->dtype);
   if (!is_one(lhs->scale)) {
@@ -1074,270 +1037,6 @@ PrimExpr IterMapRewriter::VisitExpr_(const FloorModNode* op) {
   }
 }
 
-DivisionForm::DivisionForm(IterMapExpr outer, PrimExpr outer_extent, IterMapExpr inner,
-                           PrimExpr inner_extent) {
-  auto n = make_object<DivisionFormNode>();
-  n->outer = std::move(outer);
-  n->inner = std::move(inner);
-  n->outer_extent = std::move(outer_extent);
-  n->inner_extent = std::move(inner_extent);
-  data_ = std::move(n);
-}
-
-bool DivisionFormNode::IsOuter() const { return is_one(inner_extent); }
-
-bool DivisionFormNode::IsInner() const { return is_one(outer_extent); }
-
-TVM_REGISTER_GLOBAL("arith.DivisionForm")
-    .set_body_typed([](IterMapExpr outer, PrimExpr outer_extent, IterMapExpr inner,
-                       PrimExpr inner_extent) {
-      return DivisionForm(outer, outer_extent, inner, inner_extent);
-    });
-
-TVM_REGISTER_NODE_TYPE(DivisionFormNode);
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<DivisionFormNode>([](const ObjectRef& node, ReprPrinter* p) {
-      auto* op = static_cast<const DivisionFormNode*>(node.get());
-      p->stream << "DivisionForm(" << op->outer << "*" << op->inner_extent << " + " << op->inner
-                << ", outer_extent = " << op->outer_extent << ")";
-    });
-
-IterSplitExpr DivisionFormNode::GetAsSplit(const IterMapExpr& expr, const PrimExpr& extent) {
-  if (const auto* op = expr.as<IterSplitExprNode>()) {
-    return GetRef<IterSplitExpr>(op);
-  } else if (const auto* op = expr.as<IterSumExprNode>()) {
-    return IterSplitExpr(IterMark(GetRef<IterSumExpr>(op), extent));
-  } else {
-    LOG(FATAL);
-    return NullValue<IterSplitExpr>();
-  }
-}
-
-IterSplitExpr DivisionFormNode::GetOuterAsSplit() const { return GetAsSplit(outer, outer_extent); }
-
-IterSplitExpr DivisionFormNode::GetInnerAsSplit() const { return GetAsSplit(inner, inner_extent); }
-
-DivisionForm DivisionFormNode::MakeInner(const IterMapExpr& iter, const PrimExpr& extent) {
-  return DivisionForm(IterSumExpr({}, 0), 1, iter, extent);
-}
-
-DivisionForm DivisionFormNode::MakeOuter(const IterMapExpr& iter, const PrimExpr& extent) {
-  return DivisionForm(iter, extent, IterSumExpr({}, 0), 1);
-}
-
-class SubspaceDivider {
- public:
-  explicit SubspaceDivider(Analyzer* analyzer, const IterMarkSplitCollector& collector,
-                           const std::unordered_set<const VarNode*>& sub_iters)
-      : analyzer_(analyzer), collector_(collector), sub_iters_(sub_iters) {}
-
-  size_t unresolved_count() const { return unresolved_count_; }
-
-  DivisionForm Fail() {
-    unresolved_count_++;
-    return DivisionForm(IterSumExpr({}, 0), 0, IterSumExpr({}, 0), 0);
-  }
-
-  DivisionForm DivideIterSumExpr(const IterSumExpr& expr, const PrimExpr& mark_extent) {
-    if (expr->args.size() == 0) {
-      // base
-      return DivisionForm(IterSumExpr({}, 0), 1, IterSumExpr({}, expr->base), 1);
-    } else if (expr->args.size() == 1) {
-      // arg + base, if arg=Y*E(X)+X, then arg+base = Y*E(X)+(X+base)
-      if (!is_one(expr->args[0]->scale)) return Fail();
-      auto res = DivideIterSplitExpr(expr->args[0]);
-      if (!is_zero(expr->base)) res = AddBase(res, expr->base);
-      return res;
-    }
-    // arg1 + arg2 + ... + argn + base
-    // then we can write it as Y*E(X)+X if it starts with Y*1+0, followed by 0*E(X)+X
-    PrimExpr extent = 1;
-    std::vector<IterSplitExpr> outer_args, inner_args;
-    bool inner = true, scale_is_one = false;
-    for (auto it = expr->args.rbegin(); it != expr->args.rend(); ++it) {
-      const IterSplitExpr& arg = *it;
-      if (is_one(arg->scale)) scale_is_one = true;
-      DivisionForm arg_division = DivideIterSplitExpr(arg);
-      IterSplitExpr new_arg;
-      if (arg_division->IsInner()) {
-        // 0*E(Xi)+Xi
-        if (!inner) return Fail();
-        inner_args.push_back(new_arg = arg_division->GetInnerAsSplit());
-        inner = true;
-        // Yi*1+0
-      } else if (arg_division->IsOuter()) {
-        outer_args.push_back(new_arg = arg_division->GetOuterAsSplit());
-        inner = false;
-      } else {
-        return Fail();
-      }
-      extent *= new_arg->extent;
-    }
-    if (!scale_is_one) return Fail();
-    bool need_predicate = !CanProveEqual(extent, mark_extent);
-    const auto& outer_mark = MarkFromArgsAndBase(outer_args, 0);
-    const auto& inner_mark = MarkFromArgsAndBase(inner_args, expr->base);
-    if (need_predicate) {
-      // if we have a predicate on this sum expr, then we cannot divide it into Y*E+X
-      // it should either be Y*1+0 or 0*E(X)+X
-      IterVarMapConverter converter(analyzer_);
-      if (inner_args.empty()) {
-        // Y*1+0
-        outer_preds = outer_preds && (converter.Convert(outer_mark.first) < mark_extent);
-        return DivisionFormNode::MakeOuter(outer_mark.first, mark_extent);
-      } else if (outer_args.empty()) {
-        // 0*E(X)+X
-        inner_preds = inner_preds && (converter.Convert(inner_mark.first) < mark_extent);
-        return DivisionFormNode::MakeInner(inner_mark.first, mark_extent);
-      } else {
-        return Fail();
-      }
-    }
-    return DivisionForm(outer_mark.first, outer_mark.second, inner_mark.first, inner_mark.second);
-  }
-
-  PrimExpr outer_preds{Bool(true)}, inner_preds{Bool(true)};
-
- private:
-  DivisionForm AddBase(DivisionForm division_form, const PrimExpr& base) {
-    auto res = division_form;
-    if (const auto* op = division_form->inner.as<IterSplitExprNode>()) {
-      res.CopyOnWrite()->inner = IterSumExpr({GetRef<IterSplitExpr>(op)}, base);
-    } else if (const auto* op = division_form->inner.as<IterSumExprNode>()) {
-      const auto& expr = GetRef<IterSumExpr>(op);
-      res.CopyOnWrite()->inner = IterSumExpr(expr->args, expr->base + base);
-    }
-    return res;
-  }
-
-  static std::pair<IterSumExpr, PrimExpr> MarkFromArgsAndBase(
-      const std::vector<IterSplitExpr>& args, PrimExpr base) {
-    std::vector<IterSplitExpr> res;
-    PrimExpr extent = 1;
-    for (const auto& it : args) {
-      auto arg = it;
-      arg.CopyOnWrite()->scale = extent;
-      extent *= arg->extent;
-      res.push_back(arg);
-    }
-    return std::make_pair(IterSumExpr(Array<IterSplitExpr>(res.rbegin(), res.rend()), base),
-                          extent);
-  }
-
-  DivisionForm DivideIterSplitExpr(const IterSplitExpr& expr) {
-    auto it = split_map_.find(expr);
-    if (it != split_map_.end()) {
-      // We will calculate all the splits of an IterMark's division form when we first
-      // encounter one of them. If we encounter another later, we directly return the record.
-      return it->second;
-    } else {
-      const Array<IterSplitExpr>& splits = collector_.mark2splits_.at(expr->source);
-      if (const auto* iter_ptr = expr->source->source.as<VarNode>()) {
-        // source is input_iter,
-        bool inner = sub_iters_.count(iter_ptr);
-        for (const auto& split : splits) {
-          if (inner) {
-            // 0*E(split)+split
-            split_map_.emplace(split, DivisionFormNode::MakeInner(split, split->extent));
-          } else {
-            // split*1 + 0
-            split_map_.emplace(split, DivisionFormNode::MakeOuter(split, split->extent));
-          }
-        }
-      } else if (const auto* iter_ptr = expr->source->source.as<IterSumExprNode>()) {
-        // source = Y*E+X
-        // splits = [s1, s2, ..., sn]
-        // we can divide if there exists i, such that extent(s1)extent(s2)...extent(si)=extent(Y)
-        //                                            extent(si+1)...extent(sn)=extent(X)
-        auto mark_division = DivideIterSumExpr(GetRef<IterSumExpr>(iter_ptr), expr->source->extent);
-        if (splits.size() == 1) {
-          return mark_division;
-        }
-        IterMark outer_mark(Downcast<IterSumExpr>(mark_division->outer),
-                            mark_division->outer_extent);
-        IterMark inner_mark(Downcast<IterSumExpr>(mark_division->inner),
-                            mark_division->inner_extent);
-        bool encountered = mark_division->IsOuter();
-        std::vector<bool> used(splits.size(), false);
-        std::vector<IterSplitExpr> inner_iters, outer_iters;
-        PrimExpr expected_lower_factor = make_const(expr->source->source->dtype, 1);
-        for (size_t i = 0; i < splits.size(); ++i) {
-          size_t j = 0;
-          for (; j < splits.size(); ++j) {
-            if (used[j]) continue;
-            if (!used[j] && CanProveEqual(splits[j]->lower_factor, expected_lower_factor)) break;
-          }
-          if (j == splits.size()) return Fail();
-          used[j] = true;
-          if (!encountered) {
-            inner_iters.push_back(splits[j]);
-          } else {
-            outer_iters.push_back(splits[j]);
-          }
-          expected_lower_factor *= splits[j]->extent;
-          if (CanProveEqual(expected_lower_factor, mark_division->inner_extent)) encountered = true;
-        }
-        if (!encountered) return Fail();
-        for (const auto& inner_iter : inner_iters) {
-          IterSplitExpr new_iter = inner_iter;
-          new_iter.CopyOnWrite()->source = inner_mark;
-          split_map_.emplace(inner_iter, DivisionFormNode::MakeInner(new_iter, inner_iter->extent));
-        }
-        for (const auto& outer_iter : outer_iters) {
-          IterSplitExpr new_iter = outer_iter;
-          new_iter.CopyOnWrite()->source = outer_mark;
-          new_iter.CopyOnWrite()->lower_factor =
-              div(outer_iter->lower_factor, outer_iters[0]->lower_factor);
-          split_map_.emplace(outer_iter, DivisionFormNode::MakeOuter(new_iter, outer_iter->extent));
-        }
-      } else {
-        return Fail();
-      }
-      return split_map_.at(expr);
-    }
-  }
-
-  bool CanProveEqual(const PrimExpr& lhs, const PrimExpr& rhs) {
-    const auto* clhs = lhs.as<IntImmNode>();
-    const auto* crhs = rhs.as<IntImmNode>();
-    if (clhs && crhs) return clhs->value == crhs->value;
-    return analyzer_->CanProve(lhs - rhs == 0);
-  }
-
-  size_t unresolved_count_{0};
-  Analyzer* analyzer_;
-  const IterMarkSplitCollector collector_;
-  const std::unordered_set<const VarNode*>& sub_iters_;
-  // map from SplitExpr to its corresponding DivisionForm(Y*E(X)+X)
-  std::unordered_map<IterSplitExpr, DivisionForm, ObjectPtrHash, ObjectPtrEqual> split_map_;
-};
-
-Array<DivisionForm> SubspaceDivision(const Array<IterVar>& leaf_iters,
-                                     const Array<PrimExpr>& bindings,
-                                     const Map<Var, Range>& root_iters, const Array<Var>& sub_iters,
-                                     const PrimExpr& predicate, arith::Analyzer* analyzer) {
-  const auto& maps = DetectIterMap(leaf_iters, bindings, root_iters, predicate, analyzer);
-  if (maps.empty()) return {};
-
-  std::unordered_set<const VarNode*> inner_iter_set;
-  for (const auto& inner_iter : sub_iters) inner_iter_set.insert(inner_iter.get());
-
-  IterMarkSplitCollector collector;
-  collector.Collect(maps);
-  SubspaceDivider subspace_divider(analyzer, collector, inner_iter_set);
-
-  std::vector<DivisionForm> results;
-  for (const auto& expr : maps) {
-    results.push_back(subspace_divider.DivideIterSumExpr(expr, 0));
-    if (subspace_divider.unresolved_count()) return {};
-  }
-
-  results.emplace_back(IterSumExpr({}, 0), subspace_divider.outer_preds, IterSumExpr({}, 0),
-                       subspace_divider.inner_preds);
-  return results;
-}
-
 /*! * \brief Given an IterVarMapExpr, transform it to normal PrimExpr. */
 class IterMapToExprNormalizer {
  public:
@@ -1395,6 +1094,20 @@ PrimExpr NormalizeIterMapToExpr(const IterMapExpr& expr) {
 TVM_REGISTER_GLOBAL("arith.NormalizeIterMapToExpr").set_body_typed([](const IterMapExpr& expr) {
   return NormalizeIterMapToExpr(expr);
 });
+
+Array<PrimExpr> IterMapSimplify(const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
+                                const PrimExpr& input_pred, bool require_bijective) {
+  Analyzer analyzer;
+  auto rewrite = DetectIterMap(indices, input_iters, input_pred, require_bijective, &analyzer);
+  if (rewrite.empty()) {
+    return indices;
+  } else {
+    std::vector<PrimExpr> res;
+    IterMapToExprNormalizer converter(&analyzer);
+    for (const auto& expr : rewrite) res.push_back(converter.Convert(expr));
+    return res;
+  }
+}
 
 /*!
  * \brief Divider to divide the bindings into two sets of bindings(outer and inner)

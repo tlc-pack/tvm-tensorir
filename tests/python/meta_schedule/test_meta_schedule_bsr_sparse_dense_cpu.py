@@ -66,21 +66,21 @@ def meta_schedule_sparse_dense_llvm(func, f_create_args):
     def schedule_sparse_dense(s: ms.Schedule):
         sparse_dense = s.get_block("sparse_dense")
         sparse_dense_local = s.cache_write(sparse_dense, 0, "local")
-        i, j, offset, k = s.get_axes(sparse_dense_local)
+        i, j, offset, k = s.get_loops(sparse_dense_local)
         i_tiles = s.sample_perfect_tile(n_splits=4, loop=i)
         j_tiles = s.sample_perfect_tile(n_splits=4, loop=j)
         i_0, i_1, i_2, i_3 = s.split(i, i_tiles)
         j_0, j_1, j_2, j_3 = s.split(j, j_tiles)
         s.reorder([i_0, j_0, i_1, j_1, i_2, j_2, offset, k, i_3, j_3])
         s.reverse_compute_at(sparse_dense, j_1)
-        outer_fused = s.fuse(s.get_axes(sparse_dense)[:4])
+        outer_fused = s.fuse(s.get_loops(sparse_dense)[:4])
         s.parallel(outer_fused)
         s.mark_loop(outer_fused, "auto_unroll_max_step", tir.IntImm("int32", 512))
         s.mark_loop(outer_fused, "unroll_explicit", tir.IntImm("int32", 1))
         s.decompose_reduction(sparse_dense_local, offset)
         s.vectorize(j_3)
         try:
-            j_init = s.get_axes(s.get_block("sparse_dense_init"))[-1]
+            j_init = s.get_loops(s.get_block("sparse_dense_init"))[-1]
             s.vectorize(j_init)
         except:  # pylint: disable=bare-except
             pass

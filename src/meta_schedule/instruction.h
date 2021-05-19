@@ -167,7 +167,7 @@ struct SamplePerfectTileAttrs : public InstAttrsNode {
    * \return The instruction created
    */
   static Instruction Make(const LoopRV& loop, int n, int max_innermost_factor,
-                          const Array<tir::Var>& outputs);
+                          const Array<ExprRV>& outputs);
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SamplePerfectTileAttrs,
                                       "meta_schedule.attrs.SamplePerfectTileAttrs",
@@ -194,7 +194,7 @@ struct SampleCategoricalAttrs : public InstAttrsNode {
    * \return The instruction created
    */
   static Instruction Make(const Array<Integer>& candidates, const Array<FloatImm>& probs,
-                          const tir::Var& output);
+                          const ExprRV& output);
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleCategoricalAttrs,
                                       "meta_schedule.attrs.SampleCategoricalAttrs",
@@ -286,7 +286,7 @@ struct GetAxesAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetAxesAttrs,                        //
                                       "meta_schedule.attrs.GetAxesAttrs",  //
-                                      "GetAxes", true);
+                                      "GetLoops", true);
 };
 
 /**************** Scheduling Primitives ****************/

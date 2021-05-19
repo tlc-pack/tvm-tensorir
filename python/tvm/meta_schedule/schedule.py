@@ -24,7 +24,7 @@ from tvm._ffi import register_object
 from tvm.runtime.container import String
 from tvm.tir import IntImm
 from tvm.tir import Schedule as TIRSchedule
-from tvm.tir.schedule import BlockRV, ExprRV, LoopRV, VarRV
+from tvm.tir.schedule import BlockRV, ExprRV, LoopRV
 
 from . import _ffi_api
 from .trace import Trace

@@ -128,7 +128,7 @@ void ParallelCompute(ScheduleState self, const StmtSRef& loop_sref, const ForKin
   //   2. A single block below the loop
   StmtSRef scope_root = GetScopeRoot(loop_sref);
   bool is_compact_dataflow =
-      IsCompactDataFlow(self, scope_root, GetChildBlocks(self, loop_sref, false));
+      IsCompactDataFlow(self, scope_root, GetChildBlocks(self, loop_sref));
   if (!is_compact_dataflow) {
     Array<Stmt> single_child = GetChildren(GetRef<Stmt>(loop), true);
     // TODO(@junrushao1994): I am not super convinced by the checks here, revisit later
@@ -412,7 +412,7 @@ void SetScope(ScheduleState self, const StmtSRef& block_sref, int i, const Strin
                      " you really want to change its storage scope.";
   const auto* allocate_site = allocate_site_sref->StmtAs<BlockNode>();
   // The allocate site must be a block.
-  ICHECK_NE(allocate_site, nullptr);
+  ICHECK(allocate_site != nullptr);
   // Recursively replace the old buffer to a new buffer, where the new buffer has the given storage
   // scope. In the meanwhile, collect the block sref reuse information.
   Map<Block, Block> block_reuse_map;

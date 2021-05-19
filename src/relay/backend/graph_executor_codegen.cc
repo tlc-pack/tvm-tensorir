@@ -54,15 +54,6 @@ using GraphInputObjectPtr = std::shared_ptr<GraphInputNode>;
 using GraphOpObjectPtr = std::shared_ptr<GraphOpNode>;
 using TargetsMap = std::unordered_map<int, Target>;
 
-/*! \brief Lowered outputs */
-struct LoweredOutput {
-  std::string graph_json;
-  Map<String, IRModule> lowered_funcs;
-  Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>> schedules;
-  Array<tvm::runtime::Module> external_mods;
-  std::unordered_map<std::string, std::pair<int, const tvm::runtime::NDArray>> params;
-};
-
 /*! \brief Node types */
 enum GraphNodeType {
   kGraphNop,
@@ -315,7 +306,7 @@ class GraphExecutorCodegen : public backend::MemoizedExprTranslator<std::vector<
         ret.schedules.Set(kv.first,
                           Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>());
       }
-      ret.schedules.Set(kv.first,kv.second);
+      ret.schedules.Set(kv.first, kv.second);
     }
     ret.external_mods = compile_engine_->LowerExternalFunctions();
     ret.function_metadata = std::move(function_metadata_);
@@ -600,7 +591,7 @@ class GraphExecutorCodegen : public backend::MemoizedExprTranslator<std::vector<
 
     // Update function metadata via looking at all primfuncs
     UpdateFunctionMetadata(lowered_func, func, target);
-    if(lowered_func->prim_func.defined()) {
+    if (lowered_func->prim_func.defined()) {
       schedules_[target->str()].Set(lowered_func->prim_func, lowered_func->prim_func);
     }
     return GraphAddCallNode(op, _GetUniqueName(lowered_func->func_name), lowered_func->func_name,
@@ -826,10 +817,10 @@ class GraphExecutorCodegenModule : public runtime::ModuleNode {
     } else if (name == "get_function_metadata") {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
         *rv = this->output_.function_metadata;
-    } else if(name=="get_schedule") {
-      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-        *rv = this->output_.schedules;
       });
+    } else if (name == "get_schedule") {
+      return PackedFunc(
+          [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->output_.schedules; });
     } else {
       return PackedFunc([](TVMArgs args, TVMRetValue* rv) {});
     }

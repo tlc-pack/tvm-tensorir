@@ -359,22 +359,24 @@ bool TensorizeComparator::VisitExpr(const PrimExpr& n, const PrimExpr& other) {
 
 namespace schedule {
 
-Array<arith::DivisionForm> TrivialSubspaceDivision(const Array<IterVar>& iter_vars,
-                                                   const Array<PrimExpr>& bindings,
-                                                   const std::vector<Var>& outer_loops,
-                                                   const std::vector<Var>& inner_loops,
-                                                   const PrimExpr& predicate) {
+Array<Array<arith::IterMark>> TrivialSubspaceDivision(const Array<IterVar>& iter_vars,
+                                                      const Array<PrimExpr>& bindings,
+                                                      const std::vector<Var>& outer_loops,
+                                                      const std::vector<Var>& inner_loops,
+                                                      const PrimExpr& predicate) {
   if (!is_one(predicate)) return {};
-  std::vector<arith::DivisionForm> res;
+  std::vector<Array<arith::IterMark>> res;
   for (size_t i = 0; i < bindings.size(); ++i) {
     bool outer = StmtExprContainsVar(bindings[i], outer_loops);
     bool inner = StmtExprContainsVar(bindings[i], inner_loops);
     if (outer && !inner) {
-      res.emplace_back(arith::IterSumExpr({}, bindings[i]), iter_vars[i]->dom->extent,
-                       arith::IterSumExpr({}, 0), 1);
+      arith::IterMark outer(arith::IterSumExpr({}, bindings[i]), iter_vars[i]->dom->extent);
+      arith::IterMark inner(arith::IterSumExpr({}, 0), 1);
+      res.push_back(Array<arith::IterMark>({outer, inner}));
     } else if (inner && !outer) {
-      res.emplace_back(arith::IterSumExpr({}, 0), 1, arith::IterSumExpr({}, bindings[i]),
-                       iter_vars[i]->dom->extent);
+      arith::IterMark outer(arith::IterSumExpr({}, 0), 1);
+      arith::IterMark inner(arith::IterSumExpr({}, bindings[i]), iter_vars[i]->dom->extent);
+      res.push_back(Array<arith::IterMark>({outer, inner}));
     } else {
       return {};
     }
@@ -423,8 +425,8 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
     if (current_sref == loop_sref) inner = false;
   }
   arith::Analyzer analyzer;
-  auto division = arith::SubspaceDivision(block->iter_vars, block_realize->iter_values, iters,
-                                          inner_iters, block_realize->predicate, &analyzer);
+  Array<Array<arith::IterMark>> division = arith::SubspaceDivide(
+      block_realize->iter_values, iters, inner_iters, block_realize->predicate, false, &analyzer);
   if (division.empty()) {
     // It is possible to blockize if we can not do perfect subspace division if we can divide
     // the block var bindings into two categories
@@ -435,33 +437,39 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   }
   CHECK(!division.empty()) << "ValueError: The bindings of the block below can not be blockized";
   // Generate a new inner block
-  arith::IterVarMapConverter converter(&analyzer);
   Array<IterVar> inner_block_vars, outer_block_vars;
   Array<PrimExpr> inner_bindings, outer_bindings;
   std::unordered_map<Var, int, ObjectPtrHash, ObjectPtrEqual> block_var_no;
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> bv_iters;
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
     const IterVar& iter_var = block->iter_vars[i];
-    if (division[i]->IsOuter()) {
+    const arith::IterMapExprNode* outer_binding =
+        division[i][0]->source.as<arith::IterMapExprNode>();
+    const arith::IterMapExprNode* inner_binding =
+        division[i][1]->source.as<arith::IterMapExprNode>();
+    ICHECK(outer_binding);
+    ICHECK(inner_binding);
+    if (is_one(division[i][1]->extent)) {  // IsOuter
       // extract this iter var to outer block directly
-      outer_bindings.push_back(converter.Convert(division[i]->outer));
+      outer_bindings.push_back(arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(outer_binding)));
       outer_block_vars.push_back(iter_var);
       bv_iters[iter_var->var] = Range::FromMinExtent(iter_var->var, 1);
     } else {
-      const IterVar outer_var(Range::FromMinExtent(0, division[i]->outer_extent),
+      const IterVar outer_var(Range::FromMinExtent(0, division[i][0]->extent),
                               iter_var->var.copy_with_suffix("o"), iter_var->iter_type);
-      outer_bindings.push_back(converter.Convert(division[i]->outer));
+      outer_bindings.push_back(arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(outer_binding)));
       outer_block_vars.push_back(outer_var);
       // generate a new iter var for outer block
-      PrimExpr base = division[i]->IsInner() ? 0 : outer_var * division[i]->inner_extent;
-      if (const auto* op = division[i]->inner.as<arith::IterSumExprNode>()) {
+      PrimExpr base = is_one(division[i][0]->extent) ? 0 : outer_var * division[i][1]->extent;
+      if (const auto* op = division[i][1]->source.as<arith::IterSumExprNode>()) {
         base = base + op->base;
-        inner_bindings.push_back(base + converter.Convert(arith::IterSumExpr(op->args, 0)));
+        inner_bindings.push_back(base +
+                                 arith::NormalizeIterMapToExpr(arith::IterSumExpr(op->args, 0)));
       } else {
-        inner_bindings.push_back(base + converter.Convert(division[i]->inner));
+        inner_bindings.push_back(base + arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(inner_binding)));
       }
       inner_block_vars.push_back(iter_var);
-      bv_iters[iter_var->var] = Range::FromMinExtent(base, division[i]->inner_extent);
+      bv_iters[iter_var->var] = Range::FromMinExtent(base, division[i][1]->extent);
     }
     block_var_no[iter_var->var] = i;
   }
@@ -470,7 +478,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   inner_block.CopyOnWrite()->init = NullOpt;
   BlockRealize inner_br = block_realize;
   inner_br.CopyOnWrite()->iter_values = inner_bindings;
-  inner_br.CopyOnWrite()->predicate = division.back()->inner_extent;
+  inner_br.CopyOnWrite()->predicate = division.back()[1]->extent;
   inner_br.CopyOnWrite()->block = inner_block;
   // Regenerate inner_loops
   Stmt body = inner_br;
@@ -522,8 +530,8 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
                                 /*init=*/NullOpt                           //
                                 ),
                           bv_replace_map);
-    new_init = BlockRealize(init_bindings, division.back()->inner_extent,
-                            Downcast<Block>(new_init.value()));
+    new_init =
+        BlockRealize(init_bindings, division.back()[1]->extent, Downcast<Block>(new_init.value()));
     for (const auto& init_loop : init_loops) {
       For new_init_loop = init_loop;
       new_init_loop.CopyOnWrite()->body = new_init.value();
@@ -532,9 +540,10 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   }
   // Calculate outer block's IO region
   auto rewrite_range = [&](const Range& range) -> Range {
-    auto res = arith::DetectIter(range->min, bv_iters, &analyzer);
-    CHECK(res.defined());
-    auto normalized_expr = res.value();
+    const Array<arith::IterSumExpr>& res =
+        arith::DetectIterMap({range->min}, bv_iters, true, false, &analyzer);
+    ICHECK_EQ(res.size(), 1);
+    const arith::IterSumExpr& normalized_expr = res[0];
     PrimExpr extent = 1;
     if (normalized_expr->args.size() == 1) {
       CHECK(analyzer.CanProve(normalized_expr->args[0]->scale - range->extent == 0));
@@ -562,7 +571,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
                            /*body=*/std::move(body),                       //
                            /*init=*/new_init                               //
   );
-  auto outer_realize = BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
+  auto outer_realize = BlockRealize(outer_bindings, division.back()[0]->extent, outer_block);
 
   self->Replace(loop_sref, outer_realize, {{block, inner_block}});
   {
@@ -731,6 +740,11 @@ class BufferReplacer : public StmtExprMutator {
           }
           n->region.insert(n->region.begin(), region.begin(), region.end());
         }
+        while (n->region.size() > n->buffer->shape.size()) {
+          const Range& range = n->region.back();
+          ICHECK(is_one(range->extent) && is_zero(range->min));
+          n->region.pop_back();
+        }
         return BufferRegion(n);
       } else {
         return buffer_region;
@@ -755,9 +769,11 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   const auto* loop = loop_sref->StmtAs<ForNode>();
   CHECK(loop) << "Only support tensorize a loop for now";
 
-  const auto* desc_block_realize = Downcast<BlockRealize>(intrinsic->description->body)->block->body.as<BlockRealizeNode>();
+  const auto* desc_block_realize =
+      Downcast<BlockRealize>(intrinsic->description->body)->block->body.as<BlockRealizeNode>();
   const Block& desc_block = desc_block_realize->block;
-  const auto* impl_block_realize = Downcast<BlockRealize>(intrinsic->implementation->body)->block->body.as<BlockRealizeNode>();
+  const auto* impl_block_realize =
+      Downcast<BlockRealize>(intrinsic->implementation->body)->block->body.as<BlockRealizeNode>();
   const Block& impl_block = impl_block_realize->block;
 
   const StmtSRef& block_sref = Blockize(self, loop_sref);

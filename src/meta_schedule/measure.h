@@ -96,7 +96,7 @@ class ProgramRunnerNode : public Object {
    * \brief Callback function to create arguments for functions to measure. This can be used for
    * sparse workloads when we cannot use random tensors for measurement.
    */
-  using FCreateArgs = runtime::TypedPackedFunc<Array<runtime::NDArray>(TVMContext)>;
+  using FCreateArgs = runtime::TypedPackedFunc<Array<runtime::NDArray>(DLDevice)>;
 
  public:
   /*! \brief Timeout of a run. */

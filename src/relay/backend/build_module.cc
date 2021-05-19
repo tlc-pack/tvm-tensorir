@@ -218,7 +218,7 @@ class RelayBuildModule : public runtime::ModuleNode {
       });
     } else if (name == "get_primfunc") {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-        *rv = this->graph_codegen_->GetSchedule();
+        *rv = this->executor_codegen_->GetSchedule();
       });
     } else if (name == "set_tune_result") {
       return PackedFunc([sptr_to_self](TVMArgs args, TVMRetValue* rv) {

@@ -351,8 +351,8 @@ class BufferAllocator : public StmtExprMutator {
       PrimExpr v = this->VisitExpr(realize->iter_values[i]);
       var_substitutes_.emplace(block_var->var, v);
       if (block_var->iter_type == kCommReduce) {
-        for (const VarNode* var : Vars(v)) {
-          this->reduction_loop_vars_.insert(GetRef<Var>(var));
+        for (const Var& var : UndefinedVars(v)) {
+          this->reduction_loop_vars_.insert(var);
         }
       }
     }

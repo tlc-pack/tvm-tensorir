@@ -81,19 +81,19 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * \param max_innermost_factor The maximum factor in the innermost loop, -1 if disabled
    * \return An array of random variables, the result of sampling
    */
-  Array<tir::Var> SamplePerfectTile(const LoopRV& loop_rv,     //
-                                    int n,                     //
-                                    int max_innermost_factor,  //
-                                    Optional<Array<Integer>> decision = NullOpt) final;
+  Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv,     //
+                                  int n,                     //
+                                  int max_innermost_factor,  //
+                                  Optional<Array<Integer>> decision = NullOpt) final;
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates
    * \param probs The probability distribution of the candidates
    * \return The random variable
    */
-  tir::Var SampleCategorical(const Array<Integer>& candidates,  //
-                             const Array<FloatImm>& probs,      //
-                             Optional<Integer> decision = NullOpt) final;
+  ExprRV SampleCategorical(const Array<Integer>& candidates,  //
+                           const Array<FloatImm>& probs,      //
+                           Optional<Integer> decision = NullOpt) final;
   /*!
    * \brief Sample a compute-at location from a block
    * \param block_rv A block to be computed at
@@ -104,15 +104,16 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
   /*!
    * \brief Apply the instruction GetBlock
    * \param name The name of the block to get retrieved
+   * \param func_name The name of the function
    * \return A block random variable, the return value of the instruction
    */
-  BlockRV GetBlock(const String& name) final;
+  BlockRV GetBlock(const String& name, const String& func_name = "main") final;
   /*!
-   * \brief Apply the instruction GetAxes
+   * \brief Apply the instruction GetLoops
    * \param block_rv The block used to retrieve the axes
    * \return An array of loop random variables
    */
-  Array<LoopRV> GetAxes(const BlockRV& block_rv) final;
+  Array<LoopRV> GetLoops(const BlockRV& block_rv) final;
   /*!
    * \brief Get the child blocks of a specific parent block/loop
    * \param block_rv The random variable that points to the parent block
@@ -243,7 +244,8 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * \param factor The factor multiple of alignment
    * \param offset The required offset factor
    */
-  void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor, int offset) final;
+  void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
+                    int offset) final;
 
   /******** Schedule: cache read/write ********/
   /*!

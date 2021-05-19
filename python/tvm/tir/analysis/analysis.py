@@ -16,7 +16,7 @@
 # under the License.
 """Wrapping existing analysis utils."""
 # pylint: disable=invalid-name
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 from . import _ffi_api
 from ..function import PrimFunc
 from .. import Buffer, Stmt

@@ -98,36 +98,6 @@ class ScheduleNode : public runtime::Object {
   static constexpr const char* _type_key = "tir.Schedule";
   TVM_DECLARE_BASE_OBJECT_INFO(ScheduleNode, runtime::Object);
 
-  virtual StmtSRef GetSRef(const LoopRV& loop_rv) const = 0;
-  /*!
-   * \brief Get the block/loop sref corresponding to the specific statement
-   * \param stmt The statement to be looked up
-   * \return The corresponding block/loop sref
-   */
-  virtual StmtSRef GetSRef(const StmtNode* stmt) const;
-  /*!
-   * \brief Get the block/loop sref corresponding to the specific statement
-   * \param stmt The statement to be looked up
-   * \return The corresponding block/loop sref
-   */
-  virtual StmtSRef GetSRef(const Stmt& stmt) const;
-  /******** Remove random variables ********/
-  /*!
-   * \brief Remove a random variable from the symbol table
-   * \param block_rv The symbol to be removed
-   */
-  virtual void RemoveRV(const BlockRV& block_rv) = 0;
-  /*!
-   * \brief Remove a random variable from the symbol table
-   * \param block_rv The symbol to be removed
-   */
-  virtual void RemoveRV(const LoopRV& loop_rv) = 0;
-  /*!
-   * \brief Remove a random variable from the symbol table
-   * \param block_rv The symbol to be removed
-   */
-  virtual void RemoveRV(const VarRV& var_rv) = 0;
-
  public:
   /******** Sampling ********/
   /*!
@@ -138,10 +108,10 @@ class ScheduleNode : public runtime::Object {
    * \param decision The sampling decision
    * \return An array of n random variables, the result of sampling
    */
-  virtual Array<VarRV> SamplePerfectTile(const LoopRV& loop_rv,     //
-                                         int n,                     //
-                                         int max_innermost_factor,  //
-                                         Optional<Array<Integer>> decision = NullOpt) = 0;
+  virtual Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv,     //
+                                          int n,                     //
+                                          int max_innermost_factor,  //
+                                          Optional<Array<Integer>> decision = NullOpt) = 0;
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates
@@ -149,9 +119,9 @@ class ScheduleNode : public runtime::Object {
    * \param decision The sampling decision
    * \return The random variable sampled from candidates
    */
-  virtual VarRV SampleCategorical(const Array<Integer>& candidates,  //
-                                  const Array<FloatImm>& probs,      //
-                                  Optional<Integer> decision = NullOpt) = 0;
+  virtual ExprRV SampleCategorical(const Array<Integer>& candidates,  //
+                                   const Array<FloatImm>& probs,      //
+                                   Optional<Integer> decision = NullOpt) = 0;
   /*!
    * \brief Sample a compute-at location on a BlockRV so that its producer can compute at that loop
    * \param block_rv The consumer block to be computed at
@@ -214,21 +184,6 @@ class ScheduleNode : public runtime::Object {
    * \return The corresponding loop sref
    */
   virtual StmtSRef GetSRef(const LoopRV& loop_rv) const = 0;
-  virtual void Pragma(const LoopRV& loop_rv, const String& pragma_type,
-                      const ExprRV& pragma_value) = 0;
-  /*!
-   * \brief Set alignment requirement for specific dimension such that
-   *        stride[axis] == k * factor + offset for some k.
-   * \param block_rv The producer block of the buffer
-   * \param buffer_index The index of the buffer in block's write region
-   * \param axis The dimension to be specified for alignment
-   * \param factor The factor multiple of alignment
-   * \param offset The required offset factor
-   */
-  virtual void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
-                            int offset) = 0;
-
-  /******** Schedule: cache read/write ********/
   /*!
    * \brief Get the block/loop sref corresponding to the specific statement
    * \param stmt The statement to be looked up
@@ -259,13 +214,6 @@ class ScheduleNode : public runtime::Object {
 
  public:
   /******** Block/Loop relation ********/
-  /******** Schedule: blockize / tensorize ********/
-  /*!
-   * \brief Make subtree rooted by a specific loop into a block
-   * \param loop_rv The root of the subtree
-   * \return The new block
-   */
-  virtual BlockRV Blockize(const LoopRV& loop_rv) = 0;
   /*!
    * \brief Retrieve a block in a specific function with its name
    * \param name The name of the block to be retrieved
@@ -309,6 +257,202 @@ class ScheduleNode : public runtime::Object {
   /******** Schedule: cache read/write ********/
   /******** Schedule: reduction ********/
   /******** Schedule: blockize & tensorize ********/
+  /*!
+   * \brief Get the leaf blocks of a specific scope
+   * \param block_rv The block where the scope is rooted
+   * \return A list of child blocks
+   */
+  virtual Array<BlockRV> GetChildBlocks(const BlockRV& block_rv) = 0;
+  /*!
+   * \brief Get the leaf blocks of under a specific loop
+   * \param loop_rv The loop under which collecting is conducted
+   * \return A list of child blocks
+   */
+  virtual Array<BlockRV> GetChildBlocks(const LoopRV& loop_rv) = 0;
+  /*!
+   * \brief Get the producer of a specific block
+   * \param block_rv The block to be queried
+   * \return The producers
+   */
+  virtual Array<BlockRV> GetProducers(const BlockRV& block_rv) = 0;
+  /*!
+   * \brief Get the consumers of a specific block
+   * \param block_rv The block to be queried
+   * \return The consumers
+   */
+  virtual Array<BlockRV> GetConsumers(const BlockRV& block_rv) = 0;
+
+  /******** Schedule: loops ********/
+  /*!
+   * \brief Fuse consecutive loops into one.
+   * \param loop_rvs The loop random variables to be fused
+   * \return The fused loop
+   */
+  virtual LoopRV Fuse(const Array<LoopRV>& loop_rvs) = 0;
+  /*!
+   * \brief Split a specified loop into two or more with the specific factor.
+   * \param loop_rv The loop to be split
+   * \param factors The tiling factors, and at most one of which is NullOpt or -1, which means that
+   * factor is inferred.
+   * \return The loops after splitting
+   */
+  virtual Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) = 0;
+  /*!
+   * \brief Reorder a list of loops
+   * \param order The order after reordering
+   */
+  virtual void Reorder(const Array<LoopRV>& order) = 0;
+
+  /******** Schedule: compute location ********/
+  /*!
+   * \brief Compute the producer block under its consumer's specific loop,
+   * and regenerate the loops to cover the region needed by the consumer.
+   * \param block_rv The block to be moved
+   * \param loop_rv The target loop
+   * \param preserve_unit_loop Keep the trivial loops whose extent is 1
+   */
+  virtual void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
+                         bool preserve_unit_loop) = 0;
+  /*!
+   * \brief Compute the consumer block under its producer's specific loop,
+   * and regenerate the loops to cover the region needed by the producer.
+   * \param block_rv The block to be moved
+   * \param loop_rv The target loop
+   * \param preserve_unit_loop Keep the trivial loops whose extent is 1
+   */
+  virtual void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
+                                bool preserve_unit_loop) = 0;
+  /*!
+   * \brief Remove the block, and produce the value needed inplace
+   * where it is used on the consumer.
+   * \param block_rv The block to be inlined
+   */
+  virtual void ComputeInline(const BlockRV& block_rv) = 0;
+  /*!
+   * \brief Remove the block, and produce the value needed inplace
+   * where it is used on the producer.
+   * \param block_rv The block to be reverse-inlined
+   */
+  virtual void ReverseComputeInline(const BlockRV& block_rv) = 0;
+
+  /******** Schedule: parallelize / annotate ********/
+  /*!
+   * \brief Vectorize a loop
+   * \param loop_rv The loop to be vectorized
+   */
+  virtual void Vectorize(const LoopRV& loop_rv) = 0;
+  /*!
+   * \brief Parallelize a loop
+   * \param loop_rv The loop to be paralleled
+   */
+  virtual void Parallel(const LoopRV& loop_rv) = 0;
+  /*!
+   * \brief Unroll a loop
+   * \param loop_rv The loop to be unrolled
+   */
+  virtual void Unroll(const LoopRV& loop_rv) = 0;
+  /*!
+   * \brief Bind a loop to a thread axis
+   * \param loop_rv The loop to be bound
+   * \param thread The thread axis
+   */
+  virtual void Bind(const LoopRV& loop_rv, const IterVar& thread) = 0;
+  /*!
+   * \brief Bind a loop to a thread axis
+   * \param loop_rv The loop to be bound
+   * \param thread The thread axis
+   */
+  virtual void Bind(const LoopRV& loop_rv, const String& thread) = 0;
+  /*!
+   * \brief Add `double_buffer` annotation to a block
+   * \param block_rv The block to be annotated
+   */
+  virtual void DoubleBuffer(const BlockRV& block_rv) = 0;
+  /*!
+   * \brief Set the storage scope of a buffer, where the buffer is given as the i-th write buffer
+   *        of the input block
+   * \param block_rv The producer of the buffer
+   * \param i The index of the buffer in block's write region
+   * \param storage_scope The storage scope to be set
+   */
+  virtual void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) = 0;
+  /*!
+   * \brief Add a pragma annotation to a specific loop
+   * \param loop_rv The loop to be annotated
+   * \param pragma_type The attribute key
+   * \param pragma_value The attribute value
+   */
+  virtual void Pragma(const LoopRV& loop_rv, const String& pragma_type,
+                      const ExprRV& pragma_value) = 0;
+  /*!
+   * \brief Set alignment requirement for specific dimension such that
+   *        stride[axis] == k * factor + offset for some k.
+   * \param block_rv The producer block of the buffer
+   * \param buffer_index The index of the buffer in block's write region
+   * \param axis The dimension to be specified for alignment
+   * \param factor The factor multiple of alignment
+   * \param offset The required offset factor
+   */
+  virtual void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
+                            int offset) = 0;
+
+  /******** Schedule: cache read/write ********/
+  /*!
+   * \brief Create a block that reads a buffer region into a read cache
+   * \param block_rv The consumer of the buffer
+   * \param i The index of the buffer in block's read region
+   * \param storage_scope The storage scope
+   */
+  virtual BlockRV CacheRead(const BlockRV& block_rv, int i, const String& storage_scope) = 0;
+  /*!
+   * \brief Create a block that writes a buffer region into a write cache
+   * \param block_rv The producer of the buffer
+   * \param i The index of the buffer in block's write region
+   * \param storage_scope The storage scope
+   */
+  virtual BlockRV CacheWrite(const BlockRV& block_rv, int i, const String& storage_scope) = 0;
+
+  /******** Schedule: reduction ********/
+  /*!
+   * \brief Factor a reduction block by the specified loop
+   * \param loop_rv The loop outside block we want to do rfactor
+   * \param factor_axis The position where the new dimension is placed in the new generated rfactor
+   *                      buffer
+   * \return The rfactor block
+   */
+  virtual BlockRV RFactor(const LoopRV& loop_rv, int factor_axis) = 0;
+  /*!
+   * \brief Decompose a reduction block into init block and update block
+   * \param block_rv The reduction block
+   * \param loop_rv The position where init block is inserted
+   * \return The init block
+   */
+  virtual BlockRV DecomposeReduction(const BlockRV& block_rv, const Optional<LoopRV>& loop_rv) = 0;
+  /*!
+   * \brief Construct a reduction block by merging the init and update block
+   * \param init_block_rv The init block
+   * \param update_block_rv The update block
+   */
+  virtual void MergeReduction(const BlockRV& init_block_rv, const BlockRV& update_block_rv) = 0;
+
+  /******** Schedule: blockize / tensorize ********/
+  /*!
+   * \brief Make subtree rooted by a specific loop into a block
+   * \param loop_rv The root of the subtree
+   * \return The new block
+   */
+  virtual BlockRV Blockize(const LoopRV& loop_rv) = 0;
+  /*!
+   * \brief Tensorize the computation enclosed by loop with tensor_intrin
+   * \param loop_rv the loop/block to be tensorized
+   * \param intrin the tensor intrinsic
+   */
+  virtual void Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) = 0;
+  /*!
+   * \brief Tensorize the computation enclosed by loop with tensor_intrin
+   * \param loop_rv The loop/block to be tensorized
+   * \param intrin_name Name of the tensor intrinsic
+   */
   virtual void Tensorize(const LoopRV& loop_rv, const String& intrin_name) = 0;
 
   /******** Schedule: Misc ********/

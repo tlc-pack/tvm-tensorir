@@ -34,7 +34,7 @@ from tvm.autotvm.measure.measure_methods import set_cuda_target_arch
 from tvm.contrib import ndk as build_func_ndk
 from tvm.contrib import tar as build_func_tar
 from tvm.driver import build as tvm_build
-from tvm.runtime import NDArray, TVMContext, ndarray
+from tvm.runtime import NDArray, Device, ndarray
 from tvm.tir import FloatImm, IntImm, PrimFunc
 
 from .measure_record import BuildResult, MeasureErrorNo, MeasureInput, MeasureResult
@@ -279,7 +279,7 @@ def check_remote(key: str, host: str, port: int, priority: int = 100, timeout: i
 
 def realize_arguments(
     remote: rpc.RPCSession,
-    ctx: TVMContext,
+    ctx: Device,
     func: PrimFunc,
 ) -> List[NDArray]:
     """
@@ -289,7 +289,7 @@ def realize_arguments(
     ----------
     _remote: RPCSession
         The connected remote RPCSession
-    ctx: TVMContext
+    ctx: Device
         The context that ndarrays to be created on the remote
     func: PrimFunc
         The PrimFunc to be run on the remote
@@ -543,7 +543,7 @@ def rpc_runner_run(
         its actual latency during end-to-end inference.
         To make this option effective, the argument `number` should also be set to 1.
         This is only has effect on CPU task.
-    f_create_args: Callable[[TVMContext], List[NDArray]] = None
+    f_create_args: Callable[[Device], List[NDArray]] = None
         Optional callback to create arguments for functions to measure. This can be used for sparse
         workloads when we cannot use random tensors for measurement.
     verbose: int = 1
@@ -600,7 +600,7 @@ def rpc_runner_worker(
     min_repeat_ms: int,
     cooldown_interval: float,
     enable_cpu_cache_flush: bool,
-    f_create_args: Callable[[TVMContext], List[NDArray]],
+    f_create_args: Callable[[Device], List[NDArray]],
     verbose: int,
 ) -> MeasureResult.TYPE:
     """ RPC worker for ProgramRunner """
