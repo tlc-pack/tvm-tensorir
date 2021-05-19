@@ -107,33 +107,6 @@ namespace tir {
       << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
       << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
 
-}  // namespace tir
-}  // namespace tvm
-
-#endif  // TVM_TIR_SCHEDULE_UTILS_H_
-#define TVM_SREF_TO_E(Result, SRef, Type) \
-  SRef->StmtAs<Type>();                   \
-  ICHECK(Result)
-
-#define TVM_SREF_TO_BLOCK(Result, SRef)              \
-  TVM_SREF_TO_E(Result, SRef, ::tvm::tir::BlockNode) \
-      << "TypeError: Expects StmtSRef `" << #SRef    \
-      << "` points to `Block`, but gets: " << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
-
-#define TVM_SREF_TO_FOR(Result, SRef)              \
-  TVM_SREF_TO_E(Result, SRef, ::tvm::tir::ForNode) \
-      << "TypeError: Expects StmtSRef `" << #SRef  \
-      << "` points to `Loop`, but gets: " << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
-
-#define TVM_TYPE_AS_E(Result, From, Type) \
-  (From).as<Type>();                      \
-  ICHECK(Result)
-
-#define TVM_TYPE_AS(Result, From, Type)                                           \
-  TVM_TYPE_AS_E(Result, From, Type)                                               \
-      << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
-      << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
-
 inline String Repr(const IRModule& mod) {
   const auto* f = runtime::Registry::Get("script.AsTVMScript");
   ICHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";

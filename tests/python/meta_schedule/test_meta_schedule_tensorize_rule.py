@@ -94,17 +94,17 @@ def dot_product_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 tir.bind(vi, i1)
                 tir.bind(vj, i2)
                 tir.bind(vko, i3_outer)
-                tir.reads([C[vn:(vn + 1), vi:(vi + 1), vj:(vj + 1)], A[vn:(vn + 1), vi:(vi + 1), (vko*4):((vko*4) + 4)], B[vn:(vn + 1), vj:(vj + 1), (vko*4):((vko*4) + 4)]])
-                tir.writes([C[vn:(vn + 1), vi:(vi + 1), vj:(vj + 1)]])
+                tir.reads([C[vn, vi, vj], A[vn, vi, vko*4:vko*4 + 4], B[vn, vj, vko*4:vko*4 + 4]])
+                tir.writes([C[vn, vi, vj]])
                 with tir.init():
                     with tir.block([], "update_init") as []:
                         tir.reads([])
-                        tir.writes([C[vn:(vn + 1), vi:(vi + 1), vj:(vj + 1)]])
+                        tir.writes([C[vn, vi, vj]])
                         C[vn, vi, vj] = tir.float32(0)
                 with tir.block([tir.reduce_axis(0, 1)], "blockized_update") as [vko_1]:
                     tir.bind(vko_1, 0)
-                    tir.reads([C[vn:(vn + 1), vi:(vi + 1), vj:(vj + 1)], A[vn:(vn + 1), vi:(vi + 1), (vko*4):((vko*4) + 4)], B[vn:(vn + 1), vj:(vj + 1), (vko*4):((vko*4) + 4)]])
-                    tir.writes([C[vn:(vn + 1), vi:(vi + 1), vj:(vj + 1)]])
+                    tir.reads([C[vn, vi, vj], A[vn, vi, vko*4:vko*4 + 4], B[vn, vj, vko*4:vko*4 + 4]])
+                    tir.writes([C[vn, vi, vj]])
                     tir.evaluate(tir.call_extern("vec4add", C.data, 0, A.data, 0, B.data, 0, dtype="int32"))
 
 

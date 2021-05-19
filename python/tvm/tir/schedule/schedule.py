@@ -16,12 +16,12 @@
 # under the License.
 # pylint: disable=unused-import
 """The TensorIR schedule class"""
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 
 from tvm._ffi import register_object as _register_object
 from tvm.ir import IRModule, PrimExpr
-from tvm.runtime import Object
-from tvm.tir import Block, For, IntImm, PrimFunc, Var
+from tvm.runtime import Object, String
+from tvm.tir import Block, For, IntImm, IterVar, PrimFunc, TensorIntrin
 
 from . import _ffi_api_schedule
 from .state import ScheduleState, StmtSRef
@@ -223,6 +223,110 @@ class Schedule(Object):
             func_name,
         )
 
+    def get_loops(self, block: BlockRV) -> List[LoopRV]:
+        """Get the parent loops of the block in its scope, from outer to inner
+        Parameters
+        ----------
+        block : BlockRV
+            The query block
+        Returns
+        ----------
+        loops : List[LoopRV]
+            A list of loops above the given block in its scope, from outer to inner
+        """
+        return _ffi_api_schedule.ScheduleGetLoops(self, block)  # pylint: disable=no-member
+
+    def get_child_blocks(self, block_or_loop: Union[BlockRV, LoopRV]) -> List[BlockRV]:
+        return _ffi_api_schedule.ScheduleGetChildBlocks(  # pylint: disable=no-member
+            self, block_or_loop
+        )
+
+    def get_producers(self, block: BlockRV) -> List[BlockRV]:
+        return _ffi_api_schedule.ScheduleGetProducers(self, block)  # pylint: disable=no-member
+
+    def get_consumers(self, block: BlockRV) -> List[BlockRV]:
+        return _ffi_api_schedule.ScheduleGetConsumers(self, block)  # pylint: disable=no-member
+
+    ########## Sampling ##########
+
+    def sample_perfect_tile(
+        self,
+        loop: LoopRV,
+        n: int,
+        max_innermost_factor: int = 16,
+        decision: Optional[List[int]] = None,
+    ) -> List[ExprRV]:
+        return _ffi_api_schedule.ScheduleSamplePerfectTile(  # pylint: disable=no-member
+            self,
+            loop,
+            n,
+            max_innermost_factor,
+            decision,
+        )
+
+    def sample_categorical(
+        self,
+        candidates: List[int],
+        probs: List[float],
+        decision: Optional[int] = None,
+    ) -> ExprRV:
+        return _ffi_api_schedule.ScheduleSampleCategorical(  # pylint: disable=no-member
+            self,
+            candidates,
+            probs,
+            decision,
+        )
+
+    def sample_compute_location(
+        self,
+        block: BlockRV,
+        decision: Optional[int] = None,
+    ) -> LoopRV:
+        return _ffi_api_schedule.ScheduleSampleComputeLocation(  # pylint: disable=no-member
+            self,
+            block,
+            decision,
+        )
+
+    ########## Schedule: loops ##########
+
+    def fuse(self, *loops: List[LoopRV]) -> LoopRV:
+        return _ffi_api_schedule.ScheduleFuse(self, loops)  # pylint: disable=no-member
+
+    def split(
+        self,
+        loop: LoopRV,
+        *,
+        nparts: Optional[ExprRV] = None,
+        factor: Optional[ExprRV] = None,
+        factors: Optional[List[ExprRV]] = None,
+    ) -> Tuple[LoopRV, LoopRV]:
+        if factors is not None:
+            if (nparts is not None) or (factor is not None):
+                raise ValueError("`nparts`/`factor` are not allowed when `factors` is specified")
+        elif (nparts is None) and (factor is None):
+            raise ValueError("None of the `nparts`, `factor` and `factors` are specified")
+        elif (nparts is not None) and (factor is not None):
+            raise ValueError("Only one of the `nparts`, `factor` are allowed to be specified")
+        else:
+            factors = [nparts, factor]
+        return _ffi_api_schedule.ScheduleSplit(self, loop, factors)  # pylint: disable=no-member
+
+    def reorder(self, *loops: List[LoopRV]) -> None:
+        _ffi_api_schedule.ScheduleReorder(self, loops)  # pylint: disable=no-member
+
+    ########## Schedule: compute location ##########
+
+    def compute_at(
+        self,
+        block: BlockRV,
+        loop: LoopRV,
+        preserve_unit_loop: bool = False,
+    ) -> None:
+        _ffi_api_schedule.ScheduleComputeAt(  # pylint: disable=no-member
+            self, block, loop, preserve_unit_loop
+        )
+
     def reverse_compute_at(
         self,
         block: BlockRV,
@@ -270,8 +374,9 @@ class Schedule(Object):
             self, loop, pragma_type, pragma_value
         )
 
-    def storage_align(self, block: BlockRV, buffer_index: int, axis: int, factor: int,
-                      offset: int) -> None:
+    def storage_align(
+        self, block: BlockRV, buffer_index: int, axis: int, factor: int, offset: int
+    ) -> None:
         _ffi_api_schedule.ScheduleStorageAlign(  # pylint: disable=no-member
             self, block, buffer_index, axis, factor, offset
         )
@@ -306,23 +411,6 @@ class Schedule(Object):
     def blockize(self, loop: LoopRV) -> BlockRV:
         return _ffi_api_schedule.ScheduleBlockize(self, loop)  # pylint: disable=no-member
 
-    def get_loops(self, block: BlockRV) -> List[LoopRV]:
-        """Get the parent loops of the block in its scope, from outer to inner
-        Parameters
-        ----------
-        block : BlockRV
-            The query block
-        Returns
-        ----------
-        loops : List[LoopRV]
-            A list of loops above the given block in its scope, from outer to inner
-        """
-        return _ffi_api_schedule.ScheduleGetLoops(self, block)  # pylint: disable=no-member
-
-
-@_register_object("tir.ConcreteSchedule")
-class ConcreteSchedule(Schedule):
-    """A concrete schedule class of TensorIR. Do not use directly, use tvm.tir.Schedule instead."""
     def tensorize(self, loop: LoopRV, intrin: Union[str, TensorIntrin]) -> None:
         if isinstance(intrin, str):
             intrin = String(intrin)
@@ -332,3 +420,8 @@ class ConcreteSchedule(Schedule):
 
     def inline_argument(self, i: int, func_name: str = "main"):
         _ffi_api_schedule.ScheduleInlineArgument(self, i, func_name)  # pylint: disable=no-member
+
+
+@_register_object("tir.ConcreteSchedule")
+class ConcreteSchedule(Schedule):
+    """A concrete schedule class of TensorIR. Do not use directly, use tvm.tir.Schedule instead."""

@@ -45,6 +45,8 @@ void SetSeqIndex(ScheduleStateNode* self, const Stmt& stmt, int seq_index) {
     ICHECK(self->stmt2ref.count(loop));
     self->stmt2ref.at(loop)->seq_index = seq_index;
     // do nothing
+  }
+}
 
 /*!
  * \brief Update seq_index of the children of a SeqStmt
@@ -129,6 +131,31 @@ class StateCreator : private StmtVisitor {
         creator.VisitStmt(func->body);
       }
     }
+    return n;
+  }
+
+ private:
+  explicit StateCreator(ScheduleStateNode* self)
+      : self_(self), srefs_{}, realizes_{}, block_frames_{} {
+    block_frames_.emplace({});
+  }
+
+  /*!
+   * \brief Add a new statement to the stack, which becomes the current scope
+   * \param stmt A for-loop statement or a block statement
+   * \return A sref to the stmt
+   */
+  StmtSRef PushSRef(const StmtNode* stmt) {
+    if (srefs_.empty()) {
+      srefs_.push_back(
+          StmtSRef(stmt,
+                   /*parent=*/nullptr,
+                   /*seq_index=*/-1));  // `seq_index` will be set properly in SetSeqIndex
+    } else {
+      StmtSRefNode* parent = srefs_.back().get();
+      srefs_.push_back(
+          StmtSRef(stmt, parent,
+                   /*seq_index=*/-1));  // `seq_index` will be set properly in SetSeqIndex
     }
     return srefs_.back();
   }
@@ -140,7 +167,8 @@ class StateCreator : private StmtVisitor {
     srefs_.pop_back();
     return sref;
   }
-
+  void MakeBlockInfo(StmtSRef scope_root) {
+    // Calculate `BlockInfo::scope`
     Array<StmtSRef> child_block_srefs = std::move(block_frames_.back());
     BlockScope scope(child_block_srefs);
     // Calculate `BlockInfo::affine_binding`
@@ -198,6 +226,7 @@ class StateCreator : private StmtVisitor {
 
   void VisitStmt_(const ForNode* loop) final {
     PushSRef(loop);
+    VisitStmt(loop->body);
     PopAndRecordSRef();
   }
 
@@ -219,6 +248,7 @@ class StateCreator : private StmtVisitor {
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
     // Set `seq_index` information for SeqStmtNode
+    StmtVisitor::VisitStmt_(seq_stmt);
     SetSeqIndexInChildren(self_, seq_stmt);
   }
 
@@ -247,10 +277,10 @@ ScheduleState::ScheduleState(PrimFunc func, int debug_mode)
 
 /*
  * The goal of the replacement algorithm is to substitute a subtree `src_stmt` of the AST to a new
- * subtree `tgt_stmt`, and maintain the corresponding sref tree accordingly, with some srefs reused,
- * so that the srefs users hold doesn't expire. For example, if we split a loop into 2, and the
- * original loop has a child block, then the sref to the child block should be reused, so that users
- * won't have to acquire that sref again.
+ * subtree `tgt_stmt`, and maintain the corresponding sref tree accordingly, with some srefs
+ * reused, so that the srefs users hold doesn't expire. For example, if we split a loop into 2,
+ * and the original loop has a child block, then the sref to the child block should be reused, so
+ * that users won't have to acquire that sref again.
  *
  * The workflow of the replacement algorithm is:
  * 1) Detect all possible reuses in class ReuseInfo
@@ -674,11 +704,6 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
                  << GetRef<Stmt>(src_stmt) << "\ntgt_stmt:\n"
                  << tgt_stmt;
     }
-    if (src_stmt->IsInstance<BlockNode>() && tgt_stmt->IsInstance<BlockNode>()) {
-      const auto* src_block = static_cast<const BlockNode*>(src_stmt);
-      const auto* tgt_block = static_cast<const BlockNode*>(tgt_stmt.get());
-      block_sref_reuse.emplace(src_block, tgt_block);
-    }
   }
   // Rule out the case that no replacement happens
   if (_src_sref->stmt == tgt_stmt.get()) {
@@ -731,9 +756,15 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     const StmtSRefNode* p = src_sref.get();
     while (true) {
       if (!p->stmt->unique()) {
+        num_copy_steps = i;
       }
       if (p->parent == nullptr) {
         break;
+      }
+      ++i;
+      p = p->parent;
+    }
+    // Find `g_func` and `g_var` where the `src_sref` is in
     g_func = GetRootPrimFunc(this->mod, p->stmt, &g_var);
     need_module_copy = num_copy_steps == i ||             //
                        !this->mod.unique() ||             //
@@ -852,27 +883,6 @@ BlockInfo ScheduleStateNode::GetBlockInfo(const StmtSRef& block_sref) const {
   return it->second;
 }
 
-void ScheduleStateNode::DebugVerify() const {
-  ICHECK_GE(this->debug_mode, 0);
-  if (this->debug_mode & 1) {
-    VerifySRefTree(GetRef<ScheduleState>(this));
-  }
-  if (this->debug_mode & 2) {
-    VerifyBlockInfo(GetRef<ScheduleState>(this));
-  }
-}
-
-/**************** BlockInfo-related ****************/
-
-BlockInfo ScheduleStateNode::GetBlockInfo(const StmtSRef& block_sref) const {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  auto it = this->block_info.find(block_sref);
-  CHECK(it != this->block_info.end())
-      << "IndexError: Cannot find the corresponding BlockScope to the block sref:\n"
-      << GetRef<Stmt>(block_sref->stmt);
-  return it->second;
-}
-
 /**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(ScheduleStateNode);
@@ -890,8 +900,6 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetBlockScope")
     .set_body_method<ScheduleState>(&ScheduleStateNode::GetBlockScope);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateReplace")
     .set_body_method<ScheduleState>(&ScheduleStateNode::Replace);
-TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefRootMark").set_body_typed(StmtSRef::RootMark);
-TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefInlineMark").set_body_typed(StmtSRef::InlineMark);
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetSRef")
     .set_body_typed([](ScheduleState self, Stmt stmt) -> Optional<StmtSRef> {

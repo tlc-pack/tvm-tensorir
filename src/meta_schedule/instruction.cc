@@ -210,7 +210,7 @@ void InstructionNode::AsPython(std::ostream& os, const Map<ObjectRef, String>& r
 /**************** (Make) Sampling  ****************/
 
 Instruction SamplePerfectTileAttrs::Make(const LoopRV& loop, int n, int max_innermost_factor,
-                                         const Array<tir::Var>& outputs) {
+                                         const Array<ExprRV>& outputs) {
   ObjectPtr<SamplePerfectTileAttrs> n_ = make_object<SamplePerfectTileAttrs>();
   n_->n = n;
   n_->max_innermost_factor = max_innermost_factor;
@@ -220,7 +220,7 @@ Instruction SamplePerfectTileAttrs::Make(const LoopRV& loop, int n, int max_inne
 }
 
 Instruction SampleCategoricalAttrs::Make(const Array<Integer>& candidates,
-                                         const Array<FloatImm>& probs, const tir::Var& output) {
+                                         const Array<FloatImm>& probs, const ExprRV& output) {
   ObjectPtr<SampleCategoricalAttrs> n = make_object<SampleCategoricalAttrs>();
   n->candidates = candidates;
   n->probs = probs;
@@ -547,7 +547,7 @@ Array<ObjectRef> GetAxesAttrs::Apply(const Schedule& sch,  //
   ICHECK(!decision.defined());
   ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  return AdaptOutputs(sch->GetAxes(block));
+  return AdaptOutputs(sch->GetLoops(block));
 }
 
 /**************** (Apply) Scheduling Primitives  ****************/
@@ -948,7 +948,7 @@ void GetBlockAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void GetAxesAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                             const Array<String>& outputs,
                             const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("get_axes");
+  PythonAPICall py("get_loops");
   py.AddArgInput("block", inputs[0]);
   py.AddOutputs(outputs);
   py.Print(os);

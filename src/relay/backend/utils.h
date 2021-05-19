@@ -85,6 +85,7 @@ struct LoweredOutput {
   std::string graph_json;
   Map<String, IRModule> lowered_funcs;
   Array<tvm::runtime::Module> external_mods;
+  Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>> schedules;
   Map<String, FunctionInfo> function_metadata;
   std::unordered_map<std::string, std::pair<int, const tvm::runtime::NDArray>> params;
   runtime::Metadata metadata;

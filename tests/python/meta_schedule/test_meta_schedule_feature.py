@@ -30,10 +30,10 @@ def _float_equal(a: float, b: float) -> bool:
 
 def test_meta_schedule_per_block_feature_cpu_matmul():
     def _create_schedule(n, m, k):
-        func = te.create_func(te_workload.matmul(n=n, m=m, k=k))
+        func = te.create_prim_func(te_workload.matmul(n=n, m=m, k=k))
         sch = ms.Schedule(func)
         block = sch.get_block("C")
-        i, j, k = sch.get_axes(block)
+        i, j, k = sch.get_loops(block)
         i_o, i_i = sch.split(i, factors=[-1, 16])  # outer: 32
         j_o, j_i = sch.split(j, factors=[-1, 8])  # outer: 64
         sch.reorder(i_o, j_o, k, j_i, i_i)
@@ -208,11 +208,11 @@ def test_meta_schedule_per_block_feature_cpu_fusion():
         a = te.placeholder((n, m), name="A")
         b = te.compute((n, m), lambda i, j: a[i][j], name="B")
         c = te.compute((n, m), lambda i, j: b[i][j], name="C")
-        func = te.create_func([a, b, c])
+        func = te.create_prim_func([a, b, c])
         sch = ms.Schedule(func)
         block_b = sch.get_block("B")
         block_c = sch.get_block("C")
-        _, j = sch.get_axes(block_c)
+        _, j = sch.get_loops(block_c)
         sch.compute_at(block_b, j)
         return sch
 
@@ -362,11 +362,11 @@ def test_meta_schedule_per_block_feature_cpu_fusion():
 
 def test_meta_schedule_per_block_feature_gpu():
     def _create_schedule(n, m, k):
-        func = te.create_func(te_workload.matmul(n=n, m=m, k=k))
+        func = te.create_prim_func(te_workload.matmul(n=n, m=m, k=k))
         sch = ms.Schedule(func)
         c = sch.get_block("C")
         c_local = sch.cache_write(c, 0, "local")
-        i, j, k = sch.get_axes(c_local)
+        i, j, k = sch.get_loops(c_local)
         # pylint: disable=invalid-name
         i0, i1, i2, i3, i4 = sch.split(i, factors=[-1, 1, 16, 32, 1])  # outer: 1
         j0, j1, j2, j3, j4 = sch.split(j, factors=[-1, 4, 1, 1, 16])  # outer: 8
@@ -396,14 +396,14 @@ def test_meta_schedule_per_block_feature_gpu():
         # cache read 'B'
         b_shared = sch.cache_read(c_local, 2, "shared")
         sch.compute_at(b_shared, k0)
-        _, _, _, _, b_i, b_j = sch.get_axes(b_shared)
+        _, _, _, _, b_i, b_j = sch.get_loops(b_shared)
         b_ij = sch.fuse(b_i, b_j)
         _, b_j = sch.split(b_ij, factors=[-1, 16])  # outer: 8
         sch.bind(b_j, "threadIdx.x")
         # cache read 'A'
         a_shared = sch.cache_read(c_local, 1, "shared")
         sch.compute_at(a_shared, k0)
-        _, _, _, _, a_i, a_j = sch.get_axes(a_shared)
+        _, _, _, _, a_i, a_j = sch.get_loops(a_shared)
         a_ij = sch.fuse(a_i, a_j)
         _, a_j = sch.split(a_ij, factors=[-1, 16])  # outer: 64
         sch.bind(a_j, "threadIdx.x")

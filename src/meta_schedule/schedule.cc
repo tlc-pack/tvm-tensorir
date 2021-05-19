@@ -59,7 +59,7 @@ Schedule::Schedule(IRModule mod, int64_t seed, int debug_mode) {
 
 Schedule ScheduleNode::Copy(int64_t new_seed) const {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
-  tir::ConcreteScheduleNode::MakeCopy(&n->state_, &n->symbol_table_);
+  tir::ConcreteScheduleNode::Copy(&n->state_, &n->symbol_table_);
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   n->trace = Trace(this->trace->insts, this->trace->decisions);
   n->sampler.Seed(new_seed);
@@ -70,24 +70,24 @@ void ScheduleNode::Seed(int64_t seed) { this->sampler.Seed(seed); }
 
 /**************** Sampling ****************/
 
-Array<tir::Var> ScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n,
-                                                int max_innermost_factor,
-                                                Optional<Array<Integer>> decision) {
+Array<ExprRV> ScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n,
+                                              int max_innermost_factor,
+                                              Optional<Array<Integer>> decision) {
   std::vector<int64_t> result = meta_schedule::SamplePerfectTile(
       state_, &this->sampler, this->GetSRef(loop_rv), n, max_innermost_factor, &decision);
-  Array<tir::Var> result_rvs = SetRV(AsArray<int64_t, Integer>(result));
+  Array<ExprRV> result_rvs = CreateRV(AsArray<int64_t, Integer>(result));
   // Record the instruction
   this->trace->Append(SamplePerfectTileAttrs::Make(loop_rv, n, max_innermost_factor, result_rvs),
                       decision);
   return result_rvs;
 }
 
-tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,  //
-                                         const Array<FloatImm>& probs,      //
-                                         Optional<Integer> decision) {
+ExprRV ScheduleNode::SampleCategorical(const Array<Integer>& candidates,  //
+                                       const Array<FloatImm>& probs,      //
+                                       Optional<Integer> decision) {
   int64_t result =
       meta_schedule::SampleCategorical(state_, &this->sampler, candidates, probs, &decision);
-  tir::Var result_rv = SetRV(result);
+  ExprRV result_rv = CreateRV(Integer(result));
   this->trace->Append(SampleCategoricalAttrs::Make(candidates, probs, result_rv), decision);
   return result_rv;
 }
@@ -95,21 +95,21 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,  //
 LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block_rv, Optional<Integer> decision) {
   tir::StmtSRef result = meta_schedule::SampleComputeLocation(state_, &this->sampler,
                                                               this->GetSRef(block_rv), &decision);
-  LoopRV result_rv = SetRV<LoopRV>(result);
+  LoopRV result_rv = CreateRV<LoopRV>(result);
   this->trace->Append(SampleComputeLocationAttrs::Make(block_rv, result_rv), decision);
   return result_rv;
 }
 
 /**************** Block/Loop Relationship ****************/
 
-BlockRV ScheduleNode::GetBlock(const String& name) {
-  BlockRV result = tir::ConcreteScheduleNode::GetBlock(name);
+BlockRV ScheduleNode::GetBlock(const String& name, const String& func_name) {
+  BlockRV result = tir::ConcreteScheduleNode::GetBlock(name, func_name);
   this->trace->Append(GetBlockAttrs::Make(name, result));
   return result;
 }
 
-Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block_rv) {
-  Array<LoopRV> results = tir::ConcreteScheduleNode::GetAxes(block_rv);
+Array<LoopRV> ScheduleNode::GetLoops(const BlockRV& block_rv) {
+  Array<LoopRV> results = tir::ConcreteScheduleNode::GetLoops(block_rv);
   this->trace->Append(GetAxesAttrs::Make(block_rv, results));
   return results;
 }
@@ -223,7 +223,8 @@ void ScheduleNode::Pragma(const LoopRV& loop_rv, const String& pragma_type,
   // TODO
 }
 
-void ScheduleNode::StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor, int offset) {
+void ScheduleNode::StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
+                                int offset) {
   tir::ConcreteScheduleNode::StorageAlign(block_rv, buffer_index, axis, factor, offset);
   this->trace->Append(StorageAlignAttrs::Make(block_rv, buffer_index, axis, factor, offset));
 }

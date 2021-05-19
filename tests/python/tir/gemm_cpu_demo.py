@@ -86,7 +86,7 @@ bn = 32
 s = tir.Schedule(original_func, debug_mode=True)
 
 update = s.get_block("C")
-i, j, k = s.get_axes(update)
+i, j, k = s.get_loops(update)
 i_o, i_i = s.split(i, factor=bn)
 j_o, j_i = s.split(j, factor=bn)
 k_o, k_i = s.split(k, factor=4)
@@ -108,7 +108,7 @@ print("Opt1: %f" % build_and_test(s.mod))
 
 s = tir.Schedule(func_opt1, debug_mode=True)
 update = s.get_block("C")
-i_o, j_o, k_o, k_i, i_i, j_i = s.get_axes(update)
+i_o, j_o, k_o, k_i, i_i, j_i = s.get_loops(update)
 
 s.vectorize(j_i)
 func_opt2 = s.mod
@@ -127,7 +127,7 @@ print("Opt2: %f" % build_and_test(s.mod))
 
 s = tir.Schedule(func_opt2, debug_mode=True)
 update = s.get_block("C")
-i_o, j_o, k_o, k_i, i_i, j_i = s.get_axes(update)
+i_o, j_o, k_o, k_i, i_i, j_i = s.get_loops(update)
 
 s.reorder(i_o, j_o, k_o, i_i, k_i, j_i)
 func_opt3 = s.mod
@@ -185,10 +185,10 @@ packed_func = matmul_packed
 
 s = tir.Schedule(packed_func, debug_mode=True)
 packedB = s.get_block("packed")
-k = s.get_axes(packedB)[-1]
+k = s.get_loops(packedB)[-1]
 s.vectorize(k)
 update = s.get_block("C")
-i, j, k = s.get_axes(update)
+i, j, k = s.get_loops(update)
 i_o, i_i = s.split(i, factor=bn)
 j_o, j_i = s.split(j, factor=bn)
 k_o, k_i = s.split(k, factor=4)
@@ -212,19 +212,19 @@ packedB = s.get_block("packed")
 update = s.get_block("C")
 cached_update = s.cache_write(update, 0, "global")
 
-i, j = s.get_axes(update)
+i, j = s.get_loops(update)
 i_o, i_i = s.split(i, factor=bn)
 j_o, j_i = s.split(j, factor=bn)
 s.reorder(j_o, i_i)
 s.compute_at(cached_update, j_o)
 
-i, j, k = s.get_axes(cached_update)[-3:]
+i, j, k = s.get_loops(cached_update)[-3:]
 k_o, k_i = s.split(k, factor=4)
 s.reorder(k_o, i, k_i, j)
 s.unroll(k_i)
 s.vectorize(j)
 
-x, y, z = s.get_axes(packedB)
+x, y, z = s.get_loops(packedB)
 s.vectorize(z)
 s.parallel(x)
 func_opt5 = s.mod
@@ -240,7 +240,7 @@ print("Opt5: %f" % build_and_test(s.mod))
 
 s = tir.Schedule(func_opt5, debug_mode=True)
 cached_update = s.get_block("C")
-i_o, j_o, k_o, k_i, i_i, j_i = s.get_axes(cached_update)
+i_o, j_o, k_o, k_i, i_i, j_i = s.get_loops(cached_update)
 s.parallel(i_o)
 
 s.decompose_reduction(cached_update, j_o)

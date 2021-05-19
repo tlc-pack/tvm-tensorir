@@ -284,6 +284,19 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
                                  arith::Analyzer* analyzer);
 
 /*!
+ * \brief Use IterVarMap detector to rewrite and simplify the bindings
+ *
+ * \param indices The indices to detect pattern for.
+ * \param input_iters Map from variable to iterator's range.
+ * \param predicate The predicate constraints on the input iterators
+ * \param require_bijective A boolean flag that indicates whether the mapping should be bijective.
+ *
+ * \return The bindings after rewrite
+ */
+Array<PrimExpr> IterMapSimplify(const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
+                                const PrimExpr& input_pred, bool require_bijective);
+
+/*!
  * \brief Detect if bindings can be written as
  * [a_0*e_0 + b_0 + c_0, a_1*e_1 + b_1, ..., a_n*e_n + b_n]
  *
@@ -313,6 +326,7 @@ Array<Array<IterMark>> SubspaceDivide(const Array<PrimExpr>& bindings,
                                       const Array<Var>& sub_iters, const PrimExpr& predicate,
                                       bool require_bijective, arith::Analyzer* analyzer);
 
+PrimExpr NormalizeIterMapToExpr(const IterMapExpr& expr);
 }  // namespace arith
 }  // namespace tvm
 #endif  // TVM_ARITH_ITER_AFFINE_MAP_H_

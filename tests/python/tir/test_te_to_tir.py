@@ -34,7 +34,7 @@ def test_unique_name():
     A = te.placeholder((M, N), name="A")
     B = te.compute((M, N), lambda x, y: A[x, y] * 2, name="main")
     C = te.compute((M, N), lambda x, y: B[x, y] + 1, name="main")
-    func = te.create_func([C])
+    func = te.create_prim_func([A, B, C])
     s = tir.Schedule(func, debug_mode=True)
     assert isinstance(s.get_sref(s.get_block("main")), tir.schedule.StmtSRef)
     assert isinstance(s.get_sref(s.get_block("main_1")), tir.schedule.StmtSRef)
@@ -46,7 +46,7 @@ def test_matmul():
     B = te.placeholder((N, K), name="B")
     C = te.compute((M, N), lambda x, y: te.sum(A[x, k] * B[y, k], axis=k), name="C")
 
-    func = te.create_func([C])
+    func = te.create_prim_func([A, B, C])
     tvm.ir.assert_structural_equal(func, util.matmul)
     a_np = np.random.uniform(size=(M, K)).astype("float32")
     b_np = np.random.uniform(size=(K, N)).astype("float32")
@@ -65,7 +65,7 @@ def test_element_wise():
     B = te.compute((M, N), lambda x, y: A[x, y] * 2, name="B")
     C = te.compute((M, N), lambda x, y: B[x, y] + 1, name="C")
 
-    func = te.create_func([C])
+    func = te.create_prim_func([A, C])
     tvm.ir.assert_structural_equal(func, util.element_wise)
     a_np = np.random.uniform(size=(M, N)).astype("float32")
     a = tvm.nd.array(a_np)
@@ -152,7 +152,7 @@ def test_conv2d():
         name="Conv",
     )
 
-    func = te.create_func(Conv)
+    func = te.create_prim_func([A, W, Conv])
     func = tvm.build(func)
 
     a_np = np.random.uniform(size=data_shape).astype(A.dtype)

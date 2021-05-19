@@ -59,7 +59,7 @@ def test_storage_align():
     s = tir.Schedule(func, debug_mode=True)
     B = s.get_block("B")
     C = s.get_block("C")
-    outer, _ = s.get_axes(C)
+    outer, _ = s.get_loops(C)
     s.compute_at(B, outer)
     s.storage_align(B, 0, axis=0, factor=128, offset=127)
     tvm.ir.assert_structural_equal(element_wise_storage_align, s.mod["main"])

@@ -73,6 +73,30 @@ class ConcreteScheduleNode : public ScheduleNode {
   using ScheduleNode::GetSRef;
 
  public:
+  /******** Sampling ********/
+
+  Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv,     //
+                                  int n,                     //
+                                  int max_innermost_factor,  //
+                                  Optional<Array<Integer>> decision = NullOpt) override {
+    LOG(FATAL) << "NotImplemented";
+    throw;
+  }
+
+  ExprRV SampleCategorical(const Array<Integer>& candidates,  //
+                           const Array<FloatImm>& probs,      //
+                           Optional<Integer> decision = NullOpt) override {
+    LOG(FATAL) << "NotImplemented";
+    throw;
+  }
+
+  LoopRV SampleComputeLocation(const BlockRV& block_rv,
+                               Optional<Integer> decision = NullOpt) override {
+    LOG(FATAL) << "NotImplemented";
+    throw;
+  }
+
+ public:
   /******** Block/Loop relation ********/
   BlockRV GetBlock(const String& name, const String& func_name = "main") override;
   Array<LoopRV> GetLoops(const BlockRV& block_rv) override;
@@ -103,22 +127,21 @@ class ConcreteScheduleNode : public ScheduleNode {
   inline T CreateRV(const StmtSRef& sref);
   /*!
    * \brief Add an expr as a random variable into the symbol table
-   * \param expr The expr to be added to the symbol table
+   * \param number The expr to be added to the symbol table
    * \return The new random variable created
    */
-  inline ExprRV CreateRV(const PrimExpr& expr);
+  inline ExprRV CreateRV(const Integer& number);
   /*!
    * \brief Add expr as random variables into the symbol table
-   * \param exprs The expr to be added to the symbol table
+   * \param numbers The number to be added to the symbol table
    * \return The new random variables created
    */
-  inline Array<ExprRV> CreateRV(const Array<PrimExpr>& exprs);
+  inline Array<ExprRV> CreateRV(const Array<Integer>& numbers);
   /*! \brief Remove a random variable from the symbol table */
   inline void RemoveFromSymbolTable(const ObjectRef& rv);
-};
-  BlockRV GetBlock(const String& name) override;
 
-  Array<LoopRV> GetAxes(const BlockRV& block_rv) override;
+ public:
+  /******** Block/Loop relation ********/
 
   Array<BlockRV> GetChildBlocks(const BlockRV& block_rv) override;
 
@@ -185,6 +208,26 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   /******** Schedule: blockize / tensorize ********/
 
+  BlockRV Blockize(const LoopRV& loop_rv) override;
+
+  void Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) override;
+
+  void Tensorize(const LoopRV& loop_rv, const String& intrin_name) override;
+
+  /******** Schedule: Misc ********/
+  void InlineArgument(int i, const String& func_name) override;
+
+  template <class T>
+  inline Array<StmtSRef> FromRV(const Array<T>& rvs) {
+    Array<StmtSRef> result;
+    result.reserve(rvs.size());
+    for (const T& rv : rvs) {
+      result.push_back(this->GetSRef(rv));
+    }
+    return result;
+  }
+};
+/******** Schedule: blockize / tensorize ********/
 
 /******** Lookup random variables ********/
 
@@ -201,17 +244,21 @@ inline For ConcreteScheduleNode::Get(const LoopRV& loop_rv) const {
 }
 
 inline PrimExpr ConcreteScheduleNode::Get(const ExprRV& expr_rv) const {
-  auto it = this->symbol_table_.find(expr_rv);
-  if (it == this->symbol_table_.end()) {
-    LOG(FATAL) << "IndexError: Cannot find corresponding ExprRV: " << expr_rv;
-  }
-  const ObjectRef& obj = (*it).second;
-  const auto* expr_node = obj.as<PrimExprNode>();
-  if (expr_node == nullptr) {
-    LOG(FATAL) << "ValueError: ExprRV's corresponding type is invalid: "
-               << (obj.defined() ? obj->GetTypeKey() : "None");
-  }
-  return GetRef<PrimExpr>(expr_node);
+  // Replace all the Var with their corresponding value in the symbol table
+  PrimExpr transformed = Substitute(expr_rv, [this](const Var& var) -> Optional<PrimExpr> {
+    auto it = this->symbol_table_.find(var);
+    if (it == this->symbol_table_.end()) {
+      LOG(FATAL) << "IndexError: Cannot find corresponding ExprRV: " << var;
+    }
+    const ObjectRef& obj = (*it).second;
+    const auto* int_imm = obj.as<IntImmNode>();
+    if (int_imm == nullptr) {
+      LOG(FATAL) << "ValueError: VarRV's corresponding type is invalid: "
+                 << (obj.defined() ? obj->GetTypeKey() : "None");
+    }
+    return Integer(int_imm->value);
+  });
+  return this->analyzer_->Simplify(transformed);
 }
 
 inline StmtSRef ConcreteScheduleNode::GetSRef(const BlockRV& block_rv) const {
@@ -277,18 +324,18 @@ inline T ConcreteScheduleNode::CreateRV(const StmtSRef& sref) {
   return rv;
 }
 
-inline ExprRV ConcreteScheduleNode::CreateRV(const PrimExpr& expr) {
-  ExprRV rv;
-  this->symbol_table_.Set(rv, expr);
+inline ExprRV ConcreteScheduleNode::CreateRV(const Integer& number) {
+  Var rv;
+  this->symbol_table_.Set(rv, number);
   return std::move(rv);
 }
 
-inline Array<ExprRV> ConcreteScheduleNode::CreateRV(const Array<PrimExpr>& exprs) {
+inline Array<ExprRV> ConcreteScheduleNode::CreateRV(const Array<Integer>& numbers) {
   Array<ExprRV> result;
-  result.reserve(exprs.size());
-  for (const PrimExpr& expr : exprs) {
-    ExprRV rv;
-    this->symbol_table_.Set(rv, expr);
+  result.reserve(numbers.size());
+  for (const Integer& number : numbers) {
+    Var rv;
+    this->symbol_table_.Set(rv, number);
     result.push_back(rv);
   }
   return result;

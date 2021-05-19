@@ -124,7 +124,7 @@ def test_meta_schedule_analysis_is_leaf_block():
 def test_meta_schedule_analysis_get_loop_iter_type():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    i, j, k = [sch.get_sref(loop) for loop in sch.get_axes(block)]
+    i, j, k = [sch.get_sref(loop) for loop in sch.get_loops(block)]
     i = ms.analysis.get_loop_iter_type(sch.state, i)
     j = ms.analysis.get_loop_iter_type(sch.state, j)
     k = ms.analysis.get_loop_iter_type(sch.state, k)

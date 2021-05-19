@@ -41,57 +41,6 @@ void AddDependency(BlockScopeNode* self, const StmtSRef& src, const StmtSRef& ds
   }
 }
 
-/*!
- * \brief Add a new child block, which is assumed to be the last one if visiting subtrees
- * from left to right, then update the `buffer_writers`, `buffer_readers` and the dependency graph
- * \param self The block scope to be updated
- * \param child_block_sref The child block to be added
- * \param _buffer_readers An auxiliary data structure that maps existing buffers to a list of blocks
- * that reads it
- */
-void AddLastChildBlock(BlockScopeNode* self, const StmtSRef& child_block_sref,
-                       SMap<Buffer, Array<StmtSRef>>* _buffer_readers) {
-  const BlockNode* child_block = TVM_SREF_TO_BLOCK(child_block, child_block_sref);
-  SMap<Buffer, Array<StmtSRef>>& buffer_readers = *_buffer_readers;
-  SMap<Buffer, Array<StmtSRef>>& buffer_writers = self->buffer_writers;
-  // Step 1. Update `buffer_readers` and `buffer_writer` for each buffer
-  for (const BufferRegion& region : child_block->writes) {
-    buffer_writers[region->buffer].push_back(child_block_sref);
-  }
-  for (const BufferRegion& region : child_block->reads) {
-    buffer_readers[region->buffer].push_back(child_block_sref);
-  }
-  // Check and update block dependencies: RAW, WAW, WAR.
-  // Note: AddEdge is effectively NOP on self-loops
-  // Step 2. Update RAW dependency
-  for (const BufferRegion& region : child_block->reads) {
-    auto it = buffer_writers.find(region->buffer);
-    if (it != buffer_writers.end()) {
-      for (const StmtSRef& from : it->second) {
-        AddEdge(self, from, child_block_sref, DepKind::kRAW);
-      }
-    }
-  }
-  // Step 3. Update WAW dependency
-  for (const BufferRegion& region : child_block->writes) {
-    auto it = buffer_writers.find(region->buffer);
-    if (it != buffer_writers.end()) {
-      for (const StmtSRef& from : it->second) {
-        AddEdge(self, from, child_block_sref, DepKind::kWAW);
-      }
-    }
-  }
-  // Step 4. Update WAR dependency
-  for (const BufferRegion& region : child_block->writes) {
-    auto it = buffer_readers.find(region->buffer);
-    if (it != buffer_readers.end()) {
-      for (const StmtSRef& from : it->second) {
-        AddEdge(self, from, child_block_sref, DepKind::kWAR);
-      }
-    }
-  }
-}
-
 /******** Constructors ********/
 
 StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index) {

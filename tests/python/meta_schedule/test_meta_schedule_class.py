@@ -379,7 +379,7 @@ def test_meta_schedule_creation():
 
 def test_meta_schedule_copy():
     sch = ms.Schedule(func=matmul)
-    i, j, k = sch.get_axes(sch.get_block("matmul"))
+    i, j, k = sch.get_loops(sch.get_block("matmul"))
     sch_copy = sch.copy(seed=42)
     assert not sch.get_sref(i).same_as(sch_copy.get_sref(i))
     assert not sch.get_sref(j).same_as(sch_copy.get_sref(j))
@@ -409,7 +409,7 @@ def test_meta_schedule_copy():
 
 def test_meta_schedule_sample_perfect_tile():
     sch = ms.Schedule(func=matmul)
-    i, _, _ = sch.get_axes(sch.get_block("matmul"))
+    i, _, _ = sch.get_loops(sch.get_block("matmul"))
     factors = sch.sample_perfect_tile(i, n=4)
     factors = [sch.get(i) for i in factors]
     prod = factors[0] * factors[1] * factors[2] * factors[3]
@@ -483,7 +483,7 @@ def test_meta_schedule_get_block():
 def test_meta_schedule_get_axes():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    axes = sch.get_axes(block)
+    axes = sch.get_loops(block)
     i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in axes]
     assert tvm.ir.structural_equal(i_0, matmul.body.block.body)
     assert tvm.ir.structural_equal(i_1, matmul.body.block.body.body)
@@ -501,7 +501,7 @@ def test_meta_schedule_mark_loop():
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    i, _, _ = sch.get_axes(block)
+    i, _, _ = sch.get_loops(block)
     sch.mark_loop(i, "ann_key", "ann_val")
     check_annotation(sch, i)
     _check_serialization(sch, func=matmul)
@@ -525,15 +525,15 @@ def test_meta_schedule_mark_block():
 def test_meta_schedule_fuse():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    i, j, _ = sch.get_axes(block)
+    i, j, _ = sch.get_loops(block)
     sch.fuse(i, j)
-    assert len(sch.get_axes(block)) == 2
+    assert len(sch.get_loops(block)) == 2
     _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_split():
     sch = ms.Schedule(func=matmul)
-    i, _, _ = sch.get_axes(sch.get_block("matmul"))
+    i, _, _ = sch.get_loops(sch.get_block("matmul"))
     i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in sch.split(i, factors=[-1, 8, 32])]
     assert tvm.ir.structural_equal(i_0, sch.mod["main"].body.block.body)
     assert tvm.ir.structural_equal(i_1, sch.mod["main"].body.block.body.body)
@@ -543,12 +543,12 @@ def test_meta_schedule_split():
 
 def test_meta_schedule_reorder():
     sch = ms.Schedule(func=matmul)
-    i_0, i_1, i_2 = sch.get_axes(sch.get_block("matmul"))
+    i_0, i_1, i_2 = sch.get_loops(sch.get_block("matmul"))
     sch.reorder(i_2, i_1, i_0)
     i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in [i_0, i_1, i_2]]
 
     tir_sch = tir.Schedule(matmul, debug_mode=True)
-    ti_0, ti_1, ti_2 = tir_sch.get_axes(tir_sch.get_block("matmul"))
+    ti_0, ti_1, ti_2 = tir_sch.get_loops(tir_sch.get_block("matmul"))
     tir_sch.reorder(ti_2, ti_1, ti_0)
 
     assert tvm.ir.structural_equal(i_0, tir_sch.get(ti_0))
@@ -561,7 +561,7 @@ def test_meta_schedule_compute_at():
     sch = ms.Schedule(func=plus_one_matmul)
     plus_one_block = sch.get_block("plus_one")
     matmul_block = sch.get_block("matmul")
-    _, _, i_2 = sch.get_axes(matmul_block)
+    _, _, i_2 = sch.get_loops(matmul_block)
     sch.compute_at(plus_one_block, i_2)
     assert tvm.ir.structural_equal(sch.mod["main"], plus_one_matmul_fused)
     _check_serialization(sch, func=plus_one_matmul)
@@ -571,7 +571,7 @@ def test_meta_schedule_reverse_compute_at():
     sch = ms.Schedule(func=matmul_relu)
     relu_block = sch.get_block("relu")
     matmul_block = sch.get_block("matmul")
-    _, i_1, _ = sch.get_axes(matmul_block)
+    _, i_1, _ = sch.get_loops(matmul_block)
     sch.reverse_compute_at(relu_block, i_1)
     assert tvm.ir.structural_equal(sch.mod["main"], matmul_relu_fused)
     _check_serialization(sch, func=matmul_relu)
@@ -605,7 +605,7 @@ def test_meta_schedule_cache_write():
 def test_meta_schedule_blockize():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    _, _, k = sch.get_axes(block)
+    _, _, k = sch.get_loops(block)
     sch.blockize(k)
     assert tvm.ir.structural_equal(sch.mod["main"], matmul_blockized)
     _check_serialization(sch, func=matmul)
@@ -614,7 +614,7 @@ def test_meta_schedule_blockize():
 def test_meta_schedule_decompose_reduction():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    _, _, k = sch.get_axes(block)
+    _, _, k = sch.get_loops(block)
     sch.decompose_reduction(block, k)
     assert tvm.ir.structural_equal(sch.mod["main"], matmul_decomposed)
     _check_serialization(sch, func=matmul)
@@ -624,7 +624,7 @@ def test_meta_schedule_tensorize():
     tir.TensorIntrin.register("ms_test.tensor_intrin", tensorize_desc, tensorize_impl)
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    i, j, k = sch.get_axes(block)
+    i, j, k = sch.get_loops(block)
     i_o, i_i = sch.split(i, factor=16)
     j_o, j_i = sch.split(j, factor=16)
     k_o, k_i = sch.split(k, factor=16)
@@ -642,7 +642,7 @@ def test_meta_schedule_parallel():
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    i, _, _ = sch.get_axes(block)
+    i, _, _ = sch.get_loops(block)
     sch.parallel(i)
     check_annotation(sch, i)
     _check_serialization(sch, func=matmul)
@@ -655,7 +655,7 @@ def test_meta_schedule_vectorize():
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    i, _, _ = sch.get_axes(block)
+    i, _, _ = sch.get_loops(block)
     sch.vectorize(i)
     check_annotation(sch, i)
     _check_serialization(sch, func=matmul)
@@ -668,7 +668,7 @@ def test_meta_schedule_unroll():
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    _, _, k = sch.get_axes(block)
+    _, _, k = sch.get_loops(block)
     sch.unroll(k)
     check_annotation(sch, k)
     _check_serialization(sch, func=matmul)
@@ -682,7 +682,7 @@ def test_meta_schedule_bind():
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    i, _, _ = sch.get_axes(block)
+    i, _, _ = sch.get_loops(block)
     sch.bind(i, "threadIdx.x")
     check_annotation(sch, i)
     _check_serialization(sch, func=matmul)

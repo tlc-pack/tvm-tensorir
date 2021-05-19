@@ -78,27 +78,6 @@ class StmtSRefNode : public Object {
     this->seq_index = -1;
   }
 
-  void VisitAttrs(AttrVisitor* v) {
-    // `stmt` is not visited
-    // `parent` is not visited
-    v->Visit("seq_index", &seq_index);
-  }
-
-  static constexpr const char* _type_key = "tir.StmtSRef";
-  TVM_DECLARE_FINAL_OBJECT_INFO(StmtSRefNode, Object);
-
-  /*!
-   * \brief Reset the object inplace
-   * \param stmt The new `StmtSRefNode::stmt`
-   * \param parent The new `StmtSRefNode::parent`
-   * \param seq_index The new `StmtSRefNode::seq_index`
-   */
-  void Reset(const StmtNode* new_stmt, StmtSRefNode* new_parent, int64_t new_seq_index) {
-    this->stmt = new_stmt;
-    this->parent = new_parent;
-    this->seq_index = new_seq_index;
-  }
-
   /*!
    * \brief Get the referenced statement with proper type checking.
    * It serves the same purpose as `ObjectRef::as`, but does not acquire strong reference to `stmt`
@@ -132,8 +111,6 @@ class StmtSRef : public ObjectRef {
   TVM_DLL explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index);
   /*! \return The mutable pointer to the StmtSRefNode */
   StmtSRefNode* get() const { return static_cast<StmtSRefNode*>(data_.get()); }
-
-  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 
@@ -284,7 +261,7 @@ class BlockScope : public ObjectRef {
    */
   TVM_DLL BlockScope(const Array<StmtSRef>& child_block_srefs);
 
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BlockScope, ObjectRef, BlockScopeNode);
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(BlockScope, ObjectRef, BlockScopeNode);
 };
 
 }  // namespace tir

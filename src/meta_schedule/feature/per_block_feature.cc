@@ -1037,7 +1037,7 @@ inline double slog(double x) {
 struct DoubleNDArrayPusher {
   explicit DoubleNDArrayPusher(const std::vector<int64_t>& shape)
       : array(runtime::NDArray::Empty(/*shape=*/shape, /*dtype=*/DLDataType{kDLFloat, 64, 1},
-                                      /*ctx=*/DLContext{kDLCPU, 0})),
+                                      /*ctx=*/DLDevice{kDLCPU, 0})),
         back(static_cast<double*>(array->data)) {}
 
   template <class TIter>

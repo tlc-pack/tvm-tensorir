@@ -86,7 +86,7 @@ class RuleInlinePureSpatial {
     if (strict_mode && !IsStrictlyInlineable(sch->state(), block_sref)) {
       return false;
     }
-    Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
+    Array<tir::StmtSRef> loop_srefs = tir::GetLoops(block_sref);
     for (const tir::StmtSRef& loop_sref : loop_srefs) {
       if (!HasSingleChild(loop_sref)) {
         return false;
@@ -223,7 +223,7 @@ class RuleMultiLevelTiling {
    */
   static LoopRV FuseBufferAxes(const Schedule& sch, const BlockRV& block_rv, int buffer_ndim) {
     Array<LoopRV> to_fuse;
-    Array<LoopRV> axes = sch->GetAxes(block_rv);
+    Array<LoopRV> axes = sch->GetLoops(block_rv);
     int n_axes = axes.size();
     for (int i = n_axes - buffer_ndim; i < n_axes; ++i) {
       to_fuse.push_back(axes[i]);
@@ -407,7 +407,7 @@ class RuleMultiLevelTiling {
         int max_vec_len = vector_load_max_len.value();
         // cooperative fetch + vectorized loading
         // Split into inner and outer
-        Array<tir::Var> factors = sch->SamplePerfectTile(fused, 2, max_vec_len);
+        Array<ExprRV> factors = sch->SamplePerfectTile(fused, 2, max_vec_len);
         ICHECK_EQ(factors.size(), 2);
         Array<LoopRV> splits = sch->Split(fused, {factors[0], factors[1]});
         ICHECK_EQ(splits.size(), 2);
@@ -429,7 +429,7 @@ class RuleMultiLevelTiling {
     // Get block vars and loop axes
     // TODO: fix
     Array<Integer> iter_types = GetBlockVarTypes(sch->state(), sch->GetSRef(block_rv));
-    Array<LoopRV> axes = sch->GetAxes(block_rv);
+    Array<LoopRV> axes = sch->GetLoops(block_rv);
     ICHECK_EQ(axes.size(), iter_types.size());
     // For each loop axis, tile it
     for (int i = 0, n = axes.size(); i < n; ++i) {
@@ -444,7 +444,7 @@ class RuleMultiLevelTiling {
       // Number of splits to be made
       int n_tiles = idx->size();
       // Do the split
-      Array<tir::Var> factors = sch->SamplePerfectTile(
+      Array<ExprRV> factors = sch->SamplePerfectTile(
           /*loop=*/axes[i], /*n=*/n_tiles, /*max_innermost_factor=*/max_innermost_factor);
       Array<LoopRV> splits =
           sch->Split(/*loop=*/axes[i], /*factors=*/{factors.begin(), factors.end()});
@@ -563,7 +563,7 @@ class RuleRandomComputeLocation {
     if (!CompleteBlock(state, block_sref, tir::GetScopeRoot(block_sref))) {
       return false;
     }
-    Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
+    Array<tir::StmtSRef> loop_srefs = tir::GetLoops(block_sref);
     for (const tir::StmtSRef& loop_sref : loop_srefs) {
       if (!HasSingleChild(loop_sref)) {
         return false;
@@ -663,7 +663,7 @@ class RuleParallelizeVectorizeUnroll {
       int n = unroll_max_steps.size();
       double prob = 1.0 / n;
       Array<FloatImm> probs(n, FloatImm(DataType::Float(64), prob));
-      tir::Var max_step = sch->SampleCategorical(unroll_max_steps, probs);
+      PrimExpr max_step = sch->SampleCategorical(unroll_max_steps, probs);
       if (unroll_explicit) {
         sch->MarkBlock(root_rv, tir::attr::auto_unroll_explicit, max_step);
       } else {
@@ -699,7 +699,7 @@ class RuleMarkTensorize {
     // Construct a mapping from tir loops back to LoopRVs
     Map<tir::StmtSRef, LoopRV> loop2rv;
     {
-      Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+      Array<LoopRV> loop_rvs = sch->GetLoops(block_rv);
       for (const LoopRV& loop_rv : loop_rvs) {
         loop2rv.Set(sch->GetSRef(loop_rv), loop_rv);
       }
@@ -738,7 +738,7 @@ class RuleMarkTensorize {
     // Reorder the loops
     std::vector<LoopRV> reorder_list;
     bool meet = false;
-    Array<LoopRV> all_loops = sch->GetAxes(block_rv);
+    Array<LoopRV> all_loops = sch->GetLoops(block_rv);
     for (const LoopRV& loop : all_loops) {
       if (inner_loops.count(sch->GetSRef(loop).operator->())) {
         meet = true;
@@ -818,7 +818,7 @@ class RuleSimplifyComputeWithConstTensor {
       }
     }
 
-    Array<LoopRV> axes = sch->GetAxes(block_rv);
+    Array<LoopRV> axes = sch->GetLoops(block_rv);
     Array<LoopRV> unrolled_inner_iters;
     Array<LoopRV> outer_iters;
 
@@ -839,8 +839,8 @@ class RuleSimplifyComputeWithConstTensor {
     Array<Array<LoopRV>> tiled_outer_iters;
     // tile spatial axes
     for (const LoopRV& ax : outer_iters) {
-      Array<tir::Var> factors = sch->SamplePerfectTile(ax, tile_level, max_innermost_factor);
-      tiled_outer_iters.push_back(sch->Split(ax, AsOptArray<tir::Var, PrimExpr>(factors)));
+      Array<PrimExpr> factors = sch->SamplePerfectTile(ax, tile_level, max_innermost_factor);
+      tiled_outer_iters.push_back(sch->Split(ax, AsOptArray<PrimExpr, PrimExpr>(factors)));
     }
     Array<LoopRV> new_loop_order;
     new_loop_order.reserve(tiled_outer_iters.size() * tile_level + unrolled_inner_iters.size());
@@ -877,7 +877,7 @@ SearchRule SimplifyComputeWithConstTensor(int max_innermost_factor) {
  */
 void ReorderAndFuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
                                   LoopRV* fused_reduce_loop, int* num_spatial_loops) {
-  Array<LoopRV> loops = sch->GetAxes(block_rv);
+  Array<LoopRV> loops = sch->GetLoops(block_rv);
   Array<tir::StmtSRef> loop_srefs;
   for (const LoopRV& loop_rv : loops) {
     loop_srefs.push_back(sch->GetSRef(loop_rv));
@@ -930,7 +930,7 @@ void ReorderAndFuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
  * \return A boolean flag indicating whether the block is in thread scope.
  */
 bool InThreadScope(const Schedule& sch, const BlockRV& block) {
-  const Array<LoopRV>& axes = sch->GetAxes(block);
+  const Array<LoopRV>& axes = sch->GetLoops(block);
   for (const LoopRV& loop_rv : axes) {
     const tir::For& loop = sch->Get(loop_rv);
     if (!loop->thread_binding.defined()) {
@@ -989,14 +989,14 @@ class RuleAddRFactor {
     LoopRV fused_reduce_loop;
     ReorderAndFuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
 
-    Array<tir::Var> factors = sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor);
+    Array<ExprRV> factors = sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor);
     const Array<LoopRV>& split_res =
-        sch->Split(fused_reduce_loop, AsOptArray<tir::Var, PrimExpr>(factors));
+        sch->Split(fused_reduce_loop, AsOptArray<ExprRV, PrimExpr>(factors));
     Array<Schedule> res;
     for (const LoopRV& split_loop : split_res) {
       Schedule sch_tmp = sch->Copy(sch->sampler.ForkSeed());
       const BlockRV& block_rf = sch_tmp->RFactor(split_loop, num_spatial_loops);
-      Array<LoopRV> axes = sch_tmp->GetAxes(block_rf);
+      Array<LoopRV> axes = sch_tmp->GetLoops(block_rf);
       CHECK_GT(static_cast<int>(axes.size()), num_spatial_loops);
 
       if (split_loop.same_as(split_res[1])) {
@@ -1030,11 +1030,11 @@ SearchRule AddRFactor(int max_jobs_per_core, int max_innermost_factor) {
 class RuleCrossThreadReduction {
  public:
   /*! \brief Rule application */
-  Array<Schedule> Apply(const SearchTask& task,
-                        const Schedule& sch, const BlockRV& block_rv) const {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
+                        const BlockRV& block_rv) const {
     // Check target. And extract `max_threads_per_block` and `warp_size` from target.
     CHECK(task->target->kind->name == "cuda")
-      << "TargetError: Search rule \"CrossThreadReduction\" can only run on CUDA";
+        << "TargetError: Search rule \"CrossThreadReduction\" can only run on CUDA";
     Optional<Integer> opt_max_threads_per_block =
         task->target->GetAttr<Integer>("max_threads_per_block");
     Optional<Integer> opt_warp_size = task->target->GetAttr<Integer>("thread_warp_size");
@@ -1117,7 +1117,7 @@ class RuleCrossThreadReduction {
     if (fusible) {
       ICHECK(target_block.defined());
       const BlockRV& target_block_rv = target_block.value();
-      Array<LoopRV> target_block_loops = tmp_sch->GetAxes(target_block_rv);
+      Array<LoopRV> target_block_loops = tmp_sch->GetLoops(target_block_rv);
 
       // Step 1. If the outer loops of `target_block` haven't been bound to threadIdx, we should
       // first bound the innermost outer loop of `target_block` to threadIdx. Possibly we need to

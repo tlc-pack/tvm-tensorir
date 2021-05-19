@@ -24,6 +24,8 @@
 namespace tvm {
 namespace tir {
 
+class PrimFuncNode;
+
 /******** Verification ********/
 /*!
  * \brief Verify the sref tree state is consistent with the IR
@@ -40,7 +42,7 @@ void VerifySRefTree(const ScheduleState& self);
  * \param func_name The name of the function
  * \return A list of blocks with the specific name
  */
-Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name, const String& func_name);
+Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name, const String& func_name = "main");
 /*!
  * \brief Get the parent loops of the block in its scope, from outer to inner
  * \param self The schedule state
@@ -54,7 +56,7 @@ Array<StmtSRef> GetLoops(const StmtSRef& block_sref);
  * \param parent_sref The StmtSRef that points to the parent block/loop
  * \return A list of leaf blocks
  */
-Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref);
+Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref, bool inclusive = false);
 /*!
  * \brief Verify the correctness of the sref tree
  * \param self The schedule state containing the sref to be verified
@@ -157,29 +159,6 @@ bool RegionCoveredConsumer(const ScheduleState& self, const StmtSRef& consumer_b
                            const StmtSRef& scope_root);
 
 /******** Block-loop relation ********/
-/*!
- * \brief Get block from its tag
- * \param tag The query tag
- * \return the block schedulable reference list
- */
-Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name);
-
-/*!
- * \brief Get loops of the block
- * \param block The query block
- * \return the loop sref list
- */
-Array<StmtSRef> GetAxes(const ScheduleState& self, const StmtSRef& block_sref);
-
-/*!
- * \brief Get the child blocks of a specific parent block/loop
- * \param parent_sref The StmtSRef that points to the parent block/loop
- * \param inclusive If true and parent_sref is a block, return a single-element list containing
- * parent_sref
- * \return A list of child blocks
- */
-Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
-                               bool inclusive = false);
 
 /*!
  * \brief Get the producer of a specific block

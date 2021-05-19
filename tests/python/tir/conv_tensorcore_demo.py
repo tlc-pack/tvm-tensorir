@@ -283,7 +283,7 @@ def test_tensorcore():
     thread_y = tir.thread_axis("threadIdx.y")
     thread_z = tir.thread_axis("threadIdx.z")
 
-    nc, hc, wc, oc, nnc, ooc = s.get_axes(Conv)
+    nc, hc, wc, oc, nnc, ooc = s.get_loops(Conv)
     block_k = s.fuse(hc, wc)
     s.bind(block_k, block_z)
     nc, nci = s.split(nc, factor=warp_row_tiles)
@@ -298,7 +298,7 @@ def test_tensorcore():
 
     # Schedule local computation
     s.compute_at(ConvF, oc)
-    ic, kh, kw, _nnf, _oof, ii = s.get_axes(ConvF)[-6:]
+    ic, kh, kw, _nnf, _oof, ii = s.get_loops(ConvF)[-6:]
     ko, ki = s.split(ic, factor=chunk)
     s.reorder(ko, kh, ki)
 
@@ -308,14 +308,14 @@ def test_tensorcore():
 
     # Schedule for A's share memory
     s.compute_at(AS, kh)
-    _, _, nn, ii = s.get_axes(AS)[-4:]
+    _, _, nn, ii = s.get_loops(AS)[-4:]
     t = s.fuse(nn, ii)
     _, ti = s.split(t, factor=warp_size)
     s.bind(ti, thread_x)
 
     # Schedule for W's share memory
     s.compute_at(WS, kh)
-    kw, ic, o, ii, oo = s.get_axes(WS)[-5:]
+    kw, ic, o, ii, oo = s.get_loops(WS)[-5:]
     tx, xo = s.split(o, nparts=block_row_warps)
     ty, _ = s.split(xo, nparts=block_col_warps)  # pylint: disable=redefined-outer-name
     t = s.fuse(ii, oo)
@@ -327,11 +327,11 @@ def test_tensorcore():
 
     s.compute_inline(s.get_block("A_pad"))
     init = s.decompose_reduction(ConvF, ko)
-    s.tensorize(s.get_axes(ConvF)[-3], tir.TensorIntrin(gemm_desc, gemm_intrin))
-    s.tensorize(s.get_axes(init)[-2], tir.TensorIntrin(fill_desc, fill_intrin))
-    s.tensorize(s.get_axes(Conv)[-2], tir.TensorIntrin(store_desc, store_intrin))
-    s.tensorize(s.get_axes(AF)[-2], tir.TensorIntrin(load_a_desc, load_a_intrin))
-    s.tensorize(s.get_axes(WF)[-2], tir.TensorIntrin(load_b_desc, load_b_intrin))
+    s.tensorize(s.get_loops(ConvF)[-3], tir.TensorIntrin(gemm_desc, gemm_intrin))
+    s.tensorize(s.get_loops(init)[-2], tir.TensorIntrin(fill_desc, fill_intrin))
+    s.tensorize(s.get_loops(Conv)[-2], tir.TensorIntrin(store_desc, store_intrin))
+    s.tensorize(s.get_loops(AF)[-2], tir.TensorIntrin(load_a_desc, load_a_intrin))
+    s.tensorize(s.get_loops(WF)[-2], tir.TensorIntrin(load_b_desc, load_b_intrin))
 
     print(tvm.script.asscript(s.mod["main"]))
     print(tvm.lower(s.mod["main"], None, simple_mode=True))

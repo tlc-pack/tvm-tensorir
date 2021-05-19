@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Meta Schedule """
-from ..tir.schedule import RAND_VAR_TYPE, BlockRV, ExprRV, LoopRV, VarRV
+from ..tir.schedule import RAND_VAR_TYPE, BlockRV, ExprRV, LoopRV
 from . import analysis, feature, instruction, mutator
 from . import search_rule as rule
 from . import space, strategy
