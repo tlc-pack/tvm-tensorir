@@ -63,7 +63,7 @@ class BlockRealizeRewriter : public StmtExprMutator {
 
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
     auto v =
-        arith::IterMapSimplify(op->block->iter_vars, op->iter_values, loop_map_, op->predicate);
+        arith::IterMapSimplify(op->iter_values, loop_map_, op->predicate, false);
     if (v.same_as(op->iter_values)) {
       return GetRef<Stmt>(op);
     } else {
@@ -152,7 +152,7 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimE
   For inner_loop(inner_var, inner_min, inner_extent, loop->kind, new_loop_body);
   For outer_loop(outer_var, outer_min, outer_extent, loop->kind, inner_loop);
   std::unordered_set<const BlockNode*> block_updates;
-  outer_loop = Downcast<For>(RewriteBindings(outer_loop, GetAxes(self, loop_sref), &block_updates));
+  outer_loop = Downcast<For>(RewriteBindings(outer_loop, GetLoops(loop_sref), &block_updates));
   self->Replace(loop_sref, outer_loop, {});
   for (const BlockNode* block : block_updates) {
     const StmtSRef& block_sref = self->stmt2ref.at(block);
@@ -211,8 +211,7 @@ StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef& in
   PrimExpr fused_extent = analyzer.Simplify(outer->extent * inner->extent);
   For fused_loop = For(fused_var, fused_min, fused_extent, outer->kind, new_loop_body);
   std::unordered_set<const BlockNode*> block_updates;
-  fused_loop =
-      Downcast<For>(RewriteBindings(fused_loop, GetAxes(self, outer_sref), &block_updates));
+  fused_loop = Downcast<For>(RewriteBindings(fused_loop, GetLoops(outer_sref), &block_updates));
   self->Replace(outer_sref, fused_loop, {});
   for (const BlockNode* block : block_updates) {
     const StmtSRef& block_sref = self->stmt2ref.at(block);

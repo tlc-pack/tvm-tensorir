@@ -30,7 +30,7 @@ def matmul(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
         lambda i, j: te.sum(a[i, k] * b[k, j], axis=[k]),
         name="C",
     )
-    return (a, b, c)
+    return [a, b, c]
 
 
 def matmul_fp16(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
@@ -44,7 +44,7 @@ def matmul_fp16(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor
         return te.sum(v_a * v_b, axis=[k])
 
     c = te.compute((n, m), f_compute, name="C")
-    return (a, b, c)
+    return [a, b, c]
 
 
 def matmul_relu(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor, te.Tensor]:
@@ -57,7 +57,7 @@ def matmul_relu(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor
         name="C",
     )
     d = topi.nn.relu(c)  # pylint: disable=invalid-name
-    return (a, b, d)
+    return [a, b, d]
 
 
 def conv2d_nchw(  # pylint: disable=invalid-name
@@ -75,7 +75,7 @@ def conv2d_nchw(  # pylint: disable=invalid-name
     x = te.placeholder((n, ci, h, w), name="X")
     w = te.placeholder((co, ci, kh, kw), name="W")
     y = topi.nn.conv2d_nchw(Input=x, Filter=w, stride=stride, padding=padding, dilation=dilation)
-    return (x, w, y)
+    return [x, w, y]
 
 
 def conv2d_nchwc(  # pylint: disable=invalid-name
@@ -115,8 +115,8 @@ def conv2d_nchwc(  # pylint: disable=invalid-name
         x = X[n, rc0, h + rh, w + rw, rc1].astype(out_type)
         w = W[c0, rc0, rh, rw, rc1, c1].astype(out_type)
         return te.sum(x * w, axis=(rc, rh, rw))
-
-    return te.compute(
+    
+    Conv = te.compute(
         (
             n,
             co // PACK_C,
@@ -128,6 +128,7 @@ def conv2d_nchwc(  # pylint: disable=invalid-name
         name="conv2d_nchwc",
     )
 
+    return [X, W, Conv]
 
 def conv2d_nchw_bias_bn_relu(  # pylint: disable=invalid-name
     n: int,
@@ -157,7 +158,7 @@ def conv2d_nchw_bias_bn_relu(  # pylint: disable=invalid-name
         (n, co, oh, ow), lambda i, j, k, l: y[i, j, k, l] + bn_offset[j, 0, 0], name="bn_add"
     )
     y = topi.nn.relu(y)
-    return (x, w, b, bn_scale, bn_offset, y)
+    return [x, w, b, bn_scale, bn_offset, y]
 
 
 def max_pool2d_nchw(  # pylint: disable=invalid-name
@@ -168,5 +169,5 @@ def max_pool2d_nchw(  # pylint: disable=invalid-name
     padding: int,
 ) -> Tuple[te.Tensor, te.Tensor]:  # pylint: disable=invalid-name
     x = te.placeholder((n, ci, h, w), name="X")
-    y = topi.nn.pool(x, [2, 2], [1, 1], [padding, padding, padding, padding], "max")
-    return (x, y)
+    y = topi.nn.pool2d(x, [2, 2], [1, 1], [1, 1], [padding, padding, padding, padding], "max")
+    return [x, y]

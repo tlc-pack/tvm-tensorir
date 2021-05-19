@@ -366,7 +366,7 @@ class MutatorParallel {
         // Step 2. For all the leaf blocks ,fetch the loops above it.
         // Furthermore, get their loop types.
         for (const auto& block_sref : tir::GetChildBlocks(sch->state(), root_sref)) {
-          Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
+          Array<tir::StmtSRef> loop_srefs = tir::GetLoops(block_sref);
           std::vector<int> loop_types;
           for (const tir::StmtSRef& loop_sref : loop_srefs) {
             loop_types.emplace_back(GetLoopIterType(sch->state(), loop_sref));

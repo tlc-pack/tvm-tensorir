@@ -165,7 +165,7 @@ def test_matmul_schedule_fn():
 
     def schedule_matmul(sch):
         block = sch.get_block(name="matmul")
-        i, j, k = sch.get_axes(block=block)
+        i, j, k = sch.get_loops(block=block)
         i_tiles = sch.sample_perfect_tile(i, n=4)
         j_tiles = sch.sample_perfect_tile(j, n=4)
         k_tiles = sch.sample_perfect_tile(k, n=2)
@@ -191,7 +191,7 @@ def test_matmul_relu_schedule_fn():
 
     def schedule_matmul(sch: ms.Schedule):
         matmul_block = sch.get_block(name="matmul")
-        i, j, k = sch.get_axes(block=matmul_block)
+        i, j, k = sch.get_loops(block=matmul_block)
         i_tiles = sch.sample_perfect_tile(i, n=4)
         j_tiles = sch.sample_perfect_tile(j, n=4)
         k_tiles = sch.sample_perfect_tile(k, n=2)
@@ -219,7 +219,7 @@ def test_conv2d_schedule_fn():
 
     def schedule_conv2d(sch):
         block = sch.get_block(name="conv2d_nchw")
-        i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw = sch.get_axes(block=block)
+        i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw = sch.get_loops(block=block)
 
         factors = sch.sample_perfect_tile(i_n, 4)
         i_n_0, i_n_1, i_n_2, i_n_3 = sch.split(loop=i_n, factors=factors)

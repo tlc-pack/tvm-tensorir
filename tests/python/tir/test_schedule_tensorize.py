@@ -280,7 +280,7 @@ def test_tensorize_gemm():
     # schedule
     s = tir.Schedule(func, debug_mode=True)
     update = s.get_block("update")
-    i, j, k = s.get_axes(update)
+    i, j, k = s.get_loops(update)
     io, ii = s.split(i, factor=16)
     jo, ji = s.split(j, factor=16)
     ko, ki = s.split(k, factor=16)
@@ -303,7 +303,7 @@ def test_tensorize_buffer_bind():
     # schedule
     s = tir.Schedule(func, debug_mode=True)
     update = s.get_block("update")
-    i, j, k = s.get_axes(update)
+    i, j, k = s.get_loops(update)
     io, ii = s.split(i, factor=16)
     jo, ji = s.split(j, factor=16)
     ko, ki = s.split(k, factor=16)
@@ -317,7 +317,7 @@ def test_tensorize_buffer_bind():
 def test_high_dim_tensorize():
     s = tir.Schedule(batch_matmul, debug_mode=True)
     update = s.get_block("update")
-    _, i, j, k = s.get_axes(update)
+    _, i, j, k = s.get_loops(update)
     io, ii = s.split(i, factor=16)
     jo, ji = s.split(j, factor=16)
     ko, ki = s.split(k, factor=16)
@@ -331,11 +331,11 @@ def test_tensorize_dot_product():
     dot_prod = tvm.tir.TensorIntrin(dot_product_desc, dot_product_impl)
     s = tir.Schedule(batch_matmul_dot_product, debug_mode=True)
     C = s.get_block("update")
-    _, _, _, k = s.get_axes(C)
+    _, _, _, k = s.get_loops(C)
     _, ki = s.split(k, factor=4)
     s.tensorize(ki, dot_prod)
     target = "llvm"
-    ctx = tvm.context(target, 0)
+    ctx = tvm.device(target, 0)
     a_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
     b_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
     a = tvm.nd.array(a_np)

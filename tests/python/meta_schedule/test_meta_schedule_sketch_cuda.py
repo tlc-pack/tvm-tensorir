@@ -159,7 +159,7 @@ def _matmul_sketch_0(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> No
 
 
 def test_meta_schedule_sketch_cuda_matmul():
-    func = te.create_func(te_workload.matmul(512, 512, 512))
+    func = te.create_prim_func(te_workload.matmul(512, 512, 512))
     support = _get_support(func=func, task_name="matmul")
     expected = [_matmul_sketch_0]
     possible_decisions = [
@@ -211,7 +211,7 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B
                                     tir.bind(v3, tir.floormod(((ax0_ax1_fused_ax2_fused_ax3_fused_outer*4) + ax0_ax1_fused_ax2_fused_ax3_fused_inner), 58))
                                     tir.reads([X[v0:(v0 + 1), v1:(v1 + 1), (v2 - 1):((v2 - 1) + 1), (v3 - 1):((v3 - 1) + 1)]])
                                     tir.writes([pad_temp_shared[v0:(v0 + 1), v1:(v1 + 1), v2:(v2 + 1), v3:(v3 + 1)]])
-                                    pad_temp_shared[v0, v1, v2, v3] = tir.if_then_else(((((1 <= v2) and (v2 < 57)) and (1 <= v3)) and (v3 < 57)), X[v0, v1, (v2 - 1), (v3 - 1)], tir.float32(0), dtype="float32")
+                                    pad_temp_shared[v0, v1, v2, v3] = tir.if_then_else(((((v2 >= 1) and (v2 < 57)) and (v3 >= 1)) and (v3 < 57)), X[v0, v1, (v2 - 1), (v3 - 1)], tir.float32(0), dtype="float32")
                         for ax0_ax1_fused_ax2_fused_ax3_fused_outer_1 in range(0, 589824, annotations={"loop_type": "lazy_cooperative_fetch"}):
                             for ax0_ax1_fused_ax2_fused_ax3_fused_inner_1 in range(0, 1):
                                 with tir.block([512, 512, 3, 3], "W_shared") as [v0_1, v1_1, v2_1, v3_1]:
@@ -252,7 +252,7 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B
 
 
 def test_meta_schedule_sketch_cuda_conv2d_nchw_bias_bn_relu():  # pylint: disable=invalid-name
-    func = te.create_func(
+    func = te.create_prim_func(
         te_workload.conv2d_nchw_bias_bn_relu(
             n=1,
             h=56,

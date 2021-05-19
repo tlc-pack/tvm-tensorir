@@ -62,7 +62,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
         << loop_sref->stmt->GetTypeKey();
     CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
                                     "but the block has no init block";
-    Array<StmtSRef> loops = GetAxes(self, block_sref);
+    Array<StmtSRef> loops = GetLoops(block_sref);
     const BlockRealizeNode* realize = GetBlockRealize(block_sref).get();
     // Cond 0. Check loop_sref is an ancestor of block_sref
     CHECK(ListContainsElement(loops, loop_sref))
@@ -278,7 +278,7 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
   CHECK(CanMergeReduction(self, init_sref, update_sref, scope));
   // Cond 2. Check LCA is higher than all the loops related to update_block's reduce block var
   if (!scope.same_as(lca)) {
-    for (const StmtSRef& higher_loop : GetAxes(self, update_sref)) {
+    for (const StmtSRef& higher_loop : GetLoops(update_sref)) {
       if (higher_loop.same_as(lca)) {
         break;
       }
@@ -391,7 +391,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
    *         block's outer loops
    */
   std::unordered_map<const VarNode*, For> loop_vars;
-  Array<StmtSRef> loops = GetAxes(self, block_sref);
+  Array<StmtSRef> loops = GetLoops(block_sref);
   for (const StmtSRef& l_sref : loops) {
     const auto* l = TVM_SREF_TO_FOR(l, l_sref);
     if (l == loop) {

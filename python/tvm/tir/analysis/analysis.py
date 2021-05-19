@@ -16,7 +16,7 @@
 # under the License.
 """Wrapping existing analysis utils."""
 # pylint: disable=invalid-name
-from typing import Dict, List
+from typing import Dict, List, TYPE_CHECKING
 
 from tvm.tir.stmt import Block, BufferRegion
 from tvm.tir.stmt import PrimExpr

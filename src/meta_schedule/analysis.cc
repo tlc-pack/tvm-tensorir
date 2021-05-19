@@ -30,7 +30,7 @@ namespace meta_schedule {
 bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
-  Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
+  Array<tir::StmtSRef> loops = tir::GetLoops(block_sref);
   const Array<PrimExpr>& bindings = realize->iter_values;
   if (loops.size() != bindings.size()) {
     return false;
@@ -731,7 +731,7 @@ double CountFlop(const tir::PrimFunc& func) {
 
 std::pair<int64_t, int64_t> GetCumulativeSpaceAndReductionLength(const tir::ScheduleState& self,
                                                                  const tir::StmtSRef& block_sref) {
-  Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
+  Array<tir::StmtSRef> loops = tir::GetLoops(block_sref);
   int64_t cum_space_len = 1, cum_reduce_len = 1;
   /*
    * Return (-1, -1) if
@@ -766,7 +766,7 @@ bool NeedsRFactorOrCrossThreadReduction(const tir::ScheduleState& self,
                                         int64_t max_parallel_extent,
                                         int64_t basic_parallel_extent) {
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
+  Array<tir::StmtSRef> loops = tir::GetLoops(block_sref);
 
   // Cond 1. The block is a reduction block and has trivial binding.
   if (ReductionBlock(self, block_sref, GetScopeRoot(block_sref)) &&

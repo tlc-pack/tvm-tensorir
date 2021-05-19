@@ -87,7 +87,7 @@ def test_vectorize_normal():
     func = util.predicate_stmt()
     s = tir.Schedule(func, debug_mode=True)
     B = s.get_block("update")
-    _, _, ji = s.get_axes(B)
+    _, _, ji = s.get_loops(B)
     s.vectorize(ji)
     mod = tvm.script.create_module({"predicate_vectorize": predicate_vectorize})
     tvm.ir.assert_structural_equal(s.mod["main"], mod["predicate_vectorize"])
@@ -99,7 +99,7 @@ def test_vectorize_complete():
     # schedule
     s = tir.Schedule(func, debug_mode=True)
     C = s.get_block("C")
-    _, inner = s.get_axes(C)
+    _, inner = s.get_loops(C)
     _, i_i = s.split(inner, factor=4)
     s.vectorize(i_i)
     mod = tvm.script.create_module(
@@ -112,7 +112,7 @@ def test_vectorize_fail_on_reduce_var():
     func = util.matmul_stmt()
     s = tir.Schedule(func, debug_mode=True)
     update = s.get_block("update")
-    _, _, k = s.get_axes(update)
+    _, _, k = s.get_loops(update)
     with pytest.raises(ValueError):
         s.vectorize(k)
 
@@ -121,7 +121,7 @@ def test_unroll_normal():
     func = util.predicate_stmt()
     s = tir.Schedule(func, debug_mode=True)
     B = s.get_block("update")
-    _, _, ji = s.get_axes(B)
+    _, _, ji = s.get_loops(B)
     s.unroll(ji)
     mod = tvm.script.create_module({"predicate_unroll": predicate_unroll})
     tvm.ir.assert_structural_equal(s.mod["main"], mod["predicate_unroll"])

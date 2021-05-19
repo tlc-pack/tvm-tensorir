@@ -70,7 +70,7 @@ def test_integration_matmul():
     os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     sch = ms.autotune(
         task=ms.SearchTask(
-            workload=te.create_func(te_workload.matmul(1024, 1024, 1024)),
+            workload=te.create_prim_func(te_workload.matmul(1024, 1024, 1024)),
             target=TARGET,
             target_host=TARGET_HOST,
             task_name="cuda_matmul",

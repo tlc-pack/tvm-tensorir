@@ -130,6 +130,20 @@ class BufferFlattener : public StmtExprMutator {
     return load->buffer.vload(load->indices, load->dtype);
   }
 
+  PrimExpr VisitExpr_(const CallNode* op) final {
+    if (op->op.same_as(builtin::get_elem_offset())) {
+      // Handle `get_elem_offset`
+      ICHECK_EQ(op->args.size(), 1);
+      PrimExpr arg = op->args[0];
+      ICHECK(arg->IsInstance<BufferLoadNode>());
+      arg = this->VisitExpr(arg);
+      const auto* load = arg.as<LoadNode>();
+      ICHECK(load != nullptr);
+      return load->index;
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
   static Stmt MakeAllocStmt(const Buffer& buffer, Stmt body) {
     String storage_scope = buffer.scope();
     PrimExpr area = BufferArea(buffer);

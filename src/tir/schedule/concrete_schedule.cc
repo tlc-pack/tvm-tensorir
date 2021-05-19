@@ -18,6 +18,10 @@
  */
 #include "./concrete_schedule.h"
 
+#include "./analysis.h"
+#include "./primitives/primitives.h"
+#include "./utils.h"
+
 namespace tvm {
 namespace tir {
 
@@ -132,6 +136,7 @@ class ScheduleCopier {
     SMap<StmtSRef, BlockInfo> result;
     for (const auto& kv : scopes) {
       const StmtSRef& old_sref = kv.first;
+      const BlockInfo& old_info = kv.second;
       BlockInfo new_info = old_info;
       ObjectPtr<BlockScopeNode> scope = make_object<BlockScopeNode>();
       scope->src2deps = Copy(old_info.scope->src2deps);
@@ -141,6 +146,14 @@ class ScheduleCopier {
       new_info.scope = BlockScope(std::move(scope));
       result[Copy(old_sref)] = std::move(new_info);
     }
+    return result;
+  }
+
+  /*! \brief Copy the stmt2ref */
+  UMap<const StmtNode*, StmtSRef> Copy(const UMap<const StmtNode*, StmtSRef>& stmt2ref) {
+    UMap<const StmtNode*, StmtSRef> result;
+    result.reserve(stmt2ref.size());
+    for (const auto& kv : stmt2ref) {
       const StmtNode* stmt = kv.first;
       const StmtSRef& sref = kv.second;
       result.emplace(stmt, Copy(sref));
@@ -246,6 +259,178 @@ BlockRV ConcreteScheduleNode::GetBlock(const String& name, const String& func_na
 
 Array<LoopRV> ConcreteScheduleNode::GetLoops(const BlockRV& block_rv) {
   return CreateRV<LoopRV>(tir::GetLoops(this->GetSRef(block_rv)));
+}
+
+Array<BlockRV> ConcreteScheduleNode::GetChildBlocks(const BlockRV& block_rv) {
+  return CreateRV<BlockRV>(tir::GetChildBlocks(state_, this->GetSRef(block_rv)));
+}
+
+Array<BlockRV> ConcreteScheduleNode::GetChildBlocks(const LoopRV& loop_rv) {
+  return CreateRV<BlockRV>(tir::GetChildBlocks(state_, this->GetSRef(loop_rv)));
+}
+
+Array<BlockRV> ConcreteScheduleNode::GetProducers(const BlockRV& block_rv) {
+  return CreateRV<BlockRV>(tir::GetProducers(state_, this->GetSRef(block_rv)));
+}
+
+Array<BlockRV> ConcreteScheduleNode::GetConsumers(const BlockRV& block_rv) {
+  return CreateRV<BlockRV>(tir::GetConsumers(state_, this->GetSRef(block_rv)));
+}
+
+/******** Schedule: loops ********/
+
+LoopRV ConcreteScheduleNode::Fuse(const Array<LoopRV>& loop_rvs) {
+  CHECK(!loop_rvs.empty()) << "ValueError: 'fuse' requires at least 1 loop(s)";
+  Array<StmtSRef> loop_srefs = FromRV(loop_rvs);
+  while (loop_srefs.size() >= 2) {
+    StmtSRef inner_sref = loop_srefs.back();
+    loop_srefs.pop_back();
+    StmtSRef outer_sref = loop_srefs.back();
+    loop_srefs.pop_back();
+    StmtSRef fused = schedule::Fuse(state_, outer_sref, inner_sref);
+    loop_srefs.push_back(fused);
+    this->state_->DebugVerify();
+  }
+  return CreateRV<LoopRV>(loop_srefs[0]);
+}
+
+Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
+                                          const Array<Optional<ExprRV>>& factor_rvs) {
+  // Prepare for the splitting
+  StmtSRef loop_sref = this->GetSRef(loop_rv);
+  const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  PrimExpr len = loop->extent;
+  // Find out the None
+  int n = factor_rvs.size();
+  CHECK_GE(n, 2) << "ValueError: `split` requires at least 2 parts";
+  std::vector<PrimExpr> factors;
+  factors.reserve(n);
+  int p = -1;
+  for (int i = 0; i < n; ++i) {
+    PrimExpr factor = this->Get(factor_rvs[i].value_or(Integer(-1)));
+    if (analyzer_->CanProve(factor == -1)) {
+      CHECK_EQ(p, -1) << "ValueError: `split` requires at most one `None` factor, but gets: "
+                      << factor_rvs;
+      p = i;
+      factors.emplace_back(Integer(-1));
+    } else {
+      factors.emplace_back(std::move(factor));
+    }
+  }
+  if (p == -1) {
+    PrimExpr prod = factors[0];
+    for (int i = 1; i < n; ++i) {
+      prod = prod * factors[i];
+    }
+    if (analyzer_->CanProve(prod == len)) {
+      p = 0;
+      factors[0] = Integer(-1);
+    } else {
+      LOG(FATAL) << "ValueError: invalid extents for `split`, the loop extent is " << len
+                 << ", but extents are: " << Array<PrimExpr>{factors.begin(), factors.end()};
+    }
+  }
+  std::vector<StmtSRef> results(n, StmtSRef{nullptr});
+  // Split from right to left
+  for (int i = n - 1; i > p; --i) {
+    PrimExpr inner_len = factors[i];
+    PrimExpr outer_len = floordiv(len + inner_len - 1, inner_len);
+    Array<StmtSRef> parts = schedule::Split(state_,     //
+                                            loop_sref,  //
+                                            outer_len, inner_len);
+    ICHECK_EQ(parts.size(), 2);
+    loop_sref = parts[0];
+    results[i] = parts[1];
+    len = outer_len;
+  }
+  // Split from left to right
+  for (int i = 0; i < p; ++i) {
+    PrimExpr outer_len = factors[i];
+    PrimExpr inner_len = floordiv(len + outer_len - 1, outer_len);
+    Array<StmtSRef> parts = schedule::Split(state_,     //
+                                            loop_sref,  //
+                                            outer_len, inner_len);
+    this->state_->DebugVerify();
+    ICHECK_EQ(parts.size(), 2);
+    results[i] = parts[0];
+    loop_sref = parts[1];
+    len = inner_len;
+  }
+  results[p] = loop_sref;
+  return CreateRV<LoopRV>(Array<StmtSRef>{results.begin(), results.end()});
+}
+
+void ConcreteScheduleNode::Reorder(const Array<LoopRV>& order) {
+  schedule::Reorder(state_, FromRV(order));
+}
+
+/******** Schedule: compute location ********/
+
+void ConcreteScheduleNode::ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
+                                     bool preserve_unit_loop) {
+  static StmtSRef inline_mark = StmtSRef::InlineMark();
+  static StmtSRef root_mark = StmtSRef::RootMark();
+  StmtSRef loop_sref = this->GetSRef(loop_rv);
+  if (loop_sref.same_as(root_mark)) {
+    // do nothing
+  } else if (loop_sref.same_as(inline_mark)) {
+    schedule::ComputeInline(state_, this->GetSRef(block_rv));
+    this->state_->DebugVerify();
+  } else {
+    schedule::ComputeAt(state_,                   //
+                        this->GetSRef(block_rv),  //
+                        loop_sref,                //
+                        preserve_unit_loop);
+    this->state_->DebugVerify();
+  }
+}
+
+void ConcreteScheduleNode::ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
+                                            bool preserve_unit_loop) {
+  static StmtSRef inline_mark = StmtSRef::InlineMark();
+  static StmtSRef root_mark = StmtSRef::RootMark();
+  StmtSRef loop_sref = this->GetSRef(loop_rv);
+  if (loop_sref.same_as(root_mark)) {
+    // do nothing
+  } else if (loop_sref.same_as(inline_mark)) {
+    schedule::ReverseComputeInline(state_, this->GetSRef(block_rv));
+    this->state_->DebugVerify();
+  } else {
+    schedule::ReverseComputeAt(state_,                   //
+                               this->GetSRef(block_rv),  //
+                               loop_sref,                //
+                               preserve_unit_loop);
+    this->state_->DebugVerify();
+  }
+}
+
+void ConcreteScheduleNode::ComputeInline(const BlockRV& block_rv) {
+  schedule::ComputeInline(state_, this->GetSRef(block_rv));
+  this->state_->DebugVerify();
+}
+
+void ConcreteScheduleNode::ReverseComputeInline(const BlockRV& block_rv) {
+  schedule::ReverseComputeInline(state_, this->GetSRef(block_rv));
+  this->state_->DebugVerify();
+}
+
+/******** Schedule: parallelize / annotate ********/
+
+void ConcreteScheduleNode::Vectorize(const LoopRV& loop_rv) {
+  schedule::Vectorize(state_, this->GetSRef(loop_rv));
+  this->state_->DebugVerify();
+}
+
+void ConcreteScheduleNode::Parallel(const LoopRV& loop_rv) {
+  schedule::Parallel(state_, this->GetSRef(loop_rv));
+  this->state_->DebugVerify();
+}
+
+void ConcreteScheduleNode::Unroll(const LoopRV& loop_rv) {
+  schedule::Unroll(state_, this->GetSRef(loop_rv));
+  this->state_->DebugVerify();
+}
+
 void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const IterVar& thread) {
   schedule::Bind(state_, this->GetSRef(loop_rv), thread);
   this->state_->DebugVerify();
@@ -294,7 +479,7 @@ BlockRV ConcreteScheduleNode::CacheRead(const BlockRV& block_rv, int i,
                                         i,                        //
                                         storage_scope);
   this->state_->DebugVerify();
-  return SetRV<BlockRV>(result);
+  return CreateRV<BlockRV>(result);
 }
 
 BlockRV ConcreteScheduleNode::CacheWrite(const BlockRV& block_rv, int i,
@@ -304,7 +489,7 @@ BlockRV ConcreteScheduleNode::CacheWrite(const BlockRV& block_rv, int i,
                                          i,                        //
                                          storage_scope);
   this->state_->DebugVerify();
-  return SetRV<BlockRV>(result);
+  return CreateRV<BlockRV>(result);
 }
 
 /******** Schedule: reduction ********/
@@ -312,7 +497,7 @@ BlockRV ConcreteScheduleNode::CacheWrite(const BlockRV& block_rv, int i,
 BlockRV ConcreteScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
   StmtSRef result = schedule::RFactor(state_, this->GetSRef(loop_rv), factor_axis);
   this->state_->DebugVerify();
-  return SetRV<BlockRV>(result);
+  return CreateRV<BlockRV>(result);
 }
 
 BlockRV ConcreteScheduleNode::DecomposeReduction(const BlockRV& block_rv,
@@ -324,7 +509,7 @@ BlockRV ConcreteScheduleNode::DecomposeReduction(const BlockRV& block_rv,
                                                  this->GetSRef(block_rv),  //
                                                  opt_loop_sref);
   this->state_->DebugVerify();
-  return SetRV<BlockRV>(result);
+  return CreateRV<BlockRV>(result);
 }
 
 void ConcreteScheduleNode::MergeReduction(const BlockRV& init_block_rv,
@@ -340,7 +525,7 @@ void ConcreteScheduleNode::MergeReduction(const BlockRV& init_block_rv,
 BlockRV ConcreteScheduleNode::Blockize(const LoopRV& loop_rv) {
   StmtSRef result = schedule::Blockize(state_, this->GetSRef(loop_rv));
   this->state_->DebugVerify();
-  return SetRV<BlockRV>(result);
+  return CreateRV<BlockRV>(result);
 }
 
 void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) {

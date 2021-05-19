@@ -24,7 +24,7 @@ from tvm import meta_schedule as ms
 def test_meta_schedule_search_space_schedule_fn():
     def schedule_matmul(sch: ms.Schedule):
         block = sch.get_block("matmul")
-        i, j, k = sch.get_axes(block=block)
+        i, j, k = sch.get_loops(block=block)
         i_tiles = sch.sample_perfect_tile(i, n=4)
         j_tiles = sch.sample_perfect_tile(j, n=4)
         k_tiles = sch.sample_perfect_tile(k, n=2)
@@ -38,7 +38,7 @@ def test_meta_schedule_search_space_schedule_fn():
     sch = space.sample_schedule(task)
 
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        sch.get_sref(i).stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
+        sch.get_sref(i).stmt.extent for i in sch.get_loops(sch.get_block("matmul"))
     ]
     assert i_0 * i_1 * i_2 * i_3 == 1024
     assert j_0 * j_1 * j_2 * j_3 == 1024
@@ -52,7 +52,7 @@ def test_meta_schedule_search_space_post_order_apply():
         spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
         reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
         order = [list() for _ in TILING_FORMAT]
-        axes = sch.get_axes(block=block)
+        axes = sch.get_loops(block=block)
         iter_types = ms.analysis.get_block_var_types(sch.state, sch.get_sref(block))
         assert len(axes) == len(iter_types)
         for axis, iter_type in zip(axes, iter_types):
@@ -72,7 +72,7 @@ def test_meta_schedule_search_space_post_order_apply():
     space = ms.space.PostOrderApply(stages=[do_mlt])
     sch = space.sample_schedule(task)
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        sch.get_sref(i).stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
+        sch.get_sref(i).stmt.extent for i in sch.get_loops(sch.get_block("matmul"))
     ]
     assert i_0 * i_1 * i_2 * i_3 == 1024
     assert j_0 * j_1 * j_2 * j_3 == 1024

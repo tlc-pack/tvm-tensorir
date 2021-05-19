@@ -16,54 +16,57 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/tir/analysis.h>
+
 #include "./utils.h"
 
 namespace tvm {
 namespace tir {
 
-/******** ContainsVar ********/
+// TODO(Siyuan)
+// /******** ContainsVar ********/
 
-bool ContainsVar(const ObjectRef& stmt_or_expr, const Array<Var>& vars) {
-  std::unordered_set<const VarNode*> vars_set;
-  vars_set.reserve(vars.size());
-  for (const Var& var : vars) {
-    vars_set.insert(var.get());
-  }
-  return ContainsVar(stmt_or_expr, vars_set);
-}
+// bool ContainsVar(const ObjectRef& stmt_or_expr, const Array<Var>& vars) {
+//   std::unordered_set<const VarNode*> vars_set;
+//   vars_set.reserve(vars.size());
+//   for (const Var& var : vars) {
+//     vars_set.insert(var.get());
+//   }
+//   return ContainsVar(stmt_or_expr, vars_set);
+// }
 
-bool ContainsVar(const ObjectRef& stmt_or_expr, const Var& var) {
-  return ContainsVar(stmt_or_expr, {var.get()});
-}
+// bool ContainsVar(const ObjectRef& stmt_or_expr, const Var& var) {
+//   return ContainsVar(stmt_or_expr, {var.get()});
+// }
 
-bool ContainsVar(const ObjectRef& stmt_or_expr, const std::unordered_set<const VarNode*>& vars) {
-  bool found = false;
-  auto f_find = [&found, &vars](const ObjectRef& obj) -> bool {
-    if (found) {
-      return false;
-    }
-    if (const VarNode* var = obj.as<VarNode>()) {
-      if (vars.count(var)) {
-        found = true;
-        return false;
-      }
-    }
-    return true;
-  };
-  PreOrderVisit(stmt_or_expr, f_find);
-  return found;
-}
+// bool ContainsVar(const ObjectRef& stmt_or_expr, const std::unordered_set<const VarNode*>& vars) {
+//   bool found = false;
+//   auto f_find = [&found, &vars](const ObjectRef& obj) -> bool {
+//     if (found) {
+//       return false;
+//     }
+//     if (const VarNode* var = obj.as<VarNode>()) {
+//       if (vars.count(var)) {
+//         found = true;
+//         return false;
+//       }
+//     }
+//     return true;
+//   };
+//   PreOrderVisit(stmt_or_expr, f_find);
+//   return found;
+// }
 
-std::unordered_set<const VarNode*> Vars(const ObjectRef& stmt_or_expr) {
-  std::unordered_set<const VarNode*> result;
-  auto f_visit = [&result](const ObjectRef& obj) -> void {
-    if (const auto* var = obj.as<VarNode>()) {
-      result.insert(var);
-    }
-  };
-  PostOrderVisit(stmt_or_expr, f_visit);
-  return result;
-}
+// std::unordered_set<const VarNode*> Vars(const ObjectRef& stmt_or_expr) {
+//   std::unordered_set<const VarNode*> result;
+//   auto f_visit = [&result](const ObjectRef& obj) -> void {
+//     if (const auto* var = obj.as<VarNode>()) {
+//       result.insert(var);
+//     }
+//   };
+//   PostOrderVisit(stmt_or_expr, f_visit);
+//   return result;
+// }
 
 bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& loop_var_ranges) {
   if (loop_var_ranges.empty()) {
@@ -71,10 +74,10 @@ bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& lo
   }
   arith::Analyzer analyzer;
   Array<arith::IterSumExpr> results = arith::DetectIterMap(
-      /*leaf_iters=*/realize->block->iter_vars,
-      /*bindings=*/realize->iter_values,
-      /*root_iters=*/loop_var_ranges,
-      /*input_pred=*/realize->predicate, /*analyzer=*/&analyzer);
+      /*indices=*/realize->iter_values,
+      /*input_iters=*/loop_var_ranges,
+      /*predicate=*/realize->predicate,
+      /*require_bijective=*/true, /*analyzer=*/&analyzer);
   if (results.empty()) {
     return false;
   }
@@ -284,8 +287,6 @@ class SRefTreeVerifier : public StmtVisitor {
   int n_block_sref_visited_ = 0;
 };
 
-void VerifySRefTree(const ScheduleState& self) { SRefTreeVerifier::Verify(self.get()); }
-
 class BlockInfoVerifier : public StmtVisitor {
  public:
   static void Verify(const ScheduleStateNode* self) { BlockInfoVerifier(self).Verify(); }
@@ -384,7 +385,7 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
   }
   // Check 2. Each reduction iter_var should not be used to index output buffer
   for (const PrimExpr& idx : output_buffer_indices) {
-    if (ContainsVar(idx, reduction_block_vars)) {
+    if (ExprUseVar(idx, [&](const VarNode* node) { return reduction_block_vars.count(node); })) {
       return false;
     }
   }
@@ -522,15 +523,6 @@ bool CanMergeReduction(const ScheduleState& self, const StmtSRef& init_block_sre
   return CheckReductionInstance(update->iter_vars, update_body->indices);
 }
 
-Array<StmtSRef> GetAxes(const ScheduleState& self, const StmtSRef& block_sref) {
-  std::vector<StmtSRef> result;
-  for (StmtSRefNode* parent = block_sref->parent; parent && parent->stmt->IsInstance<ForNode>();
-       parent = parent->parent) {
-    result.push_back(GetRef<StmtSRef>(parent));
-  }
-  return {result.rbegin(), result.rend()};
-}
-
 Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
                                bool inclusive) {
   struct Collector : public StmtVisitor {
@@ -646,7 +638,7 @@ IterVarType GetLoopIterType(const ScheduleState& self, const StmtSRef& loop_sref
 }
 
 Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<StmtSRef> loop_srefs = GetAxes(self, block_sref);
+  Array<StmtSRef> loop_srefs = GetLoops(block_sref);
   Array<StmtSRef> result;
   result.reserve(loop_srefs.size());
   bool visited_reduce = false;

@@ -21,9 +21,9 @@
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/transform.h>
 
+#include "../../relay/transforms/meta_schedule_layout_rewrite.h"
 #include "../../tir/schedule/primitives/primitives.h"
 #include "../../tir/schedule/utils.h"
-#include "../../relay/transforms/meta_schedule_layout_rewrite.h"
 #include "../analysis.h"
 #include "../utils.h"
 
@@ -99,7 +99,7 @@ class PostprocRewriteTensorize {
       // Remove the annotation
       DelAnn(sch->state(), block_sref, tir::attr::auto_tensorize);
       // Get the surrounding loops
-      Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state(), block_sref);
+      Array<tir::StmtSRef> loop_srefs = tir::GetLoops(block_sref);
       // Decompose Reduction
       {
         // (TODO) bohan
@@ -154,7 +154,7 @@ class PostprocRewriteCooperativeFetch {
       const auto* block = block_sref->StmtAs<tir::BlockNode>();
       BlockRV block_rv = sch->GetBlock(block->name_hint);
       // Extract loop info
-      Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+      Array<LoopRV> loop_rvs = sch->GetLoops(block_rv);
       int n_loops = loop_rvs.size();
       CHECK_LT(idx, n_loops);
       LoopRV loop_rv = loop_rvs[n_loops - 1 - idx];
@@ -459,9 +459,9 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     }
     RemoveParsedAnn(sch, root, parsed);
     for (BlockRV block_rv : sch->GetChildBlocks(root_rv)) {
-      block_rv=sch->GetBlock(sch->Get(block_rv)->name_hint);
+      block_rv = sch->GetBlock(sch->Get(block_rv)->name_hint);
       tir::StmtSRef block_sref = sch->GetSRef(block_rv);
-      Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+      Array<LoopRV> loop_rvs = sch->GetLoops(block_rv);
       int n_loops = loop_rvs.size();
       if (n_loops == 0) {
         continue;
@@ -575,7 +575,7 @@ class PostprocRewriteUnboundBlocks {
     ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
     BlockRV block_rv = sch->GetBlock(block->name_hint);
     // Extract loops
-    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+    Array<LoopRV> loop_rvs = sch->GetLoops(block_rv);
     // Check whether the outer loops were bound to blockIdx or threadIdx
     Array<tir::StmtSRef> loop_srefs;
     bool has_block_binding = false;
@@ -696,7 +696,9 @@ class PostprocRewriteReductionBlock {
       for (int i = 0; i < static_cast<int>(block->iter_vars.size()); ++i) {
         const tir::IterVar& var = block->iter_vars[i];
         const PrimExpr& binding = block_realize->iter_values[i];
-        if (var->iter_type == tir::kCommReduce && ContainsVar(binding, bound_loop_vars_)) {
+        if (var->iter_type == tir::kCommReduce &&
+            tir::ExprUseVar(
+                binding, [&](const tir::VarNode* node) { return bound_loop_vars_.count(node); })) {
           return false;
         }
       }
@@ -743,7 +745,7 @@ class PostprocRewriteReductionBlock {
   bool Proc(const Schedule& sch) const {
     while (const tir::BlockNode* block = Finder::Find(GetOnlyFunc(sch->mod())->body)) {
       BlockRV block_rv = sch->GetBlock(block->name_hint);
-      Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+      Array<LoopRV> loop_rvs = sch->GetLoops(block_rv);
       int n_loops = loop_rvs.size();
       for (int i = 0; i < n_loops; ++i) {
         const LoopRV& loop_rv = loop_rvs[i];
@@ -890,8 +892,6 @@ class PostProcRewriteLayout {
   };
 
   class IterVarResolver : public tir::StmtExprVisitor {
-
-
     void VisitStmt_(const tir::BlockRealizeNode* op) {
       realize_ = GetRef<tir::BlockRealize>(op);
       for (size_t i = 0; i < realize_->iter_values.size(); i++) {
@@ -899,7 +899,7 @@ class PostProcRewriteLayout {
       }
       VisitStmt(op->block->body);
     }
-    
+
     // true if expr1's loop is above expr2's loop
     static bool compare(
         const arith::IterSplitExpr& expr1, const arith::IterSplitExpr& expr2,
@@ -937,7 +937,7 @@ class PostProcRewriteLayout {
         }
         arith::Analyzer analyzer;
         auto block_sref = sch_->GetSRef(realize_->block);
-        auto loops = tir::GetAxes(sch_->state(), block_sref);
+        auto loops = tir::GetLoops(block_sref);
         std::unordered_map<tir::Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_vars;
         std::unordered_map<tir::Var, int, ObjectPtrHash, ObjectPtrEqual> loop_order;
         for (size_t i = 0; i < loops.size(); i++) {
@@ -947,9 +947,7 @@ class PostProcRewriteLayout {
         }
         // analyze the access pattern of the flattened index
         auto results = arith::DetectIterMap(
-            Array<tir::IterVar>{
-                tir::IterVar(Range::FromMinExtent(0, flatten_shape), tir::Var(), tir::kDataPar)},
-            Array<PrimExpr>{analyzer.Simplify(sum)}, loop_vars, realize_->predicate, &analyzer);
+            Array<PrimExpr>{analyzer.Simplify(sum)}, loop_vars, realize_->predicate, true, &analyzer);
         Array<arith::IterSplitExpr> splitexprs;
         IterVarMapCollector collector(splitexprs);
         for (size_t i = 0; i < results.size(); i++) {
@@ -977,7 +975,7 @@ class PostProcRewriteLayout {
         }
       }
     }
-    
+
     bool visited_ = false;
     tir::BlockRealize realize_;
     Map<tir::Var, PrimExpr> binding_map_{};
@@ -985,7 +983,7 @@ class PostProcRewriteLayout {
     const tir::Buffer& buffer_;
     LayoutRewriteHint& hint_;
     tir::Block block_to_rewrite_;
-    
+
    public:
     IterVarResolver(const Schedule& sch, const tir::Buffer& buffer, LayoutRewriteHint& hint)
         : sch_(sch), buffer_(buffer), hint_(hint) {}
@@ -999,8 +997,6 @@ class PostProcRewriteLayout {
 
  public:
   class IndexRewriter : public tir::StmtExprMutator {
-   
-
    public:
     IndexRewriter(const LayoutRewriteHint& hint, const tir::Buffer& buffer_to_rewrite,
                   const tir::Block& block, const tir::Buffer& new_buffer)
@@ -1020,7 +1016,7 @@ class PostProcRewriteLayout {
         n->reads = block_read_write_collector.reads();
         return tir::Block(n);
       }
-      return mutated_block;
+      return std::move(mutated_block);
     }
 
     PrimExpr VisitExpr_(const tir::BufferLoadNode* op) final {

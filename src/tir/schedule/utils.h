@@ -29,25 +29,12 @@
 #include <tvm/tir/schedule/state.h>
 #include <tvm/tir/stmt_functor.h>
 
-#include <unordered_map>
-#include <utility>
-
 #include "../../printer/text_printer.h"
 #include "../../runtime/thread_storage_scope.h"
 #include "../../support/array.h"
 #include "./analysis.h"
 #include "./error.h"
 #include "./primitive.h"
-
-#include <tvm/arith/analyzer.h>
-#include <tvm/arith/int_set.h>
-#include <tvm/arith/iter_affine_map.h>
-#include <tvm/tir/analysis.h>
-#include <tvm/tir/function.h>
-#include <tvm/tir/op.h>
-#include <tvm/tir/schedule/schedule.h>
-#include <tvm/tir/schedule/state.h>
-#include <tvm/tir/stmt_functor.h>
 
 #include <algorithm>
 #include <set>
@@ -56,7 +43,6 @@
 #include <utility>
 #include <vector>
 
-#include "./analysis.h"
 #include "./transform.h"
 
 namespace tvm {
@@ -181,32 +167,7 @@ inline Map<Var, arith::IntSet> AsIntSet(const Map<Var, Range>& var_dom) {
   return {result.begin(), result.end()};
 }
 
-}  // namespace tir
-}  // namespace tvm
-
-#endif  // TVM_TIR_SCHEDULE_UTILS_H_
-#define TVM_SREF_TO_E(Result, SRef, Type) \
-  SRef->StmtAs<Type>();                   \
-  ICHECK(Result)
-
-#define TVM_SREF_TO_BLOCK(Result, SRef)              \
-  TVM_SREF_TO_E(Result, SRef, ::tvm::tir::BlockNode) \
-      << "TypeError: Expects StmtSRef `" << #SRef    \
-      << "` points to `Block`, but gets: " << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
-
-#define TVM_SREF_TO_FOR(Result, SRef)              \
-  TVM_SREF_TO_E(Result, SRef, ::tvm::tir::ForNode) \
-      << "TypeError: Expects StmtSRef `" << #SRef  \
-      << "` points to `Loop`, but gets: " << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
-
-#define TVM_TYPE_AS_E(Result, From, Type) \
-  (From).as<Type>();                      \
-  ICHECK(Result)
-
-#define TVM_TYPE_AS(Result, From, Type)                                           \
-  TVM_TYPE_AS_E(Result, From, Type)                                               \
-      << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
-      << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
+/******** Misc: not upstream-ed ********/
 
 inline String Repr(const IRModule& mod) {
   const auto* f = runtime::Registry::Get("script.AsTVMScript");

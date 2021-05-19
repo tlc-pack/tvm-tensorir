@@ -70,7 +70,7 @@ AL = s.cache_read(C, 1, "local")
 BL = s.cache_read(C, 2, "local")
 CC = s.cache_write(C, 0, "local")
 
-y, x = s.get_axes(C)
+y, x = s.get_loops(C)
 by, yi = s.split(y, factor=block_factor)
 bx, xi = s.split(x, factor=block_factor)
 s.reorder(by, bx, yi, xi)
@@ -88,7 +88,7 @@ s.bind(ty, thread_y)
 s.bind(tx, thread_x)
 
 s.compute_at(CC, tx)
-y, x, k = s.get_axes(CC)[-3:]
+y, x, k = s.get_loops(CC)[-3:]
 ko, ki = s.split(k, factor=8)
 kt, ki = s.split(ki, factor=1)
 s.reorder(ko, kt, ki, y, x)
@@ -100,7 +100,7 @@ s.compute_at(BL, kt)
 s.compute_at(AA, ko)
 s.compute_at(BB, ko)
 
-x, y = s.get_axes(AA)[-2:]
+x, y = s.get_loops(AA)[-2:]
 ty, xi = s.split(x, nparts=num_thread)
 _, xi = s.split(y, factor=num_thread * 4)
 tx, xi = s.split(xi, nparts=num_thread)
@@ -109,7 +109,7 @@ s.bind(tx, thread_x)
 s.vectorize(xi)
 s.double_buffer(AA)
 
-x, y = s.get_axes(BB)[-2:]
+x, y = s.get_loops(BB)[-2:]
 ty, xi = s.split(x, nparts=num_thread)
 _, xi = s.split(y, factor=num_thread * 4)
 tx, xi = s.split(xi, nparts=num_thread)
