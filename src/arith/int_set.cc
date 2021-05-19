@@ -780,7 +780,7 @@ Optional<Array<arith::IntSet>> EstimateRegionLowerBound(const Array<Range>& regi
     }
     const PrimExpr& base = sum_expr->base;
     result.push_back(arith::IntSet::Interval(
-        base, (split->extent - 1) * split->scale + range->extent + base - 1));
+        base, split->extent * split->scale + base + (range->extent - split->scale) - 1));
   }
   return result;
 }

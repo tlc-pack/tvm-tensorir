@@ -167,6 +167,24 @@ def test_region_lower_bound_small_stride():
     assert result.max_value.value == 259
 
 
+def test_region_lower_bound_split_predicate():
+    xo = tvm.tir.Var("xo", "int32")
+    xi = tvm.tir.Var("xi", "int32")
+    x = xo * 4 + xi
+    (result,) = tvm.arith.estimate_region_lower_bound(
+        region=[
+            tvm.ir.Range.from_min_extent(min_value=x * 4, extent=8),
+        ],
+        var_dom={
+            xo: tvm.ir.Range(begin=0, end=16),
+            xi: tvm.ir.Range(begin=0, end=4),
+        },
+        predicate=x < 63,
+    )
+    assert result.min_value.value == 0
+    assert result.max_value.value == 255
+
+
 if __name__ == "__main__":
     test_basic()
     test_vector()
@@ -178,3 +196,4 @@ if __name__ == "__main__":
     test_region_lower_bound_not_independent()
     test_region_lower_bound_stride_too_wide()
     test_region_lower_bound_small_stride()
+    test_region_lower_bound_split_predicate()
