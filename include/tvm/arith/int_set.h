@@ -214,11 +214,32 @@ ExprIntSetMap EvalSetForEachSubExpr(PrimExpr e,
                                     const std::unordered_map<const VarNode*, IntSet>& dom_map);
 
 /*!
- * \brief Create an union set of all sets
- * \param sets The sets to be unioned
+ * \brief Create a union set of all sets, possibly relaxed
+ * \param sets The sets to be combined
  * \return the set after union
  */
 IntSet Union(const Array<IntSet>& sets);
+
+/*!
+ * \brief The union of N-dimensional integer sets
+ * \param nd_int_sets A list of N-dimensional integer sets
+ * \return An N-dimensional integer set as the result of union
+ */
+Array<IntSet> UnionND(const Array<Array<IntSet>>& nd_int_sets);
+
+/*!
+ * \brief Create a lower-bound of union set, where some of the segments may be dropped
+ * \param sets The sets to be combined
+ * \return the set after union
+ */
+IntSet UnionLowerBound(const Array<IntSet>& sets);
+
+/*!
+ * \brief The union of N-dimensional integer sets
+ * \param nd_int_sets A list of N-dimensional integer sets
+ * \return An N-dimensional integer set as the result of union
+ */
+Array<IntSet> UnionNDLowerBound(const Array<Array<IntSet>>& nd_int_sets);
 
 /*!
  * \brief Create an union set of all sets

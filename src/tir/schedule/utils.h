@@ -126,30 +126,6 @@ inline Array<Range> AsRegion(const Array<arith::IntSet>& nd_int_set, arith::Anal
   return result;
 }
 
-/*!
- * \brief The union of N-dimensional integer sets
- * \param nd_int_sets A list of N-dimensional integer sets
- * \return An N-dimensional integer set as the result of union
- */
-inline Array<arith::IntSet> Union(const Array<Array<arith::IntSet>>& nd_int_sets) {
-  if (nd_int_sets.empty()) {
-    return {};
-  }
-  int n = nd_int_sets.size();
-  int ndim = nd_int_sets[0].size();
-  Array<arith::IntSet> result;
-  result.reserve(ndim);
-  for (int i = 0; i < ndim; ++i) {
-    Array<arith::IntSet> candidates;
-    candidates.reserve(n);
-    for (int j = 0; j < n; ++j) {
-      candidates.push_back(nd_int_sets[j][i]);
-    }
-    result.push_back(arith::Union(candidates));
-  }
-  return result;
-}
-
 }  // namespace tir
 }  // namespace tvm
 

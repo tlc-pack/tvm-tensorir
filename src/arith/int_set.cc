@@ -636,6 +636,72 @@ IntSet Union(const Array<IntSet>& sets) {
   return IntervalSet(ana.Simplify(x->min_value), ana.Simplify(x->max_value));
 }
 
+Array<IntSet> UnionND(const Array<Array<IntSet>>& nd_int_sets) {
+  if (nd_int_sets.empty()) {
+    return {};
+  }
+  int n = nd_int_sets.size();
+  int ndim = nd_int_sets[0].size();
+  Array<IntSet> result;
+  result.reserve(ndim);
+  for (int i = 0; i < ndim; ++i) {
+    Array<IntSet> candidates;
+    candidates.reserve(n);
+    for (int j = 0; j < n; ++j) {
+      candidates.push_back(nd_int_sets[j][i]);
+    }
+    result.push_back(Union(candidates));
+  }
+  return result;
+}
+
+IntSet UnionLowerBound(const Array<IntSet>& sets) {
+  if (sets.size() == 0) return IntSet::Nothing();
+  if (sets.size() == 1) return sets[0];
+  Analyzer analyzer;
+  bool is_first_interval = true;
+  PrimExpr min_inclusive{nullptr};
+  PrimExpr max_exclusive(nullptr);
+  for (const IntSet& int_set : sets) {
+    if (const auto* interval_set = int_set.as<IntervalSetNode>()) {
+      PrimExpr new_min_inclusive = interval_set->min_value;
+      PrimExpr new_max_exclusive = interval_set->max_value + 1;
+      if (is_first_interval) {
+        is_first_interval = false;
+        min_inclusive = std::move(new_min_inclusive);
+        max_exclusive = std::move(new_max_exclusive);
+      } else if (analyzer.CanProve(new_min_inclusive <= max_exclusive &&
+                                   min_inclusive <= new_max_exclusive)) {
+        // if (l2 <= r1 && l1 <= r2) => intersect
+        min_inclusive = min(min_inclusive, new_min_inclusive);
+        max_exclusive = max(max_exclusive, new_max_exclusive);
+      } else {
+        // no intersect, pick one of either intervals
+      }
+    }
+  }
+  return is_first_interval ? IntSet::Nothing() : IntSet::Interval(min_inclusive, max_exclusive - 1);
+}
+
+Array<IntSet> UnionNDLowerBound(const Array<Array<IntSet>>& nd_int_sets) {
+  if (nd_int_sets.empty()) {
+    return {};
+  }
+  int n = nd_int_sets.size();
+  int ndim = nd_int_sets[0].size();
+  Array<IntSet> result;
+  result.reserve(ndim);
+  for (int i = 0; i < ndim; ++i) {
+    Array<IntSet> candidates;
+    candidates.reserve(n);
+    for (int j = 0; j < n; ++j) {
+      candidates.push_back(nd_int_sets[j][i]);
+    }
+    result.push_back(UnionLowerBound(candidates));
+  }
+  return result;
+}
+
 IntSet Intersect(const Array<IntSet>& sets) {
   if (sets.size() == 0) return IntSet::Nothing();
   if (sets.size() == 1) return sets[0];

@@ -94,6 +94,36 @@ def loop_carried_dependency(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             C[vi] = tir.if_then_else(vi >= 1, B[vi - 1] + 1.0, 0.0, dtype="float32")
 
 
+@tvm.script.tir
+def concatenate_multi_producer(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128,))
+    B = tir.match_buffer(b, (128,))
+    for i in range(0, 64):
+        with tir.block([64], "A_0") as vi:
+            A[vi] = vi + 1
+    for i in range(0, 64):
+        with tir.block([64], "A_1") as vi:
+            tir.bind(vi, i + 64)
+            A[vi] = vi + 2
+    with tir.block([128], "B") as vi:
+        B[vi] = A[vi] * 2.0
+
+
+@tvm.script.tir
+def concatenate_multi_producer_uncovered(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128,))
+    B = tir.match_buffer(b, (128,))
+    for i in range(0, 63):
+        with tir.block([63], "A_0") as vi:
+            A[vi] = vi + 1
+    for i in range(0, 64):
+        with tir.block([64], "A_1") as vi:
+            tir.bind(vi, i + 64)
+            A[vi] = vi + 2
+    with tir.block([128], "B") as vi:
+        B[vi] = A[vi] * 2.0
+
+
 # pylint: enable=no-member,invalid-name,unused-variable,unexpected-keyword-arg
 
 
@@ -226,9 +256,66 @@ def test_cached_flag_loop_carried_dependency():
     # pylint: disable=protected-access
 
 
+def test_cached_flag_concatenate_multi_producer_covered():  # pylint: disable=invalid-name
+    s = tir.ScheduleState(concatenate_multi_producer, debug_mode=True)
+    # pylint: disable=protected-access
+    assert s._get_cached_flags(_get_block(s, "A_0")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "A_1")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "B")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "root")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    # pylint: disable=protected-access
+
+
+def test_cached_flag_concatenate_multi_producer_uncovered():  # pylint: disable=invalid-name
+    s = tir.ScheduleState(concatenate_multi_producer_uncovered, debug_mode=True)
+    print(s._get_cached_flags(_get_block(s, "A_0")))
+    print(s._get_cached_flags(_get_block(s, "A_1")))
+    print(s._get_cached_flags(_get_block(s, "B")))
+    # pylint: disable=protected-access
+    assert s._get_cached_flags(_get_block(s, "A_0")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "A_1")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "B")) == CachedFlags(
+        affine_binding=True,
+        region_cover=False,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "root")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=False,
+    )
+    # pylint: disable=protected-access
+
+
 if __name__ == "__main__":
     test_cached_flag_elementwise()
     test_cached_flag_matmul()
     test_cached_flag_block_in_opaque_block()
     test_cached_flag_write_after_read()
     test_cached_flag_loop_carried_dependency()
+    test_cached_flag_concatenate_multi_producer_covered()
+    test_cached_flag_concatenate_multi_producer_uncovered()
