@@ -168,21 +168,49 @@ def test_region_lower_bound_small_stride():
 
 
 def test_region_lower_bound_split_predicate():
-    xo = tvm.tir.Var("xo", "int32")
-    xi = tvm.tir.Var("xi", "int32")
-    x = xo * 4 + xi
+    x_o = tvm.tir.Var("xo", "int32")
+    x_i = tvm.tir.Var("xi", "int32")
+    x = x_o * 4 + x_i
     (result,) = tvm.arith.estimate_region_lower_bound(
         region=[
             tvm.ir.Range.from_min_extent(min_value=x * 4, extent=8),
         ],
         var_dom={
-            xo: tvm.ir.Range(begin=0, end=16),
-            xi: tvm.ir.Range(begin=0, end=4),
+            x_o: tvm.ir.Range(begin=0, end=16),
+            x_i: tvm.ir.Range(begin=0, end=4),
         },
         predicate=x < 63,
     )
     assert result.min_value.value == 0
     assert result.max_value.value == 255
+
+
+def test_region_lower_bound_multiple_variables():
+    div = tvm.tir.floordiv
+    mod = tvm.tir.floormod
+    x = tvm.tir.Var("x", "int32")
+    wid = tvm.tir.Var("wid", "int32")
+    i = div(x, 16)
+    j = div(mod(x, 16), 4) * 8 + mod(x, 4) + div(wid, 32) * 4
+    k = wid % 32
+    (i_int_set, j_int_set, k_int_set) = tvm.arith.estimate_region_lower_bound(
+        region=[
+            tvm.ir.Range.from_min_extent(min_value=i, extent=1),
+            tvm.ir.Range.from_min_extent(min_value=j, extent=1),
+            tvm.ir.Range.from_min_extent(min_value=k, extent=1),
+        ],
+        var_dom={
+            x: tvm.ir.Range(begin=0, end=32),
+            wid: tvm.ir.Range(begin=0, end=64),
+        },
+        predicate=tvm.tir.IntImm("bool", 1),
+    )
+    assert i_int_set.min_value.value == 0
+    assert i_int_set.max_value.value == 1
+    assert j_int_set.min_value.value == 0
+    assert j_int_set.max_value.value == 31
+    assert k_int_set.min_value.value == 0
+    assert k_int_set.max_value.value == 31
 
 
 if __name__ == "__main__":
@@ -197,3 +225,4 @@ if __name__ == "__main__":
     test_region_lower_bound_stride_too_wide()
     test_region_lower_bound_small_stride()
     test_region_lower_bound_split_predicate()
+    test_region_lower_bound_multiple_variables()
