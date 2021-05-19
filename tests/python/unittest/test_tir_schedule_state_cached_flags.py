@@ -136,6 +136,26 @@ def lca_at_loop(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             C[vi] = B[vi] + 1.0
 
 
+@tvm.script.tir
+def multi_producer_consumer(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128,))
+    B = tir.match_buffer(b, (128,))
+    for i in range(0, 64):
+        with tir.block([64], "A_0") as vi:
+            A[vi] = vi + 1
+    for i in range(0, 64):
+        with tir.block([64], "A_1") as vi:
+            tir.bind(vi, i + 64)
+            A[vi] = vi + 2
+    for i in range(0, 64):
+        with tir.block([64], "B_0") as vi:
+            B[vi] = A[vi] + 2.0
+    for i in range(0, 64):
+        with tir.block([64], "B_1") as vi:
+            tir.bind(vi, i + 64)
+            B[vi] = A[vi] + 3.0
+
+
 # pylint: enable=no-member,invalid-name,unused-variable,unexpected-keyword-arg
 
 
@@ -322,7 +342,6 @@ def test_concatenate_multi_producer_uncovered():  # pylint: disable=invalid-name
 
 def test_lca_at_loop():
     s = tir.ScheduleState(lca_at_loop, debug_mode=True)
-    print(tvm.script.asscript(s.mod["main"]))
     # pylint: disable=protected-access
     assert s._get_cached_flags(_get_block(s, "B")) == CachedFlags(
         affine_binding=True,
@@ -342,6 +361,31 @@ def test_lca_at_loop():
     # pylint: disable=protected-access
 
 
+def test_multi_producer_consumer():
+    s = tir.ScheduleState(multi_producer_consumer, debug_mode=True)
+    # pylint: disable=protected-access
+    assert s._get_cached_flags(_get_block(s, "A_0")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "A_1")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "B_0")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "B_1")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    # pylint: disable=protected-access
+
 if __name__ == "__main__":
     test_elementwise()
     test_matmul()
@@ -351,3 +395,4 @@ if __name__ == "__main__":
     test_concatenate_multi_producer_covered()
     test_concatenate_multi_producer_uncovered()
     test_lca_at_loop()
+    test_multi_producer_consumer()
