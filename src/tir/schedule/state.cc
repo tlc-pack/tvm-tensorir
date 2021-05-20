@@ -277,15 +277,24 @@ class StateCreator : private StmtVisitor {
           const BlockRealize& producer_realize = block2realize_.at(producer_block_sref->stmt);
           for (const BufferRegion& region :
                block_writes_with_bindings_inlined.at(producer_block_sref)) {
-            auto it = touched_regions.find(region->buffer.get());
+            const BufferNode* buffer = region->buffer.get();
+            auto it = touched_regions.find(buffer);
             // Skip the regions that is not read by the consumer
             if (it == touched_regions.end()) {
               continue;
             }
+            SMap<Var, Range> relaxed_producer_dom{producer_dom.begin(), producer_dom.end()};
+            for (int i = static_cast<int>(runtime::StorageScope::Create(buffer->scope).rank),
+                     n_scope = ranked_thread_bindings_.size();
+                 i < n_scope; ++i) {
+              relaxed_producer_dom.insert(ranked_thread_bindings_[i].begin(),
+                                          ranked_thread_bindings_[i].end());
+            }
             std::vector<Array<arith::IntSet>>& touched_region = it->second;
             // Detect the region
-            if (Optional<Array<arith::IntSet>> exact_region = EstimateRegionLowerBound(
-                    region->region, producer_dom, producer_realize->predicate, &this->analyzer_)) {
+            if (Optional<Array<arith::IntSet>> exact_region =
+                    EstimateRegionLowerBound(region->region, relaxed_producer_dom,
+                                             producer_realize->predicate, &this->analyzer_)) {
               touched_region.push_back(exact_region.value());
             } else {
               const BlockNode* producer_block =
@@ -294,7 +303,7 @@ class StateCreator : private StmtVisitor {
                               "producer '"
                            << producer_block->name_hint << "'";
               Array<arith::IntSet> relaxed_region =
-                  arith::EvalSet(region->region, AsIntSet(producer_dom));
+                  arith::EvalSet(region->region, AsIntSet(relaxed_producer_dom));
               touched_region.push_back(relaxed_region);
             }
           }
@@ -310,7 +319,18 @@ class StateCreator : private StmtVisitor {
           if (touched_region.empty()) {
             continue;
           }
-          Array<arith::IntSet> consumed_region = arith::EvalSet(region->region, consumer_dom);
+          SMap<Var, arith::IntSet> relaxed_consumer_dom{consumer_dom.begin(), consumer_dom.end()};
+          for (int i = static_cast<int>(runtime::StorageScope::Create(buffer->scope).rank),
+                   n_scope = ranked_thread_bindings_.size();
+               i < n_scope; ++i) {
+            for (const auto& kv : ranked_thread_bindings_[i]) {
+              const Var& var = kv.first;
+              const Range& range = kv.second;
+              relaxed_consumer_dom[var] = arith::IntSet::FromRange(range);
+            }
+          }
+          Array<arith::IntSet> consumed_region =
+              arith::EvalSet(region->region, relaxed_consumer_dom);
           Array<arith::IntSet> produced_region =
               arith::UnionNDLowerBound({touched_region.begin(), touched_region.end()});
           ICHECK_EQ(produced_region.size(), consumed_region.size());
@@ -337,6 +357,18 @@ class StateCreator : private StmtVisitor {
   }
 
   void VisitStmt_(const ForNode* loop) final {
+    if (loop->kind == ForKind::kThreadBinding) {
+      runtime::ThreadScope thread_scope =
+          runtime::ThreadScope::Create(loop->thread_binding.value()->thread_tag);
+      // We intentionally use `size_t` here and check carefully on potential undefined behavior
+      ICHECK_GE(thread_scope.rank, 0);
+      size_t rank = static_cast<size_t>(thread_scope.rank);
+      while (ranked_thread_bindings_.size() < rank + 1) {
+        ranked_thread_bindings_.push_back({});
+      }
+      ranked_thread_bindings_[rank][loop->loop_var] = Range::FromMinExtent(loop->min, loop->extent);
+    }
+    analyzer_.Bind(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
     PushSRef(loop);
     VisitStmt(loop->body);
     PopAndRecordSRef();
@@ -371,6 +403,8 @@ class StateCreator : private StmtVisitor {
   std::unordered_map<const StmtNode*, BlockRealize> block2realize_;
   /*! \brief The stack frames of blocks in the DFS visit. */
   std::vector<Array<StmtSRef>> block_frames_;
+  /*! \brief The i-th Map stands for the thread binding variables with rank i */
+  std::vector<SMap<Var, Range>> ranked_thread_bindings_;
   /*! \brief The auxilary analyzer */
   arith::Analyzer analyzer_;
 };

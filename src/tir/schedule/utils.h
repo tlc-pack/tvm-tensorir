@@ -25,12 +25,15 @@
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
+#include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/schedule/state.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include <unordered_map>
 #include <utility>
 
+#include "../../printer/text_printer.h"
+#include "../../runtime/thread_storage_scope.h"
 #include "./analysis.h"
 
 namespace tvm {

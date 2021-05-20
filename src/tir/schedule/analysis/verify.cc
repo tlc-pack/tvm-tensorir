@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "../../../printer/text_printer.h"
 #include "../utils.h"
 
 namespace tvm {
