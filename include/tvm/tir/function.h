@@ -151,6 +151,8 @@ class PrimFunc : public BaseFunc {
   TVM_DEFINE_OBJECT_REF_COW_METHOD(PrimFuncNode);
 };
 
+TVM_DLL PrimFunc ConcatenatePrimFuncs(Array<PrimFunc> prim_funcs, Array<tir::Var> params);
+
 /*!
  * \brief Tensor TensorIntrin for Tensorization
  */

@@ -31,6 +31,35 @@
 namespace tvm {
 namespace tir {
 
+PrimFunc ConcatenatePrimFuncs(Array<PrimFunc> prim_funcs, Array<Var> params) {
+  CHECK_GE(prim_funcs.size(), 1) << "ValueError: requires at least one PrimFunc";
+  Map<Var, Buffer> buffer_map;
+  for (const PrimFunc& func : prim_funcs) {
+    for (const auto& kv : func->buffer_map) {
+      const Var& var = kv.first;
+      const Buffer& buffer = kv.second;
+      buffer_map.Set(var, buffer);
+    }
+  }
+  std::vector<Stmt> body;
+  for (const PrimFunc& func : prim_funcs) {
+    const auto* realize = func->body.as<BlockRealizeNode>();
+    ICHECK(realize != nullptr);
+    ICHECK(realize->iter_values.empty());
+    const Block& block = realize->block;
+    ICHECK(block->reads.empty());
+    ICHECK(block->writes.empty());
+    if (const auto* seq = block->body.as<SeqStmtNode>()) {
+      for (const Stmt& stmt : seq->seq) {
+        body.push_back(stmt);
+      }
+    } else {
+      body.push_back(block->body);
+    }
+  }
+  return PrimFunc(params, SeqStmt::Flatten(body), VoidType(), buffer_map);
+}
+
 LinkedParam::LinkedParam(int64_t id, ::tvm::runtime::NDArray param) {
   auto n = make_object<LinkedParamNode>();
   n->id = id;
@@ -71,8 +100,10 @@ TensorIntrin::TensorIntrin(PrimFunc desc_func, PrimFunc intrin_func) {
   CHECK_EQ(desc_func->buffer_map.size(), intrin_func->buffer_map.size());
 
   // check both functions' bodies are directly block
-  const auto* desc_realize = Downcast<BlockRealize>(desc_func->body)->block->body.as<BlockRealizeNode>();
-  const auto* intrin_realize = Downcast<BlockRealize>(intrin_func->body)->block->body.as<BlockRealizeNode>();
+  const auto* desc_realize =
+      Downcast<BlockRealize>(desc_func->body)->block->body.as<BlockRealizeNode>();
+  const auto* intrin_realize =
+      Downcast<BlockRealize>(intrin_func->body)->block->body.as<BlockRealizeNode>();
   CHECK(desc_realize != nullptr) << "description function's body expect a directly block";
   CHECK(intrin_realize != nullptr) << "intrinsic function's body expect a directly block";
 
