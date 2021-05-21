@@ -88,6 +88,9 @@ bool ProducerCoversConsumer(const Array<PrimExpr>& buffer_shape,
   int ndim = produced_region.size();
   for (int i = 0; i < ndim; ++i) {
     Range buffer_size = Range::FromMinExtent(0, buffer_shape[i]);
+    if (produced_region[i].IsNothing()) {
+      return false;
+    }
     Range produced = produced_region[i].CoverRange(buffer_size);
     Range consumed = consumed_region[i].CoverRange(buffer_size);
     PrimExpr produced_min = produced->min;
