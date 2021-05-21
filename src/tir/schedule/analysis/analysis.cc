@@ -47,16 +47,35 @@ bool IsAffineBinding(const BlockRealize& realize, const Map<Var, Range>& loop_va
 }
 
 Map<Var, Range> LoopDomainOfSRefTreePath(const StmtSRef& low_inclusive,
-                                         const Optional<StmtSRef>& high_exclusive) {
+                                         const Optional<StmtSRef>& high_exclusive,
+                                         const runtime::StorageScope& extra_relax_scope) {
   Map<Var, Range> result;
   const StmtSRefNode* p = low_inclusive.get();
-  const StmtSRefNode* root = static_cast<const StmtSRefNode*>(high_exclusive.get());
-  for (; p != root; p = p->parent) {
+  const StmtSRefNode* limit = static_cast<const StmtSRefNode*>(high_exclusive.get());
+  for (; p != limit; p = p->parent) {
     const ForNode* loop = p->StmtAs<ForNode>();
     if (loop == nullptr) {
       break;
     }
     result.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+  }
+  if (extra_relax_scope.rank != runtime::StorageRank::kGlobal) {
+    for (; p; p = p->parent) {
+      if (const ForNode* loop = p->StmtAs<ForNode>()) {
+        if (loop->kind == ForKind::kThreadBinding) {
+          runtime::ThreadScope thread_scope =
+              runtime::ThreadScope::Create(loop->thread_binding.value()->thread_tag);
+          if (extra_relax_scope.rank == runtime::StorageRank::kWarp) {
+            if (thread_scope.rank == 1 && thread_scope.dim_index == 0) {
+              result.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+            }
+          } else if (static_cast<int>(extra_relax_scope.rank) <=
+                     static_cast<int>(thread_scope.rank)) {
+            result.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+          }
+        }
+      }
+    }
   }
   return result;
 }

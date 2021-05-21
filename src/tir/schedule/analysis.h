@@ -58,10 +58,16 @@ bool IsAffineBinding(const BlockRealize& realize, const Map<Var, Range>& loop_va
  * \brief Extract the ranges of loop variables in a path of the sref tree
  * \param low_inclusive The lowest node in the path
  * \param high_exclusive The highest node in the path, defaults to the scope root if not specified
+ * \param extra_relax_scope If the scope is not global, the method will look beyond the limit and
+ * retrieve extra domains. For example,
+ * - if the storage scope is warp, it will look upwards for threadIdx.x
+ * - if the storage scope is shared, it will look for threadIdx.x/y/z
  * \return The loop domain
  */
 Map<Var, Range> LoopDomainOfSRefTreePath(const StmtSRef& low_inclusive,
-                                         const Optional<StmtSRef>& high_exclusive = NullOpt);
+                                         const Optional<StmtSRef>& high_exclusive = NullOpt,
+                                         const runtime::StorageScope& extra_relax_scope =  //
+                                         runtime::StorageScope{runtime::StorageRank::kGlobal, ""});
 
 /*!
  * \brief Returns the block var binding
