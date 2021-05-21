@@ -43,7 +43,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [128, 128])
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "init") as [vi, vj]:
-            C[vi, vj] = tir.float32(0)
+            C[vi, vj] = 0.0
         for k in range(0, 128):
             with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
                 C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
@@ -178,10 +178,29 @@ def bound_to_thread(a: ty.handle, c: ty.handle) -> None:
     for i in tir.thread_binding(0, 128, thread="threadIdx.x"):
         for j in tir.serial(0, 128):
             with tir.block([128, 128], "B") as [vi, vj]:
-                B[vi, vj] = A[vi, vj] * tir.float32(2)
+                B[vi, vj] = A[vi, vj] * 2.0
         for j in tir.serial(0, 128):
             with tir.block([128, 128], "C") as [vi, vj]:
-                C[vj, vi] = B[vj, vi] + tir.float32(1)
+                C[vj, vi] = B[vj, vi] + 1.0
+
+
+@tvm.script.tir
+def equal_ranked_threads(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    C = tir.match_buffer(c, [128, 128])
+    B = tir.alloc_buffer([128, 128], scope="shared")
+    for i_o in tir.thread_binding(0, 16, thread="threadIdx.x"):
+        for i_i in tir.thread_binding(0, 8, thread="threadIdx.y"):
+            for j in tir.serial(0, 128):
+                with tir.block([128, 128], "B") as [vi, vj]:
+                    tir.bind(vi, i_o * 8 + i_i)
+                    tir.bind(vj, j)
+                    B[vi, vj] = A[vi, vj] * 2.0
+            for j in tir.serial(0, 128):
+                with tir.block([128, 128], "C") as [vi, vj]:
+                    tir.bind(vi, i_o * 8 + i_i)
+                    tir.bind(vj, j)
+                    C[vj, vi] = B[vj, vi] + 1.0
 
 
 # pylint: enable=no-member,invalid-name,unused-variable,unexpected-keyword-arg
@@ -457,6 +476,27 @@ def test_thread_binding():
     # pylint: disable=protected-access
 
 
+def test_equal_ranked_threads():
+    s = tir.ScheduleState(equal_ranked_threads, debug_mode=True)
+    # pylint: disable=protected-access
+    assert s._get_cached_flags(_get_block(s, "root")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "B")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "C")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    # pylint: disable=protected-access
+
+
 if __name__ == "__main__":
     test_elementwise()
     test_matmul()
@@ -469,3 +509,4 @@ if __name__ == "__main__":
     test_multi_producer_consumer()
     test_elementwise_affine_producer()
     test_thread_binding()
+    test_equal_ranked_threads()
