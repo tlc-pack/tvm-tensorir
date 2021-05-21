@@ -27,6 +27,68 @@ using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
 /**************** Utility functions ****************/
 
 /*!
+ * \brief Analyze the buffer region under the sref tree path [dom_low_inclusive, dom_high_exclusive)
+ * \tparam affine Whether we use affine map to analyze the region
+ * \param realize The block realize that touches the buffer region
+ * \param region The buffer region to be analyzed
+ * \param dom_low_inclusive The lowest node in the sref tree path
+ * \param dom_high_exclusive The highest node in the sref tree path
+ * \param analyzer The analyzer
+ * \return An n-dimensional integer set
+ */
+template <bool affine>
+Array<arith::IntSet> AnalyzeRegion(const BlockRealize& realize,         //
+                                   const BufferRegion& region,          //
+                                   const StmtSRef& dom_low_inclusive,   //
+                                   const StmtSRef& dom_high_exclusive,  //
+                                   arith::Analyzer* analyzer) {
+  Map<Var, Range> dom = LoopDomainOfSRefTreePath(
+      /*low_inclusive=*/dom_low_inclusive,
+      /*high_exclusive=*/dom_high_exclusive,
+      /*extra_relax_scope=*/runtime::StorageScope::Create(region->buffer->scope));
+  if (affine) {
+    if (Optional<Array<arith::IntSet>> exact_region =
+            EstimateRegionLowerBound(region->region, dom, realize->predicate, analyzer)) {
+      return exact_region.value();
+    } else {
+      LOG(WARNING) << "Affine map detection failed. Use relaxed analysis instead for the block: "
+                   << realize->block->name_hint;
+    }
+  }
+  return arith::EvalSet(region->region, AsIntSet(dom));
+}
+
+/*!
+ * \brief Checks if the produced region can cover the consumed region
+ * \param buffer_shape The shape of the buffer
+ * \param produced_region The N-dimensional produced region
+ * \param consumed_region The N-dimensional consumed region
+ * \param analyzer The analyzer
+ * \return A boolean indicating if the produced region could cover the consumed region
+ */
+bool ProducerCoversConsumer(const Array<PrimExpr>& buffer_shape,
+                            const Array<arith::IntSet>& produced_region,
+                            const Array<arith::IntSet>& consumed_region,
+                            arith::Analyzer* analyzer) {
+  ICHECK_EQ(buffer_shape.size(), consumed_region.size());
+  ICHECK_EQ(produced_region.size(), consumed_region.size());
+  int ndim = produced_region.size();
+  for (int i = 0; i < ndim; ++i) {
+    Range buffer_size = Range::FromMinExtent(0, buffer_shape[i]);
+    Range produced = produced_region[i].CoverRange(buffer_size);
+    Range consumed = consumed_region[i].CoverRange(buffer_size);
+    PrimExpr produced_min = produced->min;
+    PrimExpr produced_max = produced->min + produced->extent;
+    PrimExpr consumed_min = consumed->min;
+    PrimExpr consumed_max = consumed->min + consumed->extent;
+    if (!analyzer->CanProve((produced_min <= consumed_min) && (consumed_max <= produced_max))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/*!
  * \brief Set the `StmtSRefNode::seq_index` field for stmt
  * \param self The schedule class
  * \param stmt The statement, or the realize node of the statement whose sref to be set
@@ -197,10 +259,10 @@ class StateCreator : private StmtVisitor {
     const StmtSRefNode* limit = scope_root->parent;
     bool stage_pipeline = true;
     // Step 1. Unbind the read/write regions of each child block
-    std::unordered_map<const StmtSRefNode*, Array<BufferRegion>> block_reads_with_bindings_inlined;
-    std::unordered_map<const StmtSRefNode*, Array<BufferRegion>> block_writes_with_bindings_inlined;
-    block_reads_with_bindings_inlined.reserve(child_block_srefs.size());
-    block_writes_with_bindings_inlined.reserve(child_block_srefs.size());
+    std::unordered_map<const StmtSRefNode*, Array<BufferRegion>> block_reads_unbound;
+    std::unordered_map<const StmtSRefNode*, Array<BufferRegion>> block_writes_unbound;
+    block_reads_unbound.reserve(child_block_srefs.size());
+    block_writes_unbound.reserve(child_block_srefs.size());
     for (const StmtSRef& block_sref : child_block_srefs) {
       const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
       Map<Var, PrimExpr> binding = GetBindings(block2realize_.at(block));
@@ -210,19 +272,20 @@ class StateCreator : private StmtVisitor {
       for (const BufferRegion& region : block->reads) {
         reads.push_back(BufferRegion(region->buffer, Substitute(region->region, binding)));
       }
-      block_reads_with_bindings_inlined.emplace(block_sref.get(), std::move(reads));
+      block_reads_unbound.emplace(block_sref.get(), std::move(reads));
       // Step 1.2. Unbind write regions
       Array<BufferRegion> writes;
       writes.reserve(block->writes.size());
       for (const BufferRegion& region : block->writes) {
         writes.push_back(BufferRegion(region->buffer, Substitute(region->region, binding)));
       }
-      block_writes_with_bindings_inlined.emplace(block_sref.get(), std::move(writes));
+      block_writes_unbound.emplace(block_sref.get(), std::move(writes));
     }
     // Step 2. For each consumer, check the region cover property
     for (const auto& kv : info.scope->dst2deps) {
       const StmtSRef& consumer_block_sref = kv.first;
       const Array<Dependency>& deps = kv.second;
+      bool& region_cover = self_->block_info.at(consumer_block_sref).region_cover = true;
       // Step 2.1. Extract the path to the scope root
       std::unordered_map<const StmtSRefNode*, std::vector<const StmtSRefNode*>> lca_loc;
       for (const StmtSRefNode* p = consumer_block_sref.get(); p != limit; p = p->parent) {
@@ -252,82 +315,61 @@ class StateCreator : private StmtVisitor {
       }
       // Step 2.3. For each LCA, gather the produced regions,
       // then check if it could cover the consumed region
-      bool& region_cover = self_->block_info.at(consumer_block_sref).region_cover = true;
-      for (const StmtSRefNode* lca = consumer_block_sref.get(); region_cover && lca != limit;
-           lca = lca->parent) {
-        const std::vector<const StmtSRefNode*>& producer_block_srefs = lca_loc.at(lca);
+      for (StmtSRef lca = consumer_block_sref; region_cover && lca.get() != limit;
+           lca = GetRef<StmtSRef>(lca->parent)) {
+        const std::vector<const StmtSRefNode*>& producer_block_srefs = lca_loc.at(lca.get());
         // Skip empty LCA positions
         if (producer_block_srefs.empty()) {
           continue;
         }
         // For each buffer, record the regions generated under this loop
         std::unordered_map<const BufferNode*, std::vector<Array<arith::IntSet>>> touched_regions;
-        // Step 2.3.1. Find all the regions read by the consumer
-        for (const BufferRegion& region :
-             block_reads_with_bindings_inlined.at(consumer_block_sref.get())) {
+        // Step 2.3.1. Find all the regions read by the consumer that we care about
+        for (const BufferRegion& region : block_reads_unbound.at(consumer_block_sref.get())) {
           const BufferNode* buffer = region->buffer.get();
           touched_regions[buffer] = {};
         }
         // Step 2.3.2. Find all the regions written by each producer
-        for (const StmtSRefNode* producer_block_sref : producer_block_srefs) {
-          const BlockRealize& producer_realize = block2realize_.at(producer_block_sref->stmt);
-          for (const BufferRegion& region :
-               block_writes_with_bindings_inlined.at(producer_block_sref)) {
+        for (const StmtSRefNode* block_sref : producer_block_srefs) {
+          const BlockRealize& realize = block2realize_.at(block_sref->stmt);
+          StmtSRef parent_sref = GetRef<StmtSRef>(block_sref->parent);
+          for (const BufferRegion& region : block_writes_unbound.at(block_sref)) {
             const BufferNode* buffer = region->buffer.get();
             auto it = touched_regions.find(buffer);
             // Skip the regions that is not read by the consumer
-            if (it == touched_regions.end()) {
-              continue;
-            }
-            std::vector<Array<arith::IntSet>>& touched_region = it->second;
-            // The loop domain of the producer block under the LCA
-            Map<Var, Range> producer_dom = LoopDomainOfSRefTreePath(
-                /*low_inclusive=*/GetRef<StmtSRef>(producer_block_sref->parent),
-                /*high_exclusive=*/GetRef<StmtSRef>(lca),
-                /*extra_relax_scope=*/runtime::StorageScope::Create(buffer->scope));
-            // Detect the region
-            if (Optional<Array<arith::IntSet>> exact_region = EstimateRegionLowerBound(
-                    region->region, producer_dom, producer_realize->predicate, &this->analyzer_)) {
-              touched_region.push_back(exact_region.value());
-            } else {
-              const BlockNode* producer_block =
-                  TVM_SREF_TO_BLOCK(producer_block, producer_block_sref);
-              LOG(WARNING) << "Affine map detection failed. Use relaxed analysis instead for the "
-                              "producer '"
-                           << producer_block->name_hint << "'";
-              touched_region.push_back(arith::EvalSet(region->region, AsIntSet(producer_dom)));
+            if (it != touched_regions.end()) {
+              std::vector<Array<arith::IntSet>>& touched_region = it->second;
+              touched_region.push_back(
+                  AnalyzeRegion</*affine=*/true>(/*realize=*/realize,
+                                                 /*region=*/region,
+                                                 /*dom_low_inclusive=*/parent_sref,
+                                                 /*dom_high_exclusive=*/lca,
+                                                 /*analyzer=*/&analyzer_));
             }
           }
         }
         // Step 2.3.3. For each buffer, check the region cover property
-        for (const BufferRegion& region :
-             block_reads_with_bindings_inlined.at(consumer_block_sref.get())) {
-          const BufferNode* buffer = region->buffer.get();
-          const std::vector<Array<arith::IntSet>>& touched_region = touched_regions.at(buffer);
-          if (touched_region.empty()) {
-            continue;
-          }
-          Map<Var, arith::IntSet> consumer_dom = AsIntSet(LoopDomainOfSRefTreePath(
-              /*low_inclusive=*/GetRef<StmtSRef>(consumer_block_sref->parent),
-              /*high_exclusive=*/GetRef<StmtSRef>(lca),
-              /*extra_relax_scope=*/runtime::StorageScope::Create(buffer->scope)));
-          Array<arith::IntSet> consumed_region = arith::EvalSet(region->region, consumer_dom);
-          Array<arith::IntSet> produced_region =
-              arith::UnionRegionLowerBound({touched_region.begin(), touched_region.end()});
-          ICHECK_EQ(produced_region.size(), consumed_region.size());
-          int ndim = produced_region.size();
-          for (int i = 0; i < ndim; ++i) {
-            Range buffer_size = Range::FromMinExtent(0, buffer->shape[i]);
-            const Range& produced = produced_region[i].CoverRange(buffer_size);
-            const Range& consumed = consumed_region[i].CoverRange(buffer_size);
-            PrimExpr produced_min = produced->min;
-            PrimExpr produced_max = produced->min + produced->extent - 1;
-            PrimExpr consumed_min = consumed->min;
-            PrimExpr consumed_max = consumed->min + consumed->extent - 1;
-            PrimExpr cond = (produced_min <= consumed_min) && (consumed_max <= produced_max);
-            if (!analyzer_.CanProve(cond)) {
-              region_cover = false;
-              break;
+        {
+          const StmtSRef& block_sref = consumer_block_sref;
+          const BlockRealize& realize = block2realize_.at(block_sref->stmt);
+          StmtSRef parent_sref = GetRef<StmtSRef>(block_sref->parent);
+          for (const BufferRegion& region : block_reads_unbound.at(block_sref.get())) {
+            const BufferNode* buffer = region->buffer.get();
+            const std::vector<Array<arith::IntSet>>& touched_region = touched_regions.at(buffer);
+            if (!touched_region.empty()) {
+              Array<arith::IntSet> produced_region =
+                  arith::UnionRegionLowerBound({touched_region.begin(), touched_region.end()});
+              Array<arith::IntSet> consumed_region =
+                  AnalyzeRegion</*affine=*/false>(/*realize=*/realize,
+                                                  /*region=*/region,
+                                                  /*dom_low_inclusive=*/parent_sref,
+                                                  /*dom_high_exclusive=*/lca,
+                                                  /*analyzer=*/&analyzer_);
+              if (!ProducerCoversConsumer(buffer->shape, produced_region, consumed_region,
+                                          &analyzer_)) {
+                region_cover = false;
+                break;
+              }
             }
           }
         }
