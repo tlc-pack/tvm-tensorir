@@ -225,7 +225,7 @@ IntSet Union(const Array<IntSet>& sets);
  * \param nd_int_sets A list of N-dimensional integer sets
  * \return An N-dimensional integer set as the result of union
  */
-Array<IntSet> UnionND(const Array<Array<IntSet>>& nd_int_sets);
+Array<IntSet> UnionRegion(const Array<Array<IntSet>>& nd_int_sets);
 
 /*!
  * \brief Create a lower-bound of union set, where some of the segments may be dropped
@@ -239,7 +239,7 @@ IntSet UnionLowerBound(const Array<IntSet>& sets);
  * \param nd_int_sets A list of N-dimensional integer sets
  * \return An N-dimensional integer set as the result of union
  */
-Array<IntSet> UnionNDLowerBound(const Array<Array<IntSet>>& nd_int_sets);
+Array<IntSet> UnionRegionLowerBound(const Array<Array<IntSet>>& nd_int_sets);
 
 /*!
  * \brief Create an union set of all sets

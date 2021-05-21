@@ -332,7 +332,7 @@ class StateCreator : private StmtVisitor {
           Array<arith::IntSet> consumed_region =
               arith::EvalSet(region->region, relaxed_consumer_dom);
           Array<arith::IntSet> produced_region =
-              arith::UnionNDLowerBound({touched_region.begin(), touched_region.end()});
+              arith::UnionRegionLowerBound({touched_region.begin(), touched_region.end()});
           ICHECK_EQ(produced_region.size(), consumed_region.size());
           int ndim = produced_region.size();
           for (int i = 0; i < ndim; ++i) {

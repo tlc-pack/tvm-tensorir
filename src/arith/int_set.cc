@@ -636,7 +636,7 @@ IntSet Union(const Array<IntSet>& sets) {
   return IntervalSet(ana.Simplify(x->min_value), ana.Simplify(x->max_value));
 }
 
-Array<IntSet> UnionND(const Array<Array<IntSet>>& nd_int_sets) {
+Array<IntSet> UnionRegion(const Array<Array<IntSet>>& nd_int_sets) {
   if (nd_int_sets.empty()) {
     return {};
   }
@@ -665,25 +665,36 @@ IntSet UnionLowerBound(const Array<IntSet>& sets) {
   for (const IntSet& int_set : sets) {
     if (const auto* interval_set = int_set.as<IntervalSetNode>()) {
       PrimExpr new_min_inclusive = interval_set->min_value;
-      PrimExpr new_max_exclusive = interval_set->max_value + 1;
+      PrimExpr new_max_exclusive = interval_set->max_value;
+      if (!is_pos_inf(new_max_exclusive) && !is_neg_inf(new_max_exclusive)) {
+        new_max_exclusive = new_max_exclusive + 1;
+      }
       if (is_first_interval) {
         is_first_interval = false;
         min_inclusive = std::move(new_min_inclusive);
         max_exclusive = std::move(new_max_exclusive);
-      } else if (analyzer.CanProve(new_min_inclusive <= max_exclusive &&
-                                   min_inclusive <= new_max_exclusive)) {
-        // if (l2 <= r1 && l1 <= r2) => intersect
+        continue;
+      }
+      bool bound_1 = is_neg_inf(new_min_inclusive) || is_pos_inf(max_exclusive) ||
+                     analyzer.CanProve(new_min_inclusive <= max_exclusive);
+      bool bound_2 = is_neg_inf(min_inclusive) || is_pos_inf(new_max_exclusive) ||
+                     analyzer.CanProve(min_inclusive <= new_max_exclusive);
+      if (bound_1 && bound_2) {
         min_inclusive = min(min_inclusive, new_min_inclusive);
         max_exclusive = max(max_exclusive, new_max_exclusive);
-      } else {
-        // no intersect, pick one of either intervals
       }
     }
   }
-  return is_first_interval ? IntSet::Nothing() : IntSet::Interval(min_inclusive, max_exclusive - 1);
+  if (is_first_interval) {
+    return IntSet::Nothing();
+  }
+  if (!is_neg_inf(max_exclusive) && !is_pos_inf(max_exclusive)) {
+    max_exclusive = max_exclusive - 1;
+  }
+  return IntSet::Interval(min_inclusive, max_exclusive);
 }
 
-Array<IntSet> UnionNDLowerBound(const Array<Array<IntSet>>& nd_int_sets) {
+Array<IntSet> UnionRegionLowerBound(const Array<Array<IntSet>>& nd_int_sets) {
   if (nd_int_sets.empty()) {
     return {};
   }
@@ -880,6 +891,10 @@ TVM_REGISTER_GLOBAL("arith.EstimateRegionLowerBound")
       Analyzer analyzer;
       return EstimateRegionLowerBound(region, var_dom, predicate, &analyzer);
     });
+
+TVM_REGISTER_GLOBAL("arith.PosInf").set_body_typed([]() { return SymbolicLimits::pos_inf_; });
+TVM_REGISTER_GLOBAL("arith.NegInf").set_body_typed([]() { return SymbolicLimits::neg_inf_; });
+TVM_REGISTER_GLOBAL("arith.UnionLowerBound").set_body_typed(UnionLowerBound);
 
 }  // namespace arith
 }  // namespace tvm

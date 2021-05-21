@@ -213,6 +213,16 @@ def test_region_lower_bound_multiple_variables():
     assert k_int_set.max_value.value == 31
 
 
+def test_union_lower_bound():
+    neg_inf = tvm.arith.int_set.neg_inf()
+    pos_inf = tvm.arith.int_set.pos_inf()
+    set_0 = tvm.arith.IntervalSet(min_value=neg_inf, max_value=0)
+    set_1 = tvm.arith.IntervalSet(min_value=1, max_value=pos_inf)
+    result = tvm.arith.int_set.union_lower_bound([set_0, set_1])
+    assert result.min_value.same_as(neg_inf)
+    assert result.max_value.same_as(pos_inf)
+
+
 if __name__ == "__main__":
     test_basic()
     test_vector()
@@ -226,3 +236,4 @@ if __name__ == "__main__":
     test_region_lower_bound_small_stride()
     test_region_lower_bound_split_predicate()
     test_region_lower_bound_multiple_variables()
+    test_union_lower_bound()
