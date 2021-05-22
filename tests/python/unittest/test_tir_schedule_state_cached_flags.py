@@ -185,6 +185,20 @@ def elementwise_subblock(a: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.script.tir
+def elementwise_subblock_uncovered(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+    B = tir.alloc_buffer((128, 128), "float32")
+    with tir.block([32, 32], "B") as [vi, vj]:
+        tir.reads([A[vi * 4 : vi * 4 + 2, vj * 4 : vj * 4 + 2]])
+        tir.writes([B[vi * 4 : vi * 4 + 2, vj * 4 : vj * 4 + 2]])
+        with tir.block([2, 2], "B_sub") as [vi_i, vj_i]:
+            B[vi * 4 + vi_i, vj * 4 + vj_i] = A[vi * 4 + vi_i, vj * 4 + vj_i] * 2.0
+    with tir.block([128, 128], "C") as [vi, vj]:
+        C[vi, vj] = B[vi, vj] + 1.0
+
+
+@tvm.script.tir
 def bound_to_thread(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [128, 128])
     C = tir.match_buffer(c, [128, 128])
@@ -267,7 +281,7 @@ def test_elementwise():
         region_cover=True,
         stage_pipeline=True,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_matmul():
@@ -288,7 +302,7 @@ def test_matmul():
         region_cover=True,
         stage_pipeline=True,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_block_in_opaque_block():
@@ -319,7 +333,7 @@ def test_block_in_opaque_block():
         region_cover=True,
         stage_pipeline=True,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_write_after_read():
@@ -340,7 +354,7 @@ def test_write_after_read():
         region_cover=True,
         stage_pipeline=False,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_loop_carried_dependency():
@@ -361,7 +375,7 @@ def test_loop_carried_dependency():
         region_cover=True,
         stage_pipeline=False,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_concatenate_multi_producer_covered():  # pylint: disable=invalid-name
@@ -387,7 +401,7 @@ def test_concatenate_multi_producer_covered():  # pylint: disable=invalid-name
         region_cover=True,
         stage_pipeline=True,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_concatenate_multi_producer_uncovered():  # pylint: disable=invalid-name
@@ -413,7 +427,7 @@ def test_concatenate_multi_producer_uncovered():  # pylint: disable=invalid-name
         region_cover=True,
         stage_pipeline=False,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_lca_at_loop():
@@ -434,7 +448,7 @@ def test_lca_at_loop():
         region_cover=True,
         stage_pipeline=True,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_multi_producer_consumer():
@@ -460,7 +474,7 @@ def test_multi_producer_consumer():
         region_cover=True,
         stage_pipeline=True,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_elementwise_affine_producer():
@@ -481,7 +495,7 @@ def test_elementwise_affine_producer():
         region_cover=True,
         stage_pipeline=True,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_subblock():
@@ -507,7 +521,33 @@ def test_subblock():
         region_cover=True,
         stage_pipeline=True,
     )
+    # pylint: enable=protected-access
+
+
+def test_subblock_uncovered():
+    s = tir.ScheduleState(elementwise_subblock_uncovered, debug_mode=True)
     # pylint: disable=protected-access
+    assert s._get_cached_flags(_get_block(s, "root")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=False,
+    )
+    assert s._get_cached_flags(_get_block(s, "B")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "B_sub")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "C")) == CachedFlags(
+        affine_binding=True,
+        region_cover=False,
+        stage_pipeline=True,
+    )
+    # pylint: enable=protected-access
 
 
 def test_thread_binding():
@@ -528,7 +568,7 @@ def test_thread_binding():
         region_cover=True,
         stage_pipeline=True,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_equal_ranked_threads():
@@ -549,7 +589,7 @@ def test_equal_ranked_threads():
         region_cover=True,
         stage_pipeline=True,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 def test_warp_memory():
@@ -570,7 +610,7 @@ def test_warp_memory():
         region_cover=True,
         stage_pipeline=True,
     )
-    # pylint: disable=protected-access
+    # pylint: enable=protected-access
 
 
 if __name__ == "__main__":
@@ -585,6 +625,7 @@ if __name__ == "__main__":
     test_multi_producer_consumer()
     test_elementwise_affine_producer()
     test_subblock()
+    test_subblock_uncovered()
     test_thread_binding()
     test_equal_ranked_threads()
     test_warp_memory()
