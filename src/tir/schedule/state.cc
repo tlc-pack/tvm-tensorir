@@ -435,7 +435,6 @@ class StateCreator : private StmtVisitor {
 ScheduleState::ScheduleState(IRModule mod, int debug_mode) {
   CHECK_GE(debug_mode, -1) << "ValueError: negative `debug_mode` other than -1 is not supported";
   data_ = StateCreator::Create(mod, debug_mode);
-  (*this)->DebugVerify();
 }
 
 ScheduleState::ScheduleState(PrimFunc func, int debug_mode)

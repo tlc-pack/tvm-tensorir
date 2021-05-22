@@ -845,12 +845,12 @@ Optional<Array<arith::IntSet>> EstimateRegionLowerBound(const Array<Range>& regi
   result.reserve(ndim);
   for (int i = 0; i < ndim; ++i) {
     const arith::IterSumExpr& sum_expr = iter_sum_exprs[i];
+    const Range& range = region[i];
     if (sum_expr->args.empty()) {
-      result.push_back(arith::IntSet::SinglePoint(sum_expr->base));
+      result.push_back(arith::IntSet::Interval(sum_expr->base, sum_expr->base + range->extent));
       continue;
     }
     ICHECK_EQ(sum_expr->args.size(), 1);
-    const Range& range = region[i];
     const arith::IterSplitExpr& split = sum_expr->args[0];
     if (!analyzer->CanProve(range->extent >= split->scale)) {
       return NullOpt;
