@@ -203,6 +203,21 @@ def equal_ranked_threads(a: ty.handle, c: ty.handle) -> None:
                     C[vj, vi] = B[vj, vi] + 1.0
 
 
+@tvm.script.tir
+def warp_memory(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    C = tir.match_buffer(c, [128, 128])
+    B = tir.alloc_buffer([128, 4, 32], scope="warp")
+    for i_o in tir.thread_binding(0, 4, thread="threadIdx.y"):
+        for i_i in tir.thread_binding(0, 32, thread="threadIdx.x"):
+            for j in tir.serial(0, 128):
+                with tir.block([4, 32, 128], "B") as [warp_id, lane_id, vj]:
+                    B[vj, warp_id, lane_id] = A[warp_id * 32 + lane_id, vj] * 2.0
+            for j in tir.serial(0, 128):
+                with tir.block([4, 32, 128], "C") as [warp_id, lane_id, vj]:
+                    C[warp_id * 32 + lane_id, vj] = B[vj, warp_id, lane_id] + 1.0
+
+
 # pylint: enable=no-member,invalid-name,unused-variable,unexpected-keyword-arg
 
 
@@ -497,6 +512,27 @@ def test_equal_ranked_threads():
     # pylint: disable=protected-access
 
 
+def test_warp_memory():
+    s = tir.ScheduleState(warp_memory, debug_mode=True)
+    # pylint: disable=protected-access
+    assert s._get_cached_flags(_get_block(s, "root")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "B")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    assert s._get_cached_flags(_get_block(s, "C")) == CachedFlags(
+        affine_binding=True,
+        region_cover=True,
+        stage_pipeline=True,
+    )
+    # pylint: disable=protected-access
+
+
 if __name__ == "__main__":
     test_elementwise()
     test_matmul()
@@ -510,3 +546,4 @@ if __name__ == "__main__":
     test_elementwise_affine_producer()
     test_thread_binding()
     test_equal_ranked_threads()
+    test_warp_memory()
