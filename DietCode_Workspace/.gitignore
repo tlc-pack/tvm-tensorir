@@ -1,0 +1,16 @@
+.DS_Store
+
+# Python
+__pycache__
+*.pyc
+
+!*.pem
+
+# Artifacts
+*.log
+*.csv
+*.json
+!**/saved_artifacts/**/*
+*.exe
+
+ansor_templates

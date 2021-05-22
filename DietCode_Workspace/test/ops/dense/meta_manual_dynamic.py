@@ -76,8 +76,8 @@ class Module:
             tir.reads([])
             tir.writes([])
             C_global = tir.buffer_allocate([M, N], elem_offset=0, align=128, offset_factor=1)
-            for i0_outer_outer_outer, i1_outer_outer_outer in tir.grid(((tir.floordiv(((tir.floordiv(((M + 4) - 1), 4) + 8) - 1), 8) + 1) - 1), ((tir.floordiv(((tir.floordiv(((N
-+ 16) - 1), 16) + 16) - 1), 16) + 1) - 1)):
+            for i0_outer_outer_outer, i1_outer_outer_outer in tir.grid(((tir.floordiv(((tir.floordiv(((M + 4) - 1), 4) + 8) - 1), 8) + 1) - 1),
+                                                                       ((tir.floordiv(((tir.floordiv(((N + 16) - 1), 16) + 16) - 1), 16) + 1) - 1)):
                 for i0_outer_outer_inner, i1_outer_outer_inner, i2_outer, i0_outer_inner, i1_outer_inner, i2_inner, i0_inner, i1_inner in tir.grid(1, 1, 192, 8, 16, 4, 4, 16):
                     with tir.block([M, N, tir.reduce_axis(0, 768)], "matmul") as [vi, vj, vk]:
                         tir.bind(vi, ((((i0_outer_outer_outer*8) + i0_outer_inner)*4) + i0_inner))
@@ -98,10 +98,12 @@ class Module:
                         tir.block_attr({"auto_vectorize_extent":"32"})
                         C[v0, v1] = C_global[v0, v1]
 
+
 def manual_kernel():
     mod = Module()
     rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
     print("time: %fms" % (build_and_test(mod) * 1000))
+
 
 manual_schedule()
 manual_kernel()
