@@ -856,6 +856,9 @@ Optional<Array<arith::IntSet>> EstimateRegionLowerBound(const Array<Range>& regi
       return NullOpt;
     }
     const PrimExpr& base = sum_expr->base;
+    // IterSplitExpr: (source // lower_factor) % extent * scale
+    // where `(source // lower_factor) % extent` is within [0, extent - 1]
+    // Therefore, the range of `region[i]->min` is `base + [0, (extent - 1) * scale]`
     result.push_back(arith::IntSet::Interval(
         base, split->extent * split->scale + base + (range->extent - split->scale) - 1));
   }

@@ -28,6 +28,8 @@ using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
 
 /*!
  * \brief Analyze the buffer region under the sref tree path [dom_low_inclusive, dom_high_exclusive)
+ * Relaxation of the region may be used in upper-bound analysis, i.e. some extra region may be added
+ * to the result.
  * \param region The buffer region to be analyzed
  * \param dom_low_inclusive The lowest node in the sref tree path
  * \param dom_high_exclusive The highest node in the sref tree path
@@ -46,6 +48,7 @@ Array<arith::IntSet> AnalyzeRegionUpperBound(const BufferRegion& region,
 
 /*!
  * \brief Analyze the buffer region under the sref tree path [dom_low_inclusive, dom_high_exclusive)
+ * Some subregion may be discarded during the lower-bound analysis.
  * \param realize The block realize that touches the buffer region
  * \param region The buffer region to be analyzed
  * \param dom_low_inclusive The lowest node in the sref tree path
@@ -355,6 +358,10 @@ class StateCreator : private StmtVisitor {
             // Skip the regions that is not read by the consumer
             if (it != touched_regions.end()) {
               std::vector<Array<arith::IntSet>>& touched_region = it->second;
+              // The analysis here is trying to be conservation to rule out false positive cases,
+              // and to make sure region cover property must be satisfied once the flag is on
+              // Therefore, we use lower-bound analysis for producers and upper-bound analysis for
+              // consumer, and require that the produced region can cover the consumed region
               touched_region.push_back(AnalyzeRegionLowerBound(/*realize=*/producer_realize,
                                                                /*region=*/region,
                                                                /*dom_low_inclusive=*/parent_sref,
