@@ -1,43 +1,9 @@
 import tvm
-from tvm import meta_schedule as ms
 from tvm import tir
-from tvm.meta_schedule.search_rule import SearchRule
 from tvm.script import ty
-import numpy as np
-import os
-
-@tvm.script.tir
-def dyn_mm(a: ty.handle, b: ty.handle, c: ty.handle, M: ty.int32, N: ty.int32) -> None:
-    A = tir.match_buffer(a, (M, 768), "float32")
-    B = tir.match_buffer(b, (768, N), "float32")
-    C = tir.match_buffer(c, (M, N), "float32")
-    with tir.block([M, N, tir.reduce_axis(0, 768)], "matmul") as [vi, vj, vk]:
-        with tir.init():
-            C[vi, vj] = 0.0
-        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
-
-M, N, K = 1024, 768, 768
-target = "llvm"
-ctx = tvm.context(target, 0)
 
 
-a_np = np.random.uniform(size=(M, K)).astype("float32")
-b_np = np.random.uniform(size=(K, N)).astype("float32")
-a = tvm.nd.array(a_np)
-b = tvm.nd.array(b_np)
-c = tvm.nd.array(np.zeros((M, N)).astype("float32"))
-
-
-def build_and_test(mod):
-    build_func = tvm.build(mod["main"], target=target)
-    build_func(a, b, c, M, N)
-    np.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy()), rtol=1e-5)
-    evaluator = build_func.time_evaluator(build_func.entry_name, ctx, number=1)
-    print(tvm.script.asscript(mod))
-    return evaluator(a, b, c, M, N).mean
-
-
-def optimal_static_schedule(sch):
+def dense_1024x768x768(sch):
     b1 = sch.get_block(name="matmul")
     b2 = sch.cache_write(block=b1, i=0, storage_scope="global")
     l3, l4, l5 = sch.get_axes(block=b2)
@@ -59,14 +25,8 @@ def optimal_static_schedule(sch):
     return sch
 
 
-def manual_schedule():
-    func = dyn_mm
-    sch = ms.Schedule(func, debug_mode=True)
-    sch = optimal_static_schedule(sch)
-    print("time: %fms" % (build_and_test(sch.mod) * 1000))
-
 @tvm.script.tir
-class Module:
+class Dense_Mx768xN_Module:
     def main(a: ty.handle, b: ty.handle, c: ty.handle, M: ty.int32, N: ty.int32) -> None:
         C = tir.match_buffer(c, [M, N], elem_offset=0, align=128, offset_factor=1)
         A = tir.match_buffer(a, [M, 768], elem_offset=0, align=128, offset_factor=1)
@@ -97,13 +57,3 @@ class Module:
                         tir.writes([C[v0:(v0 + 1), v1:(v1 + 1)]])
                         tir.block_attr({"auto_vectorize_extent":"32"})
                         C[v0, v1] = C_global[v0, v1]
-
-
-def manual_kernel():
-    mod = Module()
-    rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
-    print("time: %fms" % (build_and_test(mod) * 1000))
-
-
-manual_schedule()
-manual_kernel()

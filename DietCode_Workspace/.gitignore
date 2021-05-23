@@ -12,5 +12,3 @@ __pycache__
 *.json
 !**/saved_artifacts/**/*
 *.exe
-
-ansor_templates

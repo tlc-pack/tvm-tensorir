@@ -8,7 +8,7 @@ import logging
 import numpy as np
 logger = logging.getLogger(__name__)
 
-from ..shared import CUTarget, CUDevice
+from ..shared import CPUDevice, CUDATarget, CUDADevice
 
 
 def _builtin_dense_kernel(B, I, H, f):
@@ -16,8 +16,24 @@ def _builtin_dense_kernel(B, I, H, f):
     W = te.placeholder((H, I), name='W')
     Y = f(X, W, transa=False, transb=True)
     sched = te.create_schedule(Y.op)
-    cublas_kernel = tvm.build(sched, [X, W, Y], CUTarget)
+    cublas_kernel = tvm.build(sched, [X, W, Y], CUDATarget)
     return cublas_kernel, Y
+
+
+class numpyDenseFixture:
+    __slots__ = 'B', 'I', 'H', 'X_np', 'W_np', 'Y_np_expected'
+
+    def __init__(self, B, I, H):
+        self.B, self.I, self.H = B, I, H
+        self.X_np = np.random.uniform(-0.1, 0.1, size=(B, I)).astype(np.float32)
+        self.W_np = np.random.uniform(-0.1, 0.1, size=(H, I)).astype(np.float32)
+        self.Y_np_expected = np.matmul(self.X_np, self.W_np)
+
+    def module_data(self):
+        return [tvm.nd.array(self.X_np, device=CPUDevice),
+                tvm.nd.array(self.W_np, device=CPUDevice),
+                tvm.nd.array(np.empty(shape=self.Y_np_expected.shape,
+                                      dtype=np.float32), device=CPUDevice)]
 
 
 class cuBLASDenseFixture:
@@ -32,12 +48,15 @@ class cuBLASDenseFixture:
 
         self.cublas_kernel, self.Y = _builtin_dense_kernel(B=B, I=I, H=H, f=tvm.contrib.cublas.matmul)
 
-        module_data = [tvm.nd.array(self.X_np, device=CUDevice),
-                       tvm.nd.array(self.W_np, device=CUDevice),
-                       tvm.nd.array(np.empty(shape=topi.utils.get_const_tuple(self.Y.shape),
-                                             dtype=np.float32), device=CUDevice)]
+        module_data = self.module_data()
         self.cublas_kernel(*module_data)
         self.Y_np_expected = module_data[-1].asnumpy()
+
+    def module_data(self):
+        return [tvm.nd.array(self.X_np, device=CUDADevice),
+                tvm.nd.array(self.W_np, device=CUDADevice),
+                tvm.nd.array(np.empty(shape=topi.utils.get_const_tuple(self.Y.shape),
+                                      dtype=np.float32), device=CUDADevice)]
 
 
 class cuTLASSDenseFixture:
@@ -51,10 +70,7 @@ class cuTLASSDenseFixture:
         self.cutlass_kernel, self.Y = _builtin_dense_kernel(B=self.B, I=self.I, H=self.H, \
                                                             f=tvm.contrib.cutlass.matmul)
 
-        module_data = [tvm.nd.array(self.X_np, device=CUDevice),
-                       tvm.nd.array(self.W_np, device=CUDevice),
-                       tvm.nd.array(np.empty(shape=topi.utils.get_const_tuple(self.Y.shape),
-                                             dtype=np.float32), device=CUDevice)]
+        module_data = cublas_fixture.module_data()
         self.cutlass_kernel(*module_data)
         self.Y_np_expected = module_data[-1].asnumpy()
 

@@ -1,17 +1,17 @@
 import tvm
-from tvm import te, tir, topi, auto_scheduler
+from tvm import tir
 
 import logging
 import numpy as np
 import os
 logger = logging.getLogger(__name__)
 
-from ..shared import ansor, DietCode_utils, get_time_evaluator_results, CUDevice, CUTarget
+from ..shared import ansor, DietCode_utils, get_time_evaluator_results, CUTarget
 from ..shared.logger import TemplateLogger, TFLOPSLogger
 
 from .wkl_def import Dense
 from .fixture import cuBLASDenseFixture, cuTLASSDenseFixture
-from .ansor_templates import *
+from .ansor_saved_schedules import *
 
 
 def dense_kernel_name(B, T, I, H):
@@ -44,10 +44,7 @@ def test_static_codegen(pytestconfig):
     cublas_fixture = cuBLASDenseFixture(B * T, I, H)
     (sched, in_args), pysched = ansor.auto_schedule(func=Dense, args=(B * T, I, H))
     cuda_kernel = tvm.build(sched, in_args, target=CUTarget)
-    module_data = [tvm.nd.array(cublas_fixture.X_np, device=CUDevice),
-                   tvm.nd.array(cublas_fixture.W_np, device=CUDevice),
-                   tvm.nd.array(np.empty(shape=topi.utils.get_const_tuple(cublas_fixture.Y.shape),
-                                         dtype=np.float32), device=CUDevice)]
+    module_data = cublas_fixture.module_data()
     cuda_kernel(*module_data)
     # correctness checking
     np.testing.assert_allclose(module_data[-1].asnumpy(),
@@ -109,11 +106,7 @@ def test_perf(pytestconfig):
     cutlass_fixture = cuTLASSDenseFixture(cublas_fixture)
     logger.info("Created the cuBLAS and CUTLASS fixture")
 
-    module_data = [tvm.nd.array(cublas_fixture.X_np, device=CUDevice),
-                   tvm.nd.array(cublas_fixture.W_np, device=CUDevice),
-                   tvm.nd.array(np.empty(shape=topi.utils.get_const_tuple(cublas_fixture.Y.shape),
-                                         dtype=np.float32),
-                                device=CUDevice)]
+    module_data = cublas_fixture.module_data()
     if not enable_nvprof:
         [X, W, Y] = Dense(B * T, I, H)
         sched = tvm.te.create_schedule(Y.op)
@@ -168,10 +161,6 @@ def test_perf(pytestconfig):
         with open("scratchpad_{}.cu".format(mode), 'w') as fout:
             fout.write("{}".format(cuda_kernel_src))
 
-        module_data_ext[-1] = \
-                tvm.nd.array(np.empty(shape=topi.utils.get_const_tuple(cublas_fixture.Y.shape),
-                                      dtype=np.float32),
-                             device=CUDevice)
         cuda_kernel(*module_data_ext)
         np.testing.assert_allclose(module_data_ext[-1].asnumpy(),
                                    cublas_fixture.Y_np_expected,

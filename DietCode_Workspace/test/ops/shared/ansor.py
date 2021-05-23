@@ -6,14 +6,14 @@ import os
 
 logger = logging.getLogger(__name__)
 
-from . import rand_seed, CUTarget, get_log_filename
+from . import rand_seed, CUDATarget, get_log_filename
 
 ansor_ntrials = int(os.getenv('ANSOR_NTRIALS', '20'))
 logger.info("Ansor is doing {} trials".format(ansor_ntrials))
 
 
 def auto_schedule(func, args):
-    task = auto_scheduler.SearchTask(func=func, args=args, target=CUTarget)
+    task = auto_scheduler.SearchTask(func=func, args=args, target=CUDATarget)
 
     if isinstance(args, list):
         logger.info("DietCode dynamic auto-scheduler")
