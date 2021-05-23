@@ -9,7 +9,8 @@ logger = logging.getLogger(__name__)
 from ..shared import ansor, DietCode_utils, get_time_evaluator_results, CUDevice, CUTarget
 from ..shared.logger import TemplateLogger, TFLOPSLogger
 
-from .workload import Dense, cuBLASDenseFixture, cuTLASSDenseFixture
+from .wkl_def import Dense
+from .fixture import cuBLASDenseFixture, cuTLASSDenseFixture
 from .ansor_templates import *
 
 

@@ -1,7 +1,14 @@
-from .ansor import rand_seed, CUDevice, CUTarget
+import tvm
+
+CUTarget = tvm.target.Target(os.getenv('CUTARGET', 'cuda'))
+CUDevice = tvm.cuda()
 
 import numpy as np
+import os
+import random
 
+rand_seed = 0
+random.seed(rand_seed)
 np.random.seed(rand_seed)
 
 
@@ -15,3 +22,12 @@ def get_time_evaluator_results(kernel, module_data, number=100, repeat=10,
                                            number=number, repeat=repeat,
                                            min_repeat_ms=min_repeat_ms)
     return time_evaluator(*module_data).results
+
+
+def get_log_filename(auto_scheduler_name, wkl_name):
+    log_filename = "{}_autosched_{}.json".format(auto_scheduler_name, wkl_name)
+    try:
+        os.remove(log_filename)
+    except OSError:
+        pass
+    return log_filename

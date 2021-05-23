@@ -1,21 +1,14 @@
+"""
+Workload Definition
+"""
+import tvm
+from tvm import te, topi
+
 import logging
 import numpy as np
 logger = logging.getLogger(__name__)
 
-import tvm
-from tvm import te, topi, auto_scheduler
-
 from ..shared import CUTarget, CUDevice
-
-
-@auto_scheduler.register_workload
-def Dense(B, I, H):
-    logger.info("Dense search task created with (B={B}, I={I}, H={H})"
-                .format(B=B, I=I, H=H))
-    X = te.placeholder((B, I), name='X')
-    W = te.placeholder((H, I), name='W')
-    Y = topi.nn.dense(X, W)
-    return [X, W, Y]
 
 
 def _builtin_dense_kernel(B, I, H, f):
