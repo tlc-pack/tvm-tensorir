@@ -76,4 +76,4 @@ class cuTLASSDenseFixture:
 
         np.testing.assert_allclose(self.Y_np_expected,
                                    cublas_fixture.Y_np_expected,
-                                   rtol=1e-3, atol=1e-3)
+                                   rtol=1e-3)
