@@ -3,7 +3,7 @@ from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.script import ty
 
-from ..shared import autotir
+from ..shared import meta
 
 
 
@@ -16,7 +16,6 @@ def Dense_static(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         with tir.init():
             C[vi, vj] = 0.0
         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
-
 
 
 @tvm.script.tir
@@ -34,9 +33,9 @@ def test_tune_static():
     log_file='matmul_static.log'
     sched = ms.autotune(
             task=ms.SearchTask(workload=Dense_static, log_file=log_file),
-            space=autotir.cpu_space(),
+            space=meta.cpu_space(),
             strategy=ms.strategy.Replay(num_trials=200),
-            measurer=autotir.measurer())
+            measurer=meta.measurer())
     if sched is None:
         print("No valid schedule found")
     else:
@@ -45,18 +44,15 @@ def test_tune_static():
         print("\n".join(sched.trace.as_python()))
 
 
-@ms.rule.register_rule("do_mk")
+@ms.rule.register_rule("do_micro_kernel")
 def micro_kernel(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV):
     axes = sch.get_axes(block=block)
-    # iter_types = ms.analysis.get_block_var_types(sch.sch, sch.evaluate(block))
-    # assert len(axes) == len(iter_types)
-    # print('num of axes')
     outer, inner = [], []
     for i, axis in enumerate(axes):
         tiles = sch.sample_tile_factor(loop=axis, n=2, where=[16, 32, 64, 128])
-        oaxis, iaxis = sch.split(loop=axis, factors=tiles)
-        outer.append(oaxis)
-        inner.append(iaxis)
+        outer_axis, inner_axis = sch.split(loop=axis, factors=tiles)
+        outer.append(outer_axis)
+        inner.append(inner_axis)
     new_axes = outer + inner
     sch.reorder(*new_axes)
     return sch
