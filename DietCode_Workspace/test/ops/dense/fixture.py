@@ -8,7 +8,7 @@ import logging
 import numpy as np
 logger = logging.getLogger(__name__)
 
-from ..shared import CPUDevice, CUDATarget, CUDADevice
+from ..shared import CPUContext, CUDATarget, CUDAContext
 
 
 def _builtin_dense_kernel(B, I, H, f):
@@ -30,10 +30,10 @@ class numpyDenseFixture:
         self.Y_np_expected = np.matmul(self.X_np, self.W_np)
 
     def module_data(self):
-        return [tvm.nd.array(self.X_np, device=CPUDevice),
-                tvm.nd.array(self.W_np, device=CPUDevice),
+        return [tvm.nd.array(self.X_np, context=CPUContext),
+                tvm.nd.array(self.W_np, context=CPUContext),
                 tvm.nd.array(np.empty(shape=self.Y_np_expected.shape,
-                                      dtype=np.float32), device=CPUDevice)]
+                                      dtype=np.float32), context=CPUContext)]
 
 
 class cuBLASDenseFixture:
@@ -53,10 +53,10 @@ class cuBLASDenseFixture:
         self.Y_np_expected = module_data[-1].asnumpy()
 
     def module_data(self):
-        return [tvm.nd.array(self.X_np, device=CUDADevice),
-                tvm.nd.array(self.W_np, device=CUDADevice),
+        return [tvm.nd.array(self.X_np, context=CUDAContext),
+                tvm.nd.array(self.W_np, context=CUDAContext),
                 tvm.nd.array(np.empty(shape=topi.utils.get_const_tuple(self.Y.shape),
-                                      dtype=np.float32), device=CUDADevice)]
+                                      dtype=np.float32), context=CUDAContext)]
 
 
 class cuTLASSDenseFixture:

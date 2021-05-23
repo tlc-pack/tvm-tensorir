@@ -6,7 +6,7 @@ import numpy as np
 import os
 logger = logging.getLogger(__name__)
 
-from ..shared import ansor, DietCode_utils, get_time_evaluator_results, CUTarget
+from ..shared import ansor, utils, get_time_evaluator_results, CUDATarget
 from ..shared.logger import TemplateLogger, TFLOPSLogger
 
 from .wkl_def import Dense
@@ -43,7 +43,7 @@ def test_static_codegen(pytestconfig):
 
     cublas_fixture = cuBLASDenseFixture(B * T, I, H)
     (sched, in_args), pysched = ansor.auto_schedule(func=Dense, args=(B * T, I, H))
-    cuda_kernel = tvm.build(sched, in_args, target=CUTarget)
+    cuda_kernel = tvm.build(sched, in_args, target=CUDATarget)
     module_data = cublas_fixture.module_data()
     cuda_kernel(*module_data)
     # correctness checking
@@ -67,7 +67,7 @@ def test_dynamic_codegen(pytestconfig):
     T = np.arange(1, 129)
     IH = [(768, 2304), (768, 768), (768, 3072), (3072, 768)]
     (sched, in_args), pysched = ansor.auto_schedule(
-            func=Dense, args=DietCode_utils.cross_product(list(B * T), IH))
+            func=Dense, args=utils.cross_product(list(B * T), IH))
 
 
 def test_dynamic_codegen_any(pytestconfig):
@@ -75,7 +75,7 @@ def test_dynamic_codegen_any(pytestconfig):
     T = tir.Any()
     IH = [(768, 2304), (768, 768), (768, 3072), (3072, 768)]
     (sched, in_args), pysched = ansor.auto_schedule(
-            func=Dense, args=DietCode_utils.cross_product(list(B * T), IH))
+            func=Dense, args=utils.cross_product(list(B * T), IH))
 
 
 def test_perf(pytestconfig):
@@ -113,7 +113,7 @@ def test_perf(pytestconfig):
         template_not_defined = False
         try:
             eval('{}(X, W, Y, s=sched)'.format(dense_kernel_name(B, T, I, H)))
-            cuda_kernel = tvm.build(sched, [X, W, Y], target=CUTarget)
+            cuda_kernel = tvm.build(sched, [X, W, Y], target=CUDATarget)
         except NameError:
             template_not_defined = True
 
@@ -152,7 +152,7 @@ def test_perf(pytestconfig):
 
         sched = tvm.te.create_schedule(Y.op)
         eval('{}(X, W, Y, s=sched)'.format('dense_' + template))
-        cuda_kernel = tvm.build(sched, args_ext, target=CUTarget)
+        cuda_kernel = tvm.build(sched, args_ext, target=CUDATarget)
 
         cuda_kernel_src = cuda_kernel.imported_modules[0].get_source()
         if os.getenv("VERBOSE", "0") == "1":
