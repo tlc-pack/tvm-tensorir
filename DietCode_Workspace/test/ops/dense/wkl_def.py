@@ -39,3 +39,16 @@ def Dense_dynamic(a: ty.handle, b: ty.handle, c: ty.handle, M: ty.int32, N: ty.i
         with tir.init():
             C[vi, vj] = 0.0
         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+
+
+@tvm.script.tir
+def Dense_dynamic_BTIH(X: ty.handle, W: ty.handle, Y: ty.handle,
+                       B: ty.int32, T: ty.int32,
+                       I: ty.int32, H: ty.int32) -> None:
+    X_buf = tir.match_buffer(X, (B * T, I), "float32")
+    W_buf = tir.match_buffer(W, (H, I), "float32")
+    Y_buf = tir.match_buffer(Y, (B * T, I), "float32")
+    with tir.block([B * T, H, tir.reduce_axis(0, I)], "matmul") as [vi, vj, vk]:
+        with tir.init():
+            Y_buf[vi, vj] = 0.0
+        Y_buf[vi, vj] = Y_buf[vi, vj] + X_buf[vi, vk] * W_buf[vk, vj]

@@ -6,10 +6,10 @@ import numpy as np
 import os
 logger = logging.getLogger(__name__)
 
-from ..shared import get_time_evaluator_results, meta, get_log_filename, \
+from ..shared import get_time_evaluator_results, meta, utils, get_log_filename, \
                      CPUContext, CPUTarget
 from .fixture import numpyDenseFixture
-from .wkl_def import Dense_static, Dense_dynamic
+from .wkl_def import Dense_static, Dense_dynamic, Dense_dynamic_BTIH
 from .meta_saved_schedules import *
 
 
@@ -47,6 +47,13 @@ def test_sched_dynamic():
     space = ms.space.PostOrderApply(stages=[micro_kernel])
     sch = space.sample_schedule(task)
     logger.info(tvm.script.asscript(sch.mod))
+
+
+def test_sched_dynamic_experimental():
+    task = ms.SearchTask(workload=Dense_dynamic_BTIH,
+                         log_file=get_log_filename('meta', 'dense'),
+                         shape_vars=('B', 'T', 'I', 'H'),
+                         shape_freq={(16, 64, ) : 1.0})
 
 
 def test_tune_dynamic():

@@ -57,6 +57,10 @@ class SearchTask(Object):
         target: TargetType = "llvm",
         target_host: TargetType = "llvm",
         log_file: Optional[str] = None,
+        
+        shape_vars = None,
+        shape_variants = None,
+        shape_freq = None,
     ):
         if task_name is None:
             if hasattr(workload, "__qualname__"):
