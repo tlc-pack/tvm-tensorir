@@ -75,7 +75,7 @@ def test_dynamic_codegen_any(pytestconfig):
     T = tir.Any()
     IH = [(768, 2304), (768, 768), (768, 3072), (3072, 768)]
     (sched, in_args), pysched = ansor.auto_schedule(
-            func=Dense, args=utils.cross_product(list(B * T), IH))
+            func=Dense, args=utils.cross_product([B * T], IH))
 
 
 def test_perf(pytestconfig):
