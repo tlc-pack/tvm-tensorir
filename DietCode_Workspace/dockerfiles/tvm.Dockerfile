@@ -69,6 +69,6 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN pip install numpy scipy decorator attrs psutil typed_ast \
-    cython six xgboost tornado pytest
+    cython six xgboost tornado pytest synr
 
 WORKDIR /mnt
