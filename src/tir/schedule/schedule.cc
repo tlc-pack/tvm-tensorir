@@ -66,7 +66,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ConcreteSchedule")
         LOG(FATAL) << "TypeError: Expects `IRModule` or `PrimFunc`, but gets: "
                    << obj->GetTypeKey();
       }
-      return Schedule::Concrete(mod, debug_mode, static_cast<ErrorRenderLevel>(error_render_level));
+      return Schedule::Concrete(mod, debug_mode,
+                                static_cast<ScheduleErrorRenderLevel>(error_render_level));
     });
 
 /******** (FFI) Lookup random variables ********/

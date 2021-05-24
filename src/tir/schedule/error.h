@@ -33,16 +33,19 @@ class ScheduleError : public tvm::runtime::Error {
   virtual String primitive() const = 0;
   /*! \brief The IRModule that is applied on */
   virtual IRModule mod() const = 0;
-  /*! \brief The regions of interest that we want to point out */
-  virtual Array<ObjectRef> RegionsOfInterest() const = 0;
+  /*! \brief The locations of interest that we want to point out */
+  virtual Array<ObjectRef> LocationsOfInterest() const = 0;
   /*!
-   * \brief Returns an error string template for rendering, corresponds to the "detail" mode
-   * \sa ErrorRenderLevel
+   * \brief Returns an error string template for rendering, corresponds to the "detail" mode.
+   * \sa ScheduleErrorRenderLevel
+   * \note Format of the template:
+   * "Some normal error string and curly bracket-enclosed numbers like {0}, which indicates the
+   * 0-th element of the interested location."
    */
   virtual String DetailRenderTemplate() const = 0;
   /*!
    * \brief Returns an error string without needing to render, corresponds to the "fast" mode
-   * \sa ErrorRenderLevel
+   * \sa ScheduleErrorRenderLevel
    */
   virtual String FastErrorString() const = 0;
   /*! \brief Render the ScheduleError with the template provided by `DetailRenderTemplate` */

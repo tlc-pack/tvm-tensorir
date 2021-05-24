@@ -25,7 +25,7 @@ namespace tvm {
 namespace tir {
 
 /*! \brief The level of detailed error message rendering */
-enum class ErrorRenderLevel : int32_t {
+enum class ScheduleErrorRenderLevel : int32_t {
   /*! \brief Render the detail of the error message */
   kDetail = 0,
   /*! \brief Render the error in fast mode */
@@ -227,7 +227,7 @@ class Schedule : public runtime::ObjectRef {
    * 2) VerifyCachedFlags
    */
   TVM_DLL static Schedule Concrete(IRModule mod, int debug_mode,
-                                   ErrorRenderLevel error_render_level);
+                                   ScheduleErrorRenderLevel error_render_level);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };
 

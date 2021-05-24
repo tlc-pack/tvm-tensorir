@@ -21,7 +21,8 @@
 namespace tvm {
 namespace tir {
 
-Schedule Schedule::Concrete(IRModule mod, int debug_mode, ErrorRenderLevel error_render_level) {
+Schedule Schedule::Concrete(IRModule mod, int debug_mode,
+                            ScheduleErrorRenderLevel error_render_level) {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
   n->error_render_level_ = error_render_level;
@@ -191,17 +192,17 @@ Schedule ConcreteScheduleNode::Copy() const {
 /*!
  * \brief Macro that pairs with `TVM_TIR_SCHEDULE_BEGIN`, handling potential errors and error
  * message rendering
- * \param level An ErrorRenderLevel enum, level of error rendering
- * \sa ErrorRenderLevel
+ * \param level An ScheduleErrorRenderLevel enum, level of error rendering
+ * \sa ScheduleErrorRenderLevel
  */
 #define TVM_TIR_SCHEDULE_END(level)                               \
   }                                                               \
   catch (const ScheduleError& error) {                            \
-    if ((level) == ErrorRenderLevel::kDetail) {                   \
+    if ((level) == ScheduleErrorRenderLevel::kDetail) {           \
       throw tvm::runtime::Error(error.RenderReport());            \
-    } else if ((level) == ErrorRenderLevel::kFast) {              \
+    } else if ((level) == ScheduleErrorRenderLevel::kFast) {      \
       throw tvm::runtime::Error(error.FastErrorString());         \
-    } else if ((level) == ErrorRenderLevel::kNone) {              \
+    } else if ((level) == ScheduleErrorRenderLevel::kNone) {      \
       throw tvm::runtime::Error("ScheduleError: (not rendered)"); \
     }                                                             \
   }
@@ -222,7 +223,7 @@ BlockRV ConcreteScheduleNode::GetBlock(const String& name, const String& func_na
 
     String primitive() const final { return "get-block"; }
     IRModule mod() const final { return mod_; }
-    Array<ObjectRef> RegionsOfInterest() const final { return {blocks_.begin(), blocks_.end()}; }
+    Array<ObjectRef> LocationsOfInterest() const final { return {blocks_.begin(), blocks_.end()}; }
 
     String DetailRenderTemplate() const final {
       if (blocks_.empty()) {

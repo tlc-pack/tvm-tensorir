@@ -27,13 +27,13 @@ String ScheduleError::RenderReport() const {
   os << "ScheduleError: An error happened in schedule primitive '" << this->primitive()
      << "'.\n\nThe IR is:\n"
      << AsTVMScript(mod);
-  Array<ObjectRef> rois = RegionsOfInterest();
-  int n_rois = rois.size();
+  Array<ObjectRef> locs = LocationsOfInterest();
+  int n_locs = locs.size();
   std::vector<String> roi_names;
-  roi_names.reserve(n_rois);
-  if (n_rois > 0) {
+  roi_names.reserve(n_locs);
+  if (n_locs > 0) {
     os << "Regions of interest:\n";
-    for (const ObjectRef& obj : rois) {
+    for (const ObjectRef& obj : locs) {
       String name = obj->GetTypeKey() + '#' + std::to_string(roi_names.size());
       os << name << "\n" << obj;
       roi_names.emplace_back(std::move(name));
@@ -41,7 +41,7 @@ String ScheduleError::RenderReport() const {
     os << "\n";
   }
   std::string msg = DetailRenderTemplate();
-  for (int i = 0; i < n_rois; ++i) {
+  for (int i = 0; i < n_locs; ++i) {
     std::string src = "{" + std::to_string(i) + "}";
     for (size_t pos; (pos = msg.find(src)) != std::string::npos;) {
       msg.replace(pos, src.length(), roi_names[i]);

@@ -38,7 +38,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   /*! \brief The internal state of scheduling */
   ScheduleState state_;
   /*! \brief The level of error rendering */
-  ErrorRenderLevel error_render_level_;
+  ScheduleErrorRenderLevel error_render_level_;
   /*! \brief A symbol table that maps random variables to concrete StmtSRef/Integers */
   TSymbolTable symbol_table_;
   /*! \brief A persistent stateless arithmetic analyzer. */
