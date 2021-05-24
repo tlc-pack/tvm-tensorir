@@ -12,6 +12,7 @@ from .fixture import numpyDenseFixture
 from .wkl_def import Dense_static, Dense_dynamic
 from .meta_saved_schedules import *
 
+
 def test_tune_static():
     log_file = get_log_filename('meta', 'dense')
     sch = ms.autotune(

@@ -1,13 +1,14 @@
 import tvm
 
+import os
+
 CPUTarget = "llvm"
 CPUContext = tvm.context(CPUTarget, 0)
 CUDATarget = tvm.target.Target(os.getenv('CUDA_TARGET', 'cuda'))
-CUDAContext = tvm.context(CUDATarget, 0)
+CUDAContext = tvm.gpu()
 
 
 import numpy as np
-import os
 import random
 
 rand_seed = 0

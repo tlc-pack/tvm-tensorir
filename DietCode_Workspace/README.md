@@ -19,8 +19,10 @@
   ```
   ```
   # TVM
-  cp ../cmake/config.cmake .
-  cmake ..
+  cmake -DUSE_CUDA=/usr/local/cuda/ \
+        -DUSE_LLVM=/usr/lib/llvm/bin/llvm-config \
+        -DUSE_CUBLAS=1 \
+        -DUSE_CUDNN=1 ..
   make -j 4
   ```
 

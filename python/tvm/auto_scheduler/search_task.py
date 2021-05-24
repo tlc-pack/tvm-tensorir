@@ -426,6 +426,10 @@ class SearchTask(Object):
         self,
         func=None,
         args=None,
+        
+        # <bojian/DietCode>
+        distrib=None,
+
         compute_dag=None,
         workload_key=None,
         target=None,

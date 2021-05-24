@@ -204,14 +204,31 @@ def serialize_args(args):
     if args is None:
         return tuple(ret)
 
-    for t in args:
-        if isinstance(t, Tensor):
-            t = ("TENSOR", get_const_tuple(t.shape), t.dtype)
-        elif isinstance(t, list):
-            t = list_to_tuple(t)
+    # <bojian/DietCode>
+    def unpack_args(arg):
+        for t in arg:
+            if isinstance(t, Tensor):
+                t = ("TENSOR", get_const_tuple(t.shape), t.dtype)
+            elif isinstance(t, list):
+                t = list_to_tuple(t)
 
-        assert isinstance(t, Hashable), str(t) + " is not hashable"
-        ret.append(t)
+            assert isinstance(t, Hashable), str(t) + " is not hashable"
+            ret.append(t)
+
+    if isinstance(args, list):
+        for arg in args:
+            unpack_args(arg)
+    else:
+        unpack_args(args)
+    print("Serialized Arguments: {}".format(tuple(ret)))
+    # for t in args:
+    #     if isinstance(t, Tensor):
+    #         t = ("TENSOR", get_const_tuple(t.shape), t.dtype)
+    #     elif isinstance(t, list):
+    #         t = list_to_tuple(t)
+
+    #     assert isinstance(t, Hashable), str(t) + " is not hashable"
+    #     ret.append(t)
 
     return tuple(ret)
 
