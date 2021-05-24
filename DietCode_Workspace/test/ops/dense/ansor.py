@@ -39,7 +39,7 @@ def test_static_codegen(pytestconfig):
         pass
     else:
         logger.warn("Kernel {} has already been auto-scheduled before".format(kernel_name))
-        return
+        # return
 
     cublas_fixture = cuBLASDenseFixture(B * T, I, H)
     (sched, in_args), pysched = ansor.auto_schedule(func=Dense, args=(B * T, I, H))

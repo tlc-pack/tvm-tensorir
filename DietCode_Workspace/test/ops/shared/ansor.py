@@ -33,6 +33,7 @@ def auto_schedule(func, args, distrib=None):
 
     cost_model = tvm.auto_scheduler.XGBModel(seed=rand_seed)
     search_policy = tvm.auto_scheduler.SketchPolicy(task, cost_model, seed=rand_seed)
+    exit()
     task.tune(tune_option, search_policy)
 
     return task.apply_best(log_filename), task.print_best(log_filename)
