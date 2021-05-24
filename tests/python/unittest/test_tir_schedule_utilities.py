@@ -107,36 +107,9 @@ def test_tir_schedule_remove_rv():
         sch.get(block_rv)
 
 
-def test_tir_schedule_error_detail():
-    sch = tir.Schedule(matmul, debug_mode=True, error_render_level="detail")
-    with pytest.raises(tir.ScheduleError) as excinfo:
-        sch.get_block("wrong_name")
-    (msg,) = excinfo.value.args
-    assert "Cannot find a block with the name: wrong_name" in msg
-
-
-def test_tir_schedule_error_fast():
-    sch = tir.Schedule(matmul, debug_mode=True, error_render_level="fast")
-    with pytest.raises(tir.ScheduleError) as excinfo:
-        sch.get_block("wrong_name")
-    (msg,) = excinfo.value.args
-    assert "Cannot find a block with the specific name" in msg
-
-
-def test_tir_schedule_error_none():
-    sch = tir.Schedule(matmul, debug_mode=True, error_render_level="none")
-    with pytest.raises(tir.ScheduleError) as excinfo:
-        sch.get_block("wrong_name")
-    (msg,) = excinfo.value.args
-    assert "(not rendered)" in msg
-
-
 if __name__ == "__main__":
     test_tir_schedule_creation()
     test_tir_schedule_get_block()
     test_tir_schedule_get_loops()
     test_tir_schedule_copy()
     test_tir_schedule_remove_rv()
-    test_tir_schedule_error_detail()
-    test_tir_schedule_error_fast()
-    test_tir_schedule_error_none()
