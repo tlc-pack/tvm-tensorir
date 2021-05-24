@@ -373,10 +373,12 @@ AccessAnalyzer::AccessAnalyzer(const Array<te::Tensor>& tensors) {
         }
 
         for (const auto& axis : cop->axis) {
-          if (GetIntImm(axis->dom->extent) > 1 && vars.count(axis->var.get()) == 0) {
-            n_missing++;
-            break;
-          }
+
+          // <bojian/DietCode> Comment out the check to support dynamic worklaods
+          // if (GetIntImm(axis->dom->extent) > 1 && vars.count(axis->var.get()) == 0) {
+          //   n_missing++;
+          //   break;
+          // }
         }
 
         if (n_missing >= 2 || (n_missing >= 1 && !cop->reduce_axis.empty())) {
@@ -555,8 +557,16 @@ class FlopEstimator : public ExprFunctor<double(const PrimExpr& n)> {
         if (pop->attrs.count("FLOP")) {
           // Use user-provided FLOP
           auto pint = pop->attrs["FLOP"].as<IntImmNode>();
-          ICHECK(pint != nullptr);
-          ret += pint->value;
+
+          // <bojian/DietCode>
+          // ICHECK(pint != nullptr);
+          if (pint == nullptr) {
+            LOG(WARNING) << "pint=" << pint << " is NOT an integer";
+          } else {
+            ret += pint->value;
+          }
+          
+          // ret += pint->value;
         } else {
           // Estimate by parsing the compute body
           double num_element = AxisLengthProd(pop->axis);

@@ -12,13 +12,13 @@ ansor_ntrials = int(os.getenv('ANSOR_NTRIALS', '20'))
 logger.info("Ansor is doing {} trials".format(ansor_ntrials))
 
 
-def auto_schedule(func, args, distrib=None):
-    task = auto_scheduler.SearchTask(func=func, args=args, distrib=distrib,
+def auto_schedule(func, args, shape_vars=None, shape_freq=None):
+    task = auto_scheduler.SearchTask(func=func, args=args,
+                                     shape_vars=shape_vars,
+                                     shape_freq=shape_freq,
                                      target=CUDATarget)
 
     if isinstance(args, list):
-        if distrib is None:
-            distrib = [1. for _ in args]
         logger.info("DietCode dynamic auto-scheduler")
         exit()
 

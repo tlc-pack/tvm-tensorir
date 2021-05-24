@@ -428,7 +428,8 @@ class SearchTask(Object):
         args=None,
         
         # <bojian/DietCode>
-        distrib=None,
+        shape_vars=None,
+        shape_freq=None,
 
         compute_dag=None,
         workload_key=None,

@@ -64,10 +64,13 @@ def test_static_codegen(pytestconfig):
 
 def test_dynamic_codegen(pytestconfig):
     B = 16
-    T = np.arange(1, 129)
+    T = list(range(1, 129))
     IH = [(768, 2304), (768, 768), (768, 3072), (3072, 768)]
     (sched, in_args), pysched = ansor.auto_schedule(
-            func=Dense, args=utils.cross_product((B * T).tolist(), IH))
+            func=Dense, args=(B * tir.DynamicAxis('T'), tir.DynamicAxis('I'),
+                              tir.DynamicAxis('H')),
+            shape_vars=['T', 'I', 'H'],
+            shape_freq={v : 1.0 for v in utils.cross_product(T, IH)})
 
 
 def test_dynamic_codegen_any(pytestconfig):
@@ -170,4 +173,4 @@ def test_perf(pytestconfig):
             dietcode_results = get_time_evaluator_results(cuda_kernel, module_data_ext)
             tflops_logger.write('DietCode_{}'.format(mode), shape_tuple,
                                 dietcode_results, FLOPs)
-    # for mode in ['JIT', 'AOT']
+    # for mode in ['JIT', ]

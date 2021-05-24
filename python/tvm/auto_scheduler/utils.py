@@ -36,7 +36,8 @@ except ImportError:
     psutil = None
 
 import tvm
-from tvm import rpc
+from tvm import rpc \
+              , tir # <bojian/DietCode>
 from tvm.tir import expr
 from tvm.tir.transform import Simplify
 from tvm.ir.transform import Sequential
@@ -200,41 +201,46 @@ def serialize_args(args):
     Serialize arguments of a function to a hashable and jsonable tuple.
     Currently this is mainly used for tvm.tensor.Tensor
     """
+    ret = []
     if args is None:
-        return tuple([])
+        return tuple(ret)
 
     # <bojian/DietCode>
-    def unpack_args(arg):
-        ret = []
-        for t in arg:
-            if isinstance(t, Tensor):
-                t = ("TENSOR", get_const_tuple(t.shape), t.dtype)
-            elif isinstance(t, list):
-                t = list_to_tuple(t)
+    # def unpack_args(arg):
+    #     ret = []
+    #     for t in arg:
+    #         if isinstance(t, Tensor):
+    #             t = ("TENSOR", get_const_tuple(t.shape), t.dtype)
+    #         elif isinstance(t, list):
+    #             t = list_to_tuple(t)
 
-            assert isinstance(t, Hashable), str(t) + " is not hashable"
-            ret.append(t)
-        return tuple(ret)
+    #         assert isinstance(t, Hashable), str(t) + " is not hashable"
+    #         ret.append(t)
+    #     return tuple(ret)
 
-    if isinstance(args, list):
-        ret = []
-        for arg in args:
-            ret.append(unpack_args(arg))
-        print("Serialized Arguments: {}".format(tuple(ret)))
-        return tuple(ret)
-    else:
-        return unpack_args(args)
-    # print("Serialized Arguments: {}".format(tuple(ret)))
-    # for t in args:
-    #     if isinstance(t, Tensor):
-    #         t = ("TENSOR", get_const_tuple(t.shape), t.dtype)
-    #     elif isinstance(t, list):
-    #         t = list_to_tuple(t)
+    # if isinstance(args, list):
+    #     ret = []
+    #     for arg in args:
+    #         ret.append(unpack_args(arg))
+    #     # print("Serialized Arguments: {}".format(tuple(ret)))
+    #     return tuple(ret)
+    # else:
+    #     return unpack_args(args)
 
-    #     assert isinstance(t, Hashable), str(t) + " is not hashable"
-    #     ret.append(t)
+    for t in args:
+        if isinstance(t, Tensor):
+            t = ("TENSOR", get_const_tuple(t.shape), t.dtype)
+        elif isinstance(t, list):
+            t = list_to_tuple(t)
 
-    # return tuple(ret)
+        # <bojian/DietCode>
+        # elif isinstance(t, tir.DynamicAxis):
+        #     t = str(t.name)
+
+        assert isinstance(t, Hashable), str(t) + " is not hashable"
+        ret.append(t)
+
+    return tuple(ret)
 
 
 def deserialize_args(args):
@@ -243,6 +249,11 @@ def deserialize_args(args):
     for t in args:
         if isinstance(t, (tuple, list)) and t[0] == "TENSOR":
             ret.append(placeholder(shape=t[1], dtype=t[2]))
+
+        # <bojian/DietCode>
+        # elif isinstance(t, str):
+        #     ret.append(tir.DynamicAxis(t))
+
         else:
             ret.append(t)
     return ret
