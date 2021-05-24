@@ -6,7 +6,7 @@ import numpy as np
 import os
 logger = logging.getLogger(__name__)
 
-from ..shared import ansor, utils, get_time_evaluator_results, CUDATarget
+from ..shared import ansor, utils, get_time_evaluator_results, CUDATarget, CUDAContext
 from ..shared.logger import TemplateLogger, TFLOPSLogger
 
 from .wkl_def import Dense
@@ -56,8 +56,10 @@ def test_static_codegen(pytestconfig):
     template_logger.write_template(kernel_name, 'X, W, T_dense, s', pysched)
     # performance comparison
     cublas_avg = np.average(
-            get_time_evaluator_results(cublas_fixture.cublas_kernel, module_data))
-    ansor_avg = np.average(get_time_evaluator_results(cuda_kernel, module_data))
+            get_time_evaluator_results(cublas_fixture.cublas_kernel, module_data,
+                                       CUDAContext))
+    ansor_avg = np.average(get_time_evaluator_results(cuda_kernel, module_data,
+                                                      CUDAContext))
     logger.info("Runtime Measurements: {} TFLOPS vs. cuBLAS {} TFLOPS"
                 .format(FLOPs * 1e-12 / ansor_avg, FLOPs * 1e-12 / cublas_avg))
 
@@ -121,14 +123,15 @@ def test_perf(pytestconfig):
             template_not_defined = True
 
         cublas_results = \
-                get_time_evaluator_results(cublas_fixture.cublas_kernel, module_data)
+                get_time_evaluator_results(cublas_fixture.cublas_kernel, module_data, CUDAContext)
         tflops_logger.write('cuBLAS', shape_tuple, cublas_results, FLOPs)
         cutlass_results = \
                 get_time_evaluator_results(cutlass_fixture.cutlass_kernel,
-                                           module_data)
+                                           module_data, CUDAContext)
         tflops_logger.write('CUTLASS', shape_tuple, cutlass_results, FLOPs)
         if not template_not_defined:
-            ansor_baseline_results = get_time_evaluator_results(cuda_kernel, module_data)
+            ansor_baseline_results = get_time_evaluator_results(cuda_kernel, module_data,
+                                                                CUDAContext)
             tflops_logger.write('Ansor', shape_tuple, ansor_baseline_results, FLOPs)
         else:
             tflops_logger.write('Ansor', shape_tuple, None, FLOPs)
@@ -170,7 +173,8 @@ def test_perf(pytestconfig):
                                    rtol=1e-3)
 
         if not enable_nvprof:
-            dietcode_results = get_time_evaluator_results(cuda_kernel, module_data_ext)
+            dietcode_results = get_time_evaluator_results(cuda_kernel, module_data_ext,
+                                                          CUDAContext)
             tflops_logger.write('DietCode_{}'.format(mode), shape_tuple,
                                 dietcode_results, FLOPs)
     # for mode in ['JIT', ]
