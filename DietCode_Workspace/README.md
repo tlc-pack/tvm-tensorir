@@ -7,7 +7,7 @@
 - G4 Workstation
 
   ```Bash
-  ssh -i "DietCode.pem" ubuntu@ec2-18-221-180-252.us-east-2.compute.amazonaws.com
+  ssh -i G4Workstation.pem ubuntu@ec2-52-15-50-55.us-east-2.compute.amazonaws.com 
   ```
 
 - Build Options:
