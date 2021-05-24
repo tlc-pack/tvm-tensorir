@@ -39,7 +39,7 @@ def test_static_codegen(pytestconfig):
         pass
     else:
         logger.warn("Kernel {} has already been auto-scheduled before".format(kernel_name))
-        # return
+        return
 
     cublas_fixture = cuBLASDenseFixture(B * T, I, H)
     (sched, in_args), pysched = ansor.auto_schedule(func=Dense, args=(B * T, I, H))
@@ -67,7 +67,7 @@ def test_dynamic_codegen(pytestconfig):
     T = np.arange(1, 129)
     IH = [(768, 2304), (768, 768), (768, 3072), (3072, 768)]
     (sched, in_args), pysched = ansor.auto_schedule(
-            func=Dense, args=utils.cross_product(list(B * T), IH))
+            func=Dense, args=utils.cross_product((B * T).tolist(), IH))
 
 
 def test_dynamic_codegen_any(pytestconfig):

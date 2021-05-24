@@ -200,12 +200,12 @@ def serialize_args(args):
     Serialize arguments of a function to a hashable and jsonable tuple.
     Currently this is mainly used for tvm.tensor.Tensor
     """
-    ret = []
     if args is None:
-        return tuple(ret)
+        return tuple([])
 
     # <bojian/DietCode>
     def unpack_args(arg):
+        ret = []
         for t in arg:
             if isinstance(t, Tensor):
                 t = ("TENSOR", get_const_tuple(t.shape), t.dtype)
@@ -214,13 +214,17 @@ def serialize_args(args):
 
             assert isinstance(t, Hashable), str(t) + " is not hashable"
             ret.append(t)
+        return tuple(ret)
 
     if isinstance(args, list):
+        ret = []
         for arg in args:
-            unpack_args(arg)
+            ret.append(unpack_args(arg))
+        print("Serialized Arguments: {}".format(tuple(ret)))
+        return tuple(ret)
     else:
-        unpack_args(args)
-    print("Serialized Arguments: {}".format(tuple(ret)))
+        return unpack_args(args)
+    # print("Serialized Arguments: {}".format(tuple(ret)))
     # for t in args:
     #     if isinstance(t, Tensor):
     #         t = ("TENSOR", get_const_tuple(t.shape), t.dtype)
@@ -230,7 +234,7 @@ def serialize_args(args):
     #     assert isinstance(t, Hashable), str(t) + " is not hashable"
     #     ret.append(t)
 
-    return tuple(ret)
+    # return tuple(ret)
 
 
 def deserialize_args(args):

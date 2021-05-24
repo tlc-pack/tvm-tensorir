@@ -157,7 +157,6 @@ def make_workload_key(func, args):
         )
 
     args = serialize_args(args)
-
     return json.dumps((func_name,) + args)
 
 

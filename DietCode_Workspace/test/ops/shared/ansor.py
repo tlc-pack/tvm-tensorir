@@ -24,7 +24,7 @@ def auto_schedule(func, args, distrib=None):
 
     measure_ctx = auto_scheduler.LocalRPCMeasureContext(repeat=3, min_repeat_ms=100, timeout=10)
     
-    log_filename = get_log_filename('ansor', func.str().lower())
+    log_filename = get_log_filename('ansor', func.__name__.lower())
     
     tune_option = auto_scheduler.TuningOptions(
             num_measure_trials=ansor_ntrials,
@@ -33,7 +33,6 @@ def auto_schedule(func, args, distrib=None):
 
     cost_model = tvm.auto_scheduler.XGBModel(seed=rand_seed)
     search_policy = tvm.auto_scheduler.SketchPolicy(task, cost_model, seed=rand_seed)
-    exit()
     task.tune(tune_option, search_policy)
 
     return task.apply_best(log_filename), task.print_best(log_filename)
