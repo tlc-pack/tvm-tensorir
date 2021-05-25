@@ -375,10 +375,10 @@ AccessAnalyzer::AccessAnalyzer(const Array<te::Tensor>& tensors) {
         for (const auto& axis : cop->axis) {
 
           // <bojian/DietCode> Comment out the check to support dynamic worklaods
-          // if (GetIntImm(axis->dom->extent) > 1 && vars.count(axis->var.get()) == 0) {
-          //   n_missing++;
-          //   break;
-          // }
+          if (GetIntImm(axis->dom->extent) > 1 && vars.count(axis->var.get()) == 0) {
+            n_missing++;
+            break;
+          }
         }
 
         if (n_missing >= 2 || (n_missing >= 1 && !cop->reduce_axis.empty())) {

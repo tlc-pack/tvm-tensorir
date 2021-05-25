@@ -49,7 +49,7 @@ def test_static_sched(pytestconfig):
     # correctness checking
     np.testing.assert_allclose(module_data[-1].asnumpy(),
                                cublas_fixture.Y_np_expected,
-                               rtol=1e-3)
+                               rtol=1e-3, atol=1e-3)
     # schedule logging
     logger.info("{}".format(tvm.lower(sched, in_args, simple_mode=True)))
     logger.info("{}".format(cuda_kernel.imported_modules[0].get_source()))
@@ -170,7 +170,7 @@ def test_perf(pytestconfig):
         cuda_kernel(*module_data_ext)
         np.testing.assert_allclose(module_data_ext[-1].asnumpy(),
                                    cublas_fixture.Y_np_expected,
-                                   rtol=1e-3)
+                                   rtol=1e-3, atol=1e-3)
 
         if not enable_nvprof:
             dietcode_results = get_time_evaluator_results(cuda_kernel, module_data_ext,
