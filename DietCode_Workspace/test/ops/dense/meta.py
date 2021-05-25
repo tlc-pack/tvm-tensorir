@@ -53,7 +53,7 @@ def test_sched_dynamic_experimental():
     task = ms.SearchTask(workload=Dense_dynamic_BTIH,
                          log_file=get_log_filename('meta', 'dense'),
                          shape_vars=('B', 'T', 'I', 'H'),
-                         shape_freq={(16, 64, ) : 1.0})
+                         shape_freq={(16, 64, 768, 2304) : 1.0})
 
 
 def test_tune_dynamic():
@@ -62,11 +62,7 @@ def test_tune_dynamic():
     task = ms.SearchTask(workload=Dense_dynamic,
                          log_file=get_log_filename('meta', 'dense'),
                          shape_vars=('M', 'N'),
-                         shape_variants=[
-                             (1024, 768),
-                         ],
-                         shape_freq=(1.0, ),
-                         )
+                         shape_freq={(1024, 768) : 1.0})
     logger.info(task)
     sch = ms.autotune(
             task=task, space=meta.cpu_space(),

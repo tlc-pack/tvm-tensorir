@@ -11,6 +11,6 @@ services:
             - PYTHONPATH=/mnt/tvm/python/build/lib.linux-x86_64-3.8/
             - LD_LIBRARY_PATH=/mnt/tvm/build
         volumes:
-            - ..:/mnt
+            - ../..:/mnt
         working_dir: /mnt
         privileged: true
