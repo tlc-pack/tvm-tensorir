@@ -18,7 +18,7 @@ def dense_kernel_name(B, T, I, H):
     return 'dense_{}x{}x{}x{}'.format(B, T, I, H)
 
 
-def test_static_sched(pytestconfig):
+def test_sched_static(pytestconfig):
     """
     Kernel Template Generator
     """
@@ -64,7 +64,7 @@ def test_static_sched(pytestconfig):
                 .format(FLOPs * 1e-12 / ansor_avg, FLOPs * 1e-12 / cublas_avg))
 
 
-def test_dynamic_sched(pytestconfig):
+def test_sched_dynamic(pytestconfig):
     B = 16
     T = list(range(1, 129))
     IH = [(768, 2304), (768, 768), (768, 3072), (3072, 768)]
@@ -75,7 +75,7 @@ def test_dynamic_sched(pytestconfig):
             shape_freq={v : 1.0 for v in utils.cross_product(T, IH)})
 
 
-def test_dynamic_sched_any(pytestconfig):
+def test_sched_dynamic_any(pytestconfig):
     B = 16
     T = tir.Any()
     IH = [(768, 2304), (768, 768), (768, 3072), (3072, 768)]

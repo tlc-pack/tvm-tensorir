@@ -1,5 +1,5 @@
 import tvm
-from tvm import meta_schedule as ms
+from tvm import meta_schedule as ms, auto_scheduler
 
 
 def cpu_space():
@@ -67,14 +67,9 @@ def cuda_space():
 
 
 def measurer():
+    measure_ctx = \
+            auto_scheduler.LocalRPCMeasureContext(repeat=3, min_repeat_ms=100, timeout=10)
     return ms.ProgramMeasurer(
-            builder=ms.LocalBuilder(),
-            runner =ms.RPCRunner(
-                key="local",
-                host="0.0.0.0",
-                port=9190,
-            ),
-            measure_callbacks=[
-                ms.RecordToFile(),
-            ],
+            builder=ms.LocalBuilder(), runner=measure_ctx.runner,
+            measure_callbacks=[ms.RecordToFile()],
             )

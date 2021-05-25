@@ -561,6 +561,7 @@ class LocalRPCMeasureContext:
             silent=True,
             tracker_addr=("127.0.0.1", self.tracker.port),
         )
+        print("!!!!!!!!!! TRACKER PORT: {}".format(self.tracker.port))
         self.runner = RPCRunner(
             device_key,
             "127.0.0.1",
