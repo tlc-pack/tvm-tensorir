@@ -285,7 +285,7 @@ def realize_arguments(
     binds=None,
 ) -> List[NDArray]:
     """
-    Ctir.expr.heck the availability of a remote device.
+    Check the availability of a remote device.
 
     Parameters
     ----------
