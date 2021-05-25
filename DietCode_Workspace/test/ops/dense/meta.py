@@ -49,8 +49,6 @@ def test_sched_dynamic():
 
 
 def test_tune_dynamic():
-    os.environ["TVM_TRACKER_KEY"] = "local"
-
     task = ms.SearchTask(workload=Dense_dynamic,
                          log_file=get_log_filename('meta', 'dense'),
                          shape_vars=('M', 'N'),
@@ -69,8 +67,6 @@ def test_tune_dynamic():
 
 
 def test_tune_dynamic_experimental():
-    os.environ["TVM_TRACKER_KEY"] = "local"
-
     task = ms.SearchTask(workload=Dense_dynamic_BTIH,
                          log_file=get_log_filename('meta', 'dense'),
                          shape_vars=('B', 'T', 'I', 'H'),
