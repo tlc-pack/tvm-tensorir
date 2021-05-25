@@ -194,6 +194,9 @@ def workload_key_to_tensors(workload_key):
     # <bojian/DietCode>
     # workload = json.loads(workload_key)
     workload = tvm.ir.load_json(workload_key)
+    print(workload)
+    print(workload[0])
+    # assert False
 
 
     name = workload[0]

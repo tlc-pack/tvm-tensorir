@@ -48,17 +48,6 @@ def test_sched_dynamic():
     logger.info(tvm.script.asscript(sch.mod))
 
 
-def test_sched_dynamic_experimental():
-    task = ms.SearchTask(workload=Dense_dynamic_BTIH,
-                         log_file=get_log_filename('meta', 'dense'),
-                         shape_vars=('B', 'T', 'I', 'H'),
-                         shape_freq={(16, 64, 768, 2304) : 1.0})
-    logger.info(task)
-    sch = ms.autotune(task=task, space=meta.cuda_space(),
-                      strategy=ms.Stratefy.Replay(num_trials=auto_sched_ntrials),
-                      measurer=meta.measurer())
-
-
 def test_tune_dynamic():
     os.environ["TVM_TRACKER_KEY"] = "local"
 
@@ -77,6 +66,19 @@ def test_tune_dynamic():
         logger.info(tvm.script.asscript(sch.mod))
         logger.info("Schedule:")
         logger.info("\n".join(sch.trace.as_python()))
+
+
+def test_tune_dynamic_experimental():
+    os.environ["TVM_TRACKER_KEY"] = "local"
+
+    task = ms.SearchTask(workload=Dense_dynamic_BTIH,
+                         log_file=get_log_filename('meta', 'dense'),
+                         shape_vars=('B', 'T', 'I', 'H'),
+                         shape_freq={(16, 64, 768, 2304) : 1.0})
+    logger.info(task)
+    sch = ms.autotune(task=task, space=meta.cuda_space(),
+                      strategy=ms.strategy.Replay(num_trials=auto_sched_ntrials),
+                      measurer=meta.measurer())
 
 
 def build_and_test(mod, M, N):

@@ -18,7 +18,7 @@ def dense_kernel_name(B, T, I, H):
     return 'dense_{}x{}x{}x{}'.format(B, T, I, H)
 
 
-def test_static_codegen(pytestconfig):
+def test_static_sched(pytestconfig):
     """
     Kernel Template Generator
     """
@@ -39,7 +39,7 @@ def test_static_codegen(pytestconfig):
         pass
     else:
         logger.warn("Kernel {} has already been auto-scheduled before".format(kernel_name))
-        return
+        # return
 
     cublas_fixture = cuBLASDenseFixture(B * T, I, H)
     (sched, in_args), pysched = ansor.auto_schedule(func=Dense, args=(B * T, I, H))
@@ -64,7 +64,7 @@ def test_static_codegen(pytestconfig):
                 .format(FLOPs * 1e-12 / ansor_avg, FLOPs * 1e-12 / cublas_avg))
 
 
-def test_dynamic_codegen(pytestconfig):
+def test_dynamic_sched(pytestconfig):
     B = 16
     T = list(range(1, 129))
     IH = [(768, 2304), (768, 768), (768, 3072), (3072, 768)]
@@ -75,7 +75,7 @@ def test_dynamic_codegen(pytestconfig):
             shape_freq={v : 1.0 for v in utils.cross_product(T, IH)})
 
 
-def test_dynamic_codegen_any(pytestconfig):
+def test_dynamic_sched_any(pytestconfig):
     B = 16
     T = tir.Any()
     IH = [(768, 2304), (768, 768), (768, 3072), (3072, 768)]

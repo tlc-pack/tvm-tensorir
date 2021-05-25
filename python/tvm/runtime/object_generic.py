@@ -69,8 +69,11 @@ def convert_to_object(value, span=None):
         vlist = []
         for item in value.items():
             if not isinstance(item[0], ObjectTypes) and not isinstance(item[0], string_types):
-                raise ValueError("key of map must already been a container type")
-            vlist.append(item[0])
+                # <bojian/DietCode>
+                # raise ValueError("key of map must already been a container type")
+                pass
+            # vlist.append(item[0])
+            vlist.append(convert_to_object(item[0]))
             vlist.append(convert_to_object(item[1]))
         return _ffi_api.Map(*vlist)
     if isinstance(value, ObjectGeneric):
