@@ -581,7 +581,11 @@ class SearchTask(Object):
     def __setstate__(self, state):
         # Register the workload if needed
         try:
-            workload = json.loads(state["workload_key"])
+            
+            # <bojian/DietCode>
+            # workload = json.loads(state["workload_key"])
+            workload = tvm.ir.load_json(state["workload_key"])
+
         except Exception:  # pylint: disable=broad-except
             raise RuntimeError("Invalid workload key %s" % state["workload_key"])
 

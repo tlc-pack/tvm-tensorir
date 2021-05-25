@@ -236,7 +236,10 @@ class ComputeDAG(Object):
         io_shapes = []
         for tensor in self.tensors:
             io_shapes += get_const_tuple(tensor.shape)
-        return json.dumps([hash_key] + io_shapes)
+
+        # <bojian/DietCode>
+        # return json.dumps([hash_key] + io_shapes)
+        return SaveJSON([hash_key] + io_shapes)
 
     def __str__(self):
         # pretty print

@@ -72,7 +72,11 @@ def decode_workload_key(workload_key):
         return ret
 
     try:
-        key_list = json.loads(workload_key)
+
+        # <bojian/DietCode>
+        # key_list = json.loads(workload_key)
+        key_list = tvm.ir.load_json(workload_key)
+
         if isinstance(key_list, list) and len(key_list) >= 1:
             return key_list[0], tuple(flatten_list(key_list[1:]))
     except json.decoder.JSONDecodeError:
