@@ -295,6 +295,10 @@ Array<State> SketchPolicyNode::SearchOneRound(int num_random_states, Array<State
     sketch_cache_ = GenerateSketches();
   }
 
+  if (this->search_task->shape_vars != nullptr) {
+    LOG(FATAL) << "DietCode dynamic auto-scheduling workflow stops here";
+  }
+
   // 2. Sample the init population
   Array<State> init_population = SampleInitPopulation(sketch_cache_);
 

@@ -138,9 +138,13 @@ HardwareParams HardwareParamsNode::GetDefaultHardwareParams(const Target& target
 
 SearchTask::SearchTask(ComputeDAG compute_dag, String workload_key, Target target,
                        Target target_host, Optional<HardwareParams> hardware_params,
-                       LayoutRewriteOption layout_rewrite_option, Array<String> task_input_names,
-                       String desc) {
-  CheckAndUpdateHostConsistency(&target, &target_host);
+                       LayoutRewriteOption layout_rewrite_option, Array<String> task_input_names
+                       
+                       // <bojian/DietCode>
+                     , Optional<Array<String>> shape_vars
+                     , Optional<Map<Array<IntImm>, FloatImm>> shape_freq
+                       
+                       ) {
   auto node = make_object<SearchTaskNode>();
   node->compute_dag = std::move(compute_dag);
   node->workload_key = std::move(workload_key);
@@ -155,6 +159,11 @@ SearchTask::SearchTask(ComputeDAG compute_dag, String workload_key, Target targe
   }
   node->layout_rewrite_option = layout_rewrite_option;
   node->task_input_names = std::move(task_input_names);
+
+  // <bojian/DietCode>
+  node->shape_vars = std::move(shape_vars);
+  node->shape_freq = std::move(shape_freq);
+
   data_ = std::move(node);
 }
 
@@ -175,10 +184,20 @@ TVM_REGISTER_GLOBAL("auto_scheduler.GetDefaultHardwareParams")
 TVM_REGISTER_GLOBAL("auto_scheduler.SearchTask")
     .set_body_typed([](ComputeDAG compute_dag, String workload_key, Target target,
                        Target target_host, Optional<HardwareParams> hardware_params,
-                       int layout_rewrite_option, Array<String> task_input_names, String desc) {
-      CheckAndUpdateHostConsistency(&target, &target_host);
+                       int layout_rewrite_option, Array<String> task_input_names
+                     
+                       // <bojian/DietCode>
+                     , Optional<Array<String>> shape_vars
+                     , Optional<Map<Array<IntImm>, FloatImm>> shape_freq
+                       
+                       ) {
       return SearchTask(compute_dag, workload_key, target, target_host, hardware_params,
-                        LayoutRewriteOption(layout_rewrite_option), task_input_names, desc);
+                        LayoutRewriteOption(layout_rewrite_option), task_input_names
+                        
+                        // <bojian/DietCode>
+                      , shape_vars, shape_freq 
+                        
+                        );
     });
 
 }  // namespace auto_scheduler

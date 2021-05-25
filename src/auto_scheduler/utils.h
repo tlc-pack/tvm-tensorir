@@ -151,8 +151,15 @@ inline bool IntArrayEqual(const Array<PrimExpr>& arr1, const Array<PrimExpr>& ar
   for (size_t i = 0; i < arr1.size(); ++i) {
     auto int1 = arr1[i].as<IntImmNode>();
     auto int2 = arr2[i].as<IntImmNode>();
-    ICHECK(int1 != nullptr);
-    ICHECK(int2 != nullptr);
+
+    // <bojian/DietCode>
+    // ICHECK(int1 != nullptr);
+    // ICHECK(int2 != nullptr);
+    if (int1 == nullptr || int2 == nullptr) {
+      return false;
+    }
+
+
     if (int1->value != int2->value) {
       return false;
     }

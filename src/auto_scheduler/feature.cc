@@ -1397,12 +1397,15 @@ void GetPerStoreFeaturesFromFile(const std::string& filename, int max_lines, int
     if (find_res == task_cache.end()) {
       // rebuild task
       Array<te::Tensor> tensors = (*workload_key_to_tensors)(workload_key);
-      Target target = cur_inp->task->target;
-      Target target_host = cur_inp->task->target_host;
-      CheckAndUpdateHostConsistency(&target, &target_host);
-      task = SearchTask(ComputeDAG(tensors), workload_key, target, target_host,
-                        cur_inp->task->hardware_params, cur_inp->task->layout_rewrite_option,
-                        cur_inp->task->task_input_names);
+      task = SearchTask(ComputeDAG(tensors), workload_key, cur_inp->task->target,
+                        cur_inp->task->target_host, cur_inp->task->hardware_params,
+                        cur_inp->task->layout_rewrite_option, cur_inp->task->task_input_names
+                        
+                        // <bojian/DietCode>
+                      , cur_inp->task->shape_vars
+                      , cur_inp->task->shape_freq
+                        
+                        );
       task_id = task_cache.size();
 
       // compute min cost for each task
@@ -1473,9 +1476,15 @@ void GetPerStoreFeaturesFromMeasurePairs(const Array<MeasureInput>& inputs,
           Target target_host = inputs[i]->task->target_host;
           CheckAndUpdateHostConsistency(&target, &target_host);
           task =
-              SearchTask(ComputeDAG(tensors), workload_key, target, target_host,
-                         inputs[i]->task->hardware_params, inputs[i]->task->layout_rewrite_option,
-                         inputs[i]->task->task_input_names);
+              SearchTask(ComputeDAG(tensors), workload_key, inputs[i]->task->target,
+                         inputs[i]->task->target_host, inputs[i]->task->hardware_params,
+                         inputs[i]->task->layout_rewrite_option, inputs[i]->task->task_input_names
+                         
+                         // <bojian/DietCode>
+                       , inputs[i]->task->shape_vars
+                       , inputs[i]->task->shape_freq
+                         
+                         );
         } catch (std::exception& e) {
           // Cannot build ComputeDAG from workload key, the task may have not been registered in
           // this search round

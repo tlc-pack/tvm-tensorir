@@ -483,7 +483,10 @@ class SearchTask(Object):
             hardware_params,
             layout_rewrite_option,
             task_input_names,
-            desc,
+
+            # <bojian/DietCode>
+            shape_vars,
+            shape_freq
         )
 
     def tune(self, tuning_options, search_policy=None):

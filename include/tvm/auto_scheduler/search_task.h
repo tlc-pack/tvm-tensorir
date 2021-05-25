@@ -126,6 +126,11 @@ class SearchTaskNode : public Object {
   /*! \brief Names of some user defined input data used in program measuring. */
   Array<String> task_input_names;
 
+  // <bojian/DietCode> Add shape variables and frequency.
+  Optional<Array<String>> shape_vars;
+  Optional<Map<Array<IntImm>, FloatImm>> shape_freq;
+
+
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("compute_dag", &compute_dag);
     v->Visit("workload_key", &workload_key);
@@ -135,6 +140,10 @@ class SearchTaskNode : public Object {
     v->Visit("hardware_params", &hardware_params);
     v->Visit("layout_rewrite_option", &layout_rewrite_option);
     v->Visit("task_input_names", &task_input_names);
+
+    // <bojian/DietCode>
+    v->Visit("shape_vars", &shape_vars);
+    v->Visit("shape_freq", &shape_freq);
   }
 
   static constexpr const char* _type_key = "auto_scheduler.SearchTask";
@@ -160,7 +169,13 @@ class SearchTask : public ObjectRef {
    */
   SearchTask(ComputeDAG compute_dag, String workload_key, Target target, Target target_host,
              Optional<HardwareParams> hardware_params, LayoutRewriteOption layout_rewrite_option,
-             Array<String> task_input_names, String desc = "");
+             Array<String> task_input_names
+             
+             // <bojian/DietCode>
+           , Optional<Array<String>> shape_vars
+           , Optional<Map<Array<IntImm>, FloatImm>> shape_freq
+           
+             );
 
   TVM_DEFINE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
 };
