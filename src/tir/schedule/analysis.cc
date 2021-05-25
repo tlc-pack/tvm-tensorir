@@ -311,10 +311,6 @@ class BlockInfoVerifier : public StmtVisitor {
       }
     }
     bool affine_binding = ValidateBlockBinding(GetRef<BlockRealize>(realize), loop_var_ranges);
-    ICHECK_EQ(affine_binding, self_->IsAffineBlockBinding(block_sref))
-        << "Block: " << realize->block->name_hint << "\n"
-        << Repr(self_->mod) << "\n"
-        << loop_var_ranges;
   }
 
   void VisitStmt_(const BlockRealizeNode* realize) override {
