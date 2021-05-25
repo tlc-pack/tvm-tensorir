@@ -85,6 +85,31 @@ Replay::Replay(int batch_size, int num_trials) {
 
 /********** Search **********/
 
+// flops calculation
+
+Array<MeasureInput> SampleVariants(Array<MeasureInput> inputs) {
+  Array<MeasureInput> ret;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    MeasureInput inp = inputs[i];
+    if (inp->task->shape_vars.defined()) {
+
+      // Array<Array<IntImm>> variants = inp->task->shape_variants.value();
+      Array<Array<IntImm>> variants;
+      for (const auto& variant_w_freq : inp->task->shape_freq.value()) {
+        variants.push_back(variant_w_freq.first);
+      }     
+      
+      for (size_t j = 0; j < variants.size(); ++j) {
+        // Array<IntImm> variant = Downcast<Array<IntImm>>(variants[j]);
+        ret.push_back(MeasureInput(inp->task, inp->sch, variants[j]));
+      }
+    } else {
+      ret.push_back(MeasureInput(inp->task, inp->sch));
+    }
+  }
+  return ret;
+}
+
 Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
                                       const ProgramMeasurer& measurer, Sampler* sampler,
                                       int verbose) {

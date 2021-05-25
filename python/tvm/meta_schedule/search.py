@@ -59,7 +59,7 @@ class SearchTask(Object):
         log_file: Optional[str] = None,
         
         shape_vars = None,
-        shape_variants = None,
+        # shape_variants = None,
         shape_freq = None,
     ):
         if task_name is None:
@@ -78,6 +78,9 @@ class SearchTask(Object):
             target,
             target_host,
             log_file,
+            shape_vars,
+            # shape_variants,
+            shape_freq
         )
 
 
