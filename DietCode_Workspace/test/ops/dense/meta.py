@@ -6,8 +6,8 @@ import numpy as np
 import os
 logger = logging.getLogger(__name__)
 
-from ..shared import get_time_evaluator_results, meta, utils, get_log_filename, \
-                     CPUContext, CPUTarget
+from ..shared import get_time_evaluator_results, meta, get_log_filename, \
+                     CPUContext, CPUTarget, auto_sched_ntrials
 from .fixture import numpyDenseFixture
 from .wkl_def import Dense_static, Dense_dynamic, Dense_dynamic_BTIH
 from .meta_saved_schedules import *
@@ -15,11 +15,10 @@ from .meta_saved_schedules import *
 
 def test_tune_static():
     log_file = get_log_filename('meta', 'dense')
-    sch = ms.autotune(
-            task=ms.SearchTask(workload=Dense_static, log_file=log_file),
-            space=meta.cpu_space(),
-            strategy=ms.strategy.Replay(num_trials=200),
-            measurer=meta.measurer())
+    sch = ms.autotune(task=ms.SearchTask(workload=Dense_static, log_file=log_file),
+                      space=meta.cpu_space(),
+                      strategy=ms.strategy.Replay(num_trials=200),
+                      measurer=meta.measurer())
     if sch is None:
         logger.info("No valid schedule found")
     else:
@@ -54,6 +53,10 @@ def test_sched_dynamic_experimental():
                          log_file=get_log_filename('meta', 'dense'),
                          shape_vars=('B', 'T', 'I', 'H'),
                          shape_freq={(16, 64, 768, 2304) : 1.0})
+    logger.info(task)
+    sch = ms.autotune(task=task, space=meta.cuda_space(),
+                      strategy=ms.Stratefy.Replay(num_trials=auto_sched_ntrials),
+                      measurer=meta.measurer())
 
 
 def test_tune_dynamic():
@@ -64,11 +67,10 @@ def test_tune_dynamic():
                          shape_vars=('M', 'N'),
                          shape_freq={(1024, 768) : 1.0})
     logger.info(task)
-    sch = ms.autotune(
-            task=task, space=meta.cpu_space(),
-            strategy=ms.strategy.Replay(num_trials=300),
-            measurer=meta.measurer()
-            )
+    sch = ms.autotune(task=task, space=meta.cpu_space(),
+                      strategy=ms.strategy.Replay(num_trials=300),
+                      measurer=meta.measurer()
+                      )
     if sch is None:
         logger.info("No valid schedule found")
     else:

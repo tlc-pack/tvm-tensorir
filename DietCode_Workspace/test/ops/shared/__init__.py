@@ -7,13 +7,18 @@ CPUContext = tvm.context(CPUTarget, 0)
 CUDATarget = tvm.target.Target(os.getenv('CUDA_TARGET', 'cuda'))
 CUDAContext = tvm.gpu()
 
-
+import logging
 import numpy as np
 import random
+
+logger = logging.getLogger(__name__)
 
 rand_seed = 0
 random.seed(rand_seed)
 np.random.seed(rand_seed)
+
+auto_sched_ntrials = int(os.getenv('AUTO_SCHED_NTRIALS', '20'))
+logger.info("Auto-scheduler is doing {} trials".format(auto_sched_ntrials))
 
 
 def get_time_evaluator_results(kernel, module_data, ctx, number=100, repeat=10,

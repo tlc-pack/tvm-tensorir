@@ -6,10 +6,7 @@ import os
 
 logger = logging.getLogger(__name__)
 
-from . import rand_seed, CUDATarget, get_log_filename
-
-ansor_ntrials = int(os.getenv('ANSOR_NTRIALS', '20'))
-logger.info("Ansor is doing {} trials".format(ansor_ntrials))
+from . import rand_seed, CUDATarget, get_log_filename, auto_sched_ntrials
 
 
 def auto_schedule(func, args, shape_vars=None, shape_freq=None):
@@ -27,7 +24,7 @@ def auto_schedule(func, args, shape_vars=None, shape_freq=None):
     log_filename = get_log_filename('ansor', func.__name__.lower())
     
     tune_option = auto_scheduler.TuningOptions(
-            num_measure_trials=ansor_ntrials,
+            num_measure_trials=auto_sched_ntrials,
             runner=measure_ctx.runner,
             measure_callbacks=[auto_scheduler.RecordToFile(log_filename)])
 
