@@ -153,7 +153,12 @@ std::vector<std::pair<State, int>> RuleMultiLevelTilingWithFusion::Apply(
 
   std::vector<int> spatial_split_step_ids;
   State base_state =
-      DoMultiLevelTiling(state, stage_id, multi_level_tiling_structure, &spatial_split_step_ids);
+      DoMultiLevelTiling(state, stage_id, multi_level_tiling_structure, &spatial_split_step_ids
+      
+                         // <bojian/DietCode>
+                       , IsDynTask(policy.search_task)
+
+                         );
 
   std::vector<std::pair<State, int>> ret;
   std::vector<int> follow_tiling_levels =

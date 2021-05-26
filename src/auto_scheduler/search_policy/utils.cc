@@ -185,9 +185,15 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
           : std::set<std::string>();
   
   // <bojian/DietCode>
-  // for (const auto& iter : state->stages[stage_id]->iters) {
-  for (size_t i = 0; i < state->stages[stage_id]->iters.size(); ++i) {
-    const Iterator& iter = state->stages[stage_id]->iters[i];
+  Iterator final_spatial_iter;
+  for (const auto& iter : state->stages[stage_id]->iters) {
+    if (iter->iter_kind == IteratorKind::kSpatial) {
+      final_spatial_iter = iter;
+    }
+  }
+
+
+  for (const auto& iter : state->stages[stage_id]->iters) {
 
     if (!no_split_at_inner_name_set.count(iter->name)) {
       if (iter->iter_kind == IteratorKind::kSpatial) {
@@ -200,10 +206,12 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
           // <bojian/DietCode> Add the simplication for multi-level tiling.
           Array<Optional<Integer>> split_steps(n_space - 1, NullOpt);
           if (simplify_tiling_structure) {
-            if (i == state->stages[stage_id]->iters.size() - 1) {
+            if (iter == final_spatial_iter) {
+              LOG(WARNING) << "Simplifying tiling structure to (x, 1, 1, x, x)";
               split_steps.Set(0, Integer(1));
               split_steps.Set(1, Integer(1));
             } else {
+              LOG(WARNING) << "Simplifying tiling structure to (x, x, 1, x, 1)";
               split_steps.Set(1, Integer(1));
               split_steps.Set(3, Integer(3));
             }
@@ -226,6 +234,7 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
           // <bojian/DietCode> Ditto, but for reduction axes.
           Array<Optional<Integer>> split_steps(n_reduce - 1, NullOpt);
           if (simplify_tiling_structure) {
+            LOG(WARNING) << "Simplifying tiling structure to (x, 1, x)";
             split_steps.Set(0, Integer(1));
           }
           // split_res = tmp_s.split(stage_id, iter, Array<Optional<Integer>>(n_reduce - 1, NullOpt));
