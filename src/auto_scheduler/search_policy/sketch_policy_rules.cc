@@ -38,6 +38,10 @@ namespace auto_scheduler {
 static std::vector<int> auto_unroll_configs_cpu = {0, 16, 64, 512};
 static std::vector<int> auto_unroll_configs_gpu = {0, 16, 64, 512, 1024};
 
+// <bojian/DietCode>
+static constexpr int auto_unroll_config_gpu_DietCode = 2048;
+
+
 /********** Sketch Generation Rule **********/
 /********** RuleSkipStage **********/
 
@@ -709,7 +713,18 @@ PopulationGenerationRule::ResultKind InitUnroll::Apply(SketchPolicyNode* policy,
 
     if (HasReduceIter(stage)) {
       // Use auto unroll for multi level tiled stage
-      int value = auto_unroll_configs[(*rand_gen)() % auto_unroll_configs.size()];
+      
+      // <bojian/DietCode> Simplify the unrolling factor.
+      // int value = auto_unroll_configs[(*rand_gen)() % auto_unroll_configs.size()];
+      int value;
+      if (IsGPUTask(policy->search_task) &&
+          IsDynTask(policy->search_task)) {
+        LOG(WARNING) << "Hard-coding the unrolling factor";
+        value = auto_unroll_config_gpu_DietCode;
+      } else {
+        value = auto_unroll_configs[(*rand_gen)() % auto_unroll_configs.size()];
+      }
+
       state->pragma(stage_id, (*state)->stages[stage_id]->iters[0],
                     std::string("auto_unroll_max_step") + "$" + std::to_string(value));
     }
