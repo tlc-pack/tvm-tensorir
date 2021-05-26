@@ -147,7 +147,12 @@ std::vector<std::pair<int, int>> GetComputeLocationCandidates(const SearchTask& 
 }
 
 State DoMultiLevelTiling(const State& state, int stage_id, const std::string& format,
-                         std::vector<int>* spatial_split_step_ids) {
+                         std::vector<int>* spatial_split_step_ids
+                         
+                         // <bojian/DietCode>
+                       , bool simplify_tiling_structure
+                         
+                         ) {
   // Temporal object to be used if the input pointer is nullptr
   std::vector<int> temp_split_step_ids;
   if (spatial_split_step_ids == nullptr) {
@@ -178,8 +183,12 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
       stage->op->attrs.count(SearchPolicyKey::no_split_at_inner)
           ? GetIterNameSetParam(stage->op->attrs, SearchPolicyKey::no_split_at_inner)
           : std::set<std::string>();
+  
+  // <bojian/DietCode>
+  // for (const auto& iter : state->stages[stage_id]->iters) {
+  for (size_t i = 0; i < state->stages[stage_id]->iters.size(); ++i) {
+    const Iterator& iter = state->stages[stage_id]->iters[i];
 
-  for (const auto& iter : state->stages[stage_id]->iters) {
     if (!no_split_at_inner_name_set.count(iter->name)) {
       if (iter->iter_kind == IteratorKind::kSpatial) {
         ICHECK_GE(n_space, 1);
@@ -187,7 +196,21 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
         if (n_space == 1) {
           space_levels[0].push_back(iter);
         } else {
-          split_res = tmp_s.split(stage_id, iter, Array<Optional<Integer>>(n_space - 1, NullOpt));
+
+          // <bojian/DietCode> Add the simplication for multi-level tiling.
+          Array<Optional<Integer>> split_steps(n_space - 1, NullOpt);
+          if (simplify_tiling_structure) {
+            if (i == state->stages[stage_id]->iters.size() - 1) {
+              split_steps.Set(0, Integer(1));
+              split_steps.Set(1, Integer(1));
+            } else {
+              split_steps.Set(1, Integer(1));
+              split_steps.Set(3, Integer(3));
+            }
+          }
+          // split_res = tmp_s.split(stage_id, iter, Array<Optional<Integer>>(n_space - 1, NullOpt));
+          split_res = tmp_s.split(stage_id, iter, split_steps);
+
           for (size_t i = 0; i < n_space; i++) {
             space_levels[i].push_back(split_res[i]);
           }
@@ -199,7 +222,15 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
         if (n_reduce == 1) {
           reduce_levels[0].push_back(iter);
         } else {
-          split_res = tmp_s.split(stage_id, iter, Array<Optional<Integer>>(n_reduce - 1, NullOpt));
+
+          // <bojian/DietCode> Ditto, but for reduction axes.
+          Array<Optional<Integer>> split_steps(n_reduce - 1, NullOpt);
+          if (simplify_tiling_structure) {
+            split_steps.Set(0, Integer(1));
+          }
+          // split_res = tmp_s.split(stage_id, iter, Array<Optional<Integer>>(n_reduce - 1, NullOpt));
+          split_res = tmp_s.split(stage_id, iter, split_steps);
+
           for (size_t i = 0; i < n_reduce; i++) {
             reduce_levels[i].push_back(split_res[i]);
           }

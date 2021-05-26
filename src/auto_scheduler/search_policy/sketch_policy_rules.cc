@@ -100,7 +100,7 @@ SketchGenerationRule::ConditionKind RuleMultiLevelTiling::MeetCondition(
   bool needs_multi_level_tiling = NeedsMultilevelTiling(policy.search_task, state, stage_id);
   if (needs_multi_level_tiling) {
     if (IsDynTask(policy.search_task)) {
-      LOG(WARNING) << "Multi-level tiling for dynamic workloads";
+      LOG(INFO) << "Multi-level tiling for dynamic workloads";
     }
     return ConditionKind::kApplyAndSkipRest;
   }
@@ -124,6 +124,12 @@ SketchGenerationRule::ConditionKind RuleMultiLevelTilingWithFusion::MeetConditio
     const SketchPolicyNode& policy, const State& state, int stage_id) const {
   if (NeedsMultilevelTiling(policy.search_task, state, stage_id) &&
       HasSingleElementwiseMatchedConsumer(policy.search_task, state, stage_id)) {
+
+    // <bojian/DietCode>
+    if (IsDynTask(policy.search_task)) {
+      LOG(INFO) << "Multi-level tiling for dynamic workloads";
+    }
+
     // Always do fusion for stage with cache_write or is in GPU policy
     return HasCacheWriteStage(state, stage_id) || IsGPUTask(policy.search_task)
                ? ConditionKind::kApplyAndSkipRest
@@ -141,6 +147,10 @@ std::vector<std::pair<State, int>> RuleMultiLevelTilingWithFusion::Apply(
       IsGPUTask(policy.search_task)
           ? GetStringParam(policy.params, SketchParamKey::MultiLevelTiling::gpu_structure)
           : GetStringParam(policy.params, SketchParamKey::MultiLevelTiling::cpu_structure);
+
+  // <bojian/DietCode>
+  LOG(INFO) << "Tiling Structure: " << multi_level_tiling_structure;
+
   std::vector<int> spatial_split_step_ids;
   State base_state =
       DoMultiLevelTiling(state, stage_id, multi_level_tiling_structure, &spatial_split_step_ids);

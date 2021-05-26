@@ -706,7 +706,11 @@ std::vector<std::pair<int, int>> GetComputeLocationCandidates(const SearchTask& 
 // we have space iterators i and j, reduce iterator k.
 // Then the tiling structure is : i0, j0, i1, j1, k0, i2, j2, k1, i3, j3
 State DoMultiLevelTiling(const State& state, int stage_id, const std::string& format,
-                         std::vector<int>* spatial_split_step_ids = nullptr);
+                         std::vector<int>* spatial_split_step_ids = nullptr
+                         
+                         // <bojian/DietCode>
+                       , const bool simplify_tiling_structure = false 
+                         );
 
 // Apply tiling structure: space, space, space, ..., with tile sizes from other SplitStep
 State FollowTiling(const State& state, int stage_id, const std::vector<int>& split_step_ids,
