@@ -41,6 +41,10 @@
 #include <utility>
 #include <vector>
 
+// <bojian/DietCode>
+#include <sstream>
+
+
 namespace std {
 
 /*! \brief Hash function for std::pair */
@@ -148,6 +152,10 @@ inline bool IntArrayEqual(const Array<PrimExpr>& arr1, const Array<PrimExpr>& ar
     return false;
   }
 
+
+  // <bojian/DietCode>
+  std::ostringstream strout;
+
   for (size_t i = 0; i < arr1.size(); ++i) {
     auto int1 = arr1[i].as<IntImmNode>();
     auto int2 = arr2[i].as<IntImmNode>();
@@ -156,7 +164,20 @@ inline bool IntArrayEqual(const Array<PrimExpr>& arr1, const Array<PrimExpr>& ar
     // ICHECK(int1 != nullptr);
     // ICHECK(int2 != nullptr);
     if (int1 == nullptr || int2 == nullptr) {
-      return false;
+      strout << arr1[i];
+      std::string arr1_idx = strout.str();
+      strout.str("");
+      strout.clear();
+      strout << arr2[i];
+      std::string arr2_idx = strout.str();
+      strout.str("");
+      strout.clear();
+      if (arr1_idx != arr2_idx) {
+        LOG(INFO) << arr1_idx << " != " << arr2_idx;
+        return false;
+      } else {
+        continue;
+      }
     }
 
 

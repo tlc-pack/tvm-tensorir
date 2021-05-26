@@ -71,6 +71,13 @@ inline bool IsOpenCLTask(const SearchTask& task) {
   return (task)->target->kind->device_type == kDLOpenCL;
 }
 
+
+// <bojian/DietCode>
+inline bool IsDynTask(const SearchTask& task) {
+  return (task)->shape_vars != nullptr;
+}
+
+
 /*! \brief Argsort. Order: largest to smallest */
 template <typename T>
 inline std::vector<int> Argsort(const std::vector<T>& scores) {

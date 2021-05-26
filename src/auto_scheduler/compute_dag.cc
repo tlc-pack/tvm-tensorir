@@ -376,20 +376,13 @@ AccessAnalyzer::AccessAnalyzer(const Array<te::Tensor>& tensors) {
 
           // <bojian/DietCode> Comment out the check to support dynamic workloads
           const IntImmNode* pint = axis->dom->extent.as<IntImmNode>();
-          if (pint == nullptr) {
-            LOG(WARNING) << "axis->dom->extent=" << axis->dom->extent
-                         << " is not an interger expression";
-            // n_missing++;
-            // break;
-          } else {
 
-            // if (GetIntImm(axis->dom->extent) > 1 &&
-            //     vars.count(axis->var.get()) == 0) {
-            if (pint->value > 1 && vars.count(axis->var.get()) == 0) {
-              n_missing++;
-              break;
-            }
-
+          // if (GetIntImm(axis->dom->extent) > 1 &&
+          //     vars.count(axis->var.get()) == 0) {
+          if ((pint == nullptr || pint->value > 1) &&
+              vars.count(axis->var.get()) == 0) {
+            n_missing++;
+            break;
           }
         }
 

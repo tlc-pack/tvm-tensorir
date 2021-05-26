@@ -295,7 +295,8 @@ Array<State> SketchPolicyNode::SearchOneRound(int num_random_states, Array<State
     sketch_cache_ = GenerateSketches();
   }
 
-  if (this->search_task->shape_vars != nullptr) {
+  // <bojian/DietCode>
+  if (IsDynTask(this->search_task)) {
     LOG(FATAL) << "DietCode dynamic auto-scheduling workflow stops here";
   }
 

@@ -93,9 +93,18 @@ std::vector<std::pair<State, int>> RuleAlwaysInline::Apply(const SketchPolicyNod
 
 SketchGenerationRule::ConditionKind RuleMultiLevelTiling::MeetCondition(
     const SketchPolicyNode& policy, const State& state, int stage_id) const {
-  return NeedsMultilevelTiling(policy.search_task, state, stage_id)
-             ? ConditionKind::kApplyAndSkipRest
-             : ConditionKind::kSkip;
+  // <bojian/DietCode>
+  // return NeedsMultilevelTiling(policy.search_task, state, stage_id)
+  //            ? ConditionKind::kApplyAndSkipRest
+  //            : ConditionKind::kSkip;
+  bool needs_multi_level_tiling = NeedsMultilevelTiling(policy.search_task, state, stage_id);
+  if (needs_multi_level_tiling) {
+    if (IsDynTask(policy.search_task)) {
+      LOG(WARNING) << "Multi-level tiling for dynamic workloads";
+    }
+    return ConditionKind::kApplyAndSkipRest;
+  }
+  return ConditionKind::kSkip;
 }
 
 std::vector<std::pair<State, int>> RuleMultiLevelTiling::Apply(const SketchPolicyNode& policy,
