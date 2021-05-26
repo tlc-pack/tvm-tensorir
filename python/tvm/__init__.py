@@ -67,9 +67,6 @@ from . import support
 # tvm.script
 from . import script
 
-# tvm.meta_schedule
-from . import meta_schedule
-
 # Contrib initializers
 from .contrib import rocm as _rocm, nvcc as _nvcc, sdaccel as _sdaccel
 

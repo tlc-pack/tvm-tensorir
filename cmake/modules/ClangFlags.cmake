@@ -52,7 +52,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
       -Wno-shorten-64-to-32
       -Wno-covered-switch-default
       -Wno-unused-exception-parameter
-      -Wno-return-std-move-in-c++11
+      # -Wno-return-std-move-in-c++11
       -Wno-over-aligned
       -Wno-undef
       -Wno-inconsistent-missing-destructor-override
@@ -69,7 +69,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
       # These warnings should be enabled one at a time and fixed.
       # To enable one of these warnings remove the `no-` after -W so
       # -Wno-documentation -> -Wdocumentation
-      -Wno-documentation
+      # -Wno-documentation
       -Wno-shadow-uncaptured-local
       -Wno-shadow-field-in-constructor
       -Wno-shadow
