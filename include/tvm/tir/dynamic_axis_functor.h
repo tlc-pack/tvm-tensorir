@@ -9,43 +9,42 @@ namespace tvm {
 namespace tir {
 
 /**
- * @brief Replace the dynamic axis node with its maximum value.
+ * @brief Replace the dynamic axis node with certain value.
  */
-class DynamicAxisMaxReplacer : public ExprMutator {
+class DynamicAxisReplacer : public ExprMutator {
+ private:
+  std::function<PrimExpr(const DynamicAxisNode*)> freplace_expr_;
  protected:
   PrimExpr VisitExpr_(const DynamicAxisNode* op) override {
-    return op->possible_values[op->possible_values.size() - 1];
+    return freplace_expr_(op);
   }
+ public:
+  DynamicAxisReplacer(std::function<PrimExpr(const DynamicAxisNode*)> freplace_expr)
+      : freplace_expr_(freplace_expr) {}
+};
+
+/**
+ * @brief Replace the dynamic axis node with its maximum value.
+ */
+class DynamicAxisMaxReplacer : public DynamicAxisReplacer {
+ public:
+  DynamicAxisMaxReplacer()
+      : DynamicAxisReplacer(
+          [](const DynamicAxisNode* op) ->PrimExpr {
+            return op->possible_values[op->possible_values.size() - 1];
+          }
+        ) {}
 };
 
 /**
  * @brief Replace the dynamic axis node with its minimum value.
  */
-class DynamicAxisMinReplacer : public ExprMutator {
- protected:
-  PrimExpr VisitExpr_(const DynamicAxisNode* op) override {
-    return op->possible_values[0];
-  }
-};
-
-/**
- * @brief Replace the dynamic axis node with certain value.
- */
-class DynamicAxisSubstituter : public ExprMutator {
- private:
-  const DynamicAxisNode* op;
-  IntImm v;
- protected:
-  PrimExpr VisitExpr_(const DynamicAxisNode* op) override {
-    if (op == this->op) {
-      return v;
-    } else {
-      return GetRef<DynamicAxis>(op);
-    }
-  }
+class DynamicAxisMinReplacer : public DynamicAxisReplacer {
  public:
-  DynamicAxisSubstituter(const DynamicAxisNode* const op, IntImm v)
-      : op(op), v(v) {}
+  DynamicAxisMinReplacer()
+      : DynamicAxisReplacer(
+          [](const DynamicAxisNode* op) ->PrimExpr {return op->possible_values[0];}
+        ) {}
 };
 
 /**
@@ -53,10 +52,10 @@ class DynamicAxisSubstituter : public ExprMutator {
  */
 class DynamicAxisFinder : public ExprVisitor {
  public:
-  std::unordered_set<const DynamicAxisNode*> dy_axes;
+  std::unordered_set<const DynamicAxisNode*> dyn_axes;
  protected:
   void VisitExpr_(const DynamicAxisNode* op) override {
-    dy_axes.insert(op);
+    dyn_axes.insert(op);
   }
 };
 
