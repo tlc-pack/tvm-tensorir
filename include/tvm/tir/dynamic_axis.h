@@ -12,6 +12,11 @@ class DynamicAxisNode : public VarNode {
  public:
   Array<IntImm> possible_values;
 
+  void VisitAttrs(AttrVisitor* v) {
+    VarNode::VisitAttrs(v);
+    v->Visit("possible_values", &possible_values);
+  }
+
   static constexpr const char* _type_key = "tir.DynamicAxis";
   TVM_DECLARE_FINAL_OBJECT_INFO(DynamicAxisNode, VarNode);
 };

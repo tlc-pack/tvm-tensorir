@@ -599,7 +599,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = analyzer.int_set(value, iset_dmap).max();
 
-      bool can_ignore_bound_check = canProveForAllDynamicAxes(analyzer, vmax < dom->extent);
+      bool can_ignore_bound_check =
+          // analyzer.CanProve(vmax < dom->extent);
+          canProveForAllDynamicAxes(analyzer, vmax < dom->extent);
 
       if (vmax.dtype() != value.dtype() || !can_ignore_bound_check) {
         if (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0)) {
@@ -650,6 +652,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       // }
 
       bool can_ignore_upper_bound_check =
+          // analyzer.CanProve(vmax < iv->dom->extent);
           canProveForAllDynamicAxes(analyzer, vmax < iv->dom->extent);
 
       if (vmax.dtype() != value.dtype() || !can_ignore_upper_bound_check) {
