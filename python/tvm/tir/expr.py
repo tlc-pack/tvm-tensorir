@@ -357,7 +357,7 @@ class Var(PrimExprWithOp):
 # <bojian/DietCode>
 @tvm._ffi.register_object("tir.DynamicAxis")
 class DynamicAxis(PrimExprWithOp):
-    def __init__(self, name, possible_values=[1]):
+    def __init__(self, name, possible_values=[]):
         self.__init_handle_by_constructor__(_ffi_api.DynamicAxis, name,
                                             [IntImm("int32", i) for i in sorted(possible_values)])
 
