@@ -79,7 +79,13 @@ HardwareParams HardwareParamsNode::GetDefaultHardwareParams(const Target& target
     int warp_size = ret;
 
     int max_vthread_extent = warp_size / 4;
-    return HardwareParams(-1, 16, 64, max_shared_memory_per_block, max_local_memory_per_block,
+
+    // <bojian/DietCode>
+    device_api->GetAttr(ctx, tvm::runtime::DeviceAttrKind::kMultiProcessorCount, &ret);
+    LOG(INFO) << "Number of Available SMs: " << int(ret);
+    int mps = ret;
+
+    return HardwareParams(mps, 16, 64, max_shared_memory_per_block, max_local_memory_per_block,
                           max_threads_per_block, max_vthread_extent, warp_size);
   } else if (device_type == kDLMetal) {
     // Reference: https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf

@@ -150,7 +150,7 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
                          std::vector<int>* spatial_split_step_ids
                          
                          // <bojian/DietCode>
-                       , bool simplify_tiling_structure
+                         // , bool simplify_tiling_structure
                          
                          ) {
   // Temporal object to be used if the input pointer is nullptr
@@ -204,20 +204,20 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
         } else {
 
           // <bojian/DietCode> Add the simplication for multi-level tiling.
-          Array<Optional<Integer>> split_steps(n_space - 1, NullOpt);
-          if (simplify_tiling_structure) {
-            if (iter == final_spatial_iter) {
-              LOG(WARNING) << "Simplifying tiling structure to (x, 1, 1, x, x)";
-              split_steps.Set(0, Integer(1));
-              split_steps.Set(1, Integer(1));
-            } else {
-              LOG(WARNING) << "Simplifying tiling structure to (x, x, 1, x, 1)";
-              split_steps.Set(1, Integer(1));
-              split_steps.Set(3, Integer(3));
-            }
-          }
-          // split_res = tmp_s.split(stage_id, iter, Array<Optional<Integer>>(n_space - 1, NullOpt));
-          split_res = tmp_s.split(stage_id, iter, split_steps);
+          split_res = tmp_s.split(stage_id, iter, Array<Optional<Integer>>(n_space - 1, NullOpt));
+          // Array<Optional<Integer>> split_steps(n_space - 1, NullOpt);
+          // if (simplify_tiling_structure) {
+          //   if (iter == final_spatial_iter) {
+          //     LOG(WARNING) << "Simplifying tiling structure to (x, 1, 1, x, x)";
+          //     split_steps.Set(0, Integer(1));
+          //     split_steps.Set(1, Integer(1));
+          //   } else {
+          //     LOG(WARNING) << "Simplifying tiling structure to (x, x, 1, x, 1)";
+          //     split_steps.Set(1, Integer(1));
+          //     split_steps.Set(3, Integer(3));
+          //   }
+          // }
+          // split_res = tmp_s.split(stage_id, iter, split_steps);
 
           for (size_t i = 0; i < n_space; i++) {
             space_levels[i].push_back(split_res[i]);
@@ -232,13 +232,13 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
         } else {
 
           // <bojian/DietCode> Ditto, but for reduction axes.
-          Array<Optional<Integer>> split_steps(n_reduce - 1, NullOpt);
-          if (simplify_tiling_structure) {
-            LOG(WARNING) << "Simplifying tiling structure to (x, 1, x)";
-            split_steps.Set(0, Integer(1));
-          }
-          // split_res = tmp_s.split(stage_id, iter, Array<Optional<Integer>>(n_reduce - 1, NullOpt));
-          split_res = tmp_s.split(stage_id, iter, split_steps);
+          split_res = tmp_s.split(stage_id, iter, Array<Optional<Integer>>(n_reduce - 1, NullOpt));
+          // Array<Optional<Integer>> split_steps(n_reduce - 1, NullOpt);
+          // if (simplify_tiling_structure) {
+          //   LOG(WARNING) << "Simplifying tiling structure to (x, 1, x)";
+          //   split_steps.Set(0, Integer(1));
+          // }
+          // split_res = tmp_s.split(stage_id, iter, split_steps);
 
           for (size_t i = 0; i < n_reduce; i++) {
             reduce_levels[i].push_back(split_res[i]);
@@ -502,6 +502,20 @@ const std::vector<int>& SplitFactorizationMemo::GetFactors(int n) {
   std::sort(res.begin(), res.end());
   return res;
 }
+
+
+
+
+const Array<Map<Iterator, Array<Integer>>>& SplitFactorizationCache::GetFactorizationSchemes() {
+  if (!cache_.empty()) {
+    return cache_;
+  }
+
+  
+
+}
+
+
 
 /********** Utils interface API for ffi **********/
 

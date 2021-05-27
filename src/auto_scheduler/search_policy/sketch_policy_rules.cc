@@ -160,7 +160,7 @@ std::vector<std::pair<State, int>> RuleMultiLevelTilingWithFusion::Apply(
       DoMultiLevelTiling(state, stage_id, multi_level_tiling_structure, &spatial_split_step_ids
       
                          // <bojian/DietCode>
-                       , IsDynTask(policy.search_task)
+                         // , IsDynTask(policy.search_task)
 
                          );
 
@@ -527,6 +527,8 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
 
   StateNode* pstate = state->CopyOnWrite();
   // Scan the transformation history and randomly fill tiles size for all SplitStep
+
+  /* <bojian/DietCode> Change how the tile sizes are initialized.
   for (size_t step_id = 0; step_id < (*state)->transform_steps.size(); ++step_id) {
     if (auto ps = (*state)->transform_steps[step_id].as<SplitStepNode>()) {
       bool all_defined = true;
@@ -540,6 +542,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
         continue;
       }
 
+      // <bojian/DietCode>
       ICHECK(ps->extent);
       int extent = GetIntImm(ps->extent.value());
       const auto& candidate_lens = split_memo.GetFactorizationSchemes(extent, ps->lengths.size(),
@@ -554,6 +557,34 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
                     ps->inner_to_outer));
     }
   }
+   */
+
+
+  // 1. Gather all the split steps.
+  std::vector<const SplitStepNode*> split_steps;
+
+  for (size_t step_id = 0; step_id < (*state)->transform_steps.size();
+       ++step_id) {
+    if (auto ps = (*state)->transform_steps[step_id].as<SplitStepNode>()) {
+      bool all_defined = true;
+      for (const auto& len : ps->lengths) {
+        if (!len) {
+          all_defined = false;
+          break;
+        }
+      }
+      if (all_defined) {
+        continue;
+      }
+
+      split_steps.push_back(ps);
+
+    }
+  }
+
+  LOG(INFO) << "Total number of split steps: " << split_steps.size();
+
+
   pstate->concrete = true;
 
   return ResultKind::kValid;

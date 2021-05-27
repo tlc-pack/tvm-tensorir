@@ -691,6 +691,25 @@ class SplitFactorizationMemo {
   std::unordered_map<int, std::vector<int>> factor_memory_;
 };
 
+
+// <bojian/DietCode> shape-dependent memo -> architecture-dependent cache
+class SplitFactorizationCache {
+ private:
+  std::vector<Iterator> iters_
+  HardwareParams hardware_params_;
+
+  Array<Map<Iterator, Array<Integer>>> cache_;
+ public:
+  explicit SplitFactorizationCache(const std::vector<const SplitStepNode*>& split_steps,
+                                   HardwareParams hardware_params)
+      : split_steps_(split_steps), hardware_params_(hardware_params) {}
+  /**
+   * \brief Get the factorization scheme.
+   */
+  const Array<Map<Iterator, Array<Integer>>>& GetFactorizationSchemes();
+};
+
+
 /*! \brief Get the indexes of SplitStep that processes on spatial iterator. */
 Array<Integer> GetSpatialSplitStepIds(const State& s, int stage_id);
 
@@ -709,7 +728,8 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
                          std::vector<int>* spatial_split_step_ids = nullptr
                          
                          // <bojian/DietCode>
-                       , const bool simplify_tiling_structure = false 
+                         // , const bool simplify_tiling_structure = false 
+
                          );
 
 // Apply tiling structure: space, space, space, ..., with tile sizes from other SplitStep
