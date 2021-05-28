@@ -258,6 +258,28 @@ Array<LoopRV> ConcreteScheduleNode::GetLoops(const BlockRV& block_rv) {
   return CreateRV<LoopRV>(tir::GetLoops(this->GetSRef(block_rv)));
 }
 
+/******** Schedule: loops manipulation ********/
+/******** Schedule: compute location ********/
+
+void ConcreteScheduleNode::ComputeInline(const BlockRV& block_rv) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::ComputeInline(state_, this->GetSRef(block_rv));
+  TVM_TIR_SCHEDULE_END(this->error_render_level_);
+  this->state_->DebugVerify();
+}
+
+void ConcreteScheduleNode::ReverseComputeInline(const BlockRV& block_rv) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::ReverseComputeInline(state_, this->GetSRef(block_rv));
+  TVM_TIR_SCHEDULE_END(this->error_render_level_);
+  this->state_->DebugVerify();
+}
+
+/******** Schedule: loop binding/annotation ********/
+/******** Schedule: cache read/write ********/
+/******** Schedule: reduction ********/
+/******** Schedule: blockize & tensorize ********/
+
 /******** FFI ********/
 
 TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);
