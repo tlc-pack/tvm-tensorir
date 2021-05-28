@@ -24,14 +24,20 @@ namespace tir {
 static const char prim_compute_inline[] = "compute-inline";
 static const char prim_reverse_compute_inline[] = "reverse_compute-inline";
 
+static const char err_body_inline[] = R"(The body of the inlined block should be in form of
+    'A[i, j, k, ...] = f(i, j, k, ...)',
+where the indices on the left are distinct atomic variables,
+and there should not no variables other than the index variables)";
+
+static const char err_body_reverse_inline[] = R"(The body of the inlined block should be in form of
+    `B[...] = g(i, j, k, A[i, j, k, ...] ...)`,
+where A is the only buffer the block consumes, whose indices are distinct atomic variables,
+and there should not no variables other than the index variables)";
+
 class NonSingleReaderWriterError : public ScheduleError {
  public:
   explicit NonSingleReaderWriterError(const char* prim, IRModule mod, bool is_read, Block block)
       : prim_(prim), mod_(mod), is_read_(is_read), block_(std::move(block)) {}
-
-  String primitive() const final { return prim_; }
-
-  IRModule mod() const final { return mod_; }
 
   String FastErrorString() const final {
     return is_read_ ? "ScheduleError: The block is allowed to read only a single buffer region"
@@ -50,7 +56,14 @@ class NonSingleReaderWriterError : public ScheduleError {
     }
   }
 
+  String primitive() const final { return prim_; }
+  IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
+
+  const char* prim_;
+  IRModule mod_;
+  bool is_read_;
+  Block block_;
 
   static Buffer CheckRead(const char* prim, const ScheduleState& self, const Block& block) {
     if (block->reads.size() != 1) {
@@ -65,11 +78,6 @@ class NonSingleReaderWriterError : public ScheduleError {
     }
     return block->writes[0]->buffer;
   }
-
-  const char* prim_;
-  IRModule mod_;
-  bool is_read_;
-  Block block_;
 };
 
 class BodyAnalysisError : public ScheduleError {
@@ -77,31 +85,23 @@ class BodyAnalysisError : public ScheduleError {
   explicit BodyAnalysisError(const char* prim, IRModule mod, Block block)
       : prim_(prim), mod_(mod), block_(std::move(block)) {}
 
-  String primitive() const final { return prim_; }
-
-  IRModule mod() const final { return mod_; }
-
   String FastErrorString() const final {
     return "ScheduleError: The block cannot be inlined because its body is illegal";
   }
 
   String DetailRenderTemplate() const final {
     if (prim_ == String(prim_compute_inline)) {
-      return R"(The body of the inlined block should be in form of
-    'A[i, j, k, ...] = f(i, j, k, ...)',
-where the indices on the left are distinct atomic variables,
-and there should not no variables other than the index variables)";
+      return err_body_inline;
     } else if (prim_ == String(prim_reverse_compute_inline)) {
-      return R"(The body of the inlined block should be in form of
-    `B[...] = g(i, j, k, A[i, j, k, ...] ...)`,
-where A is the only buffer the block consumes, whose indices are distinct atomic variables,
-and there should not no variables other than the index variables)";
+      return err_body_reverse_inline;
     } else {
       ICHECK(false) << "not reachable";
       throw;
     }
   }
 
+  String primitive() const final { return prim_; }
+  IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
 
   String prim_;
@@ -117,10 +117,6 @@ class OnlyLeafError : public ScheduleError {
         leaf_block_(std::move(leaf_block)),
         scope_root_(std::move(scope_root)) {}
 
-  String primitive() const final { return prim_; }
-
-  IRModule mod() const final { return mod_; }
-
   String FastErrorString() const final {
     return "ScheduleError: Cannot remove the only leaf in the scope";
   }
@@ -130,6 +126,8 @@ class OnlyLeafError : public ScheduleError {
            "scope will be empty.";
   }
 
+  String primitive() const final { return prim_; }
+  IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {leaf_block_, scope_root_}; }
 
   const char* prim_;
@@ -143,10 +141,6 @@ class NonSingleProducerError : public ScheduleError {
   explicit NonSingleProducerError(const char* prim, IRModule mod, Block block)
       : prim_(prim), mod_(mod), block_(std::move(block)) {}
 
-  String primitive() const final { return prim_; }
-
-  IRModule mod() const final { return mod_; }
-
   String FastErrorString() const final {
     return "ScheduleError: The consumer block to be inlined is required to have only a single "
            "producer block, and the producer block should be a complete block who has only a "
@@ -158,6 +152,9 @@ class NonSingleProducerError : public ScheduleError {
            "producer block, and the producer block should be a complete block who has only a "
            "single consumer";
   }
+
+  String primitive() const final { return prim_; }
+  IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
 
   const char* prim_;
@@ -189,6 +186,28 @@ class NonSingleProducerError : public ScheduleError {
  * \param src_stmt The root of the subtree where the replacement begins
  * \param tgt_stmt The root of the subtree after the replacement
  * \return A boolean indicating if the search succeeds
+ * \note For example, say we are removing the leaf block "B" from the AST.
+ *
+ *  \code
+ *    with block([], "scope_root"):
+ *        ...
+ *        with block([128, 128], "B") as [vi, vj]:
+ *            B[vi, vj] = A[vi, vj] + 1.0
+ *        with block([128, 128], "C") as [vi, vj]:
+ *            C[vi, vj] = B[vi, vj] * 2.0
+ *  \endcode
+ *
+ * Ths method does not mutate the AST, instead it returns the a `(src_stmt, tgt_stmt)` pair as a
+ * plan to substitute certain pieces of the IR.
+ *
+ * In our example, it returns block "scope_root" as `src_stmt`, and the result `tgt_stmt` is:
+ *
+ *  \code
+ *    with block([], "scope_root"):
+ *        ...
+ *        with block([128, 128], "C") as [vi, vj]:
+ *            C[vi, vj] = B[vi, vj] * 2.0
+ *  \endcode
  */
 bool WithLeafRemoved(const StmtSRef& leaf_sref, Stmt* src_stmt, Stmt* tgt_stmt) {
   // Go upwards until find an ancestor with more than two children
@@ -283,7 +302,8 @@ class BaseInliner : public StmtExprMutator {
       ICHECK(block != nullptr);
     }
     Block tgt_block = Downcast<Block>(StmtExprMutator::VisitStmt_(block));
-    tgt_block = UpdateBlockSignature(src_block, std::move(tgt_block));
+    bool is_scope_root = src_block.get() == scope_root_sref_->stmt;
+    tgt_block = UpdateBlockSignature(std::move(tgt_block), is_scope_root);
     block_reuse.Set(src_block, tgt_block);
     return std::move(tgt_block);
   }
@@ -354,34 +374,42 @@ class BaseInliner : public StmtExprMutator {
     }
   }
 
-  Block UpdateBlockSignature(Block src_block, Block tgt_block) {
-    bool is_scope_root = src_block.get() == scope_root_sref_->stmt;
+  /*!
+   * \brief Update the following block signature:
+   * 1) tir.alloc_buffer, if the block is scope root
+   * 2) tir.reads, if the block is not scope root
+   * 3) tir.writes, if the block is not scope root
+   * \param block The block to be updated
+   * \param is_scope_root A flag indicating if a block is the scope root of the block to be inlined
+   * \return The updated block
+   */
+  Block UpdateBlockSignature(Block block, bool is_scope_root) {
     // Step 1. Update `BlockNode::alloc_buffers`
     Array<Buffer> alloc_buffers;
     if (is_scope_root) {
-      alloc_buffers.reserve(tgt_block->alloc_buffers.size());
-      for (const Buffer& alloc_buffer : tgt_block->alloc_buffers) {
+      alloc_buffers.reserve(block->alloc_buffers.size());
+      for (const Buffer& alloc_buffer : block->alloc_buffers) {
         if (!alloc_buffer.same_as(inlined_buffer_)) {
           alloc_buffers.push_back(alloc_buffer);
         }
       }
     } else {
-      alloc_buffers = std::move(tgt_block->alloc_buffers);
+      alloc_buffers = std::move(block->alloc_buffers);
     }
     // Step 2. Update `BlockNode::reads` and `BlockNode::writes`
-    Array<BufferRegion> reads = std::move(tgt_block->reads);
-    Array<BufferRegion> writes = std::move(tgt_block->writes);
+    Array<BufferRegion> reads = std::move(block->reads);
+    Array<BufferRegion> writes = std::move(block->writes);
     if (!is_scope_root) {
-      Array<Array<BufferRegion>> inspected = GetBlockAccessRegion(tgt_block, buffer_var_map_);
+      Array<Array<BufferRegion>> inspected = GetBlockAccessRegion(block, buffer_var_map_);
       reads = std::move(inspected[0]);
       writes = std::move(inspected[1]);
     }
     // Step 3. Assemble the result
-    BlockNode* n = tgt_block.CopyOnWrite();
+    BlockNode* n = block.CopyOnWrite();
     n->reads = std::move(reads);
     n->writes = std::move(writes);
     n->alloc_buffers = std::move(alloc_buffers);
-    return tgt_block;
+    return block;
   }
 
  protected:
@@ -399,7 +427,11 @@ class BaseInliner : public StmtExprMutator {
   std::unordered_map<const VarNode*, PrimExpr> idx_sub_;
 
  public:
-  /*! \brief The Stmt to be replaced when removing the leaf block */
+  /*!
+   * \brief The Stmt to be replaced when removing the leaf block
+   * \note The pair (src_stmt, tgt_stmt) are produced by WithLeadRemoved to indicate a
+   * transformation on top of the input AST. We take this approach to avoid changing the AST twice
+   */
   Stmt src_stmt{nullptr};
   /*! \brief The Stmt to be replaced to when removing the leaf block */
   Stmt tgt_stmt{nullptr};
@@ -420,7 +452,7 @@ class ComputeInliner : public BaseInliner {
                           const StmtSRef& scope_root_sref)
       : BaseInliner(inlined_buffer, producer_block, scope_root_sref) {}
 
-  bool AnalyzeBody(const Block& producer_block) {
+  bool BodyPatternAllowInline(const Block& producer_block) {
     if (inlined_store_ == nullptr) {
       return false;
     }
@@ -481,7 +513,7 @@ class ReverseComputeInliner : public BaseInliner {
                                  const StmtSRef& scope_root_sref)
       : BaseInliner(inlined_buffer, consumer_block, scope_root_sref) {}
 
-  bool AnalyzeBody(const Block& consumer_block) {
+  bool BodyPatternAllowInline(const Block& consumer_block) {
     if (inlined_store_ == nullptr) {
       // Failure: block body is not BufferStore
       return false;
@@ -534,7 +566,7 @@ void ComputeInline(ScheduleState self, const StmtSRef& producer_block_sref) {
   CheckCompleteBlock(prim, self, producer_block_sref, scope_root_sref);
   // Step 3. Analyze the block body
   ComputeInliner inliner(inlined_buffer, producer_block, scope_root_sref);
-  if (!inliner.AnalyzeBody(producer_block)) {
+  if (!inliner.BodyPatternAllowInline(producer_block)) {
     throw BodyAnalysisError(prim, self->mod, producer_block);
   }
   // Step 4. Create a plan that removes the leaf block to be inlined
@@ -562,7 +594,7 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& consumer_block_sre
   NonSingleProducerError::Check(self, consumer_block_sref, scope_root_sref);
   // Step 4. Analyze the block body
   ReverseComputeInliner inliner(inlined_buffer, consumer_block, scope_root_sref);
-  if (!inliner.AnalyzeBody(consumer_block)) {
+  if (!inliner.BodyPatternAllowInline(consumer_block)) {
     throw BodyAnalysisError(prim, self->mod, consumer_block);
   }
   // Step 5. Create a plan that removes the leaf block to be inlined
