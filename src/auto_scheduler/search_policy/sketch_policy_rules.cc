@@ -521,14 +521,43 @@ std::vector<std::pair<State, int>> RuleCustomSketch::Apply(const SketchPolicyNod
 
 PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* policy, State* state,
                                                              std::mt19937* rand_gen) const {
-  SplitFactorizationMemo split_memo;
-  int max_innermost_split_factor =
-      GetIntParam(policy->params, SketchParamKey::max_innermost_split_factor);
+  // <bojian/DietCode>
+  // int max_innermost_split_factor =
+  //     GetIntParam(policy->params, SketchParamKey::max_innermost_split_factor);
+  LOG(INFO) << "Initializing the tile sizes";
 
   StateNode* pstate = state->CopyOnWrite();
   // Scan the transformation history and randomly fill tiles size for all SplitStep
 
-  /* <bojian/DietCode> Change how the tile sizes are initialized.
+  // <bojian/DietCode> Change how the tile sizes are initialized.
+  if (IsDynTask(policy->search_task)) {
+    // 1. Gather all the split steps.
+    std::vector<const SplitStepNode*> split_steps;
+
+    for (size_t step_id = 0; step_id < (*state)->transform_steps.size();
+         ++step_id) {
+      if (auto ps = (*state)->transform_steps[step_id].as<SplitStepNode>()) {
+        bool all_defined = true;
+        for (const auto& len : ps->lengths) {
+          if (!len) {
+            all_defined = false;
+            break;
+          }
+        }
+        if (all_defined) {
+          continue;
+        }
+        split_steps.push_back(ps);
+        LOG(INFO) << "Stage: " << (*state)->stages[ps->stage_id] << " with extent " << ps->extent;
+      }
+    }
+    LOG(INFO) << "Number of SplitStep's: " << split_steps.size();
+    
+    pstate->concrete = true;
+    return ResultKind::kValid;
+  }
+  // SplitFactorizationMemo split_memo;
+
   for (size_t step_id = 0; step_id < (*state)->transform_steps.size(); ++step_id) {
     if (auto ps = (*state)->transform_steps[step_id].as<SplitStepNode>()) {
       bool all_defined = true;
@@ -545,8 +574,10 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
       // <bojian/DietCode>
       ICHECK(ps->extent);
       int extent = GetIntImm(ps->extent.value());
-      const auto& candidate_lens = split_memo.GetFactorizationSchemes(extent, ps->lengths.size(),
-                                                                      max_innermost_split_factor);
+      const auto& candidate_lens =
+          policy->split_memo.GetFactorizationSchemes(extent, ps->lengths.size()
+                                                     // , max_innermost_split_factor
+                                                     );
       ICHECK(!candidate_lens.empty());
       const auto& candidate_lengths = candidate_lens[(*rand_gen)() % candidate_lens.size()];
 
@@ -557,34 +588,6 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
                     ps->inner_to_outer));
     }
   }
-   */
-
-
-  // 1. Gather all the split steps.
-  std::vector<const SplitStepNode*> split_steps;
-
-  for (size_t step_id = 0; step_id < (*state)->transform_steps.size();
-       ++step_id) {
-    if (auto ps = (*state)->transform_steps[step_id].as<SplitStepNode>()) {
-      bool all_defined = true;
-      for (const auto& len : ps->lengths) {
-        if (!len) {
-          all_defined = false;
-          break;
-        }
-      }
-      if (all_defined) {
-        continue;
-      }
-
-      split_steps.push_back(ps);
-
-    }
-  }
-
-  LOG(INFO) << "Total number of split steps: " << split_steps.size();
-
-
   pstate->concrete = true;
 
   return ResultKind::kValid;
@@ -1043,7 +1046,11 @@ PopulationGenerationRule::ResultKind MutateTileSize::Apply(SketchPolicyNode* pol
 
     // Divide one factor from lengths[src_idx] and multiply it to lengths[dst_idx]
     size_t dst_idx = random_perm[(i + 1) % random_perm.size()];
+
+    // <bojian/DietCode>
+    // const std::vector<int>& factors = policy->split_memo.GetFactors(length);
     const std::vector<int>& factors = policy->split_memo.GetFactors(length);
+
     ICHECK_GE(factors.size(), 1);
 
     int divide_factor;

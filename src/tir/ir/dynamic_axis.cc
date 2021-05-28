@@ -89,8 +89,11 @@ Array<PrimExpr> InitializeDynamicArgs(Array<PrimExpr> args,
       [dyn_axes_info](const DynamicAxisNode* op) ->PrimExpr {
         auto dyn_axes_info_iter = dyn_axes_info.find(std::string(op->name_hint));
         if (dyn_axes_info_iter != dyn_axes_info.end()) {
-          std::vector<IntImm> possible_values(dyn_axes_info_iter->second.begin(),
-                                              dyn_axes_info_iter->second.end());
+          Array<IntImm> possible_values;
+          
+          for (const int v : dyn_axes_info_iter->second) {
+            possible_values.push_back(IntImm(DataType::Int(32), v));
+          }
           return DynamicAxis(dyn_axes_info_iter->first, possible_values);
         } else {
           return GetRef<DynamicAxis>(op);
@@ -120,7 +123,7 @@ bool canProveForAllDynamicAxes(arith::Analyzer& analyzer, PrimExpr predicate) {
 }
 
 
-TVM_REGISTER_GLOBAL("InitializeDynamicArgs").set_body([](TVMArgs args, TVMRetValue* ret) {
+TVM_REGISTER_GLOBAL("auto_scheduler.InitializeDynamicArgs").set_body([](TVMArgs args, TVMRetValue* ret) {
   *ret = InitializeDynamicArgs(args[0], args[1], args[2]);
 });
 

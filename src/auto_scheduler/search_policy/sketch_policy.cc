@@ -81,6 +81,18 @@ SketchPolicy::SketchPolicy(SearchTask task, CostModel program_cost_model,
   node->sample_init_min_pop_ =
       GetIntParam(node->params, SketchParamKey::SampleInitPopulation::min_population);
 
+  // <bojian/DietCode>
+  int max_innermost_split_factor =
+      GetIntParam(node->params, SketchParamKey::max_innermost_split_factor);
+  if (IsDynTask(node->search_task)) {
+    LOG(INFO) << "Initialized the split factor cache: " << node->search_task->hardware_params;
+    node->dyn_split_memo =
+        DynSplitFactorizationMemo(node->search_task->hardware_params,
+                                  max_innermost_split_factor);
+  }
+  LOG(INFO) << "Initialized the split factor cache";
+
+
   if (init_search_callbacks) {
     PrintTitle("Call init-search callbacks", verbose);
     // Candidates:

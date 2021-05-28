@@ -204,6 +204,7 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
         } else {
 
           // <bojian/DietCode> Add the simplication for multi-level tiling.
+          LOG(INFO) << "iter.range=" << iter->range;
           split_res = tmp_s.split(stage_id, iter, Array<Optional<Integer>>(n_space - 1, NullOpt));
           // Array<Optional<Integer>> split_steps(n_space - 1, NullOpt);
           // if (simplify_tiling_structure) {
@@ -232,6 +233,7 @@ State DoMultiLevelTiling(const State& state, int stage_id, const std::string& fo
         } else {
 
           // <bojian/DietCode> Ditto, but for reduction axes.
+          LOG(INFO) << "iter.range=" << iter->range;
           split_res = tmp_s.split(stage_id, iter, Array<Optional<Integer>>(n_reduce - 1, NullOpt));
           // Array<Optional<Integer>> split_steps(n_reduce - 1, NullOpt);
           // if (simplify_tiling_structure) {
@@ -454,8 +456,11 @@ void PruneInvalidState(const SearchTask& task, Array<State>* states) {
 
 /********** SplitFactorizationMemo **********/
 const Array<Array<Integer>>& SplitFactorizationMemo::GetFactorizationSchemes(
-    int extent, int n_lengths, int max_innermost_factor) {
-  QueryKey key = std::make_tuple(extent, n_lengths, max_innermost_factor);
+    int extent, int n_lengths
+    // , int max_innermost_factor
+    ) {
+  QueryKey key = // std::make_tuple(extent, n_lengths, max_innermost_factor);
+                 std::make_pair(extent, n_lengths);
   const auto& it = memory_.find(key);
   if (it != memory_.end()) {
     return it->second;
@@ -465,20 +470,29 @@ const Array<Array<Integer>>& SplitFactorizationMemo::GetFactorizationSchemes(
   results_ = &memory_[key];
   n_lengths_ = n_lengths;
 
-  DfsEnumerate(0, extent, max_innermost_factor);
+  DfsEnumerate(0, extent
+               // , max_innermost_factor
+               );
 
   return *results_;
 }
 
-void SplitFactorizationMemo::DfsEnumerate(int now, int remaining_length, int max_innermost_factor) {
+void SplitFactorizationMemo::DfsEnumerate(int now, int remaining_length
+                                          // , int max_innermost_factor
+                                          ) {
   if (now == n_lengths_) {
-    if (tmp_stack_.back().as<IntImmNode>()->value <= max_innermost_factor) {
+    if (tmp_stack_.back().as<IntImmNode>()->value <=
+        // max_innermost_factor
+        max_innermost_factor_
+        ) {
       results_->push_back(tmp_stack_);
     }
   } else {
     for (const auto& f : GetFactors(remaining_length)) {
       tmp_stack_.Set(now, Integer(f));
-      DfsEnumerate(now + 1, remaining_length / f, max_innermost_factor);
+      DfsEnumerate(now + 1, remaining_length / f
+                   // , max_innermost_factor
+                   );
     }
   }
 }
@@ -504,14 +518,10 @@ const std::vector<int>& SplitFactorizationMemo::GetFactors(int n) {
 }
 
 
+const std::vector<std::vector<std::vector<int>>>&
+DynSplitFactorizationMemo::GetFactorizationSchemes(const std::vector<const SplitStep*> &split_steps) {
+  return memory_;
 
-
-const Array<Map<Iterator, Array<Integer>>>& SplitFactorizationCache::GetFactorizationSchemes() {
-  if (!cache_.empty()) {
-    return cache_;
-  }
-
-  
 
 }
 

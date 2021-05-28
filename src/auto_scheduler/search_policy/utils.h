@@ -674,14 +674,26 @@ inline void PrintTitle(const std::string& title, int verbose) {
  */
 class SplitFactorizationMemo {
  public:
-  using QueryKey = std::tuple<int, int, int>;
+  // <bojian/DietCode> Move max_innermost_factor as part of the class member.
+  // using QueryKey = std::tuple<int, int, int>;
+  using QueryKey = std::pair<int, int>;
 
-  const Array<Array<Integer>>& GetFactorizationSchemes(int extent, int n_lengths,
-                                                       int max_innermost_factor);
+  SplitFactorizationMemo() = default;
+  explicit SplitFactorizationMemo(const int max_innermost_factor) : max_innermost_factor_(max_innermost_factor) {}
+  bool isActive() const { return max_innermost_factor_ != 0; }
+
+  const Array<Array<Integer>>& GetFactorizationSchemes(int extent, int n_lengths
+                                                       // , int max_innermost_factor
+                                                       );
   const std::vector<int>& GetFactors(int n);
 
  private:
-  void DfsEnumerate(int now, int remaining_length, int max_innermost_factor);
+  void DfsEnumerate(int now, int remaining_length
+                    // , int max_innermost_factor
+                    );
+
+  // <bojian/DietCode>
+  int max_innermost_factor_;
 
   std::unordered_map<QueryKey, Array<Array<Integer>>> memory_;
 
@@ -693,20 +705,34 @@ class SplitFactorizationMemo {
 
 
 // <bojian/DietCode> shape-dependent memo -> architecture-dependent cache
-class SplitFactorizationCache {
+class DynSplitFactorizationMemo {
  private:
-  std::vector<Iterator> iters_
-  HardwareParams hardware_params_;
 
-  Array<Map<Iterator, Array<Integer>>> cache_;
+  struct SplitStepInfo {
+    bool is_innermost_spatial;
+    int max_extent;
+  };
+  HardwareParams hardware_params_;
+  int max_innermost_factor_;
+
+  // [* × Number of SplitSteps × ]
+  std::vector<std::vector<std::vector<int>>> memory_;
  public:
-  explicit SplitFactorizationCache(const std::vector<const SplitStepNode*>& split_steps,
-                                   HardwareParams hardware_params)
-      : split_steps_(split_steps), hardware_params_(hardware_params) {}
+  DynSplitFactorizationMemo() = default;
+  explicit DynSplitFactorizationMemo(const HardwareParams& hardware_params,
+                                     const int max_innermost_factor)
+      : hardware_params_(hardware_params), max_innermost_factor_(max_innermost_factor) {}
+  bool isActive() const { return max_innermost_factor_ != 0; }
   /**
    * \brief Get the factorization scheme.
    */
-  const Array<Map<Iterator, Array<Integer>>>& GetFactorizationSchemes();
+  const std::vector<std::vector<std::vector<int>>>&
+  GetFactorizationSchemes(const std::vector<const SplitStep*>& split_steps);
+ private:
+
+  void DfsTraversal(std::vector<std::vector<int>>& state) {
+
+  }
 };
 
 
