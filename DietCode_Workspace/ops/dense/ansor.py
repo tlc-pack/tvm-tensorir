@@ -75,14 +75,6 @@ def test_sched_dynamic(pytestconfig):
             shape_freq={v : 1.0 for v in utils.cross_product(T, IH)})
 
 
-def test_sched_dynamic_any(pytestconfig):
-    B = 16
-    T = tir.Any()
-    IH = [(768, 2304), (768, 768), (768, 3072), (3072, 768)]
-    (sched, in_args), pysched = ansor.auto_schedule(
-            func=Dense, args=utils.cross_product([B * T], IH))
-
-
 def test_perf(pytestconfig):
     B = pytestconfig.getoption('B')
     T = pytestconfig.getoption('T')
