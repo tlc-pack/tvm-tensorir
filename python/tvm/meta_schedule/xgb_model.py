@@ -26,7 +26,7 @@ import numpy as np
 
 from ..autotvm.tuner.metric import max_curve
 from .cost_model import PyCostModel
-from .feature import per_store_feature_batched
+from .feature import per_store_feature_batched, per_block_feature_batched
 from .measure_record import MeasureInput, MeasureResult
 from .schedule import Schedule
 from .search import SearchTask
@@ -312,6 +312,7 @@ class XGBModel(PyCostModel):
             return
         # extract feature and do validation
         new_features = per_store_feature_batched([x.sch for x in inputs])
+        # new_features = per_block_feature_batched([x.sch for x in inputs])
         new_mean_costs = [x.mean_cost() for x in results]
         if self.booster is not None and self.cached_normalizer is not None:
             logger.debug(
@@ -355,6 +356,7 @@ class XGBModel(PyCostModel):
         n_measured = len(self.cached_features)
         if self.booster is not None and n_measured >= self.num_warmup_samples:
             ret = self._predict(xs=per_store_feature_batched(schedules))
+            # ret = self._predict(xs=per_block_feature_batched(schedules))
         else:
             ret = np.random.uniform(  # TODO(@junrushao1994): leaked source of randomness (?)
                 low=0,

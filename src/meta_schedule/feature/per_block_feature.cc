@@ -19,6 +19,7 @@
 #include <tvm/arith/int_set.h>
 #include <tvm/support/parallel_for.h>
 #include <tvm/tir/analysis.h>
+#include <tvm/tir/transform.h>
 
 #include <algorithm>
 #include <numeric>
@@ -294,7 +295,9 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     std::vector<FeatureSet> result;
     result.reserve(extractor.ordered_blocks_.size());
     for (const tir::BlockRealizeNode* realize : extractor.ordered_blocks_) {
-      result.push_back(extractor.per_block_feature_.at(realize));
+      if (realize->block->name_hint != "alloc") {
+        result.push_back(extractor.per_block_feature_.at(realize));
+      }
     }
     return result;
   }
@@ -383,7 +386,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     std::vector<int64_t> access_shape;
     int64_t num_continuous_bytes = 1;
     /*! \brief loop_accessed_numel[i][...] means the number of elements accessed by loops[i] */
-    std::vector<std::vector<int64_t>> loop_accessed_numel = {};
+    std::vector<std::unordered_map<const tir::BufferNode*, int64_t>> loop_accessed_numel = {};
     // Stride info
     int64_t min_stride = 0;
     int64_t innermost_stride = 0;
@@ -427,7 +430,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         // Note: `info.access_shape` for `i == n_loops - 1` is the only one preserved,
         // while others are discarded
         int64_t numel = CalcRegionUnionSize(info.regions, &info.access_shape);
-        info.loop_accessed_numel[i].push_back(numel);
+        info.loop_accessed_numel[i][buffer] = numel;
         touched_bytes += numel * buffer->dtype.bytes();
         buffer_touched_under_loop_[loop][buffer].push_back(numel);
       }
@@ -594,7 +597,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         feature.lines = 1;
         feature.unique_lines = 1;
       } else {
-        feature.unique_bytes = info.loop_accessed_numel.back().front() * dtype_bytes;
+        feature.unique_bytes = info.loop_accessed_numel.back().at(iter.first) * dtype_bytes;
         double m = static_cast<double>(info.min_stride) * dtype_bytes / kCacheLineBytes;
         feature.lines = outer_loop_prod_ / info.prod_non_strided_loop_extent * std::min(1.0, m);
         feature.lines = std::max(1.0, feature.lines);
@@ -876,8 +879,6 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       const tir::StmtNode* stmt = *iter;
       if (stmt->IsInstance<tir::ForNode>()) {
         loops.push_back(static_cast<const tir::ForNode*>(stmt));
-      } else {
-        break;
       }
     }
     FeatureSet& feature = per_block_feature_[realize];
@@ -1090,7 +1091,14 @@ runtime::NDArray PerBlockFeature(const Schedule& sch, int max_num_buffer_access_
   size_t kNumFeature = kNumFeatureGroup1 +
                        kNumFeatureGroup2Subgroup * max_num_buffer_access_features +
                        kNumFeatureGroup3 + kNumFeatureGroup5;
-  tir::PrimFunc func = GetOnlyFunc(sch->mod());
+
+  IRModule mod = sch->mod();
+  auto pass_list = Array<tvm::transform::Pass>();
+  pass_list.push_back(tir::transform::PreprocessForFeatureExtraction());
+  pass_list.push_back(tir::transform::Simplify());
+  const auto& optimize = tir::transform::Sequential(pass_list);
+  mod = optimize(std::move(mod));
+  tir::PrimFunc func = GetOnlyFunc(mod);
   std::vector<FeatureSet> feature_map = PerBlockFeatureExtractor::Extract(func);
 
   DoubleNDArrayPusher ret(
