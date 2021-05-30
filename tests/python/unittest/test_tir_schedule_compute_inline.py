@@ -117,6 +117,45 @@ def fail_multi_reader_writer(a: ty.handle, d: ty.handle) -> None:
         D[vi, vj] = B[vi, vj] + C[vi, vj]
 
 
+@tvm.script.tir
+def opaque_access_load(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    B = tir.alloc_buffer((128, 128))
+    C = tir.match_buffer(c, (128, 128))
+    with tir.block([128, 128], "B") as [vi, vj]:
+        B[vi, vj] = A[vi, vj] * 2.0
+    with tir.block([128, 128], "C") as [vi, vj]:
+        tir.reads(B[0:128, 0:128])
+        tir.writes(C[0:128, 0:128])
+        C[vi, vj] = tir.load("float32", B.data, vi * 128 + vj) + 1.0
+
+
+@tvm.script.tir
+def opaque_access_store(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    B = tir.alloc_buffer((128, 128))
+    C = tir.match_buffer(c, (128, 128))
+    with tir.block([128, 128], "B") as [vi, vj]:
+        B[vi, vj] = A[vi, vj] * 2.0
+    with tir.block([128, 128], "C") as [vi, vj]:
+        tir.reads(B[0:128, 0:128])
+        tir.writes(C[0:128, 0:128])
+        tir.store(C.data, vi * 128 + vj, B[vi, vj] + 1.0)
+        C[vi, vj] = tir.load("float32", B.data, vi * 16 + vj) + 1.0
+
+
+@tvm.script.tir
+def buffer_matched(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    B = tir.alloc_buffer((128, 128))
+    C = tir.match_buffer(c, (128, 128))
+    with tir.block([128, 128], "B") as [vi, vj]:
+        B[vi, vj] = A[vi, vj] * 2.0
+    with tir.block([128, 128], "C") as [vi, vj]:
+        Bb = tir.match_buffer_region(B[vi : vi + 1, vj])
+        C[vi, vj] = Bb[0, 0] + 1.0
+
+
 # pylint: enable=no-member,invalid-name,unused-variable
 
 
@@ -204,6 +243,27 @@ def test_reverse_compute_inline_fail_multi_reader():
         sch.reverse_compute_inline(block_c)
 
 
+def test_opaque_access_load():
+    sch = tir.Schedule(opaque_access_load, debug_mode=True)
+    block_b = sch.get_block("B")
+    with pytest.raises(tvm.tir.ScheduleError):
+        sch.compute_inline(block_b)
+
+
+def test_opaque_access_store():
+    sch = tir.Schedule(opaque_access_store, debug_mode=True)
+    block_b = sch.get_block("B")
+    with pytest.raises(tvm.tir.ScheduleError):
+        sch.compute_inline(block_b)
+
+
+def test_buffer_matched():
+    sch = tir.Schedule(buffer_matched, debug_mode=True)
+    block_b = sch.get_block("B")
+    with pytest.raises(tvm.tir.ScheduleError):
+        sch.compute_inline(block_b)
+
+
 if __name__ == "__main__":
     test_compute_inline_elementwise()
     test_compute_inline_under_loop()
@@ -215,3 +275,6 @@ if __name__ == "__main__":
     test_reverse_compute_inline_fail_as_dce()
     test_reverse_compute_inline_fail_multi_producer()
     test_reverse_compute_inline_fail_multi_reader()
+    test_opaque_access_load()
+    test_opaque_access_store()
+    test_buffer_matched()

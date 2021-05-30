@@ -23,6 +23,13 @@
 namespace tvm {
 namespace support {
 
+/*!
+ * \brief Checks if two arrays contain the same objects
+ * \tparam T The type of objects in the array
+ * \param a The first array
+ * \param b The second array
+ * \return A boolean indicating if they are the same
+ */
 template <class T>
 inline bool ArraySame(const Array<T>& a, const Array<T>& b) {
   if (a.size() != b.size()) {
@@ -37,8 +44,15 @@ inline bool ArraySame(const Array<T>& a, const Array<T>& b) {
   return true;
 }
 
+/*!
+ * \brief Checks if two arrays contain the same objects
+ * \tparam T The type of objects in the array
+ * \param a The first array
+ * \param b The second array
+ * \return A boolean indicating if they are the same
+ */
 template <class T>
-inline bool ArraySame(const std::vector<const T*>& a, const std::vector<const T*>& b) {
+inline bool ArraySame(const std::vector<T*>& a, const std::vector<T*>& b) {
   if (a.size() != b.size()) {
     return false;
   }

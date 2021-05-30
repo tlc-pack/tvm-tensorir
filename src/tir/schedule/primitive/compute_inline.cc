@@ -111,11 +111,11 @@ class BodyAnalysisError : public ScheduleError {
 
 class OnlyLeafError : public ScheduleError {
  public:
-  explicit OnlyLeafError(const char* prim, IRModule mod, Block leaf_block, Block scope_root)
-      : prim_(prim),
-        mod_(mod),
-        leaf_block_(std::move(leaf_block)),
-        scope_root_(std::move(scope_root)) {}
+  explicit OnlyLeafError(const char* prim, IRModule mod, Block leaf_block, StmtSRef scope_root_sref)
+      : prim_(prim), mod_(mod), leaf_block_(std::move(leaf_block)), scope_root_(nullptr) {
+    const BlockNode* scope_root = TVM_SREF_TO_BLOCK(scope_root, scope_root_sref);
+    this->scope_root_ = GetRef<Block>(scope_root);
+  }
 
   String FastErrorString() const final {
     return "ScheduleError: Cannot remove the only leaf in the scope";
@@ -177,6 +177,33 @@ class NonSingleProducerError : public ScheduleError {
     const BlockNode* block = TVM_SREF_TO_BLOCK(block, consumer_block_sref);
     throw NonSingleProducerError(prim_reverse_compute_inline, self->mod, GetRef<Block>(block));
   }
+};
+
+class OpaqueAccessError : public ScheduleError {
+ public:
+  explicit OpaqueAccessError(const char* prim, IRModule mod, StmtSRef scope_root_sref)
+      : prim_(prim), mod_(mod), scope_root_(nullptr) {
+    const BlockNode* scope_root = TVM_SREF_TO_BLOCK(scope_root, scope_root_sref);
+    this->scope_root_ = GetRef<Block>(scope_root);
+  }
+
+  String FastErrorString() const final {
+    return "ScheduleError: The buffer to be inlined has opaque access (e.g. `B.data`), or its "
+           "subregion is matched into other blocks";
+  }
+
+  String DetailRenderTemplate() const final {
+    return "The buffer to be inlined has opaque access (e.g. `B.data`), or its "
+           "subregion is matched into other blocks: {0}";
+  }
+
+  String primitive() const final { return prim_; }
+  IRModule mod() const final { return mod_; }
+  Array<ObjectRef> LocationsOfInterest() const final { return {scope_root_}; }
+
+  const char* prim_;
+  IRModule mod_;
+  Block scope_root_;
 };
 
 /*!
@@ -283,7 +310,22 @@ class BaseInliner : public StmtExprMutator {
       : inlined_buffer_(inlined_buffer),
         inlined_store_(inlined_block->body.as<BufferStoreNode>()),
         scope_root_sref_(scope_root_sref) {
-    AddAccessedBuffers(inlined_block.get());
+    AddBuffersInBlockSignature(inlined_block.get());
+  }
+
+  PrimExpr VisitExpr_(const VarNode* var) final {
+    CheckOpaqueAccess(var);
+    return StmtExprMutator::VisitExpr_(var);
+  }
+
+  PrimExpr VisitExpr_(const LoadNode* load) final {
+    CheckOpaqueAccess(load->buffer_var.get());
+    return StmtExprMutator::VisitExpr_(load);
+  }
+
+  Stmt VisitStmt_(const StoreNode* store) final {
+    CheckOpaqueAccess(store->buffer_var.get());
+    return StmtExprMutator::VisitStmt_(store);
   }
 
   Stmt VisitStmt_(const ForNode* loop) final {
@@ -295,7 +337,8 @@ class BaseInliner : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const BlockNode* block) final {
-    AddAccessedBuffers(block);
+    CheckMatchBufferRegion(block);
+    AddBuffersInBlockSignature(block);
     Block src_block = GetRef<Block>(block);
     if (src_block.same_as(src_stmt)) {
       block = tgt_stmt.as<BlockNode>();
@@ -303,7 +346,7 @@ class BaseInliner : public StmtExprMutator {
     }
     Block tgt_block = Downcast<Block>(StmtExprMutator::VisitStmt_(block));
     bool is_scope_root = src_block.get() == scope_root_sref_->stmt;
-    tgt_block = UpdateBlockSignature(std::move(tgt_block), is_scope_root);
+    tgt_block = UpdateBuffersInBlockSignature(std::move(tgt_block), is_scope_root);
     block_reuse.Set(src_block, tgt_block);
     return std::move(tgt_block);
   }
@@ -360,7 +403,12 @@ class BaseInliner : public StmtExprMutator {
   }
 
  private:
-  void AddAccessedBuffers(const BlockNode* block) {
+  /*!
+   * \brief Add the buffers in the block signature to the `buffer_var_map_`,
+   * which is used for auto-completion of a block's read/write region
+   * \param block The block whose signature to be added
+   */
+  void AddBuffersInBlockSignature(const BlockNode* block) {
     for (const BufferRegion& buffer_region : block->reads) {
       const Buffer& buffer = buffer_region->buffer;
       buffer_var_map_.Set(buffer->data, buffer);
@@ -383,7 +431,7 @@ class BaseInliner : public StmtExprMutator {
    * \param is_scope_root A flag indicating if a block is the scope root of the block to be inlined
    * \return The updated block
    */
-  Block UpdateBlockSignature(Block block, bool is_scope_root) {
+  Block UpdateBuffersInBlockSignature(Block block, bool is_scope_root) {
     // Step 1. Update `BlockNode::alloc_buffers`
     Array<Buffer> alloc_buffers;
     if (is_scope_root) {
@@ -412,6 +460,31 @@ class BaseInliner : public StmtExprMutator {
     return block;
   }
 
+  /*!
+   * \brief Opaque access to the buffer to be inlined is disallowed.
+   * This method checks if a buffer var belongs to the buffer
+   * \param buffer_var The buffer var to be checked
+   */
+  void CheckOpaqueAccess(const VarNode* buffer_var) {
+    if (inlined_buffer_->data.get() == buffer_var) {
+      this->has_opaque_access = true;
+    }
+  }
+
+  /*!
+   * \brief The buffer to be inlined is not allowed to be region matched.
+   * This method checks if a block has the disallowed behavior of buffer region match.
+   * \param block The block to be checked
+   */
+  void CheckMatchBufferRegion(const BlockNode* block) {
+    for (const MatchBufferRegion& match_buffer_region : block->match_buffers) {
+      const Buffer& matched = match_buffer_region->source->buffer;
+      if (matched.same_as(inlined_buffer_)) {
+        this->has_opaque_access = true;
+      }
+    }
+  }
+
  protected:
   /*! \brief The buffer to be inlined */
   Buffer inlined_buffer_{nullptr};
@@ -437,6 +510,8 @@ class BaseInliner : public StmtExprMutator {
   Stmt tgt_stmt{nullptr};
   /*! \brief The reuse mapping of block srefs */
   Map<Block, Block> block_reuse;
+  /*! \brief Indicates if there is any opaque access of the inlined buffer */
+  bool has_opaque_access{false};
 };
 
 /*!
@@ -571,12 +646,14 @@ void ComputeInline(ScheduleState self, const StmtSRef& producer_block_sref) {
   }
   // Step 4. Create a plan that removes the leaf block to be inlined
   if (!WithLeafRemoved(producer_block_sref, &inliner.src_stmt, &inliner.tgt_stmt)) {
-    const BlockNode* scope_root = TVM_SREF_TO_BLOCK(scope_root, scope_root_sref);
-    throw OnlyLeafError(prim, self->mod, producer_block, GetRef<Block>(scope_root));
+    throw OnlyLeafError(prim, self->mod, producer_block, scope_root_sref);
   }
   // Step 5. Create an AST where the leaf `producer_block_sref` points to is removed,
   // and update other blocks who read from the removed block
   Stmt tgt_stmt = inliner(GetRef<Stmt>(scope_root_sref->stmt));
+  if (inliner.has_opaque_access) {
+    throw OpaqueAccessError(prim, self->mod, scope_root_sref);
+  }
   // Step 6. Do the real mutation on the AST and the sref tree in the schedule state
   self->Replace(scope_root_sref, tgt_stmt, inliner.block_reuse);
 }
@@ -599,12 +676,14 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& consumer_block_sre
   }
   // Step 5. Create a plan that removes the leaf block to be inlined
   if (!WithLeafRemoved(consumer_block_sref, &inliner.src_stmt, &inliner.tgt_stmt)) {
-    const BlockNode* scope_root = TVM_SREF_TO_BLOCK(scope_root, scope_root_sref);
-    throw OnlyLeafError(prim, self->mod, consumer_block, GetRef<Block>(scope_root));
+    throw OnlyLeafError(prim, self->mod, consumer_block, scope_root_sref);
   }
   // Step 6. Create an AST where the leaf `consumer_block_sref` points to is removed,
   // and update other blocks who read from the removed block
   Stmt tgt_stmt = inliner(GetRef<Stmt>(scope_root_sref->stmt));
+  if (inliner.has_opaque_access) {
+    throw OpaqueAccessError(prim, self->mod, scope_root_sref);
+  }
   // Step 7. Do the real mutation on the AST and the sref tree in the schedule state
   self->Replace(scope_root_sref, tgt_stmt, inliner.block_reuse);
 }
