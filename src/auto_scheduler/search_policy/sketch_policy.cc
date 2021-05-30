@@ -89,6 +89,8 @@ SketchPolicy::SketchPolicy(SearchTask task, CostModel program_cost_model,
     node->dyn_split_memo =
         DynSplitFactorizationMemo(node->search_task->hardware_params,
                                   max_innermost_split_factor);
+  } else {
+    node->split_memo = SplitFactorizationMemo(max_innermost_split_factor);
   }
   LOG(INFO) << "Initialized the split factor cache";
 

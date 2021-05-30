@@ -110,10 +110,9 @@ class SketchPolicyNode : public SearchPolicyNode {
   std::mt19937 rand_gen;
 
   /*! \brief Memorize split space for Split. */
-  // <bojian/DietCode> split_memo → ∪{split_memo, dyn_split_memo}
-  // Here we declare using union because only one of the memos can be active at
-  // a time (depending the search task type).
-  SplitFactorizationMemo split_memo; DynSplitFactorizationMemo dyn_split_memo;
+  // <bojian/DietCode>
+  SplitFactorizationMemo split_memo;
+  DynSplitFactorizationMemo dyn_split_memo;
 
   State Search(int num_measure_trials, int early_stopping, int num_measures_per_round,
                ProgramMeasurer measurer) final;
