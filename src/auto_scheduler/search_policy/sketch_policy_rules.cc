@@ -521,11 +521,6 @@ std::vector<std::pair<State, int>> RuleCustomSketch::Apply(const SketchPolicyNod
 
 PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* policy, State* state,
                                                              std::mt19937* rand_gen) const {
-  // <bojian/DietCode>
-  // int max_innermost_split_factor =
-  //     GetIntParam(policy->params, SketchParamKey::max_innermost_split_factor);
-  LOG(INFO) << "Initializing the tile sizes";
-
   StateNode* pstate = state->CopyOnWrite();
   // Scan the transformation history and randomly fill tiles size for all SplitStep
 
@@ -556,7 +551,10 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
     pstate->concrete = true;
     return ResultKind::kValid;
   }
-  // SplitFactorizationMemo split_memo;
+  // <bojian/DietCode>
+  int max_innermost_split_factor =
+      GetIntParam(policy->params, SketchParamKey::max_innermost_split_factor);
+  SplitFactorizationMemo split_memo(max_innermost_split_factor);
 
   for (size_t step_id = 0; step_id < (*state)->transform_steps.size(); ++step_id) {
     if (auto ps = (*state)->transform_steps[step_id].as<SplitStepNode>()) {
@@ -570,14 +568,12 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
       if (all_defined) {
         continue;
       }
-
-      // <bojian/DietCode>
       ICHECK(ps->extent);
       int extent = GetIntImm(ps->extent.value());
       const auto& candidate_lens =
-          policy->split_memo.GetFactorizationSchemes(extent, ps->lengths.size()
-                                                     // , max_innermost_split_factor
-                                                     );
+          split_memo.GetFactorizationSchemes(extent, ps->lengths.size()
+                                             // , max_innermost_split_factor
+                                             );
       ICHECK(!candidate_lens.empty());
       const auto& candidate_lengths = candidate_lens[(*rand_gen)() % candidate_lens.size()];
 
@@ -1047,8 +1043,6 @@ PopulationGenerationRule::ResultKind MutateTileSize::Apply(SketchPolicyNode* pol
     // Divide one factor from lengths[src_idx] and multiply it to lengths[dst_idx]
     size_t dst_idx = random_perm[(i + 1) % random_perm.size()];
 
-    // <bojian/DietCode>
-    // const std::vector<int>& factors = policy->split_memo.GetFactors(length);
     const std::vector<int>& factors = policy->split_memo.GetFactors(length);
 
     ICHECK_GE(factors.size(), 1);

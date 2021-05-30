@@ -438,6 +438,9 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       }
     });
 
+    // <bojian/DietCode>
+    LOG(FATAL) << "Finished applying the initialization rules";
+
     // Filter out the states that were failed to apply initial rules
     Array<State> cand_states;
     for (auto tmp_s : temp_states) {
