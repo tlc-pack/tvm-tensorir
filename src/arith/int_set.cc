@@ -378,6 +378,17 @@ class IntervalSetEvaluator : public ExprFunctor<IntervalSet(const PrimExpr&)> {
     }
   }
 
+  // <bojian/DietCode> Added DynamicAxisNode to the IntervalSet construction.
+  IntervalSet VisitExpr_(const DynamicAxisNode* op) final {
+    DynamicAxis dyn_axis = GetRef<DynamicAxis>(op);
+    if (op->possible_values.empty() || op->possible_values.size() == 1) {
+      LOG(WARNING) << dyn_axis << " does not have possible values specified";
+      return IntervalSet::SinglePoint(dyn_axis);
+    }
+    return IntervalSet(op->possible_values[0],
+                       op->possible_values[op->possible_values.size() - 1]);
+  }
+
   IntervalSet VisitExpr_(const AddNode* op) final { return VisitBinaryExpr_<Add>(op); }
 
   IntervalSet VisitExpr_(const SubNode* op) final { return VisitBinaryExpr_<Sub>(op); }
