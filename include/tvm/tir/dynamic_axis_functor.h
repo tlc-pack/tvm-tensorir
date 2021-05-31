@@ -24,30 +24,6 @@ class DynamicAxisReplacer : public ExprMutator {
 };
 
 /**
- * @brief Replace the dynamic axis node with its maximum value.
- */
-class DynamicAxisMaxReplacer : public DynamicAxisReplacer {
- public:
-  DynamicAxisMaxReplacer()
-      : DynamicAxisReplacer(
-          [](const DynamicAxisNode* op) ->PrimExpr {
-            return op->possible_values[op->possible_values.size() - 1];
-          }
-        ) {}
-};
-
-/**
- * @brief Replace the dynamic axis node with its minimum value.
- */
-class DynamicAxisMinReplacer : public DynamicAxisReplacer {
- public:
-  DynamicAxisMinReplacer()
-      : DynamicAxisReplacer(
-          [](const DynamicAxisNode* op) ->PrimExpr {return op->possible_values[0];}
-        ) {}
-};
-
-/**
  * @brief Find all the dynamic axis nodes of an expression.
  */
 class DynamicAxisFinder : public ExprVisitor {
