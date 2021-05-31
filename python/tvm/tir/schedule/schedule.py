@@ -310,7 +310,7 @@ class Schedule(Object):
 
     def reverse_compute_inline(self, block: BlockRV) -> None:
         """Inline a block into its only producer. It requires:
-        1) The block is a complete non-root block, which only produces and consumers one buffer
+        1) The block is a complete non-root block, which only produces and consumes one buffer
         2) The block must not be the only leaf in the scope.
         3) The only producer of the block is a read-after-write producer
         and a complete non-root block
