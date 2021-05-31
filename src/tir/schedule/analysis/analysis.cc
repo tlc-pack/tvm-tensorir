@@ -92,7 +92,7 @@ Definition of a scope that is a stage pipeline:
  * \brief Check the dominant property of a block:
  * the block is the only writer of its output, dominating the reader of its output buffers
  * \param self The schedule state
- * \param block_sref The block whose dominant property to be checked
+ * \param block_sref The block whose dominant property is to be checked
  * \return A boolean indicating if the block is a dominant block
  */
 bool IsDominantBlock(const BlockScope& self, const StmtSRef& block_sref) {
