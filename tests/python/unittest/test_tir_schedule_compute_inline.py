@@ -118,6 +118,25 @@ def fail_multi_reader_writer(a: ty.handle, d: ty.handle) -> None:
 
 
 @tvm.script.tir
+def elementwise_multi_reverse_loads(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    B = tir.alloc_buffer((128, 128))
+    C = tir.match_buffer(c, (128, 128))
+    with tir.block([128, 128], "B") as [vi, vj]:
+        B[vi, vj] = A[vi, vj] * 2.0
+    with tir.block([128, 128], "C") as [vi, vj]:
+        C[vi, vj] = (B[vi, vj] + 1.0) * (B[vi, vj] * 2.0) + 3.0
+
+
+@tvm.script.tir
+def elementwise_multi_reverse_loads_inlined(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
+    with tir.block([128, 128], "B") as [vi, vj]:
+        C[vi, vj] = (A[vi, vj] * 2.0 + 1.0) * (A[vi, vj] * 2.0 * 2.0) + 3.0
+
+
+@tvm.script.tir
 def opaque_access_load(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128))
     B = tir.alloc_buffer((128, 128))
@@ -177,6 +196,25 @@ def elementwise_predicate_inlined(a: ty.handle, c: ty.handle) -> None:
         with tir.block([128, 128], "C") as [vi, vj]:
             tir.where(A[i, j] * 2.0 < 10.0)
             C[vi, vj] = A[vi, vj] * 2.0 + 1.0
+
+
+@tvm.script.tir
+def elementwise_multi_loads(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    B = tir.alloc_buffer((128, 128))
+    C = tir.match_buffer(c, (128, 128))
+    with tir.block([128, 128], "B") as [vi, vj]:
+        B[vi, vj] = A[vi, vj] * 2.0
+    with tir.block([128, 126], "C") as [vi, vj]:
+        C[vi, vj] = B[vi, vj] + B[vi, vj + 1] + B[vi, vj + 2]
+
+
+@tvm.script.tir
+def elementwise_multi_loads_inlined(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
+    with tir.block([128, 126], "C") as [vi, vj]:
+        C[vi, vj] = A[vi, vj] * 2.0 + A[vi, vj + 1] * 2.0 + A[vi, vj + 2] * 2.0
 
 
 # pylint: enable=no-member,invalid-name,unused-variable
@@ -266,6 +304,20 @@ def test_reverse_compute_inline_fail_multi_reader():
         sch.reverse_compute_inline(block_c)
 
 
+def test_reverse_compute_multi_reverse_loads():
+    sch = tir.Schedule(elementwise_multi_reverse_loads, debug_mode=True)
+    block_c = sch.get_block("C")
+    sch.reverse_compute_inline(block_c)
+    tvm.ir.assert_structural_equal(elementwise_multi_reverse_loads_inlined, sch.mod["main"])
+
+
+def test_reverse_compute_fail_multi_reverse_loads():
+    sch = tir.Schedule(elementwise_multi_loads, debug_mode=True)
+    block_c = sch.get_block("C")
+    with pytest.raises(tvm.tir.ScheduleError):
+        sch.reverse_compute_inline(block_c)
+
+
 def test_opaque_access_load():
     sch = tir.Schedule(opaque_access_load, debug_mode=True)
     block_b = sch.get_block("B")
@@ -294,6 +346,13 @@ def test_compute_inline_predicate():
     tvm.ir.assert_structural_equal(elementwise_predicate_inlined, sch.mod["main"])
 
 
+def test_compute_inline_multi_loads():
+    sch = tir.Schedule(elementwise_multi_loads, debug_mode=True)
+    block_b = sch.get_block("B")
+    sch.compute_inline(block_b)
+    tvm.ir.assert_structural_equal(elementwise_multi_loads_inlined, sch.mod["main"])
+
+
 if __name__ == "__main__":
     test_compute_inline_elementwise()
     test_compute_inline_under_loop()
@@ -305,7 +364,10 @@ if __name__ == "__main__":
     test_reverse_compute_inline_fail_as_dce()
     test_reverse_compute_inline_fail_multi_producer()
     test_reverse_compute_inline_fail_multi_reader()
+    test_reverse_compute_multi_reverse_loads()
+    test_reverse_compute_fail_multi_reverse_loads()
     test_opaque_access_load()
     test_opaque_access_store()
     test_buffer_matched()
     test_compute_inline_predicate()
+    test_compute_inline_multi_loads()

@@ -21,12 +21,12 @@
 namespace tvm {
 namespace tir {
 
-static const char err_body_inline[] = R"(The body of the inlined block should be in form of
+static const char kErrBodyInline[] = R"(The body of the inlined block should be in form of
     'A[i, j, k, ...] = f(i, j, k, ...)',
 where the indices on the left are distinct atomic variables,
 and there should not no variables other than the index variables)";
 
-static const char err_body_reverse_inline[] = R"(The body of the inlined block should be in form of
+static const char kErrBodyReverseInline[] = R"(The body of the inlined block should be in form of
     `B[...] = g(i, j, k, A[i, j, k, ...] ...)`,
 where A is the only buffer the block consumes, whose indices are distinct atomic variables,
 and there should not no variables other than the index variables)";
@@ -81,15 +81,12 @@ class BodyAnalysisError : public ScheduleError {
       : is_reverse_(is_reverse), mod_(mod), block_(std::move(block)) {}
 
   String FastErrorString() const final {
-    return "ScheduleError: The block cannot be inlined because its body is illegal";
+    return "ScheduleError: The block cannot be inlined because its body pattern does not meet the "
+           "condition for inlining";
   }
 
   String DetailRenderTemplate() const final {
-    if (is_reverse_) {
-      return err_body_reverse_inline;
-    } else {
-      return err_body_inline;
-    }
+    return is_reverse_ ? kErrBodyReverseInline : kErrBodyInline;
   }
 
   IRModule mod() const final { return mod_; }
@@ -194,11 +191,13 @@ class OpaqueAccessError : public ScheduleError {
 /*!
  * \brief Construct a new AST, with a specific sref tree leaf removed.
  * The leaf's ancestors who have only a single child will be removed too.
- * \param leaf_sref The block/loop sref to the sref tree leaf to be removed
+ * \param leaf_block_sref The block/loop sref to the sref tree leaf to be removed
  * \param src_stmt The root of the subtree where the replacement begins
  * \param tgt_stmt The root of the subtree after the replacement
- * \return A boolean indicating if the search succeeds
- * \note For example, say we are removing the leaf block "B" from the AST.
+ * \return A boolean indicating if the leaf can be removed successfully
+ * \note Removal is not conducted beyond scope-level.
+ *
+ * An example of the removal plan, say we are removing the leaf block "B" from the AST.
  *
  *  \code
  *    with block([], "scope_root"):
@@ -221,10 +220,10 @@ class OpaqueAccessError : public ScheduleError {
  *            C[vi, vj] = B[vi, vj] * 2.0
  *  \endcode
  */
-bool WithLeafRemoved(const StmtSRef& leaf_sref, Stmt* src_stmt, Stmt* tgt_stmt) {
+bool LeafBlockRemovalPlan(const StmtSRef& leaf_block_sref, Stmt* src_stmt, Stmt* tgt_stmt) {
   // Go upwards until find an ancestor with more than one child
-  const StmtNode* last_stmt = leaf_sref->stmt;
-  StmtSRefNode* sref = leaf_sref->parent;
+  const StmtNode* last_stmt = leaf_block_sref->stmt;
+  StmtSRefNode* sref = leaf_block_sref->parent;
   for (;; last_stmt = sref->stmt, sref = sref->parent) {
     if (const auto* loop = sref->StmtAs<ForNode>()) {
       if (const auto* seq = loop->body.as<SeqStmtNode>()) {
@@ -233,6 +232,8 @@ bool WithLeafRemoved(const StmtSRef& leaf_sref, Stmt* src_stmt, Stmt* tgt_stmt) 
         }
       }
     } else {
+      // Removal is not done beyond scope-level.
+      // When encountering a block, i.e. the scope root, we simply stop
       break;
     }
   }
@@ -255,31 +256,6 @@ bool WithLeafRemoved(const StmtSRef& leaf_sref, Stmt* src_stmt, Stmt* tgt_stmt) 
     }
   }
   return false;
-}
-
-/*!
- * \brief Extracts expressions that loads a specific buffer
- * \param buffer The buffer to be loaded from
- * \param from The BufferStore statement to be extracted from
- * \return A list of `BufferLoad` expressions
- */
-std::vector<const BufferLoadNode*> ExtractBufferLoad(const Buffer& buffer,
-                                                     const BufferStoreNode* from) {
-  struct Extractor : public ExprVisitor {
-    void VisitExpr_(const BufferLoadNode* load) final {
-      if (load->buffer.get() == buffer) {
-        result.push_back(load);
-      }
-    }
-    const BufferNode* buffer;
-    std::vector<const BufferLoadNode*> result;
-  } extractor;
-  extractor.buffer = buffer.get();
-  for (const PrimExpr& expr : from->indices) {
-    extractor(expr);
-  }
-  extractor(from->value);
-  return std::move(extractor.result);
 }
 
 /*!
@@ -343,7 +319,7 @@ class BaseInliner : public StmtExprMutator {
    * \param expected_ndim The expected ndim of the access
    * \return A boolean flag indicating if the check is successful
    */
-  bool SetIndexVars(const Array<PrimExpr>& indices, int expected_ndim) {
+  bool UpdateAndCheckIndexVars(const Array<PrimExpr>& indices, int expected_ndim) {
     int n = indices.size();
     if (n != expected_ndim) {
       // Failure: dimension mismatch
@@ -487,7 +463,7 @@ class BaseInliner : public StmtExprMutator {
  public:
   /*!
    * \brief The Stmt to be replaced when removing the leaf block
-   * \note The pair (src_stmt, tgt_stmt) are produced by WithLeadRemoved to indicate a
+   * \note The pair (src_stmt, tgt_stmt) are produced by LeafBlockRemovalPlan to indicate a
    * transformation on top of the input AST. We take this approach to avoid changing the AST twice
    */
   Stmt src_stmt{nullptr};
@@ -517,7 +493,7 @@ class ComputeInliner : public BaseInliner {
       return false;
     }
     int n_vars = UndefinedVars(GetRef<Stmt>(inlined_store_), {}).size();
-    if (!SetIndexVars(inlined_store_->indices, n_vars)) {
+    if (!UpdateAndCheckIndexVars(inlined_store_->indices, n_vars)) {
       return false;
     }
     return true;
@@ -585,7 +561,7 @@ class ReverseComputeInliner : public BaseInliner {
     }
     int n_vars = UndefinedVars(GetRef<BufferStore>(inlined_store_), {}).size();
     for (const BufferLoadNode* load : loads) {
-      if (!SetIndexVars(load->indices, n_vars)) {
+      if (!UpdateAndCheckIndexVars(load->indices, n_vars)) {
         // Failure: incorrect of inconsistent index vars
         return false;
       }
@@ -611,6 +587,32 @@ class ReverseComputeInliner : public BaseInliner {
     return Substituter(this)(GetRef<BufferStore>(inlined_store_));
   }
 
+  /*!
+   * \brief Extracts expressions that loads a specific buffer
+   * \param buffer The buffer to be loaded from
+   * \param from The BufferStore statement to be extracted from
+   * \return A list of `BufferLoad` expressions
+   */
+  static std::vector<const BufferLoadNode*> ExtractBufferLoad(const Buffer& buffer,
+                                                              const BufferStoreNode* from) {
+    struct Extractor : public ExprVisitor {
+      void VisitExpr_(const BufferLoadNode* load) final {
+        if (load->buffer.get() == buffer) {
+          result.push_back(load);
+        }
+        ExprVisitor::VisitExpr_(load);
+      }
+      const BufferNode* buffer;
+      std::vector<const BufferLoadNode*> result;
+    } extractor;
+    extractor.buffer = buffer.get();
+    for (const PrimExpr& expr : from->indices) {
+      extractor(expr);
+    }
+    extractor(from->value);
+    return std::move(extractor.result);
+  }
+
   /*! \brief The RHS value of the producer's BufferStore statement */
   PrimExpr producer_rhs_{nullptr};
 };
@@ -629,7 +631,7 @@ void ComputeInline(ScheduleState self, const StmtSRef& producer_block_sref) {
     throw BodyAnalysisError(false, self->mod, producer_block);
   }
   // Step 4. Create a plan that removes the leaf block to be inlined
-  if (!WithLeafRemoved(producer_block_sref, &inliner.src_stmt, &inliner.tgt_stmt)) {
+  if (!LeafBlockRemovalPlan(producer_block_sref, &inliner.src_stmt, &inliner.tgt_stmt)) {
     throw OnlyLeafError(self->mod, producer_block, scope_root_sref);
   }
   // Step 5. Create an AST where the leaf `producer_block_sref` points to is removed,
@@ -658,7 +660,7 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& consumer_block_sre
     throw BodyAnalysisError(true, self->mod, consumer_block);
   }
   // Step 5. Create a plan that removes the leaf block to be inlined
-  if (!WithLeafRemoved(consumer_block_sref, &inliner.src_stmt, &inliner.tgt_stmt)) {
+  if (!LeafBlockRemovalPlan(consumer_block_sref, &inliner.src_stmt, &inliner.tgt_stmt)) {
     throw OnlyLeafError(self->mod, consumer_block, scope_root_sref);
   }
   // Step 6. Create an AST where the leaf `consumer_block_sref` points to is removed,
