@@ -543,11 +543,8 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
           continue;
         }
         split_steps.push_back(ps);
-        LOG(INFO) << "Stage: " << (*state)->stages[ps->stage_id] << " with extent " << ps->extent;
       }
     }
-    LOG(INFO) << "Number of SplitStep's: " << split_steps.size();
-    
     pstate->concrete = true;
     return ResultKind::kValid;
   }
@@ -1042,9 +1039,7 @@ PopulationGenerationRule::ResultKind MutateTileSize::Apply(SketchPolicyNode* pol
 
     // Divide one factor from lengths[src_idx] and multiply it to lengths[dst_idx]
     size_t dst_idx = random_perm[(i + 1) % random_perm.size()];
-
     const std::vector<int>& factors = policy->split_memo.GetFactors(length);
-
     ICHECK_GE(factors.size(), 1);
 
     int divide_factor;

@@ -421,7 +421,10 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
     std::vector<State> temp_states(population);
 
     // Sample a batch of states randomly
+    // <bojian/DietCode> Temporarily commented out parallel_for.
     support::parallel_for(0, population, [this, &temp_states, &sketches, &rand_gens](int index) {
+    // for (int index = 0; index < population; ++index) {
+
       // Randomly choose a sketch
       State tmp_s = sketches[(rand_gens[index])() % sketches.size()];
       // Apply random annotation rules one by one
@@ -436,7 +439,8 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       if (valid) {
         temp_states[index] = std::move(tmp_s);
       }
-    });
+    }
+    );
 
     // <bojian/DietCode>
     LOG(FATAL) << "Finished applying the initialization rules";

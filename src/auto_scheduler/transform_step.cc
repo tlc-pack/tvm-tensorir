@@ -978,9 +978,16 @@ SplitStep::SplitStep(int stage_id, int iter_id, Optional<PrimExpr> extent,
   auto node = make_object<SplitStepNode>();
   node->stage_id = stage_id;
   // Extent can be a irreducible expression in some special cases
+  
+  // <bojian/DietCode> Allow the extent to take on non-integer values.
+  // if (extent && extent.value()->IsInstance<IntImmNode>()) {
+  //   node->extent = tvm::Downcast<Integer>(extent.value());
+  // }
+  node->extent = extent;
   if (extent && extent.value()->IsInstance<IntImmNode>()) {
-    node->extent = tvm::Downcast<Integer>(extent.value());
+    LOG(WARNING) << "extent=" << extent << "is taking on non-integer values";
   }
+
   node->iter_id = iter_id;
   node->lengths = lengths;
   node->inner_to_outer = inner_to_outer;
