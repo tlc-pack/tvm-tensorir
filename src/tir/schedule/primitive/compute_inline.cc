@@ -237,7 +237,7 @@ class OpaqueAccessError : public ScheduleError {
  *  \endcode
  */
 bool WithLeafRemoved(const StmtSRef& leaf_sref, Stmt* src_stmt, Stmt* tgt_stmt) {
-  // Go upwards until find an ancestor with more than two children
+  // Go upwards until find an ancestor with more than one child
   const StmtNode* last_stmt = leaf_sref->stmt;
   StmtSRefNode* sref = leaf_sref->parent;
   for (;; last_stmt = sref->stmt, sref = sref->parent) {
