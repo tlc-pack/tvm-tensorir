@@ -354,9 +354,12 @@ TVM_DLL Pass AllreduceTransform();
  */
 TVM_DLL Pass BufferFlatten();
 
-TVM_DLL Pass PartialBufferFlatten();
-
+/*!
+ * \brief Do part of the lowering process for feature extraction.
+ * \return The pass.
+ */
 TVM_DLL Pass PreprocessForFeatureExtraction();
+
 /*!
  * \brief Locate the buffer allocation to the exact position (usually is
  *        the lca of buffer access). This pass will inject opaque block

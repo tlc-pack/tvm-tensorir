@@ -1197,6 +1197,7 @@ class RuleSpecialComputeLocationGPU {
       tir::StmtSRef loop_sref = sch->GetSRef(consumer_loops[i]);
       if (tir::GetLoopIterType(sch->state(), loop_sref) == tir::kUnrolled) {
         sch->ComputeAt(block_rv, consumer_loops[i - 1], true);
+        sch->SetScope(block_rv, 0, "local");
         break;
       }
     }

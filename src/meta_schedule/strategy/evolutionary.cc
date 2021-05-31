@@ -500,9 +500,9 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   };
   support::parallel_persist_for(0, results.size(), f_proc_measured);
   // Pick unmeasured states
-  std::atomic<int> fail_ct(0);
+  std::atomic<int> tot_fail_ct(0);
   std::atomic<int> success_ct(0);
-  auto f_proc_unmeasured = [this, &results, &thread_samplers, &fail_ct, &task, &space, &support,
+  auto f_proc_unmeasured = [this, &results, &thread_samplers, &tot_fail_ct, &task, &space, &support,
                             &success_ct, thread_workloads](int thread_id, int i) -> void {
     Sampler* sampler = &thread_samplers[thread_id];
     for (;;) {
@@ -518,10 +518,10 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
           success_ct++;
           break;
         } else {
-          fail_ct++;
+          tot_fail_ct++;
         }
       } catch (const dmlc::Error& e) {
-        fail_ct++;
+        tot_fail_ct++;
       }
       if (success_ct > 64) {
         break;
@@ -537,7 +537,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
       pruned_results.push_back(result);
     }
   }
-  LOG(INFO) << "fail count: " << fail_ct;
+  LOG(INFO) << "fail count: " << tot_fail_ct;
   return pruned_results;
 }
 

@@ -295,7 +295,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     std::vector<FeatureSet> result;
     result.reserve(extractor.ordered_blocks_.size());
     for (const tir::BlockRealizeNode* realize : extractor.ordered_blocks_) {
-      if (realize->block->name_hint != "alloc") {
+      if (!realize->block->name_hint.empty()) {
         result.push_back(extractor.per_block_feature_.at(realize));
       }
     }
@@ -858,10 +858,6 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  private:
   /******** Visitors ********/
   void VisitStmt_(const tir::BlockRealizeNode* realize) override {
-    // TODO(@jinhongyii): think of better ways of judging init block in the future
-    if (std::string(realize->block->name_hint).find("_init") != std::string::npos) {
-      return;
-    }
     if (!scopes_.empty()) {
       ordered_blocks_.push_back(realize);
     }
