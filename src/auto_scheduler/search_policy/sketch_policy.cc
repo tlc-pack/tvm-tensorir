@@ -85,10 +85,13 @@ SketchPolicy::SketchPolicy(SearchTask task, CostModel program_cost_model,
   int max_innermost_split_factor =
       GetIntParam(node->params, SketchParamKey::max_innermost_split_factor);
   if (IsDynTask(node->search_task)) {
+    if (!IsGPUTask(node->search_task)) {
+      LOG(FATAL) << "Non-GPU dynamic tasks have not been supported";
+    }
     LOG(INFO) << "Initialized the split factor cache: " << node->search_task->hardware_params;
-    node->dyn_split_memo =
-        DynSplitFactorizationMemo(node->search_task->hardware_params,
-                                  max_innermost_split_factor);
+    node->dietcode_split_memo =
+        DietCodeSplitFactorizationMemo(node->search_task->hardware_params,
+                                       max_innermost_split_factor);
   } else {
     node->split_memo = SplitFactorizationMemo(max_innermost_split_factor);
   }
@@ -400,6 +403,11 @@ Array<State> SketchPolicyNode::GenerateSketches() {
   return out_states;
 }
 
+
+// <bojian/DietCode>
+bool is_sample_init_population_1st_iter;
+
+
 Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches) {
   // Use this population as the parallel degree to do sampling
   int population = GetIntParam(params, SketchParamKey::EvolutionarySearch::population);
@@ -420,9 +428,29 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
   while (static_cast<int>(out_states.size()) < sample_init_min_pop_) {
     std::vector<State> temp_states(population);
 
+    // <bojian/DietCode> Peel the first iteration out of the initialization
+    is_sample_init_population_1st_iter = true;
+    {
+      State tmp_s = sketches[(rand_gens[0])() % sketches.size()];
+      bool valid = true;
+      for (const auto& rule : init_rules) {
+        if (rule->Apply(this, &tmp_s, &rand_gens[0]) ==
+            PopulationGenerationRule::ResultKind::kInvalid) {
+          valid = false;
+          break;
+        }
+      }
+      if (valid) {
+        temp_states[0] = std::move(tmp_s);
+      }
+    }
+    is_sample_init_population_1st_iter = false;
+
     // Sample a batch of states randomly
-    // <bojian/DietCode> Temporarily commented out parallel_for.
-    support::parallel_for(0, population, [this, &temp_states, &sketches, &rand_gens](int index) {
+    support::parallel_for(// 0 
+                          // <bojian/DietCode> Changed the starting index from 0 -> 1.
+                          1
+                        , population, [this, &temp_states, &sketches, &rand_gens](int index) {
     // for (int index = 0; index < population; ++index) {
 
       // Randomly choose a sketch

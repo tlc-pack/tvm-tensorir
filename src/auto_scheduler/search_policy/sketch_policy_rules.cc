@@ -519,15 +519,22 @@ std::vector<std::pair<State, int>> RuleCustomSketch::Apply(const SketchPolicyNod
 
 /********** Init Population **********/
 
+extern bool is_sample_init_population_1st_iter;
+
 PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* policy, State* state,
                                                              std::mt19937* rand_gen) const {
+  // <bojian/DietCode>
+  // int max_innermost_split_factor =
+  //     GetIntParam(policy->params, SketchParamKey::max_innermost_split_factor);
+
   StateNode* pstate = state->CopyOnWrite();
   // Scan the transformation history and randomly fill tiles size for all SplitStep
 
   // <bojian/DietCode> Change how the tile sizes are initialized.
   if (IsDynTask(policy->search_task)) {
-    // 1. Gather all the split steps.
-    std::vector<const SplitStepNode*> split_steps;
+    std::vector<std::pair<int, int>> split_step_info;
+    arith::Analyzer analyzer;
+    // DietCodeSplitFactorizationMemo split_memo(policy->search_task->hardware_params)
 
     for (size_t step_id = 0; step_id < (*state)->transform_steps.size();
          ++step_id) {
@@ -542,16 +549,35 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
         if (all_defined) {
           continue;
         }
-        split_steps.push_back(ps);
+        arith::IntSet s = analyzer.int_set(ps->extent.value(), {});
+        if (is_sample_init_population_1st_iter) {
+          LOG(INFO) << "Initializing the tile size for extent" << ps->extent
+                    << " with max value=" << s.max();
+        }
+        CHECK(ps->lengths.size() == 4 || ps->lengths.size() == 2);
+        split_step_info.emplace_back(ps->lengths.size(), GetIntImm(s.max()));
       }
+    }
+    policy->dietcode_split_memo.GetFactorizationSchemes(split_step_info);
+    // SplitFactorizationMemo split_memo(max_innermost_split_factor);
+    // compare between the static scheduling (w/ the largest workload instance)
+    // and the dynamic scheduling
+    size_t num_possible_factorization_schemes = 1;
+    for (const auto& info : split_step_info) {
+      num_possible_factorization_schemes *=
+          policy->split_memo.GetFactorizationSchemes(info.second, info.first).size();
+      if (is_sample_init_population_1st_iter) {
+        LOG(INFO) << "num_possible_factorization_schemes -> " << num_possible_factorization_schemes;
+      }
+    }
+    if (is_sample_init_population_1st_iter) {
+      LOG(INFO) << "Total number of possible factorization schemes w/ static workloads "
+                << num_possible_factorization_schemes;
     }
     pstate->concrete = true;
     return ResultKind::kValid;
   }
-  // <bojian/DietCode>
-  int max_innermost_split_factor =
-      GetIntParam(policy->params, SketchParamKey::max_innermost_split_factor);
-  SplitFactorizationMemo split_memo(max_innermost_split_factor);
+  // SplitFactorizationMemo split_memo(max_innermost_split_factor);
 
   for (size_t step_id = 0; step_id < (*state)->transform_steps.size(); ++step_id) {
     if (auto ps = (*state)->transform_steps[step_id].as<SplitStepNode>()) {
@@ -568,9 +594,9 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
       ICHECK(ps->extent);
       int extent = GetIntImm(ps->extent.value());
       const auto& candidate_lens =
-          split_memo.GetFactorizationSchemes(extent, ps->lengths.size()
-                                             // , max_innermost_split_factor
-                                             );
+          policy->split_memo.GetFactorizationSchemes(extent, ps->lengths.size()
+                                                     // , max_innermost_split_factor
+                                                     );
       ICHECK(!candidate_lens.empty());
       const auto& candidate_lengths = candidate_lens[(*rand_gen)() % candidate_lens.size()];
 
@@ -582,7 +608,6 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
     }
   }
   pstate->concrete = true;
-
   return ResultKind::kValid;
 }
 

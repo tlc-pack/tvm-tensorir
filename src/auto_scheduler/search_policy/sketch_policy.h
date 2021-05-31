@@ -110,9 +110,9 @@ class SketchPolicyNode : public SearchPolicyNode {
   std::mt19937 rand_gen;
 
   /*! \brief Memorize split space for Split. */
-  // <bojian/DietCode>
+  // <bojian/DietCode> Add DietCode architecture-dependent split memorization.
   SplitFactorizationMemo split_memo;
-  DynSplitFactorizationMemo dyn_split_memo;
+  DietCodeSplitFactorizationMemo dietcode_split_memo;
 
   State Search(int num_measure_trials, int early_stopping, int num_measures_per_round,
                ProgramMeasurer measurer) final;

@@ -455,6 +455,9 @@ void PruneInvalidState(const SearchTask& task, Array<State>* states) {
 }
 
 /********** SplitFactorizationMemo **********/
+
+extern bool is_sample_init_population_1st_iter;
+
 const Array<Array<Integer>>& SplitFactorizationMemo::GetFactorizationSchemes(
     int extent, int n_lengths
     // , int max_innermost_factor
@@ -464,6 +467,10 @@ const Array<Array<Integer>>& SplitFactorizationMemo::GetFactorizationSchemes(
   const auto& it = memory_.find(key);
   if (it != memory_.end()) {
     return it->second;
+  }
+  if (!is_sample_init_population_1st_iter) {
+    LOG(FATAL) << "(extent=" << extent << ", n_lengths=" << n_lengths <<") has "
+                  "not been found in SplitFactorizationMemo";
   }
 
   tmp_stack_ = Array<Integer>(n_lengths, Integer());
@@ -519,7 +526,8 @@ const std::vector<int>& SplitFactorizationMemo::GetFactors(int n) {
 
 
 const std::vector<std::vector<std::vector<int>>>&
-DynSplitFactorizationMemo::GetFactorizationSchemes(const std::vector<const SplitStep*> &split_steps) {
+DietCodeSplitFactorizationMemo::GetFactorizationSchemes(
+    const std::vector<std::pair<int, int>>& split_steps) {
   return memory_;
 
 

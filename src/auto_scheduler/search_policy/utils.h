@@ -680,7 +680,6 @@ class SplitFactorizationMemo {
 
   SplitFactorizationMemo() = default;
   explicit SplitFactorizationMemo(const int max_innermost_factor) : max_innermost_factor_(max_innermost_factor) {}
-  bool isActive() const { return max_innermost_factor_ != 0; }
 
   const Array<Array<Integer>>& GetFactorizationSchemes(int extent, int n_lengths
                                                        // , int max_innermost_factor
@@ -705,7 +704,7 @@ class SplitFactorizationMemo {
 
 
 // <bojian/DietCode> shape-dependent memo -> architecture-dependent cache
-class DynSplitFactorizationMemo {
+class DietCodeSplitFactorizationMemo {
  private:
 
   struct SplitStepInfo {
@@ -718,21 +717,15 @@ class DynSplitFactorizationMemo {
   // [* × Number of SplitSteps × ]
   std::vector<std::vector<std::vector<int>>> memory_;
  public:
-  DynSplitFactorizationMemo() = default;
-  explicit DynSplitFactorizationMemo(const HardwareParams& hardware_params,
-                                     const int max_innermost_factor)
+  DietCodeSplitFactorizationMemo() = default;
+  explicit DietCodeSplitFactorizationMemo(const HardwareParams& hardware_params,
+                                          const int max_innermost_factor)
       : hardware_params_(hardware_params), max_innermost_factor_(max_innermost_factor) {}
-  bool isActive() const { return max_innermost_factor_ != 0; }
   /**
    * \brief Get the factorization scheme.
    */
   const std::vector<std::vector<std::vector<int>>>&
-  GetFactorizationSchemes(const std::vector<const SplitStep*>& split_steps);
- private:
-
-  void DfsTraversal(std::vector<std::vector<int>>& state) {
-
-  }
+  GetFactorizationSchemes(const std::vector<std::pair<int, int>>& split_steps);
 };
 
 
