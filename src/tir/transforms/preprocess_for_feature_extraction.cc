@@ -18,7 +18,7 @@
  */
 
 /*!
- * \file buffer_flatten.cc
+ * \file preprocess_for_feature_extraction.cc
  */
 #include <tvm/tir/builtin.h>
 #include <tvm/tir/transform.h>
