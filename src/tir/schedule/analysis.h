@@ -49,7 +49,16 @@ void VerifyCachedFlags(const ScheduleState& self);
  */
 Optional<StmtSRef> GetScopeRoot(const StmtSRef& sref);
 
-StmtSRef CheckScopeStagePipeline(const char* prim, const ScheduleState& self, const StmtSRef& sref);
+/*!
+ * \brief Checks if scope the specified sref is in is a stage-pipeline and return it
+ * \param prim The name of the schedule primitive
+ * \param self The schedule state
+ * \param sref The sref whose scope is to be checked
+ * \throw ScheduleError if the sref has been the root of the AST (so it has no scope root), or its
+ * scope root is not a stage pipeline
+ * \return The block sref to the scope root
+ */
+StmtSRef CheckScopeStagePipeline(const ScheduleState& self, const StmtSRef& sref);
 
 /*!
  * \brief Check whether the block is a complete block under the scope
@@ -66,7 +75,14 @@ StmtSRef CheckScopeStagePipeline(const char* prim, const ScheduleState& self, co
 bool IsCompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
                      const StmtSRef& scope_root);
 
-void CheckCompleteBlock(const char* prim, const ScheduleState& self, const StmtSRef& block_sref,
+/*!
+ * \brief Check if the block is a complete block
+ * \param self The schedule state
+ * \param block_sref The sref to the block whose completeness is to be checked
+ * \param scope_root_sref The scope root of the block
+ * \throw ScheduleError If the block is not a complete block
+ */
+void CheckCompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
                         const StmtSRef& scope_root_sref);
 
 /******** Binding ********/

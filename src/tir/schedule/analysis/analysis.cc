@@ -32,12 +32,10 @@ Optional<StmtSRef> GetScopeRoot(const StmtSRef& sref) {
   return NullOpt;
 }
 
-StmtSRef CheckScopeStagePipeline(const char* prim, const ScheduleState& self,
-                                 const StmtSRef& sref) {
+StmtSRef CheckScopeStagePipeline(const ScheduleState& self, const StmtSRef& sref) {
   class NonRootBlockError : public ScheduleError {
    public:
-    explicit NonRootBlockError(const char* prim, IRModule mod) : prim_(prim), mod_(mod) {}
-    String primitive() const final { return prim_; }
+    explicit NonRootBlockError(IRModule mod) : mod_(mod) {}
     IRModule mod() const final { return mod_; }
     String FastErrorString() const final {
       return "ScheduleError: The primitive does not operate on the root block";
@@ -46,15 +44,12 @@ StmtSRef CheckScopeStagePipeline(const char* prim, const ScheduleState& self,
       return "The primitive does not operate on the root block";
     }
     Array<ObjectRef> LocationsOfInterest() const final { return {}; }
-    const char* prim_;
     IRModule mod_;
   };
 
   class NotStagePipelineError : public ScheduleError {
    public:
-    explicit NotStagePipelineError(const char* prim, IRModule mod, Block block)
-        : prim_(prim), mod_(mod), block_(block) {}
-    String primitive() const final { return prim_; }
+    explicit NotStagePipelineError(IRModule mod, Block block) : mod_(mod), block_(block) {}
     IRModule mod() const final { return mod_; }
     String FastErrorString() const final {
       return "ScheduleError: The scope root is not a stage pipeline";
@@ -69,7 +64,6 @@ Definition of a scope that is a stage pipeline:
 )";
     }
     Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
-    const char* prim_;
     IRModule mod_;
     Block block_;
   };
@@ -78,12 +72,12 @@ Definition of a scope that is a stage pipeline:
   if (Optional<StmtSRef> opt_scope_root_sref = GetScopeRoot(sref)) {
     scope_root_sref = opt_scope_root_sref.value();
   } else {
-    throw NonRootBlockError(prim, self->mod);
+    throw NonRootBlockError(self->mod);
   }
   bool stage_pipeline = self->GetBlockInfo(scope_root_sref).scope->stage_pipeline;
   if (stage_pipeline == false) {
     const BlockNode* block = TVM_SREF_TO_BLOCK(block, scope_root_sref);
-    throw NotStagePipelineError(prim, self->mod, GetRef<Block>(block));
+    throw NotStagePipelineError(self->mod, GetRef<Block>(block));
   }
   return scope_root_sref;
 }
@@ -141,12 +135,11 @@ bool IsCompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
   return true;
 }
 
-void CheckCompleteBlock(const char* prim, const ScheduleState& self, const StmtSRef& block_sref,
+void CheckCompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
                         const StmtSRef& scope_root_sref) {
   class IncompleteBlockError : public ScheduleError {
    public:
-    explicit IncompleteBlockError(const char* prim, IRModule mod, Block block)
-        : prim_(prim), mod_(mod), block_(block) {}
+    explicit IncompleteBlockError(IRModule mod, Block block) : mod_(mod), block_(block) {}
     String FastErrorString() const final { return "ScheduleError: Incomplete block"; }
     String DetailRenderTemplate() const final {
       return R"(The block {0} is not a complete block.
@@ -155,10 +148,8 @@ Definition of a complete block:
 2) Dominant: the block is the only writer of its output, dominating the reader of its output buffers
 3) No overlap between the buffers the block reads and writes)";
     }
-    String primitive() const final { return prim_; }
     IRModule mod() const final { return mod_; }
     Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
-    const char* prim_;
     IRModule mod_;
     Block block_;
   };
@@ -166,7 +157,7 @@ Definition of a complete block:
   bool result = IsCompleteBlock(self, block_sref, scope_root_sref);
   if (result == false) {
     const BlockNode* block = TVM_SREF_TO_BLOCK(block, scope_root_sref);
-    throw IncompleteBlockError(prim, self->mod, GetRef<Block>(block));
+    throw IncompleteBlockError(self->mod, GetRef<Block>(block));
   }
 }
 

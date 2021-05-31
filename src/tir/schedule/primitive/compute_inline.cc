@@ -21,9 +21,6 @@
 namespace tvm {
 namespace tir {
 
-static const char prim_compute_inline[] = "compute-inline";
-static const char prim_reverse_compute_inline[] = "reverse_compute-inline";
-
 static const char err_body_inline[] = R"(The body of the inlined block should be in form of
     'A[i, j, k, ...] = f(i, j, k, ...)',
 where the indices on the left are distinct atomic variables,
@@ -34,10 +31,10 @@ static const char err_body_reverse_inline[] = R"(The body of the inlined block s
 where A is the only buffer the block consumes, whose indices are distinct atomic variables,
 and there should not no variables other than the index variables)";
 
-class NonSingleReaderWriterError : public ScheduleError {
+class NotSingleReadWriteBuffer : public ScheduleError {
  public:
-  explicit NonSingleReaderWriterError(const char* prim, IRModule mod, bool is_read, Block block)
-      : prim_(prim), mod_(mod), is_read_(is_read), block_(std::move(block)) {}
+  explicit NotSingleReadWriteBuffer(IRModule mod, bool is_read, Block block)
+      : mod_(mod), is_read_(is_read), block_(std::move(block)) {}
 
   String FastErrorString() const final {
     return is_read_ ? "ScheduleError: The block is allowed to read only a single buffer region"
@@ -56,25 +53,23 @@ class NonSingleReaderWriterError : public ScheduleError {
     }
   }
 
-  String primitive() const final { return prim_; }
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
 
-  const char* prim_;
   IRModule mod_;
   bool is_read_;
   Block block_;
 
-  static Buffer CheckRead(const char* prim, const ScheduleState& self, const Block& block) {
+  static Buffer GetSingleRead(const ScheduleState& self, const Block& block) {
     if (block->reads.size() != 1) {
-      throw NonSingleReaderWriterError(prim, self->mod, true, block);
+      throw NotSingleReadWriteBuffer(self->mod, true, block);
     }
     return block->reads[0]->buffer;
   }
 
-  static Buffer CheckWrite(const char* prim, const ScheduleState& self, const Block& block) {
+  static Buffer GetSingleWrite(const ScheduleState& self, const Block& block) {
     if (block->writes.size() != 1) {
-      throw NonSingleReaderWriterError(prim, self->mod, false, block);
+      throw NotSingleReadWriteBuffer(self->mod, false, block);
     }
     return block->writes[0]->buffer;
   }
@@ -82,37 +77,33 @@ class NonSingleReaderWriterError : public ScheduleError {
 
 class BodyAnalysisError : public ScheduleError {
  public:
-  explicit BodyAnalysisError(const char* prim, IRModule mod, Block block)
-      : prim_(prim), mod_(mod), block_(std::move(block)) {}
+  explicit BodyAnalysisError(bool is_reverse, IRModule mod, Block block)
+      : is_reverse_(is_reverse), mod_(mod), block_(std::move(block)) {}
 
   String FastErrorString() const final {
     return "ScheduleError: The block cannot be inlined because its body is illegal";
   }
 
   String DetailRenderTemplate() const final {
-    if (prim_ == String(prim_compute_inline)) {
-      return err_body_inline;
-    } else if (prim_ == String(prim_reverse_compute_inline)) {
+    if (is_reverse_) {
       return err_body_reverse_inline;
     } else {
-      ICHECK(false) << "not reachable";
-      throw;
+      return err_body_inline;
     }
   }
 
-  String primitive() const final { return prim_; }
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
 
-  String prim_;
+  bool is_reverse_;
   IRModule mod_;
   Block block_;
 };
 
 class OnlyLeafError : public ScheduleError {
  public:
-  explicit OnlyLeafError(const char* prim, IRModule mod, Block leaf_block, StmtSRef scope_root_sref)
-      : prim_(prim), mod_(mod), leaf_block_(std::move(leaf_block)), scope_root_(nullptr) {
+  explicit OnlyLeafError(IRModule mod, Block leaf_block, StmtSRef scope_root_sref)
+      : mod_(mod), leaf_block_(std::move(leaf_block)), scope_root_(nullptr) {
     const BlockNode* scope_root = TVM_SREF_TO_BLOCK(scope_root, scope_root_sref);
     this->scope_root_ = GetRef<Block>(scope_root);
   }
@@ -126,11 +117,9 @@ class OnlyLeafError : public ScheduleError {
            "scope will be empty.";
   }
 
-  String primitive() const final { return prim_; }
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {leaf_block_, scope_root_}; }
 
-  const char* prim_;
   IRModule mod_;
   Block leaf_block_;
   Block scope_root_;
@@ -138,8 +127,8 @@ class OnlyLeafError : public ScheduleError {
 
 class NonSingleProducerError : public ScheduleError {
  public:
-  explicit NonSingleProducerError(const char* prim, IRModule mod, Block block)
-      : prim_(prim), mod_(mod), block_(std::move(block)) {}
+  explicit NonSingleProducerError(IRModule mod, Block block)
+      : mod_(mod), block_(std::move(block)) {}
 
   String FastErrorString() const final {
     return "ScheduleError: The consumer block to be inlined is required to have only a single "
@@ -153,11 +142,9 @@ class NonSingleProducerError : public ScheduleError {
            "single consumer";
   }
 
-  String primitive() const final { return prim_; }
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
 
-  const char* prim_;
   IRModule mod_;
   Block block_;
 
@@ -175,14 +162,14 @@ class NonSingleProducerError : public ScheduleError {
       }
     }
     const BlockNode* block = TVM_SREF_TO_BLOCK(block, consumer_block_sref);
-    throw NonSingleProducerError(prim_reverse_compute_inline, self->mod, GetRef<Block>(block));
+    throw NonSingleProducerError(self->mod, GetRef<Block>(block));
   }
 };
 
 class OpaqueAccessError : public ScheduleError {
  public:
-  explicit OpaqueAccessError(const char* prim, IRModule mod, StmtSRef scope_root_sref)
-      : prim_(prim), mod_(mod), scope_root_(nullptr) {
+  explicit OpaqueAccessError(IRModule mod, StmtSRef scope_root_sref)
+      : mod_(mod), scope_root_(nullptr) {
     const BlockNode* scope_root = TVM_SREF_TO_BLOCK(scope_root, scope_root_sref);
     this->scope_root_ = GetRef<Block>(scope_root);
   }
@@ -197,11 +184,9 @@ class OpaqueAccessError : public ScheduleError {
            "subregion is matched into other blocks: {0}";
   }
 
-  String primitive() const final { return prim_; }
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {scope_root_}; }
 
-  const char* prim_;
   IRModule mod_;
   Block scope_root_;
 };
@@ -631,58 +616,56 @@ class ReverseComputeInliner : public BaseInliner {
 };
 
 void ComputeInline(ScheduleState self, const StmtSRef& producer_block_sref) {
-  const char* prim = prim_compute_inline;
   const BlockNode* _producer_block = TVM_SREF_TO_BLOCK(_producer_block, producer_block_sref);
   Block producer_block = GetRef<Block>(_producer_block);
-  Buffer inlined_buffer = NonSingleReaderWriterError::CheckWrite(prim, self, producer_block);
+  Buffer inlined_buffer = NotSingleReadWriteBuffer::GetSingleWrite(self, producer_block);
   // Step 1. Get the scope block
-  StmtSRef scope_root_sref = CheckScopeStagePipeline(prim, self, producer_block_sref);
+  StmtSRef scope_root_sref = CheckScopeStagePipeline(self, producer_block_sref);
   // Step 2. Check completeness
-  CheckCompleteBlock(prim, self, producer_block_sref, scope_root_sref);
+  CheckCompleteBlock(self, producer_block_sref, scope_root_sref);
   // Step 3. Analyze the block body
   ComputeInliner inliner(inlined_buffer, producer_block, scope_root_sref);
   if (!inliner.BodyPatternAllowInline(producer_block)) {
-    throw BodyAnalysisError(prim, self->mod, producer_block);
+    throw BodyAnalysisError(false, self->mod, producer_block);
   }
   // Step 4. Create a plan that removes the leaf block to be inlined
   if (!WithLeafRemoved(producer_block_sref, &inliner.src_stmt, &inliner.tgt_stmt)) {
-    throw OnlyLeafError(prim, self->mod, producer_block, scope_root_sref);
+    throw OnlyLeafError(self->mod, producer_block, scope_root_sref);
   }
   // Step 5. Create an AST where the leaf `producer_block_sref` points to is removed,
   // and update other blocks who read from the removed block
   Stmt tgt_stmt = inliner(GetRef<Stmt>(scope_root_sref->stmt));
   if (inliner.has_opaque_access) {
-    throw OpaqueAccessError(prim, self->mod, scope_root_sref);
+    throw OpaqueAccessError(self->mod, scope_root_sref);
   }
   // Step 6. Do the real mutation on the AST and the sref tree in the schedule state
   self->Replace(scope_root_sref, tgt_stmt, inliner.block_reuse);
 }
 
 void ReverseComputeInline(ScheduleState self, const StmtSRef& consumer_block_sref) {
-  const char* prim = prim_reverse_compute_inline;
   const BlockNode* _consumer_block = TVM_SREF_TO_BLOCK(_consumer_block, consumer_block_sref);
   Block consumer_block = GetRef<Block>(_consumer_block);
-  Buffer inlined_buffer = NonSingleReaderWriterError::CheckRead(prim, self, consumer_block);
+  Buffer inlined_buffer = NotSingleReadWriteBuffer::GetSingleRead(self, consumer_block);
   // Step 1. Get the scope block
-  StmtSRef scope_root_sref = CheckScopeStagePipeline(prim, self, consumer_block_sref);
+  StmtSRef scope_root_sref = CheckScopeStagePipeline(self, consumer_block_sref);
   // Step 2. Check completeness
-  CheckCompleteBlock(prim, self, consumer_block_sref, scope_root_sref);
+  CheckCompleteBlock(self, consumer_block_sref, scope_root_sref);
   // Step 3. Check if the consumer has a single complete producer
   NonSingleProducerError::Check(self, consumer_block_sref, scope_root_sref);
   // Step 4. Analyze the block body
   ReverseComputeInliner inliner(inlined_buffer, consumer_block, scope_root_sref);
   if (!inliner.BodyPatternAllowInline(consumer_block)) {
-    throw BodyAnalysisError(prim, self->mod, consumer_block);
+    throw BodyAnalysisError(true, self->mod, consumer_block);
   }
   // Step 5. Create a plan that removes the leaf block to be inlined
   if (!WithLeafRemoved(consumer_block_sref, &inliner.src_stmt, &inliner.tgt_stmt)) {
-    throw OnlyLeafError(prim, self->mod, consumer_block, scope_root_sref);
+    throw OnlyLeafError(self->mod, consumer_block, scope_root_sref);
   }
   // Step 6. Create an AST where the leaf `consumer_block_sref` points to is removed,
   // and update other blocks who read from the removed block
   Stmt tgt_stmt = inliner(GetRef<Stmt>(scope_root_sref->stmt));
   if (inliner.has_opaque_access) {
-    throw OpaqueAccessError(prim, self->mod, scope_root_sref);
+    throw OpaqueAccessError(self->mod, scope_root_sref);
   }
   // Step 7. Do the real mutation on the AST and the sref tree in the schedule state
   self->Replace(scope_root_sref, tgt_stmt, inliner.block_reuse);
