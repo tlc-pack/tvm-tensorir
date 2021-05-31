@@ -58,7 +58,7 @@ Optional<StmtSRef> GetScopeRoot(const StmtSRef& sref);
  * scope root is not a stage pipeline
  * \return The block sref to the scope root
  */
-StmtSRef CheckScopeStagePipeline(const ScheduleState& self, const StmtSRef& sref);
+StmtSRef GetScopeRootAndCheckStagePipeline(const ScheduleState& self, const StmtSRef& sref);
 
 /*!
  * \brief Check whether the block is a complete block under the scope

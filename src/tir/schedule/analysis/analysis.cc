@@ -32,10 +32,10 @@ Optional<StmtSRef> GetScopeRoot(const StmtSRef& sref) {
   return NullOpt;
 }
 
-StmtSRef CheckScopeStagePipeline(const ScheduleState& self, const StmtSRef& sref) {
-  class NonRootBlockError : public ScheduleError {
+StmtSRef GetScopeRootAndCheckStagePipeline(const ScheduleState& self, const StmtSRef& sref) {
+  class RootBlockError : public ScheduleError {
    public:
-    explicit NonRootBlockError(IRModule mod) : mod_(mod) {}
+    explicit RootBlockError(IRModule mod) : mod_(mod) {}
     IRModule mod() const final { return mod_; }
     String FastErrorString() const final {
       return "ScheduleError: The primitive does not operate on the root block";
@@ -72,7 +72,7 @@ Definition of a scope that is a stage pipeline:
   if (Optional<StmtSRef> opt_scope_root_sref = GetScopeRoot(sref)) {
     scope_root_sref = opt_scope_root_sref.value();
   } else {
-    throw NonRootBlockError(self->mod);
+    throw RootBlockError(self->mod);
   }
   bool stage_pipeline = self->GetBlockInfo(scope_root_sref).scope->stage_pipeline;
   if (stage_pipeline == false) {
