@@ -156,6 +156,29 @@ def buffer_matched(a: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = Bb[0, 0] + 1.0
 
 
+@tvm.script.tir
+def elementwise_predicate(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    B = tir.alloc_buffer((128, 128))
+    C = tir.match_buffer(c, (128, 128))
+    with tir.block([128, 128], "B") as [vi, vj]:
+        B[vi, vj] = A[vi, vj] * 2.0
+    for i, j in tir.grid(128, 128):
+        with tir.block([128, 128], "C") as [vi, vj]:
+            tir.where(B[i, j] < 10.0)
+            C[vi, vj] = B[vi, vj] + 1.0
+
+
+@tvm.script.tir
+def elementwise_predicate_inlined(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
+    for i, j in tir.grid(128, 128):
+        with tir.block([128, 128], "C") as [vi, vj]:
+            tir.where(A[i, j] * 2.0 < 10.0)
+            C[vi, vj] = A[vi, vj] * 2.0 + 1.0
+
+
 # pylint: enable=no-member,invalid-name,unused-variable
 
 
@@ -264,6 +287,13 @@ def test_buffer_matched():
         sch.compute_inline(block_b)
 
 
+def test_compute_inline_predicate():
+    sch = tir.Schedule(elementwise_predicate, debug_mode=True)
+    block_b = sch.get_block("B")
+    sch.compute_inline(block_b)
+    tvm.ir.assert_structural_equal(elementwise_predicate_inlined, sch.mod["main"])
+
+
 if __name__ == "__main__":
     test_compute_inline_elementwise()
     test_compute_inline_under_loop()
@@ -278,3 +308,4 @@ if __name__ == "__main__":
     test_opaque_access_load()
     test_opaque_access_store()
     test_buffer_matched()
+    test_compute_inline_predicate()
