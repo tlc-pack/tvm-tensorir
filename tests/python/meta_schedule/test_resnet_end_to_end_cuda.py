@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""End to end resnet-18 CPU test"""
+"""End to end resnet-18 GPU test"""
 # pylint: disable=missing-function-docstring
 import os
 
