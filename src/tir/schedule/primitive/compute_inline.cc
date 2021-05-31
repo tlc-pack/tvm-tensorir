@@ -273,7 +273,7 @@ bool WithLeafRemoved(const StmtSRef& leaf_sref, Stmt* src_stmt, Stmt* tgt_stmt) 
 }
 
 /*!
- * \brief Extracts expressions that loads from a specific buffer
+ * \brief Extracts expressions that loads a specific buffer
  * \param buffer The buffer to be loaded from
  * \param from The BufferStore statement to be extracted from
  * \return A list of `BufferLoad` expressions
