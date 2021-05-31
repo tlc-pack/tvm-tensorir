@@ -208,7 +208,7 @@ class OpaqueAccessError : public ScheduleError {
 
 /*!
  * \brief Construct a new AST, with a specific sref tree leaf removed.
- * The ancestors who have only a single child will be removed too.
+ * The leaf's ancestors who have only a single child will be removed too.
  * \param leaf_sref The block/loop sref to the sref tree leaf to be removed
  * \param src_stmt The root of the subtree where the replacement begins
  * \param tgt_stmt The root of the subtree after the replacement
