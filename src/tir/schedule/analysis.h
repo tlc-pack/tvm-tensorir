@@ -41,8 +41,51 @@ void VerifySRefTree(const ScheduleState& self);
  */
 void VerifyCachedFlags(const ScheduleState& self);
 
-/******** Binding ********/
+/******** Scope ********/
+/*!
+ * \brief Get the sref to the scope root block, exclusive
+ * \param sref The block or loop sref to be retrieved
+ * \return The sref to the scope root block. NullOpt if `sref` is the root block of the IR
+ */
+Optional<StmtSRef> GetScopeRoot(const StmtSRef& sref);
 
+/*!
+ * \brief Checks if scope the specified sref is in is a stage-pipeline and return it
+ * \param prim The name of the schedule primitive
+ * \param self The schedule state
+ * \param sref The sref whose scope is to be checked
+ * \throw ScheduleError if the sref has been the root of the AST (so it has no scope root), or its
+ * scope root is not a stage pipeline
+ * \return The block sref to the scope root
+ */
+StmtSRef GetScopeRootAndCheckStagePipeline(const ScheduleState& self, const StmtSRef& sref);
+
+/*!
+ * \brief Check whether the block is a complete block under the scope
+ * \param self The schedule state
+ * \param block_sref The block to be checked
+ * \param scope_root The sref to the root block of the scope that `block_sref` is in
+ * \return A boolean indicating if the block is a complete block
+ * \note Definition of a complete block:
+ * 1) All block vars are data parallel
+ * 2) Dominant: the block is the only writer of its output,
+ * dominating the reader of its output buffers
+ * 3) No overlap between the buffers the block reads and writes
+ */
+bool IsCompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
+                     const StmtSRef& scope_root);
+
+/*!
+ * \brief Check if the block is a complete block
+ * \param self The schedule state
+ * \param block_sref The sref to the block whose completeness is to be checked
+ * \param scope_root_sref The scope root of the block
+ * \throw ScheduleError If the block is not a complete block
+ */
+void CheckCompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
+                        const StmtSRef& scope_root_sref);
+
+/******** Binding ********/
 /*!
  * \brief Verify if the block binding in a specific BlockRealize is an affine binding.
  * The binding can be represented as an injective affine map from the loop iterators.

@@ -34,8 +34,10 @@
 
 #include "../../printer/text_printer.h"
 #include "../../runtime/thread_storage_scope.h"
+#include "../../support/array.h"
 #include "./analysis.h"
 #include "./error.h"
+#include "./primitive.h"
 
 namespace tvm {
 namespace tir {
@@ -96,6 +98,31 @@ namespace tir {
       << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
       << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
 
+/*!
+ * \brief Remove a specific Stmt from a SeqStmt. If a SeqStmt contains a BlockRealize,
+ * whose block is the Stmt to be removed, then remove that BlockRealize too.
+ * \param seq The SeqStmt to be removed from
+ * \param to_remove The Stmt to be removed
+ * \return The removal result
+ */
+inline Stmt SeqStmtRemove(const SeqStmt& seq, const Stmt& to_remove) {
+  ICHECK_GT(seq->size(), 1);
+  Array<Stmt> new_stmts;
+  new_stmts.reserve(seq->size());
+  for (const Stmt& stmt : seq->seq) {
+    if (to_remove.same_as(stmt)) {
+      continue;
+    }
+    if (const auto* realize = stmt.as<BlockRealizeNode>()) {
+      if (to_remove.same_as(realize->block)) {
+        continue;
+      }
+    }
+    new_stmts.push_back(stmt);
+  }
+  return SeqStmt::Flatten(new_stmts);
+}
+
 /******** Integer set ********/
 
 /*!
@@ -112,22 +139,6 @@ inline Map<Var, arith::IntSet> AsIntSet(const Map<Var, Range>& var_dom) {
     result.emplace(std::move(var), arith::IntSet::FromRange(std::move(range)));
   }
   return {result.begin(), result.end()};
-}
-
-/*!
- * \brief Converts an N-dimensional integer set to N-dimensional region
- * \param nd_int_set The integer set
- * \return The region as the result of conversion
- */
-inline Array<Range> AsRegion(const Array<arith::IntSet>& nd_int_set, arith::Analyzer* analyzer) {
-  Array<Range> result;
-  result.reserve(nd_int_set.size());
-  for (const arith::IntSet& int_set : nd_int_set) {
-    PrimExpr min = analyzer->Simplify(int_set.min());
-    PrimExpr extent = analyzer->Simplify(int_set.max() - int_set.min() + 1);
-    result.push_back(Range::FromMinExtent(std::move(min), std::move(extent)));
-  }
-  return result;
 }
 
 }  // namespace tir
