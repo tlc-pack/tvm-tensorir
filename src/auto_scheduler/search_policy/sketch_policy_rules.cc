@@ -555,7 +555,9 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
                     << " with max value=" << s.max();
         }
         CHECK(ps->lengths.size() == 4 || ps->lengths.size() == 2);
-        split_step_info.push_back(SplitStepInfo{ps->lengths.size() == 4, GetIntImm(s.max())});
+        split_step_info.push_back(SplitStepInfo{ps->lengths.size() == 4,
+                                                static_cast<size_t>(GetIntImm(s.max()))
+                                                });
       }
     }
     policy->dietcode_split_memo.GetFactorizationSchemes(split_step_info);

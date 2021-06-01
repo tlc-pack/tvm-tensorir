@@ -65,12 +65,27 @@ HardwareParams HardwareParamsNode::GetDefaultHardwareParams(const Target& target
     auto device_api = static_cast<tvm::runtime::DeviceAPI*>(((*func)()).operator void*());
 
     tvm::runtime::TVMRetValue ret;
+<<<<<<< HEAD
     device_api->GetAttr(dev, tvm::runtime::DeviceAttrKind::kMaxSharedMemoryPerBlock, &ret);
+=======
+
+    // <bojian/DietCode>
+    device_api->GetAttr(ctx, tvm::runtime::DeviceAttrKind::kMultiProcessorCount, &ret);
+    LOG(INFO) << "Number of Available SMs: " << int(ret);
+    int mps = ret;
+
+    device_api->GetAttr(ctx, tvm::runtime::DeviceAttrKind::kMaxSharedMemoryPerBlock, &ret);
+>>>>>>> 2874b6a4d... Finish the check on factorization schemes
     int max_shared_memory_per_block = ret;
 
     // There is no explicit local memory limition in CUDA runtime,
     // so we can use INT32_MAX to disalbe the check on local_memory.
-    int max_local_memory_per_block = INT32_MAX;
+    // <bojian/DietCode> Since the current bound on local memory is not used, we
+    //                   change that to register.
+    // int max_local_memory_per_block = INT32_MAX;
+    device_api->GetAttr(ctx, tvm::runtime::DeviceAttrKind::kMaxRegistersPerBlock, &ret);
+    LOG(INFO) << "Number of Registers Per Block: " << int(ret);
+    int max_local_memory_per_block = ret;
 
     device_api->GetAttr(dev, tvm::runtime::DeviceAttrKind::kMaxThreadsPerBlock, &ret);
     int max_threads_per_block = ret;
@@ -79,11 +94,6 @@ HardwareParams HardwareParamsNode::GetDefaultHardwareParams(const Target& target
     int warp_size = ret;
 
     int max_vthread_extent = warp_size / 4;
-
-    // <bojian/DietCode>
-    device_api->GetAttr(ctx, tvm::runtime::DeviceAttrKind::kMultiProcessorCount, &ret);
-    LOG(INFO) << "Number of Available SMs: " << int(ret);
-    int mps = ret;
 
     return HardwareParams(mps, 16, 64, max_shared_memory_per_block, max_local_memory_per_block,
                           max_threads_per_block, max_vthread_extent, warp_size);

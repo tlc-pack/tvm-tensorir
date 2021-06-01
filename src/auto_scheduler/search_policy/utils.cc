@@ -526,12 +526,14 @@ const std::vector<int>& SplitFactorizationMemo::GetFactors(int n) {
 
 
 FactorizationSchemeCheckRetType
-DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
-  int num_threads;
+DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme,
+                                        const SplitStepInfo& split_step_info) {
+  int num_threads = 1;
   size_t reg_usage = 1, acc_spatial = 0, acc_reduction = 1;
 
   for (const SplitFactors& split_factors : scheme) {
-    if (split_factors.size() == 4) {
+    if (split_step_info.is_spatial) {
+      CHECK(split_factors.size() == 4);
       num_threads *= split_factors[2];
       if (split_factors[3] > hardware_params_->max_vthread_extent) {
         return kOOB;
@@ -541,35 +543,50 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
       }
       size_t split_factors_prod = split_factors[0] * split_factors[1] *
                                   split_factors[2] * split_factors[3];
+      if (split_factors_prod > split_step_info.extent) {
+        return kOOB;
+      }
       reg_usage *= split_factors_prod;
       acc_spatial += split_factors_prod;
-    } else if (split_factors.size() == 2) {
+    } else {
+      CHECK(split_factors.size() == 2);
       if (split_factors[0] > max_innermost_factor_) {
         return kOOB;
       }
-      acc_reduction *= split_factors[0] * split_factors[1];
-    } else {
-      LOG(FATAL) << "Tiling structure unregonized";
+      size_t split_factors_prod = split_factors[0] * split_factors[1];
+      if (split_factors_prod > split_step_info.extent) {
+        return kOOB;
+      }
+      acc_reduction *= split_factors_prod;
     }
   }
   // check the shared memory capacity (with the assumption that all data types
   // are 32-bit float)
   size_t shmem_usage = acc_spatial * acc_reduction * sizeof(float);
-  if (shmem_usage > hardware_params_->max_shared_memory_per_block) {
+  if (shmem_usage >
+      static_cast<size_t>(hardware_params_->max_shared_memory_per_block)) {
     return kOOB;
   }
   // check the number of threads per block
+  if (num_threads % hardware_params_->warp_size != 0) {
+    return kInvalid;
+  }
+  if (num_threads > hardware_params_->max_threads_per_block) {
+    return kOOB;
+  }
+  if (reg_usage >
+      static_cast<size_t>(hardware_params_->max_local_memory_per_block)) {
+    return kOOB;
+  }
+  return kValid;
 }
 
 
 const std::vector<FactorizationScheme>&
 DietCodeSplitFactorizationMemo::GetFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info) {
 
-  // if 
-
-  return memory_;
+  return cache_;
 }
-
 
 
 /********** Utils interface API for ffi **********/

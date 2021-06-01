@@ -706,7 +706,7 @@ class SplitFactorizationMemo {
 // <bojian/DietCode> shape-dependent memo -> architecture-dependent cache
 struct SplitStepInfo {
   bool is_spatial;
-  long extent;
+  size_t extent;
 };
 
 // ∀iterator, its splitting factors
@@ -723,12 +723,13 @@ class DietCodeSplitFactorizationMemo {
  private:
   HardwareParams hardware_params_;
   int max_innermost_factor_;
-  std::vector<FactorizationScheme> memory_;
+  std::vector<FactorizationScheme> cache_;
 
   /**
    * \brief Check whether a factorization scheme is legit.
    */
-  FactorizationSchemeCheckRetType IsLegit(const FactorizationScheme& scheme);
+  FactorizationSchemeCheckRetType IsLegit(const FactorizationScheme& scheme, 
+                                          const SplitStepInfo& split_step_info);
  public:
   DietCodeSplitFactorizationMemo() = default;
   explicit DietCodeSplitFactorizationMemo(const HardwareParams& hardware_params,
