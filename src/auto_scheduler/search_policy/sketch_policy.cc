@@ -88,15 +88,15 @@ SketchPolicy::SketchPolicy(SearchTask task, CostModel program_cost_model,
     if (!IsGPUTask(node->search_task)) {
       LOG(FATAL) << "Non-GPU dynamic tasks have not been supported";
     }
-    LOG(INFO) << "Initialized the split factor cache: " << node->search_task->hardware_params;
+    LOG(INFO) << "Initialized the split factor cache: " << node->search_task->hardware_params
+              << " w/ max_innermost_split_factor=" << max_innermost_split_factor;
     node->dietcode_split_memo =
         DietCodeSplitFactorizationMemo(node->search_task->hardware_params,
                                        max_innermost_split_factor);
-  } else {
-    node->split_memo = SplitFactorizationMemo(max_innermost_split_factor);
   }
-  LOG(INFO) << "Initialized the split factor cache";
-
+  LOG(INFO) << "Initialized the static split factor cache w/ "
+               "max_innermost_split_factor=" << max_innermost_split_factor;
+  node->split_memo = SplitFactorizationMemo(max_innermost_split_factor);
 
   if (init_search_callbacks) {
     PrintTitle("Call init-search callbacks", verbose);
@@ -469,9 +469,6 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       }
     }
     );
-
-    // <bojian/DietCode>
-    LOG(FATAL) << "Finished applying the initialization rules";
 
     // Filter out the states that were failed to apply initial rules
     Array<State> cand_states;

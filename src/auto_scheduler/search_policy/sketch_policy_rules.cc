@@ -532,7 +532,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
 
   // <bojian/DietCode> Change how the tile sizes are initialized.
   if (IsDynTask(policy->search_task)) {
-    std::vector<std::pair<int, int>> split_step_info;
+    std::vector<SplitStepInfo> split_step_info;
     arith::Analyzer analyzer;
     // DietCodeSplitFactorizationMemo split_memo(policy->search_task->hardware_params)
 
@@ -551,26 +551,25 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
         }
         arith::IntSet s = analyzer.int_set(ps->extent.value(), {});
         if (is_sample_init_population_1st_iter) {
-          LOG(INFO) << "Initializing the tile size for extent" << ps->extent
+          LOG(INFO) << "Initializing the tile size for extent=" << ps->extent
                     << " with max value=" << s.max();
         }
         CHECK(ps->lengths.size() == 4 || ps->lengths.size() == 2);
-        split_step_info.emplace_back(ps->lengths.size(), GetIntImm(s.max()));
+        split_step_info.push_back(SplitStepInfo{ps->lengths.size() == 4, GetIntImm(s.max())});
       }
     }
     policy->dietcode_split_memo.GetFactorizationSchemes(split_step_info);
     // SplitFactorizationMemo split_memo(max_innermost_split_factor);
     // compare between the static scheduling (w/ the largest workload instance)
     // and the dynamic scheduling
-    size_t num_possible_factorization_schemes = 1;
-    for (const auto& info : split_step_info) {
-      num_possible_factorization_schemes *=
-          policy->split_memo.GetFactorizationSchemes(info.second, info.first).size();
-      if (is_sample_init_population_1st_iter) {
+    if (is_sample_init_population_1st_iter) {
+      size_t num_possible_factorization_schemes = 1;
+      for (const auto& info : split_step_info) {
+        LOG(INFO) << "extent=" << info.extent << ", n_lengths=" << (info.is_spatial ? 4 : 2);
+        num_possible_factorization_schemes =
+            policy->split_memo.GetFactorizationSchemes(info.extent, info.is_spatial ? 4 : 2).size();
         LOG(INFO) << "num_possible_factorization_schemes -> " << num_possible_factorization_schemes;
       }
-    }
-    if (is_sample_init_population_1st_iter) {
       LOG(INFO) << "Total number of possible factorization schemes w/ static workloads "
                 << num_possible_factorization_schemes;
     }

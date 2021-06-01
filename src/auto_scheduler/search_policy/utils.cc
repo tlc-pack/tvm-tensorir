@@ -527,10 +527,10 @@ const std::vector<int>& SplitFactorizationMemo::GetFactors(int n) {
 
 const std::vector<std::vector<std::vector<int>>>&
 DietCodeSplitFactorizationMemo::GetFactorizationSchemes(
-    const std::vector<std::pair<int, int>>& split_steps) {
+    const std::vector<SplitStepInfo>& split_steps_info) {
+
+
   return memory_;
-
-
 }
 
 
