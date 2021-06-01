@@ -530,7 +530,7 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
   int num_threads = 1;
   size_t reg_usage = 1, acc_spatial = 0, acc_reduction = 1;
 
-  for (const SplitFactors& split_factors : scheme) {
+  for (const SplitFactors& split_factors : scheme.split_factors) {
     const std::vector<int>& factors = split_factors.second;
 
     if (split_factors.first.is_spatial) {
@@ -574,6 +574,7 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
   if (num_threads > hardware_params_->max_threads_per_block) {
     return kOOB;
   }
+  // check the number of registers used
   if (reg_usage >
       static_cast<size_t>(hardware_params_->max_local_memory_per_block)) {
     return kOOB;
@@ -583,9 +584,41 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
 
 
 const std::vector<FactorizationScheme>&
-DietCodeSplitFactorizationMemo::GetFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info) {
-
+DietCodeSplitFactorizationMemo::GetFactorizationSchemes(
+    const std::vector<SplitStepInfo>& split_steps_info) {
+  if (!is_sample_init_population_1st_iter) {
+    for (const FactorizationScheme& scheme : cache_) {
+      CHECK(scheme.split_factors.size() == split_steps_info.size());
+      for (size_t i = 0; i < split_steps_info.size(); ++i) {
+        CHECK(scheme.split_factors[i].first == split_steps_info[i]);
+      }
+    }
+    // return the cached factorization scheme
+    return cache_;
+  }
+  FactorizationScheme initial_scheme(split_steps_info);
+  BfsEnumerate(initial_scheme);
+  LOG(INFO) << "Total number of possible factorization schemes w/ the largest "
+               "dynamic workload" << cache_.size();
   return cache_;
+}
+
+void DietCodeSplitFactorizationMemo::BfsEnumerate(FactorizationScheme& scheme) {
+  FactorizationSchemeCheckRetType ret = IsLegit(scheme);
+  if (ret == kValid) {
+    cache_.push_back(scheme);
+  }
+  bool all_incrs_oob = true;
+  for (SplitFactors& split_factors : scheme.split_factors) {
+    for (int& f : split_factors.second) {
+      ++f;
+      BfsEnumerate(scheme);
+      --f;
+    }
+  }
+  if (all_incrs_oob) {
+    return;
+  }
 }
 
 

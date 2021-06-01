@@ -572,7 +572,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
             policy->split_memo.GetFactorizationSchemes(info.extent, info.is_spatial ? 4 : 2).size();
         LOG(INFO) << "num_possible_factorization_schemes -> " << num_possible_factorization_schemes;
       }
-      LOG(INFO) << "Total number of possible factorization schemes w/ static workloads "
+      LOG(INFO) << "Total number of possible factorization schemes w/ the largest static workload instance: "
                 << num_possible_factorization_schemes;
     }
     pstate->concrete = true;

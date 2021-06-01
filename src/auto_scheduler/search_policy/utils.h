@@ -709,6 +709,12 @@ struct SplitStepInfo {
   size_t extent;
 };
 
+inline bool operator==(const SplitStepInfo& LHS, const SplitStepInfo& RHS) {
+  return LHS.is_spatial == RHS.is_spatial && LHS.extent == RHS.extent;
+}
+
+inline int GetNLengths(const bool is_spatial) { return is_spatial ? 4 : 2; }
+
 // ∀iterator, its splitting factors
 using SplitFactors = std::pair<SplitStepInfo, std::vector<int>>;
 
@@ -721,19 +727,9 @@ struct FactorizationScheme {
   explicit FactorizationScheme(
       const std::vector<SplitStepInfo>& split_steps_info) {
     for (const SplitStepInfo& info : split_steps_info) {
-      split_factors.emplace_back(
-          info, std::vector<int>(info.is_spatial ? 4 : 2, 1));
+      split_factors.emplace_back(info, GetNLengths(info.is_spatial), 1);
     }
   }
-
-  std::vector<SplitFactors>::const_iterator begin() const {
-    return split_factors.cbegin();
-  }
-  std::vector<SplitFactors>::const_iterator end() const {
-    return split_factors.cend();
-  }
-
-
 };
 
 
@@ -742,6 +738,7 @@ enum FactorizationSchemeCheckRetType {
   kInvalid,   // not a valid scheme, but can keep expanding
   kOOB        // running out of bounds, should STOP moving forward
 };
+
 
 class DietCodeSplitFactorizationMemo {
  private:
@@ -753,6 +750,8 @@ class DietCodeSplitFactorizationMemo {
    * \brief Check whether a factorization scheme is legit.
    */
   FactorizationSchemeCheckRetType IsLegit(const FactorizationScheme& scheme);
+
+  void BfsEnumerate(FactorizationScheme& scheme);
  public:
   DietCodeSplitFactorizationMemo() = default;
   explicit DietCodeSplitFactorizationMemo(const HardwareParams& hardware_params,
