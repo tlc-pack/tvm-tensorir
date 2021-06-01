@@ -525,10 +525,47 @@ const std::vector<int>& SplitFactorizationMemo::GetFactors(int n) {
 }
 
 
-const std::vector<std::vector<std::vector<int>>>&
-DietCodeSplitFactorizationMemo::GetFactorizationSchemes(
-    const std::vector<SplitStepInfo>& split_steps_info) {
+FactorizationSchemeCheckRetType
+DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
+  int num_threads;
+  size_t reg_usage = 1, acc_spatial = 0, acc_reduction = 1;
 
+  for (const SplitFactors& split_factors : scheme) {
+    if (split_factors.size() == 4) {
+      num_threads *= split_factors[2];
+      if (split_factors[3] > hardware_params_->max_vthread_extent) {
+        return kOOB;
+      }
+      if (split_factors[0] > max_innermost_factor_) {
+        return kOOB;
+      }
+      size_t split_factors_prod = split_factors[0] * split_factors[1] *
+                                  split_factors[2] * split_factors[3];
+      reg_usage *= split_factors_prod;
+      acc_spatial += split_factors_prod;
+    } else if (split_factors.size() == 2) {
+      if (split_factors[0] > max_innermost_factor_) {
+        return kOOB;
+      }
+      acc_reduction *= split_factors[0] * split_factors[1];
+    } else {
+      LOG(FATAL) << "Tiling structure unregonized";
+    }
+  }
+  // check the shared memory capacity (with the assumption that all data types
+  // are 32-bit float)
+  size_t shmem_usage = acc_spatial * acc_reduction * sizeof(float);
+  if (shmem_usage > hardware_params_->max_shared_memory_per_block) {
+    return kOOB;
+  }
+  // check the number of threads per block
+}
+
+
+const std::vector<FactorizationScheme>&
+DietCodeSplitFactorizationMemo::GetFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info) {
+
+  // if 
 
   return memory_;
 }

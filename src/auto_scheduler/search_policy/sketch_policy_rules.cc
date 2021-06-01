@@ -566,7 +566,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
       size_t num_possible_factorization_schemes = 1;
       for (const auto& info : split_step_info) {
         LOG(INFO) << "extent=" << info.extent << ", n_lengths=" << (info.is_spatial ? 4 : 2);
-        num_possible_factorization_schemes =
+        num_possible_factorization_schemes *=
             policy->split_memo.GetFactorizationSchemes(info.extent, info.is_spatial ? 4 : 2).size();
         LOG(INFO) << "num_possible_factorization_schemes -> " << num_possible_factorization_schemes;
       }

@@ -709,14 +709,26 @@ struct SplitStepInfo {
   long extent;
 };
 
+// ∀iterator, its splitting factors
+using SplitFactors = std::vector<int>;
+using FactorizationScheme = std::vector<SplitFactors>;
+
+enum FactorizationSchemeCheckRetType {
+  kValid,     // a valid scheme
+  kInvalid,   // not a valid scheme, but can keep expanding
+  kOOB        // running out of bounds, should STOP moving forward
+};
 
 class DietCodeSplitFactorizationMemo {
  private:
   HardwareParams hardware_params_;
   int max_innermost_factor_;
+  std::vector<FactorizationScheme> memory_;
 
-  // [* × Number of SplitSteps × ]
-  std::vector<std::vector<std::vector<int>>> memory_;
+  /**
+   * \brief Check whether a factorization scheme is legit.
+   */
+  FactorizationSchemeCheckRetType IsLegit(const FactorizationScheme& scheme);
  public:
   DietCodeSplitFactorizationMemo() = default;
   explicit DietCodeSplitFactorizationMemo(const HardwareParams& hardware_params,
@@ -725,7 +737,7 @@ class DietCodeSplitFactorizationMemo {
   /**
    * \brief Get the factorization scheme.
    */
-  const std::vector<std::vector<std::vector<int>>>&
+  const std::vector<FactorizationScheme>&
   GetFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info);
 };
 
