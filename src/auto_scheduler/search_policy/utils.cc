@@ -526,35 +526,35 @@ const std::vector<int>& SplitFactorizationMemo::GetFactors(int n) {
 
 
 FactorizationSchemeCheckRetType
-DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme,
-                                        const SplitStepInfo& split_step_info) {
+DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
   int num_threads = 1;
   size_t reg_usage = 1, acc_spatial = 0, acc_reduction = 1;
 
   for (const SplitFactors& split_factors : scheme) {
-    if (split_step_info.is_spatial) {
-      CHECK(split_factors.size() == 4);
-      num_threads *= split_factors[2];
-      if (split_factors[3] > hardware_params_->max_vthread_extent) {
+    const std::vector<int>& factors = split_factors.second;
+
+    if (split_factors.first.is_spatial) {
+      CHECK(factors.size() == 4);
+      num_threads *= factors[2];
+      if (factors[3] > hardware_params_->max_vthread_extent) {
         return kOOB;
       }
-      if (split_factors[0] > max_innermost_factor_) {
+      if (factors[0] > max_innermost_factor_) {
         return kOOB;
       }
-      size_t split_factors_prod = split_factors[0] * split_factors[1] *
-                                  split_factors[2] * split_factors[3];
-      if (split_factors_prod > split_step_info.extent) {
+      size_t split_factors_prod = factors[0] * factors[1] * factors[2] * factors[3];
+      if (split_factors_prod > split_factors.first.extent) {
         return kOOB;
       }
       reg_usage *= split_factors_prod;
       acc_spatial += split_factors_prod;
     } else {
-      CHECK(split_factors.size() == 2);
-      if (split_factors[0] > max_innermost_factor_) {
+      CHECK(factors.size() == 2);
+      if (factors[0] > max_innermost_factor_) {
         return kOOB;
       }
-      size_t split_factors_prod = split_factors[0] * split_factors[1];
-      if (split_factors_prod > split_step_info.extent) {
+      size_t split_factors_prod = factors[0] * factors[1];
+      if (split_factors_prod > split_factors.first.extent) {
         return kOOB;
       }
       acc_reduction *= split_factors_prod;

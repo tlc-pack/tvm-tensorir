@@ -710,8 +710,32 @@ struct SplitStepInfo {
 };
 
 // ∀iterator, its splitting factors
-using SplitFactors = std::vector<int>;
-using FactorizationScheme = std::vector<SplitFactors>;
+using SplitFactors = std::pair<SplitStepInfo, std::vector<int>>;
+
+struct FactorizationScheme {
+  std::vector<SplitFactors> split_factors;
+
+  /**
+   * \brief Construct a default factorization schemes of all 1's.
+   */
+  explicit FactorizationScheme(
+      const std::vector<SplitStepInfo>& split_steps_info) {
+    for (const SplitStepInfo& info : split_steps_info) {
+      split_factors.emplace_back(
+          info, std::vector<int>(info.is_spatial ? 4 : 2, 1));
+    }
+  }
+
+  std::vector<SplitFactors>::const_iterator begin() const {
+    return split_factors.cbegin();
+  }
+  std::vector<SplitFactors>::const_iterator end() const {
+    return split_factors.cend();
+  }
+
+
+};
+
 
 enum FactorizationSchemeCheckRetType {
   kValid,     // a valid scheme
@@ -728,8 +752,7 @@ class DietCodeSplitFactorizationMemo {
   /**
    * \brief Check whether a factorization scheme is legit.
    */
-  FactorizationSchemeCheckRetType IsLegit(const FactorizationScheme& scheme, 
-                                          const SplitStepInfo& split_step_info);
+  FactorizationSchemeCheckRetType IsLegit(const FactorizationScheme& scheme);
  public:
   DietCodeSplitFactorizationMemo() = default;
   explicit DietCodeSplitFactorizationMemo(const HardwareParams& hardware_params,
