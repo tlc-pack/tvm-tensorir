@@ -14,6 +14,13 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-""" Meta Schedule """
-from .space_generator import SpaceGenerator, PySpaceGenerator, ScheduleFn
-from .schedule import Schedule
+"""Tune Context"""
+
+from typing import Callable, List, Optional
+from tvm._ffi import register_object
+
+from . import _ffi_api
+
+
+class TuneContext:
+    pass
