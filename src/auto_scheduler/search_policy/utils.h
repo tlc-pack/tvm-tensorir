@@ -41,6 +41,10 @@
 #include <utility>
 #include <vector>
 
+// <bojian/DietCode>
+#include <queue>
+#include <sstream>
+
 #include "../utils.h"
 
 namespace tvm {
@@ -720,15 +724,69 @@ using SplitFactors = std::pair<SplitStepInfo, std::vector<int>>;
 
 struct FactorizationScheme {
   std::vector<SplitFactors> split_factors;
+  std::vector<std::vector<int>> factor_indices_to_incr;
 
+  FactorizationScheme() = default;
   /**
    * \brief Construct a default factorization schemes of all 1's.
    */
   explicit FactorizationScheme(
       const std::vector<SplitStepInfo>& split_steps_info) {
-    for (const SplitStepInfo& info : split_steps_info) {
-      split_factors.emplace_back(info, GetNLengths(info.is_spatial), 1);
+    size_t last_spatial_idx = -1;
+    for (size_t i = 0; i < split_steps_info.size(); ++i) {
+      if (split_steps_info[i].is_spatial) {
+        last_spatial_idx = i;
+      }
     }
+    for (size_t i = 0; i < split_steps_info.size(); ++i) {
+      split_factors.emplace_back(
+          split_steps_info[i],
+          std::vector<int>(GetNLengths(split_steps_info[i].is_spatial), 1));
+      if (split_steps_info[i].is_spatial) {
+        if (i == last_spatial_idx) {
+          factor_indices_to_incr.push_back({2, 3});
+        } else {
+          factor_indices_to_incr.push_back({0, 2});
+        }
+      } else {
+        factor_indices_to_incr.push_back({0});
+      }
+    }
+  }
+
+  /**
+   * \brief Serialzie the factorization scheme to string.
+   */
+  std::string toString() const {
+    std::ostringstream strout;
+    for (const SplitFactors& factors : split_factors) { 
+      strout << "(";
+      for (const int f : factors.second) {
+        strout << f << ",";
+      }
+      strout << ")";
+    }
+    return strout.str();
+  }
+
+  /**
+   * \brief Gernate a list of viable factorization schemes.
+   */
+  std::vector<FactorizationScheme> neighbors() const {
+    std::vector<SplitFactors> split_factors_copy = split_factors;
+    std::vector<FactorizationScheme> candidates;
+
+    for (size_t iter_idx = 0; iter_idx < split_factors_copy.size();
+         ++iter_idx) {
+      for (const size_t factor_idx : factor_indices_to_incr[iter_idx]) {
+        ++split_factors_copy[iter_idx].second[factor_idx];
+        FactorizationScheme candidate;
+        candidate.split_factors = split_factors_copy;
+        candidates.push_back(std::move(candidate));
+        --split_factors_copy[iter_idx].second[factor_idx];
+      }
+    }
+    return candidates;
   }
 };
 
@@ -746,12 +804,17 @@ class DietCodeSplitFactorizationMemo {
   int max_innermost_factor_;
   std::vector<FactorizationScheme> cache_;
 
+  std::queue<FactorizationScheme> workspace_;
+  std::unordered_set<std::string> examined_schemes_;
+
   /**
    * \brief Check whether a factorization scheme is legit.
    */
   FactorizationSchemeCheckRetType IsLegit(const FactorizationScheme& scheme);
-
-  void BfsEnumerate(FactorizationScheme& scheme);
+  /**
+   * \brief A BFS traversal to find all the possible factorization schemes.
+   */
+  void BfsEnumerate();
  public:
   DietCodeSplitFactorizationMemo() = default;
   explicit DietCodeSplitFactorizationMemo(const HardwareParams& hardware_params,

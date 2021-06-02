@@ -596,28 +596,43 @@ DietCodeSplitFactorizationMemo::GetFactorizationSchemes(
     // return the cached factorization scheme
     return cache_;
   }
-  FactorizationScheme initial_scheme(split_steps_info);
-  BfsEnumerate(initial_scheme);
+  workspace_.emplace(split_steps_info);
+  examined_schemes_.insert(workspace_.front().toString());
+  BfsEnumerate();
   LOG(INFO) << "Total number of possible factorization schemes w/ the largest "
                "dynamic workload" << cache_.size();
   return cache_;
 }
 
-void DietCodeSplitFactorizationMemo::BfsEnumerate(FactorizationScheme& scheme) {
-  FactorizationSchemeCheckRetType ret = IsLegit(scheme);
-  if (ret == kValid) {
-    cache_.push_back(scheme);
-  }
-  bool all_incrs_oob = true;
-  for (SplitFactors& split_factors : scheme.split_factors) {
-    for (int& f : split_factors.second) {
-      ++f;
-      BfsEnumerate(scheme);
-      --f;
+void DietCodeSplitFactorizationMemo::BfsEnumerate() {
+  while (!workspace_.empty()) {
+    FactorizationScheme& workitem = workspace_.front();
+    FactorizationSchemeCheckRetType ret = IsLegit(workitem);
+
+    if (ret == kValid) {
+      cache_.push_back(std::move(workitem));
+
+      if (cache_.size() % 100 == 0) {
+        LOG(INFO) << "Number of valid schedules found so far: " << cache_.size();
+      }
     }
-  }
-  if (all_incrs_oob) {
-    return;
+    if (ret != kOOB) {
+      // consider expanding the factorization scheme
+      std::vector<FactorizationScheme> adj_schemes = workitem.neighbors();
+      for (FactorizationScheme& scheme : adj_schemes) {
+        if (examined_schemes_.find(scheme.toString()) ==
+            examined_schemes_.end()) {
+          examined_schemes_.insert(scheme.toString());
+          workspace_.push(std::move(scheme));
+
+          if (examined_schemes_.size() % 10000 == 0) {
+            LOG(INFO) << "Number of schemes examined so far: " << examined_schemes_.size() << std::endl
+                      << "Current workitem=" << workitem.toString();
+          }
+        }
+      }
+    }
+    workspace_.pop();
   }
 }
 

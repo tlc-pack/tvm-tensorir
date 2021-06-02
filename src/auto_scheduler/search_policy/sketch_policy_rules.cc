@@ -560,6 +560,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
                                                 });
       }
     }
+    LOG(INFO) << "Getting all the possible factorization schemes";
     policy->dietcode_split_memo.GetFactorizationSchemes(split_step_info);
     // SplitFactorizationMemo split_memo(max_innermost_split_factor);
     // compare between the static scheduling (w/ the largest workload instance)
