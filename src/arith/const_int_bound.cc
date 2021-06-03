@@ -119,6 +119,13 @@ class ConstIntBoundAnalyzer::Impl
     var_map_[var] = info;
   }
 
+  // <bojian/DietCode>
+  Entry VisitExpr_(const DynamicAxisNode* op) final {
+    return Entry{op->possible_values[0]->value,
+                 op->possible_values[op->possible_values.size() - 1]->value};
+  }
+
+
   Entry VisitExpr_(const LetNode* op) final {
     auto it = var_map_.find(op->var);
     // if the var has not been binded, update the info.

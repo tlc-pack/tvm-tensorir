@@ -984,9 +984,9 @@ SplitStep::SplitStep(int stage_id, int iter_id, Optional<PrimExpr> extent,
   //   node->extent = tvm::Downcast<Integer>(extent.value());
   // }
   node->extent = extent;
-  if (extent && !extent.value()->IsInstance<IntImmNode>()) {
-    LOG(WARNING) << "extent=" << extent << " is taking on non-integer values";
-  }
+  // if (extent && !extent.value()->IsInstance<IntImmNode>()) {
+  //   LOG(WARNING) << "extent=" << extent << " is taking on non-integer values";
+  // }
 
   node->iter_id = iter_id;
   node->lengths = lengths;

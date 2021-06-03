@@ -480,6 +480,11 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       }
     }
 
+    if (IsDynTask(this->search_task)) {
+      LOG(FATAL) << "Number of states after pruning: " << cand_states.size();
+    }
+
+
     unchange_cnt++;
     if (!cand_states.empty()) {
       // Run the cost model to make filter out states that failed to extract features.

@@ -563,10 +563,14 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
     if (is_sample_init_population_1st_iter) {
       LOG(INFO) << "Getting all the possible factorization schemes";
     }
-    const std::vector<FactorizationScheme>& cached_schemes =
-        policy->dietcode_split_memo.GetFactorizationSchemes(split_step_info);
-    const FactorizationScheme& scheme = cached_schemes[(*rand_gen)() % cached_schemes.size()];
-    CHECK(scheme.split_factors.size() == split_step_info.size());
+    // const std::vector<FactorizationScheme>& cached_schemes =
+    //     policy->dietcode_split_memo.GetFactorizationSchemes(split_step_info);
+    // const FactorizationScheme& scheme = cached_schemes[(*rand_gen)() % cached_schemes.size()];
+    // CHECK(scheme.split_factors.size() == split_step_info.size());
+    FactorizationScheme scheme;
+    scheme.split_factors = {
+        {5, 1, 1, 1}, {1, 1, 32, 1}, {15, 1}
+        };
 
     if (is_sample_init_population_1st_iter) {
       LOG(INFO) << "Picking factorization scheme=" << scheme.toString();

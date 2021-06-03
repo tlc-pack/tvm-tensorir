@@ -176,7 +176,13 @@ inline IntervalSet Combine<tir::Mul>(Analyzer* analyzer, IntervalSet a, Interval
       return IntervalSet(Select(sign, e1, e2), Select(sign, e2, e1));
     }
   }
-  DLOG(WARNING) << "Return Everything in CombineInterval Mul";
+  // <bojian/DietCode> Add the handling where both a and b are greater than 0.
+  if (analyzer->CanProveGreaterEqual(a->min_value, 0) &&
+      analyzer->CanProveGreaterEqual(b->min_value, 0)) {
+    return IntervalSet(a->min_value * b->min_value, a->max_value * b->max_value);
+  }
+
+  LOG(WARNING) << "Return Everything in CombineInterval Mul";
   return IntervalSet::Everything();
 }
 
@@ -385,8 +391,9 @@ class IntervalSetEvaluator : public ExprFunctor<IntervalSet(const PrimExpr&)> {
       LOG(WARNING) << dyn_axis << " does not have possible values specified";
       return IntervalSet::SinglePoint(dyn_axis);
     }
-    return IntervalSet(op->possible_values[0],
-                       op->possible_values[op->possible_values.size() - 1]);
+    IntervalSet res(op->possible_values[0],
+                    op->possible_values[op->possible_values.size() - 1]);
+    return Eval(res);
   }
 
   IntervalSet VisitExpr_(const AddNode* op) final { return VisitBinaryExpr_<Add>(op); }
