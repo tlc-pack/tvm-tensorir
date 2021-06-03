@@ -954,17 +954,34 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
       // The remaining part deals with the thread binding for multi-level tiled stages
       auto pop = stage->op.as<te::ComputeOpNode>();
       std::vector<Iterator> to_fuse;
-      int total_space_extent = 1;
+
+      // <bojian/DietCode> int -> PrimExpr
+      // int total_space_extent = 1;
+      PrimExpr total_space_extent = 1;
+
       for (const auto& i : pop->root_iter_vars()) {
         ICHECK(i->dom.defined());
-        const auto& pint = i->dom->extent.as<IntImmNode>();
-        ICHECK(pint);
-        total_space_extent *= pint->value;
+        
+        // <bojian/DietCode>
+        // const auto& pint = i->dom->extent.as<IntImmNode>();
+        // ICHECK(pint);
+        // total_space_extent *= pint->value;
+        total_space_extent = total_space_extent * i->dom->extent;
+      }
+
+      arith::Analyzer analyzer;
+      arith::IntSet s = analyzer.int_set(total_space_extent, {});
+      if (is_sample_init_population_1st_iter) {
+        LOG(INFO) << "total_space_extent=" << total_space_extent << " w/ max="
+                  << GetIntImm(s.max());
       }
 
       bool check_min_thread_extent = true;
       // If the total space extent is too small, disable the check of minimal thread extent
-      if (total_space_extent <= policy->search_task->hardware_params->warp_size * 2) {
+      if (// <bojian/DietCode>
+          // total_space_extent
+          GetIntImm(s.max())
+          <= policy->search_task->hardware_params->warp_size * 2) {
         check_min_thread_extent = false;
       }
 
