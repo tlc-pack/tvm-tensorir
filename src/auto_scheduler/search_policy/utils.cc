@@ -571,6 +571,9 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
   if (num_threads % hardware_params_->warp_size != 0) {
     return kInvalid;
   }
+  // LOG(INFO) << "scheme=" << scheme.toString();
+  // LOG(INFO) << "num_threads=" << num_threads << ", warp_size="
+  //           << hardware_params_->warp_size;
   if (num_threads > hardware_params_->max_threads_per_block) {
     return kOOB;
   }
@@ -612,8 +615,9 @@ void DietCodeSplitFactorizationMemo::BfsEnumerate() {
     if (ret == kValid) {
       cache_.push_back(std::move(workitem));
 
-      if (cache_.size() % 100 == 0) {
+      if (cache_.size() % 10000 == 0) {
         LOG(INFO) << "Number of valid schedules found so far: " << cache_.size();
+        LOG(INFO) << "Latest examined scheme=" << cache_.back().toString();
       }
     }
     if (ret != kOOB) {
@@ -626,8 +630,8 @@ void DietCodeSplitFactorizationMemo::BfsEnumerate() {
           workspace_.push(std::move(scheme));
 
           if (examined_schemes_.size() % 10000 == 0) {
-            LOG(INFO) << "Number of schemes examined so far: " << examined_schemes_.size() << std::endl
-                      << "Current workitem=" << workitem.toString();
+            LOG(INFO) << "Number of schemes examined so far: " << examined_schemes_.size();
+            LOG(INFO) << "Current workitem=" << workitem.toString();
           }
         }
       }

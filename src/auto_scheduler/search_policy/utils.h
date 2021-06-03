@@ -782,6 +782,7 @@ struct FactorizationScheme {
         ++split_factors_copy[iter_idx].second[factor_idx];
         FactorizationScheme candidate;
         candidate.split_factors = split_factors_copy;
+        candidate.factor_indices_to_incr = factor_indices_to_incr;
         candidates.push_back(std::move(candidate));
         --split_factors_copy[iter_idx].second[factor_idx];
       }
