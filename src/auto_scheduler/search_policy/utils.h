@@ -717,40 +717,62 @@ inline bool operator==(const SplitStepInfo& LHS, const SplitStepInfo& RHS) {
   return LHS.is_spatial == RHS.is_spatial && LHS.extent == RHS.extent;
 }
 
-inline int GetNLengths(const bool is_spatial) { return is_spatial ? 4 : 2; }
+inline bool operator==(const std::vector<SplitStepInfo>& LHS,
+                       const std::vector<SplitStepInfo>& RHS) {
+  if (LHS.size() != RHS.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < LHS.size(); ++i) {
+    if (!(LHS[i] == RHS[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline int GetSplitLengths(const bool is_spatial) { return is_spatial ? 4 : 2; }
 
 // ∀iterator, its splitting factors
-using SplitFactors = std::pair<SplitStepInfo, std::vector<int>>;
+// using SplitFactors = std::pair<SplitStepInfo, std::vector<int>>;
 
 struct FactorizationScheme {
-  std::vector<SplitFactors> split_factors;
-  std::vector<std::vector<int>> factor_indices_to_incr;
+  std::vector<std::vector<int>> split_factors;
+
+  static std::vector<SplitStepInfo> split_steps_info;
+  static std::vector<std::vector<int>> factor_indices_to_incr;
 
   FactorizationScheme() = default;
   /**
    * \brief Construct a default factorization schemes of all 1's.
    */
   explicit FactorizationScheme(
-      const std::vector<SplitStepInfo>& split_steps_info) {
-    size_t last_spatial_idx = -1;
+      const std::vector<SplitStepInfo>& split_steps_info,
+      const bool init_static_members = false) {
     for (size_t i = 0; i < split_steps_info.size(); ++i) {
-      if (split_steps_info[i].is_spatial) {
-        last_spatial_idx = i;
-      }
+      split_factors.push_back(
+          std::vector<int>(GetSplitLengths(split_steps_info[i].is_spatial), 1));
     }
-    for (size_t i = 0; i < split_steps_info.size(); ++i) {
-      split_factors.emplace_back(
-          split_steps_info[i],
-          std::vector<int>(GetNLengths(split_steps_info[i].is_spatial), 1));
-      if (split_steps_info[i].is_spatial) {
-        if (i == last_spatial_idx) {
-          factor_indices_to_incr.push_back({2, 3});
-        } else {
-          factor_indices_to_incr.push_back({0, 2});
+    if (init_static_members) {
+      FactorizationScheme::split_steps_info = split_steps_info;
+      size_t last_spatial_idx = -1;
+      for (size_t i = 0; i < split_steps_info.size(); ++i) {
+        if (split_steps_info[i].is_spatial) {
+          last_spatial_idx = i;
         }
-      } else {
-        factor_indices_to_incr.push_back({0});
       }
+      for (size_t i = 0; i < split_steps_info.size(); ++i) {
+        if (split_steps_info[i].is_spatial) {
+          if (i == last_spatial_idx) {
+            factor_indices_to_incr.push_back({2, 3});
+          } else {
+            factor_indices_to_incr.push_back({0, 2});
+          }
+        } else {
+          factor_indices_to_incr.push_back({0});
+        }
+      }
+    } else {
+      CHECK(FactorizationScheme::split_steps_info == split_steps_info);
     }
   }
 
@@ -759,9 +781,9 @@ struct FactorizationScheme {
    */
   std::string toString() const {
     std::ostringstream strout;
-    for (const SplitFactors& factors : split_factors) { 
+    for (const std::vector<int>& factors : split_factors) { 
       strout << "(";
-      for (const int f : factors.second) {
+      for (const int f : factors) {
         strout << f << ",";
       }
       strout << ")";
@@ -773,18 +795,17 @@ struct FactorizationScheme {
    * \brief Gernate a list of viable factorization schemes.
    */
   std::vector<FactorizationScheme> neighbors() const {
-    std::vector<SplitFactors> split_factors_copy = split_factors;
+    std::vector<std::vector<int>> split_factors_copy = split_factors;
     std::vector<FactorizationScheme> candidates;
 
     for (size_t iter_idx = 0; iter_idx < split_factors_copy.size();
          ++iter_idx) {
       for (const size_t factor_idx : factor_indices_to_incr[iter_idx]) {
-        ++split_factors_copy[iter_idx].second[factor_idx];
+        ++split_factors_copy[iter_idx][factor_idx];
         FactorizationScheme candidate;
         candidate.split_factors = split_factors_copy;
-        candidate.factor_indices_to_incr = factor_indices_to_incr;
         candidates.push_back(std::move(candidate));
-        --split_factors_copy[iter_idx].second[factor_idx];
+        --split_factors_copy[iter_idx][factor_idx];
       }
     }
     return candidates;
@@ -805,7 +826,7 @@ class DietCodeSplitFactorizationMemo {
   int max_innermost_factor_;
   std::vector<FactorizationScheme> cache_;
 
-  std::queue<FactorizationScheme> workspace_;
+  std::queue<FactorizationScheme> workstack_;
   std::unordered_set<std::string> examined_schemes_;
 
   /**

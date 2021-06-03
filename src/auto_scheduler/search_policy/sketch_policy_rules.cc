@@ -560,9 +560,44 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
                                                 });
       }
     }
-    LOG(INFO) << "Getting all the possible factorization schemes";
-    policy->dietcode_split_memo.GetFactorizationSchemes(split_step_info);
-    // SplitFactorizationMemo split_memo(max_innermost_split_factor);
+    if (is_sample_init_population_1st_iter) {
+      LOG(INFO) << "Getting all the possible factorization schemes";
+    }
+    const std::vector<FactorizationScheme>& cached_schemes =
+        policy->dietcode_split_memo.GetFactorizationSchemes(split_step_info);
+    const FactorizationScheme& scheme = cached_schemes[(*rand_gen)() % cached_schemes.size()];
+    CHECK(scheme.split_factors.size() == split_step_info.size());
+
+    if (is_sample_init_population_1st_iter) {
+      LOG(INFO) << "Picking factorization scheme=" << scheme.toString();
+    }
+
+    for (size_t step_id = 0, iter_id = 0;
+         step_id < (*state)->transform_steps.size();
+         ++step_id) {
+      if (auto ps = (*state)->transform_steps[step_id].as<SplitStepNode>()) {
+        bool all_defined = true;
+        for (const auto& len : ps->lengths) {
+          if (!len) {
+            all_defined = false;
+            break;
+          }
+        }
+        if (all_defined) {
+          continue;
+        }
+        Array<Optional<Integer>> factors;
+        for (size_t i = 0; i < scheme.split_factors[iter_id].size(); ++i) {
+          factors.push_back(Integer(scheme.split_factors[iter_id][i]));
+        }
+        pstate->transform_steps.Set(
+            step_id,
+            SplitStep(ps->stage_id, ps->iter_id, ps->extent,
+                      factors, ps->inner_to_outer));
+        ++iter_id;
+      }
+    }
+
     // compare between the static scheduling (w/ the largest workload instance)
     // and the dynamic scheduling
     if (is_sample_init_population_1st_iter) {

@@ -525,15 +525,19 @@ const std::vector<int>& SplitFactorizationMemo::GetFactors(int n) {
 }
 
 
+std::vector<SplitStepInfo> FactorizationScheme::split_steps_info;
+std::vector<std::vector<int>> FactorizationScheme::factor_indices_to_incr;
+
 FactorizationSchemeCheckRetType
 DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
   int num_threads = 1;
   size_t reg_usage = 1, acc_spatial = 0, acc_reduction = 1;
 
-  for (const SplitFactors& split_factors : scheme.split_factors) {
-    const std::vector<int>& factors = split_factors.second;
-
-    if (split_factors.first.is_spatial) {
+  for (size_t i = 0; i < FactorizationScheme::split_steps_info.size(); ++i) {
+    const SplitStepInfo& split_step_info =
+        FactorizationScheme::split_steps_info[i];
+    const std::vector<int>& factors = scheme.split_factors[i];
+    if (split_step_info.is_spatial) {
       CHECK(factors.size() == 4);
       num_threads *= factors[2];
       if (factors[3] > hardware_params_->max_vthread_extent) {
@@ -543,7 +547,7 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
         return kOOB;
       }
       size_t split_factors_prod = factors[0] * factors[1] * factors[2] * factors[3];
-      if (split_factors_prod > split_factors.first.extent) {
+      if (split_factors_prod > split_step_info.extent) {
         return kOOB;
       }
       reg_usage *= split_factors_prod;
@@ -554,7 +558,7 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
         return kOOB;
       }
       size_t split_factors_prod = factors[0] * factors[1];
-      if (split_factors_prod > split_factors.first.extent) {
+      if (split_factors_prod > split_step_info.extent) {
         return kOOB;
       }
       acc_reduction *= split_factors_prod;
@@ -590,26 +594,23 @@ const std::vector<FactorizationScheme>&
 DietCodeSplitFactorizationMemo::GetFactorizationSchemes(
     const std::vector<SplitStepInfo>& split_steps_info) {
   if (!is_sample_init_population_1st_iter) {
-    for (const FactorizationScheme& scheme : cache_) {
-      CHECK(scheme.split_factors.size() == split_steps_info.size());
-      for (size_t i = 0; i < split_steps_info.size(); ++i) {
-        CHECK(scheme.split_factors[i].first == split_steps_info[i]);
-      }
-    }
+    CHECK(split_steps_info == FactorizationScheme::split_steps_info);
     // return the cached factorization scheme
     return cache_;
   }
-  workspace_.emplace(split_steps_info);
-  examined_schemes_.insert(workspace_.front().toString());
+  workstack_.emplace(split_steps_info,
+                     is_sample_init_population_1st_iter
+                     /* initialize the static members */);
+  examined_schemes_.insert(workstack_.front().toString());
   BfsEnumerate();
-  LOG(INFO) << "Total number of possible factorization schemes w/ the largest "
-               "dynamic workload" << cache_.size();
+  LOG(INFO) << "Total number of possible factorization schemes w/ the "
+               "dynamic workload: " << cache_.size();
   return cache_;
 }
 
 void DietCodeSplitFactorizationMemo::BfsEnumerate() {
-  while (!workspace_.empty()) {
-    FactorizationScheme& workitem = workspace_.front();
+  while (!workstack_.empty()) {
+    FactorizationScheme& workitem = workstack_.front();
     FactorizationSchemeCheckRetType ret = IsLegit(workitem);
 
     if (ret == kValid) {
@@ -627,7 +628,7 @@ void DietCodeSplitFactorizationMemo::BfsEnumerate() {
         if (examined_schemes_.find(scheme.toString()) ==
             examined_schemes_.end()) {
           examined_schemes_.insert(scheme.toString());
-          workspace_.push(std::move(scheme));
+          workstack_.push(std::move(scheme));
 
           if (examined_schemes_.size() % 10000 == 0) {
             LOG(INFO) << "Number of schemes examined so far: " << examined_schemes_.size();
@@ -636,7 +637,7 @@ void DietCodeSplitFactorizationMemo::BfsEnumerate() {
         }
       }
     }
-    workspace_.pop();
+    workstack_.pop();
   }
 }
 
