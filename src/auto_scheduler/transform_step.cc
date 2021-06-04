@@ -497,6 +497,8 @@ Iterator FuseStepNode::ApplyToState(State* state) const {
   IteratorKind new_iter_kind = IteratorKind::kSpecial;
   std::vector<Iterator> orig_iters;
 
+  // LOG(INFO) << "Fusing iterators";
+
   for (size_t i = 0; i < fused_ids.size(); ++i) {
     if (i > 0) {
       ICHECK_EQ(fused_ids[i]->value, fused_ids[i - 1]->value + 1);
@@ -515,6 +517,8 @@ Iterator FuseStepNode::ApplyToState(State* state) const {
     const Iterator& it = stage->iters[fused_ids[i]];
     orig_iters.push_back(it);
     new_name = new_name + it->name + "@";
+
+    // LOG(INFO) << "it->range->extent=" << it->range->extent;
 
     if (it->range.defined() && new_extent.defined()) {
       new_extent = new_extent * it->range->extent;
@@ -989,6 +993,10 @@ SplitStep::SplitStep(int stage_id, int iter_id, Optional<PrimExpr> extent,
   // }
 
   node->iter_id = iter_id;
+
+  // <bojian/DietCode>
+  // LOG(INFO) << lengths;
+
   node->lengths = lengths;
   node->inner_to_outer = inner_to_outer;
   data_ = std::move(node);

@@ -563,14 +563,14 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
     if (is_sample_init_population_1st_iter) {
       LOG(INFO) << "Getting all the possible factorization schemes";
     }
-    // const std::vector<FactorizationScheme>& cached_schemes =
-    //     policy->dietcode_split_memo.GetFactorizationSchemes(split_step_info);
-    // const FactorizationScheme& scheme = cached_schemes[(*rand_gen)() % cached_schemes.size()];
-    // CHECK(scheme.split_factors.size() == split_step_info.size());
-    FactorizationScheme scheme;
-    scheme.split_factors = {
-        {5, 1, 1, 1}, {1, 1, 32, 1}, {15, 1}
-        };
+    const std::vector<FactorizationScheme>& cached_schemes =
+        policy->dietcode_split_memo.GetFactorizationSchemes(split_step_info);
+    const FactorizationScheme& scheme = cached_schemes[(*rand_gen)() % cached_schemes.size()];
+    CHECK(scheme.split_factors.size() == split_step_info.size());
+    // FactorizationScheme scheme;
+    // scheme.split_factors = {
+    //     {1, 1, 1, 5}, {1, 32, 1, 1}, {15, 1}
+    //     };
 
     if (is_sample_init_population_1st_iter) {
       LOG(INFO) << "Picking factorization scheme=" << scheme.toString();
@@ -990,6 +990,10 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
       }
 
       // Fuse the outermost space tile as blockIdx
+      
+      // <bojian/DietCode>
+      // LOG(INFO) << "Fusing as blockIdx.x";
+
       for (size_t i = 0; i < pop->axis.size(); i++) {
         const auto& it = (*state)->stages[stage_id]->iters[i];
         // There may be some iterators that are marked with no split, stop if reaches next
@@ -1003,6 +1007,10 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
       state->bind(stage_id, blockidx_it, IteratorAnnotation::kBlockX);
 
       // Fuse the second outermost space tile as vthread
+
+      // <bojian/DietCode>
+      // LOG(INFO) << "Fusing as vthread";
+
       to_fuse.clear();
       for (size_t i = 1; i < pop->axis.size() + 1; i++) {
         const auto& it = (*state)->stages[stage_id]->iters[i];
@@ -1020,6 +1028,10 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
       state->bind(stage_id, vthread_it, IteratorAnnotation::kVThread);
 
       // Fuse the third outermost space tile as threadIdx
+
+      // <bojian/DietCode>
+      // LOG(INFO) << "Fusing as threadIdx.x";
+
       to_fuse.clear();
       for (size_t i = 2; i < pop->axis.size() + 2; i++) {
         const auto& it = (*state)->stages[stage_id]->iters[i];
@@ -1033,6 +1045,10 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
       const auto& threadidx_it = state->fuse(stage_id, to_fuse);
       if (check_min_thread_extent &&
           GetExtent(threadidx_it) < policy->search_task->hardware_params->warp_size) {
+
+        // <bojian/DietCode>
+        LOG(WARNING) << "threadidx_it.extent=" << threadidx_it->range->extent;
+
         return ResultKind::kInvalid;
       }
       state->bind(stage_id, threadidx_it, IteratorAnnotation::kThreadX);

@@ -763,12 +763,12 @@ struct FactorizationScheme {
       for (size_t i = 0; i < split_steps_info.size(); ++i) {
         if (split_steps_info[i].is_spatial) {
           if (i == last_spatial_idx) {
-            factor_indices_to_incr.push_back({2, 3});
+            factor_indices_to_incr.push_back({0, 1});
           } else {
-            factor_indices_to_incr.push_back({0, 2});
+            factor_indices_to_incr.push_back({1, 3});
           }
         } else {
-          factor_indices_to_incr.push_back({0});
+          factor_indices_to_incr.push_back({1});
         }
       }
     } else {

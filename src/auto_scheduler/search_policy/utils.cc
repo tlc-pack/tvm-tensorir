@@ -539,11 +539,11 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
     const std::vector<int>& factors = scheme.split_factors[i];
     if (split_step_info.is_spatial) {
       CHECK(factors.size() == 4);
-      num_threads *= factors[2];
-      if (factors[3] > hardware_params_->max_vthread_extent) {
+      num_threads *= factors[1];
+      if (factors[0] > hardware_params_->max_vthread_extent) {
         return kOOB;
       }
-      if (factors[0] > max_innermost_factor_) {
+      if (factors[3] > max_innermost_factor_) {
         return kOOB;
       }
       size_t split_factors_prod = factors[0] * factors[1] * factors[2] * factors[3];
@@ -554,7 +554,7 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
       acc_spatial += split_factors_prod;
     } else {
       CHECK(factors.size() == 2);
-      if (factors[0] > max_innermost_factor_) {
+      if (factors[1] > max_innermost_factor_) {
         return kOOB;
       }
       size_t split_factors_prod = factors[0] * factors[1];

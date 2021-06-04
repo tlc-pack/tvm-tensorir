@@ -281,6 +281,10 @@ Array<Iterator> State::split(int stage_id, const Iterator& it,
       SplitStep(stage_id, GetIndex(stage->iters, it),
                 it->range.defined() ? it->range->extent : PrimExpr(), lengths, inner_to_outer);
   CopyOnWrite()->transform_steps.push_back(step);
+
+  // <bojian/DietCode>
+  // LOG(INFO) << lengths;
+
   return step->ApplyToState(this);
 }
 

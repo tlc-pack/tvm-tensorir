@@ -315,11 +315,6 @@ Array<State> SketchPolicyNode::SearchOneRound(int num_random_states, Array<State
   // 2. Sample the init population
   Array<State> init_population = SampleInitPopulation(sketch_cache_);
 
-  // <bojian/DietCode>
-  if (IsDynTask(this->search_task)) {
-    LOG(FATAL) << "DietCode dynamic auto-scheduling workflow stops here";
-  }
-
   // 3. Perform evolutionary search.
   // Also insert already measured good states to the initial population
   std::vector<int> indices = Argsort(measured_states_throughputs_);

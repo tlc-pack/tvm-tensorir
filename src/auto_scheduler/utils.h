@@ -324,6 +324,23 @@ inline void ParseKernelLayout(const String& layout, Array<PrimExpr>* shape,
 /*! \brief Get the base name before '_' of an axis */
 inline std::string AxisBaseName(const std::string& str) { return str.substr(0, str.rfind("_")); }
 
+
+// <bojian/DietCode>
+template<typename T>
+inline std::string OptionalArrayToString(const Array<Optional<T>>& Arr) {
+  std::ostringstream strout;
+  strout << "(";
+  for (const Optional<T>& a : Arr) {
+    if (a == nullptr) {
+      strout << "NULL, ";
+    } else {
+      strout << a->value() << ", ";
+    }
+  }
+  strout << ")";
+  return strout.str();
+}
+
 }  // namespace auto_scheduler
 }  // namespace tvm
 
