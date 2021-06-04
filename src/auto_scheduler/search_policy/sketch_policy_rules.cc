@@ -39,7 +39,7 @@ static std::vector<int> auto_unroll_configs_cpu = {0, 16, 64, 512};
 static std::vector<int> auto_unroll_configs_gpu = {0, 16, 64, 512, 1024};
 
 // <bojian/DietCode>
-static constexpr int auto_unroll_config_gpu_DietCode = 2048;
+static std::vector<int> auto_unroll_config_gpu_DietCode = {0, 16, 64, 512, 1024, 2048};
 
 
 /********** Sketch Generation Rule **********/
@@ -811,9 +811,9 @@ PopulationGenerationRule::ResultKind InitUnroll::Apply(SketchPolicyNode* policy,
       // int value = auto_unroll_configs[(*rand_gen)() % auto_unroll_configs.size()];
       int value;
       if (IsGPUTask(policy->search_task) &&
-          IsDynTask(policy->search_task) && is_sample_init_population_1st_iter) {
-        LOG(WARNING) << "Hard-coding the unrolling factor";
-        value = auto_unroll_config_gpu_DietCode;
+          IsDynTask(policy->search_task)) {
+        // LOG(WARNING) << "Hard-coding the unrolling factor";
+        value = auto_unroll_config_gpu_DietCode[(*rand_gen)() % auto_unroll_config_gpu_DietCode.size()];
       } else {
         value = auto_unroll_configs[(*rand_gen)() % auto_unroll_configs.size()];
       }
