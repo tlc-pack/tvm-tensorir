@@ -811,7 +811,7 @@ PopulationGenerationRule::ResultKind InitUnroll::Apply(SketchPolicyNode* policy,
       // int value = auto_unroll_configs[(*rand_gen)() % auto_unroll_configs.size()];
       int value;
       if (IsGPUTask(policy->search_task) &&
-          IsDynTask(policy->search_task)) {
+          IsDynTask(policy->search_task) && is_sample_init_population_1st_iter) {
         LOG(WARNING) << "Hard-coding the unrolling factor";
         value = auto_unroll_config_gpu_DietCode;
       } else {
