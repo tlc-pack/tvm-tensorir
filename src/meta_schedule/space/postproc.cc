@@ -605,6 +605,10 @@ class PostprocRewriteUnboundBlocks {
           (n_spatial_loops > 0 && loop_sref->seq_index != -1)) {
         break;
       }
+      if (!HasSingleChild(loop_sref)) {
+        n_spatial_loops++;
+        break;
+      }
       ++n_spatial_loops;
     }
     CHECK_GT(n_spatial_loops, 0) << "ValueError: not supported when spatial loop doesn't exist";
@@ -748,7 +752,8 @@ class PostprocRewriteReductionBlock {
       for (int i = 0; i < n_loops; ++i) {
         const LoopRV& loop_rv = loop_rvs[i];
         tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
-        if (GetLoopIterType(sch->state(), loop_sref) != tir::kDataPar) {
+        tir::IterVarType type = GetLoopIterType(sch->state(), loop_sref);
+        if (type == tir::kCommReduce || type == tir::kOpaque) {
           // Insert the initializing block above the first loop which is not data parallel.
           sch->DecomposeReduction(block_rv, loop_rvs[i]);
           break;
@@ -828,7 +833,7 @@ class PostprocVerifyGPUCode {
         {"max_local_memory_per_block", Extract(target, "registers_per_block")},
         {"max_threads_per_block", Extract(target, "max_threads_per_block")},
         {"max_vthread", Integer(8)},
-    };
+        {"max_vector_bytes", Integer(16)}};
     return tir::VerifyGPUCode(func, constraints);
   }
 

@@ -333,6 +333,7 @@ class RuleMultiLevelTiling {
     } else {
       state.write_cache = write_cache;
     }
+
     state.write_cache_is_added = true;
     result.push_back(std::move(state));
     return result;
@@ -505,9 +506,6 @@ class RuleMultiLevelTiling {
   Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
                         const BlockRV& block_rv) const {
     tir::StmtSRef block_sref = sch->GetSRef(block_rv);
-    if (HasAnyAnn(block_sref)) {
-      return {sch};
-    }
     if (!NeedsMultiLevelTiling(sch->state(), block_sref)) {
       return {sch};
     }
@@ -1174,6 +1172,46 @@ SearchRule CrossThreadReduction() {
   return SearchRule("cross_thread_reduction", f_apply);
 };
 
+/********** SpecialComputeLocationGPU **********/
+class RuleSpecialComputeLocationGPU {
+ public:
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
+                        const BlockRV& block_rv) const {
+    if (sch->GetProducers(block_rv).empty()) {
+      return {sch};
+    }
+    tir::StmtSRef block_sref = sch->GetSRef(block_rv);
+    if (!RuleInlinePureSpatial::NeedsInline(sch, block_sref, false)) {
+      return {sch};
+    }
+    Array<BlockRV> consumers = sch->GetConsumers(block_rv);
+    tir::Block block = sch->Get(block_rv);
+    if (consumers.size() != 1 ||
+        !sch->Get(consumers[0])
+             ->annotations.count(
+                 tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices)) {
+      return {sch};
+    }
+    Array<tir::LoopRV> consumer_loops = sch->GetAxes(consumers[0]);
+    for (size_t i = 0; i < consumer_loops.size(); i++) {
+      tir::StmtSRef loop_sref = sch->GetSRef(consumer_loops[i]);
+      if (tir::GetLoopIterType(sch->state(), loop_sref) == tir::kUnrolled) {
+        sch->ComputeAt(block_rv, consumer_loops[i - 1], true);
+        sch->SetScope(block_rv, 0, "local");
+        break;
+      }
+    }
+    return {sch};
+  }
+};
+
+SearchRule SpecialComputeLocationGPU() {
+  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    return RuleSpecialComputeLocationGPU().Apply(task, sch, block);
+  };
+  return SearchRule("special_compute_location_gpu", f_apply);
+}
+
 /********** FFI **********/
 
 struct Internal {
@@ -1227,6 +1265,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.SimplifyComputeWithConstTensor")
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddRFactor").set_body_typed(AddRFactor);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.CrossThreadReduction")
     .set_body_typed(CrossThreadReduction);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.SpecialComputeLocationGPU")
+    .set_body_typed(SpecialComputeLocationGPU);
 
 }  // namespace meta_schedule
 }  // namespace tvm
