@@ -48,7 +48,7 @@ def test_sched_dynamic():
     logger.info(tvm.script.asscript(sch.mod))
 
 
-def test_tune_dynamic():
+def test_tune_dynamic_cpu():
     task = ms.SearchTask(workload=Dense_dynamic,
                          log_file=get_log_filename('meta', 'dense'),
                          shape_vars=('M', 'N'),
@@ -66,7 +66,7 @@ def test_tune_dynamic():
         logger.info("\n".join(sch.trace.as_python()))
 
 
-def test_tune_dynamic_experimental():
+def test_tune_dynamic_gpu():
     task = ms.SearchTask(workload=Dense_dynamic_BTIH,
                          log_file=get_log_filename('meta', 'dense'),
                          shape_vars=('B', 'T', 'I', 'H'),
