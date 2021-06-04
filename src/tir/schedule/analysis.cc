@@ -633,6 +633,12 @@ IterVarType GetLoopIterType(const ScheduleState& self, const StmtSRef& loop_sref
     return IterVarType::kOpaque;
   } else if (n_reduce) {
     return IterVarType::kCommReduce;
+  } else if (loop->kind == ForKind::kUnrolled) {
+    return IterVarType::kUnrolled;
+  } else if (loop->kind == ForKind::kVectorized) {
+    return IterVarType::kVectorized;
+  } else if (loop->kind == ForKind::kParallel) {
+    return IterVarType::kParallelized;
   }
   return IterVarType::kDataPar;
 }

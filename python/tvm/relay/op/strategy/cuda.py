@@ -18,6 +18,7 @@
 # pylint: disable=invalid-name,unused-argument,wildcard-import,unused-wildcard-import
 from tvm import topi
 from tvm.auto_scheduler import is_auto_scheduler_enabled
+from tvm.meta_schedule import is_meta_schedule_enabled
 from tvm.contrib import nvcc
 from tvm.contrib.thrust import can_use_thrust
 from tvm.te import SpecializedCondition
@@ -78,6 +79,11 @@ def softmax_strategy_cuda(attrs, inputs, out_type, target):
         wrap_compute_softmax(topi.nn.softmax),
         wrap_topi_schedule(topi.cuda.schedule_softmax),
         name="softmax.cuda",
+    )
+    strategy.add_tir_implementation(
+        wrap_compute_softmax(topi.nn.softmax),
+        wrap_topi_schedule(topi.generic.default_tir_schedule),
+        name="tir_softmax.cuda",
     )
     if target.kind.name == "cuda" and "cudnn" in target.libs:
         strategy.add_implementation(
@@ -157,6 +163,11 @@ def conv2d_strategy_cuda(attrs, inputs, out_type, target):
                     wrap_topi_schedule(topi.cuda.schedule_conv2d_nchw),
                     name="conv2d_nchw.cuda",
                 )
+                strategy.add_tir_implementation(
+                    wrap_compute_conv2d(topi.cuda.conv2d_nchw),
+                    wrap_topi_schedule(topi.generic.default_tir_schedule),
+                    name="tir_conv2d_nchw.cuda",
+                )
             _, _, kh, kw = get_const_tuple(kernel.shape)
             if (
                 (2 < kh < 8 and 2 < kw < 8 and kh == kw)
@@ -182,6 +193,11 @@ def conv2d_strategy_cuda(attrs, inputs, out_type, target):
                 wrap_compute_conv2d(topi.cuda.conv2d_nhwc),
                 wrap_topi_schedule(topi.cuda.schedule_conv2d_nhwc),
                 name="conv2d_nhwc.cuda",
+            )
+            strategy.add_tir_implementation(
+                wrap_compute_conv2d(topi.cuda.conv2d_nhwc),
+                wrap_topi_schedule(topi.generic.default_tir_schedule),
+                name="tir_conv2d_nhwc.cuda"
             )
 
             N, H, W, _ = get_const_tuple(data.shape)
@@ -249,6 +265,14 @@ def conv2d_strategy_cuda(attrs, inputs, out_type, target):
                     wrap_compute_conv2d(topi.nn.conv2d_winograd_nhwc),
                     naive_schedule,  # this implementation should never be picked by autotvm
                     name="conv2d_nhwc.winograd",
+                    plevel=15,
+                )
+
+            if is_meta_schedule_enabled() and judge_winograd_auto_scheduler:
+                strategy.add_tir_implementation(
+                    wrap_compute_conv2d(topi.nn.conv2d_winograd_nhwc),
+                    wrap_topi_schedule(topi.generic.default_tir_schedule),
+                    name="tir_conv2d_nhwc.winograd",
                     plevel=15,
                 )
 
@@ -321,6 +345,11 @@ def conv2d_strategy_cuda(attrs, inputs, out_type, target):
                 wrap_topi_schedule(topi.cuda.schedule_depthwise_conv2d_nchw),
                 name="depthwise_conv2d_nchw.cuda",
             )
+            strategy.add_tir_implementation(
+                wrap_compute_conv2d(topi.cuda.depthwise_conv2d_nchw),
+                wrap_topi_schedule(topi.generic.default_tir_schedule),
+                name="tir_depthwise_conv2d_nchw.cuda",
+            )
         elif layout == "NHWC":
             assert kernel_layout == "HWOI"
             strategy.add_implementation(
@@ -367,11 +396,21 @@ def conv2d_strategy_cuda(attrs, inputs, out_type, target):
                     wrap_topi_schedule(topi.cuda.schedule_group_conv2d_nchw_int8),
                     name="group_conv2d_nchw_int8.cuda",
                 )
+                strategy.add_tir_implementation(
+                    wrap_compute_conv2d(topi.cuda.group_conv2d_nchw_int8, has_groups=True),
+                    wrap_topi_schedule(topi.generic.default_tir_schedule),
+                    name="tir_group_conv2d_nchw_int8.cuda",
+                )
             else:
                 strategy.add_implementation(
                     wrap_compute_conv2d(topi.cuda.group_conv2d_nchw, has_groups=True),
                     wrap_topi_schedule(topi.cuda.schedule_group_conv2d_nchw),
                     name="group_conv2d_nchw.cuda",
+                )
+                strategy.add_tir_implementation(
+                    wrap_compute_conv2d(topi.cuda.group_conv2d_nchw, has_groups=True),
+                    wrap_topi_schedule(topi.generic.default_tir_schedule),
+                    name="tir_group_conv2d_nchw.cuda",
                 )
         elif layout == "NCHW4c" and data.dtype in ["int8", "uint8"]:
             assert kernel_layout == "OIHW4o4i"
@@ -462,6 +501,11 @@ def conv2d_winograd_without_weight_transfrom_strategy_cuda(attrs, inputs, out_ty
             wrap_topi_schedule(topi.cuda.schedule_conv2d_nchw_winograd_without_weight_transform),
             name="conv2d_nchw_winograd_without_weight_transform.cuda",
         )
+        strategy.add_tir_implementation(
+            wrap_compute_conv2d(topi.cuda.conv2d_nchw_winograd_without_weight_transform),
+            wrap_topi_schedule(topi.generic.default_tir_schedule),
+            name="tir_conv2d_nchw_winograd_without_weight_transform.cuda",
+        )
     elif layout == "NHWC":
         N, H, W, _ = get_const_tuple(data.shape)
         alpha, _, CI, CO = get_const_tuple(kernel.shape)
@@ -505,12 +549,26 @@ def conv2d_winograd_without_weight_transfrom_strategy_cuda(attrs, inputs, out_ty
                 ),
                 name="conv2d_nhwc_winograd_direct_without_weight_transform.cuda",
             )
+            strategy.add_tir_implementation(
+                wrap_compute_conv2d(topi.cuda.conv2d_nhwc_winograd_direct_without_weight_transform),
+                wrap_topi_schedule(
+                    topi.generic.default_tir_schedule
+                ),
+                name="tir_conv2d_nhwc_winograd_direct_without_weight_transform.cuda",
+            )
 
         if is_auto_scheduler_enabled():
             strategy.add_implementation(
                 wrap_compute_conv2d(topi.nn.conv2d_winograd_nhwc_without_weight_transform),
                 naive_schedule,  # this implementation should never be picked by autotvm
                 name="conv2d_nhwc_winograd_without_weight_transform",
+                plevel=15,
+            )
+        if is_meta_schedule_enabled():
+            strategy.add_tir_implementation(
+                wrap_compute_conv2d(topi.nn.conv2d_winograd_nhwc_without_weight_transform),
+                wrap_topi_schedule(topi.generic.default_tir_schedule),
+                name="tir_conv2d_nhwc_winograd_without_weight_transform",
                 plevel=15,
             )
     else:
@@ -767,11 +825,23 @@ def dense_strategy_cuda(attrs, inputs, out_type, target):
             name="dense_small_batch.gpu",
         )
 
+        strategy.add_tir_implementation(
+            wrap_compute_dense(topi.cuda.dense_small_batch),
+            wrap_topi_schedule(topi.generic.default_tir_schedule),
+            name="tir_dense_small_batch.cuda",
+        )
+
         with SpecializedCondition(b >= 32):
             strategy.add_implementation(
                 wrap_compute_dense(topi.gpu.dense_large_batch),
                 wrap_topi_schedule(topi.gpu.schedule_dense_large_batch),
                 name="dense_large_batch.gpu",
+                plevel=5,
+            )
+            strategy.add_tir_implementation(
+                wrap_compute_dense(topi.cuda.dense_large_batch),
+                wrap_topi_schedule(topi.generic.default_tir_schedule),
+                name="tir_dense_large_batch.cuda",
                 plevel=5,
             )
         if target.kind.name == "cuda":
@@ -833,6 +903,12 @@ def batch_matmul_strategy_cuda(attrs, inputs, out_type, target):
             name="batch_matmul.cuda",
             plevel=10,
         )
+        strategy.add_tir_implementation(
+            wrap_compute_batch_matmul(topi.cuda.batch_matmul),
+            wrap_topi_schedule(topi.generic.default_tir_schedule),
+            name="tir_batch_matmul.cuda",
+        plevel=10,
+    )
     if target.kind.name == "cuda" and "cublas" in target.libs:
         strategy.add_implementation(
             wrap_compute_batch_matmul(topi.cuda.batch_matmul_cublas),
