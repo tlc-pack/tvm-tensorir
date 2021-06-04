@@ -153,6 +153,12 @@ TVM_DLL SearchRule MarkTensorize(Array<tir::TensorIntrin> tensor_intrins);
  * \return The rule created
  */
 TVM_DLL SearchRule AddRFactor(int max_jobs_per_core, int max_innermost_factor);
+/*!
+ * \brief Handle special cases in Winograd transformation for GPU. We need to change the compute
+ * location of the producers of compute ops that perform "fake reduction" with const tensors.
+ * \return The rule created
+ */
+TVM_DLL SearchRule SpecialComputeLocationGPU();
 
 }  // namespace meta_schedule
 }  // namespace tvm
