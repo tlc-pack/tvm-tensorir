@@ -1,15 +1,15 @@
 import tvm
-from tvm import meta_schedule as ms
+from tvm import meta_schedule as ms, te
 
 import logging
 import numpy as np
-import os
 logger = logging.getLogger(__name__)
 
 from ..shared import get_time_evaluator_results, meta, get_log_filename, \
-                     CPUContext, CPUTarget, auto_sched_ntrials
+                     CPUContext, CPUTarget, CUDAContext, CUDATarget, \
+                     auto_sched_ntrials
 from .fixture import numpyDenseFixture
-from .wkl_def import Dense_static, Dense_dynamic, Dense_dynamic_BTIH
+from .wkl_def import Dense, Dense_static, Dense_dynamic, Dense_dynamic_BTIH
 from .meta_saved_schedules import *
 
 
@@ -23,22 +23,19 @@ def test_tune_static_cpu():
         logger.info("No valid schedule found")
     else:
         logger.info(tvm.script.asscript(sch.mod))
-        logger.info("Schedule:")
-        logger.info("\n".join(sch.trace.as_python()))
+        logger.info("""Schedule:{}""".format("\n".join(sch.trace.as_python())))
 
 
-def test_tune_static_gpu():
-    log_file = get_log_filename('meta', 'dense')
-    sch = ms.autotune(task=ms.SearchTask(workload=Dense_static, log_file=log_file),
-                      space=meta.cuda_space(),
-                      strategy=meta.strategy(),
-                      measurer=meta.measurer())
+def test_tune_static_cuda():
+    sch = ms.autotune(task=ms.SearchTask(workload=te.create_func(Dense(16 * 128, 768, 2304)),
+                                         log_file=get_log_filename('meta', 'dense'),
+                                         target=CUDATarget),
+                      space=meta.cuda_space(), strategy=meta.strategy(), measurer=meta.measurer())
     if sch is None:
         logger.info("No valid schedule found")
     else:
         logger.info(tvm.script.asscript(sch.mod))
-        logger.info("Schedule:")
-        logger.info("\n".join(sch.trace.as_python()))
+        logger.info("""Schedule:{}""".format("\n".join(sch.trace.as_python())))
 
 
 @ms.rule.register_rule("do_micro_kernel")
@@ -80,7 +77,7 @@ def test_tune_dynamic_cpu():
         logger.info("\n".join(sch.trace.as_python()))
 
 
-def test_tune_dynamic_gpu():
+def test_tune_dynamic_cuda():
     task = ms.SearchTask(workload=Dense_dynamic_BTIH,
                          log_file=get_log_filename('meta', 'dense'),
                          shape_vars=('B', 'T', 'I', 'H'),
