@@ -12,7 +12,8 @@ apt-get install -y --no-install-recommends \
 ln -s /usr/lib/llvm-${LLVM_VERSION} /usr/lib/llvm
 
 apt-get install -y --no-install-recommends \
-        libtinfo-dev libedit-dev libxml2-dev zlib1g-dev
+        libtinfo-dev libedit-dev libxml2-dev zlib1g-dev \
+        python3.8 python3.8-dev
 
 pip3 install numpy scipy decorator attrs psutil typed_ast \
              cython six xgboost tornado networkx pytest synr
