@@ -13,11 +13,25 @@ from .wkl_def import Dense_static, Dense_dynamic, Dense_dynamic_BTIH
 from .meta_saved_schedules import *
 
 
-def test_tune_static():
+def test_tune_static_cpu():
     log_file = get_log_filename('meta', 'dense')
     sch = ms.autotune(task=ms.SearchTask(workload=Dense_static, log_file=log_file),
                       space=meta.cpu_space(),
                       strategy=ms.strategy.Replay(num_trials=200),
+                      measurer=meta.measurer())
+    if sch is None:
+        logger.info("No valid schedule found")
+    else:
+        logger.info(tvm.script.asscript(sch.mod))
+        logger.info("Schedule:")
+        logger.info("\n".join(sch.trace.as_python()))
+
+
+def test_tune_static_gpu():
+    log_file = get_log_filename('meta', 'dense')
+    sch = ms.autotune(task=ms.SearchTask(workload=Dense_static, log_file=log_file),
+                      space=meta.cuda_space(),
+                      strategy=meta.strategy(),
                       measurer=meta.measurer())
     if sch is None:
         logger.info("No valid schedule found")

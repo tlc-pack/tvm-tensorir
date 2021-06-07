@@ -5,6 +5,8 @@ from tvm.rpc.tracker import Tracker
 
 import time
 
+from . import auto_sched_ntrials
+
 
 def cpu_space():
     return ms.space.PostOrderApply(
@@ -92,4 +94,20 @@ def measurer():
     return ms.ProgramMeasurer(
             builder=ms.LocalBuilder(), runner=runner,
             measure_callbacks=[ms.RecordToFile()],
+            )
+
+
+def strategy():
+    return ms.strategy.Evolutionary(
+            total_measures=auto_sched_ntrials,
+            num_measures_per_iter=64,
+            population=2048,
+            init_measured_ratio=0.2,
+            genetic_algo_iters=10,
+            p_mutate=0.85,
+            mutator_probs={
+                ms.mutator.mutate_tile_size(): 1.0,
+            },
+            cost_model=ms.XGBModel(),
+            eps_greedy=0.25,
             )
