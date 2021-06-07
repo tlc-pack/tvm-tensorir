@@ -822,12 +822,12 @@ enum FactorizationSchemeCheckRetType {
 
 class DietCodeSplitFactorizationMemo {
  private:
+  // parameters
   HardwareParams hardware_params_;
   int max_innermost_factor_;
+  // internal cache
   std::vector<FactorizationScheme> cache_;
-
-  std::vector<SplitStepInfo> split_steps_info_;
-
+  // internal workstack
   std::queue<FactorizationScheme> workstack_;
   std::unordered_set<std::string> examined_schemes_;
 
@@ -836,9 +836,9 @@ class DietCodeSplitFactorizationMemo {
    */
   FactorizationSchemeCheckRetType IsLegit(const FactorizationScheme& scheme);
   /**
-   * \brief Randomly sample a viable factorization scheme.
+   * \brief Randomly sample a legit factorization scheme.
    */
-  void RandomSample();
+  FactorizationScheme RandomSample();
   /**
    * \brief A BFS traversal to find all the possible factorization schemes.
    */
@@ -852,7 +852,14 @@ class DietCodeSplitFactorizationMemo {
    * \brief Get the factorization scheme.
    */
   const std::vector<FactorizationScheme>&
-  GetFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info);
+  GetAllFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info);
+  /**
+   * \brief Randomly sample a legit factorization scheme.
+   */
+  FactorizationScheme
+  SampleFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info,
+                             std::mt19937* const rng,
+                             const size_t population_size);
 };
 
 

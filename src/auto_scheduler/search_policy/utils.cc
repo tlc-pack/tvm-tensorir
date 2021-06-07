@@ -591,7 +591,7 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
 
 
 const std::vector<FactorizationScheme>&
-DietCodeSplitFactorizationMemo::GetFactorizationSchemes(
+DietCodeSplitFactorizationMemo::GetAllFactorizationSchemes(
     const std::vector<SplitStepInfo>& split_steps_info) {
   if (!is_sample_init_population_1st_iter) {
     CHECK(split_steps_info == FactorizationScheme::split_steps_info);
@@ -642,8 +642,15 @@ void DietCodeSplitFactorizationMemo::BfsEnumerate() {
 }
 
 
-void DietCodeSplitFactorizationMemo::RandomSample() {
-  
+FactorizationScheme DietCodeSplitFactorizationMemo::RandomSample() {
+  // 
+}
+
+FactorizationScheme
+SampleFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info,
+                           std::mt19937* const rng,
+                           const size_t population_size) {
+
 }
 
 

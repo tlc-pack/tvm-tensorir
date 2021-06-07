@@ -564,7 +564,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
       LOG(INFO) << "Getting all the possible factorization schemes";
     }
     const std::vector<FactorizationScheme>& cached_schemes =
-        policy->dietcode_split_memo.GetFactorizationSchemes(split_step_info);
+        policy->dietcode_split_memo.GetAllFactorizationSchemes(split_step_info);
     const FactorizationScheme& scheme = cached_schemes[(*rand_gen)() % cached_schemes.size()];
     CHECK(scheme.split_factors.size() == split_step_info.size());
     // FactorizationScheme scheme;
