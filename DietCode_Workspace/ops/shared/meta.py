@@ -1,5 +1,9 @@
 import tvm
-from tvm import meta_schedule as ms, auto_scheduler
+from tvm import meta_schedule as ms
+from tvm.rpc.server  import Server
+from tvm.rpc.tracker import Tracker
+
+import time
 
 
 def cpu_space():
@@ -67,9 +71,25 @@ def cuda_space():
 
 
 def measurer():
-    measure_ctx = \
-            auto_scheduler.LocalRPCMeasureContext(repeat=3, min_repeat_ms=100, timeout=10)
+    host = '0.0.0.0'
+    tracker = Tracker(host, port=9000, port_end=10000, silent=True)
+    device_key = '$local$device$%d' % tracker.port
+    server = Server(
+            host,
+            port=tracker.port,
+            port_end=10000,
+            key=device_key,
+            use_popen=True,
+            silent=True,
+            tracker_addr=(tracker.host, tracker.port),
+            )
+    runner = ms.RPCRunner(
+            key=device_key,
+            host=host,
+            port=tracker.port,
+            )
+    time.sleep(0.5)
     return ms.ProgramMeasurer(
-            builder=ms.LocalBuilder(), runner=measure_ctx.runner,
+            builder=ms.LocalBuilder(), runner=runner,
             measure_callbacks=[ms.RecordToFile()],
             )
