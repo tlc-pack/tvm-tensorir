@@ -207,8 +207,8 @@ class WarpIndexFinder : private StmtVisitor {
 // Mutator to change the read pattern
 class WarpAccessRewriter : protected StmtExprMutator {
  public:
-  explicit WarpAccessRewriter(int warp_size, arith::Analyzer* analyzer)
-      : warp_size_(warp_size), analyzer_(analyzer) {}
+  explicit WarpAccessRewriter(int warp_size, arith::Analyzer* analyzer, const Var& warp_index, int width)
+      : warp_size_(warp_size), analyzer_(analyzer), warp_index_(warp_index), width_(width) {}
   // Rewrite the allocate statement which transforms
   // warp memory to local memory.
   Stmt Rewrite(const AllocateNode* op) {
@@ -216,7 +216,6 @@ class WarpAccessRewriter : protected StmtExprMutator {
     int alloc_size = op->constant_allocation_size();
     ICHECK_GT(alloc_size, 0) << "warp memory only support constant alloc size";
     alloc_size *= op->dtype.lanes();
-    std::tie(warp_index_, width_) = WarpIndexFinder(warp_size_).Find(op->body);
     warp_coeff_ = WarpStoreCoeffFinder(buffer_, warp_index_, analyzer_).Find(op->body);
 
     // Align the local memory size. The number of elements may not
@@ -236,12 +235,15 @@ class WarpAccessRewriter : protected StmtExprMutator {
   }
 
   Stmt VisitStmt_(const StoreNode* op) override {
+    Stmt new_stmt = StmtExprMutator::VisitStmt_(op);
     if (op->buffer_var.get() == buffer_) {
+      op = new_stmt.as<StoreNode>();
+      ICHECK(op);
       PrimExpr local_index, group;
       std::tie(local_index, group) = SplitIndexByGroup(op->index);
       return Store(op->buffer_var, op->value, local_index, op->predicate);
     } else {
-      return StmtExprMutator::VisitStmt_(op);
+      return new_stmt;
     }
   }
 
@@ -254,6 +256,9 @@ class WarpAccessRewriter : protected StmtExprMutator {
           << "LowerWarpMemory failed to rewrite load to shuffle for index " << op->index
           << " local_index=" << local_index;
       PrimExpr load_value = Load(op->dtype, op->buffer_var, local_index, op->predicate);
+      if (analyzer_->CanProve(group == warp_index_)) {
+        return load_value;
+      }
       PrimExpr mask = Call(DataType::UInt(32), builtin::tvm_warp_activemask(), {});
       return Call(load_value.dtype(), builtin::tvm_warp_shuffle(),
                   {mask, load_value, group, width_, warp_size_});
@@ -351,6 +356,7 @@ class WarpMemoryRewriter : private StmtMutator {
   Stmt Rewrite(Stmt stmt) {
     if (warp_size_ == 1) return stmt;
     BindVarBoundInfo binder(&analyzer_);
+    root_stmt = stmt;
     binder(stmt);
     stmt = operator()(std::move(stmt));
     return stmt;
@@ -361,7 +367,7 @@ class WarpMemoryRewriter : private StmtMutator {
     auto ret = StmtMutator::VisitStmt_(op);
     op = ret.as<AllocateNode>();
     if (warp_buffer_.count(op->buffer_var.get())) {
-      WarpAccessRewriter rewriter(warp_size_, &analyzer_);
+      WarpAccessRewriter rewriter(warp_size_, &analyzer_, warp_index_, width_);
       ret = rewriter.Rewrite(op);
     }
     return ret;
@@ -373,6 +379,9 @@ class WarpMemoryRewriter : private StmtMutator {
       const VarNode* buf = op->node.as<VarNode>();
       StorageScope scope = StorageScope::Create(op->value.as<StringImmNode>()->value);
       if (scope.rank == runtime::StorageRank::kWarp) {
+        if(!warp_index_.defined()) {
+          std::tie(warp_index_, width_) = WarpIndexFinder(warp_size_).Find(root_stmt);
+        }
         warp_buffer_.insert(buf);
         Stmt ret = StmtMutator::VisitStmt_(op);
         op = ret.as<AttrStmtNode>();
@@ -383,10 +392,13 @@ class WarpMemoryRewriter : private StmtMutator {
   }
 
   int warp_size_{0};
+  Var warp_index_{NullValue<Var>()};
+  int width_ = -1;
   std::unordered_set<const VarNode*> warp_buffer_;
   arith::Analyzer analyzer_;
   // variable domain
   std::unordered_map<const VarNode*, Range> var_dom_;
+  Stmt root_stmt;
 };
 
 namespace transform {
@@ -409,3 +421,4 @@ TVM_REGISTER_GLOBAL("tir.transform.LowerWarpMemory").set_body_typed(LowerWarpMem
 
 }  // namespace tir
 }  // namespace tvm
+
