@@ -826,6 +826,8 @@ class DietCodeSplitFactorizationMemo {
   int max_innermost_factor_;
   std::vector<FactorizationScheme> cache_;
 
+  std::vector<SplitStepInfo> split_steps_info_;
+
   std::queue<FactorizationScheme> workstack_;
   std::unordered_set<std::string> examined_schemes_;
 
@@ -833,6 +835,10 @@ class DietCodeSplitFactorizationMemo {
    * \brief Check whether a factorization scheme is legit.
    */
   FactorizationSchemeCheckRetType IsLegit(const FactorizationScheme& scheme);
+  /**
+   * \brief Randomly sample a viable factorization scheme.
+   */
+  void RandomSample();
   /**
    * \brief A BFS traversal to find all the possible factorization schemes.
    */

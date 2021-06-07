@@ -642,6 +642,11 @@ void DietCodeSplitFactorizationMemo::BfsEnumerate() {
 }
 
 
+void DietCodeSplitFactorizationMemo::RandomSample() {
+  
+}
+
+
 /********** Utils interface API for ffi **********/
 
 TVM_REGISTER_GLOBAL("auto_scheduler.SearchPolicyUtilsGetConsumers")
