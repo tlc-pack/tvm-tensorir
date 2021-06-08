@@ -539,7 +539,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   // ===========================================================================
   std::uniform_int_distribution<> num_warps_dist(
       1, hardware_params->max_threads_per_block / hardware_params->warp_size - 1);
-  size_t num_threads_per_block = num_warps_dist(rng) * hardware_params->warp_size;
+  size_t num_threads_per_block = num_warps_dist(*rng) * hardware_params->warp_size;
   // find all the possible factors of the number of threads per block
   if (is_sample_init_population_1st_iter) {
     LOG(INFO) << "Number of threads per block: " << num_threads_per_block;
@@ -561,7 +561,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   do {
     all_below_max_extents = true;
     num_threads_factor_scheme =
-        num_threads_factor_schemes[num_threads_factor_schemes_dist(rng)];
+        num_threads_factor_schemes[num_threads_factor_schemes_dist(*rng)];
     int64_t factor_prod = 1;
     for (const Integer& factor : num_threads_factor_scheme) {
       factor_prod *= factor;
@@ -573,7 +573,8 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
     for (size_t iter_id = 0, spatial_iter_id = 0;
          iter_id < split_steps_info.size(); ++iter_id) {
       if (split_steps_info[iter_id].is_spatial) {
-        if (num_threads_factor_scheme[spatial_iter_id]->value >
+        if (static_cast<size_t>(
+              num_threads_factor_scheme[spatial_iter_id]->value) >
             split_steps_info[iter_id].extent) {
           all_below_max_extents = false;
         }
@@ -717,7 +718,7 @@ DietCodeSplitFactorizationMemo::SampleFactorizationSchemes(
     const bool simplify_schedule) {
   FactorizationScheme scheme(split_steps_info, simplify_schedule,
                              is_sample_init_population_1st_iter);
-  scheme.RandomSample(rng);
+  scheme.RandomSample(hardware_params_, rng);
   // make sure that the randomly sampled scheme satisfies all the hardware constraints
   CHECK(IsLegit(scheme));
   return scheme;
