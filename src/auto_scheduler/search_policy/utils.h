@@ -740,8 +740,8 @@ struct FactorizationScheme {
 
   // shared properties between all factorization scheme instances
   static std::vector<SplitStepInfo> split_steps_info;
-  static std::vector<std::vector<int>> factor_indices_to_incr;
   static bool simplify_schedule;
+  static std::vector<std::vector<int>> factor_indices_to_incr;
 
   FactorizationScheme() = default;
   /**
@@ -783,6 +783,11 @@ struct FactorizationScheme {
     }
   }
 
+  /**
+   * \brief Random sample a factorization scheme.
+   */
+  void RandomSample(const HardwareParams& hardware_param,
+                    std::mt19937* const rng);
   /**
    * \brief Serialzie the factorization scheme to string.
    */
@@ -880,7 +885,9 @@ class DietCodeSplitFactorizationMemo {
   GetAllFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info,
                              const bool simplify_schedule = true);
   /**
-   * \brief Randomly sample a legit factorization scheme.
+   * \brief Randomly sample a legit factorization scheme. Note that due to the
+   *        requirement for random number generation, this method has to be
+   *        invoked sequentially.
    */
   FactorizationScheme
   SampleFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info,

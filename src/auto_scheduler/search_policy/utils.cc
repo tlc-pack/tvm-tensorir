@@ -491,6 +491,8 @@ void SplitFactorizationMemo::DfsEnumerate(int now, int remaining_length
     if (tmp_stack_.back().as<IntImmNode>()->value <=
         // max_innermost_factor
         max_innermost_factor_
+        // in case the maximum innermost factor is not defined
+        || max_innermost_factor_ == 0
         ) {
       results_->push_back(tmp_stack_);
     }
@@ -526,7 +528,70 @@ const std::vector<int>& SplitFactorizationMemo::GetFactors(int n) {
 
 
 std::vector<SplitStepInfo> FactorizationScheme::split_steps_info;
+bool FactorizationScheme::simplify_schedule;
 std::vector<std::vector<int>> FactorizationScheme::factor_indices_to_incr;
+
+
+void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
+                                       std::mt19937* const rng) {
+  // ===========================================================================
+  // 1. num_threads_per_block
+  // ===========================================================================
+  std::uniform_int_distribution<> num_warps_dist(
+      1, hardware_params->max_threads_per_block / hardware_params->warp_size - 1);
+  size_t num_threads_per_block = num_warps_dist(rng) * hardware_params->warp_size;
+  // find all the possible factors of the number of threads per block
+  if (is_sample_init_population_1st_iter) {
+    LOG(INFO) << "Number of threads per block: " << num_threads_per_block;
+  }
+  size_t num_spatial_axes = 0;
+  for (const SplitStepInfo& info : split_steps_info) {
+    if (info.is_spatial) {
+      ++num_spatial_axes;
+    }
+  }
+  SplitFactorizationMemo memo;
+  const Array<Array<Integer>>& num_threads_factor_schemes =
+      memo.GetFactorizationSchemes(num_threads_per_block, num_spatial_axes - 1);
+  std::uniform_int_distribution<> num_threads_factor_schemes_dist(
+      0, num_threads_factor_schemes.size() - 1);
+  
+  bool all_below_max_extents;
+  Array<Integer> num_threads_factor_scheme;
+  do {
+    all_below_max_extents = true;
+    num_threads_factor_scheme =
+        num_threads_factor_schemes[num_threads_factor_schemes_dist(rng)];
+    int64_t factor_prod = 1;
+    for (const Integer& factor : num_threads_factor_scheme) {
+      factor_prod *= factor;
+    }
+    num_threads_factor_scheme.push_back(num_threads_per_block / factor_prod);
+    if (is_sample_init_population_1st_iter) {
+      LOG(INFO) << "Factorization Schemes: " << ArrayToString(num_threads_factor_scheme);
+    }
+    for (size_t iter_id = 0, spatial_iter_id = 0;
+         iter_id < split_steps_info.size(); ++iter_id) {
+      if (split_steps_info[iter_id].is_spatial) {
+        if (num_threads_factor_scheme[spatial_iter_id]->value >
+            split_steps_info[iter_id].extent) {
+          all_below_max_extents = false;
+        }
+        ++spatial_iter_id;
+      }
+    }  // for (iter_id ∈ [0, split_steps_info.size()))
+  } while (all_below_max_extents);
+  // do the looping again and assign the factors
+  for (size_t iter_id = 0, spatial_iter_id = 0;
+       iter_id < split_steps_info.size(); ++iter_id) {
+    if (split_steps_info[iter_id].is_spatial) {
+      split_factors[iter_id][1] =
+          num_threads_factor_scheme[spatial_iter_id]->value;
+      ++spatial_iter_id;
+    }
+  }
+}
+
 
 FactorizationSchemeCheckRetType
 DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
@@ -590,26 +655,6 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
 }
 
 
-const std::vector<FactorizationScheme>&
-DietCodeSplitFactorizationMemo::GetAllFactorizationSchemes(
-    const std::vector<SplitStepInfo>& split_steps_info,
-    const bool simplify_schedule) {
-  if (!is_sample_init_population_1st_iter) {
-    CHECK(FactorizationScheme::split_steps_info == split_steps_info);
-    CHECK(FactorizationScheme::simplify_schedule == simplify_schedule);
-    // return the cached factorization scheme
-    return cache_;
-  }
-  workstack_.emplace(split_steps_info,
-                     is_sample_init_population_1st_iter
-                     /* initialize the static members */);
-  examined_schemes_.insert(workstack_.front().toString());
-  BfsEnumerate();
-  LOG(INFO) << "Total number of possible factorization schemes w/ the "
-               "dynamic workload: " << cache_.size();
-  return cache_;
-}
-
 void DietCodeSplitFactorizationMemo::BfsEnumerate() {
   while (!workstack_.empty()) {
     FactorizationScheme& workitem = workstack_.front();
@@ -644,14 +689,38 @@ void DietCodeSplitFactorizationMemo::BfsEnumerate() {
 }
 
 
-FactorizationScheme DietCodeSplitFactorizationMemo::RandomSample() {
-  // 1. sample 
+const std::vector<FactorizationScheme>&
+DietCodeSplitFactorizationMemo::GetAllFactorizationSchemes(
+    const std::vector<SplitStepInfo>& split_steps_info,
+    const bool simplify_schedule) {
+  if (!is_sample_init_population_1st_iter) {
+    CHECK(FactorizationScheme::split_steps_info == split_steps_info);
+    CHECK(FactorizationScheme::simplify_schedule == simplify_schedule);
+    // return the cached factorization scheme
+    return cache_;
+  }
+  workstack_.emplace(split_steps_info, simplify_schedule,
+                     is_sample_init_population_1st_iter
+                     /* initialize the static members */);
+  examined_schemes_.insert(workstack_.front().toString());
+  BfsEnumerate();
+  LOG(INFO) << "Total number of possible factorization schemes w/ the "
+               "dynamic workload: " << cache_.size();
+  return cache_;
 }
+
 
 FactorizationScheme
 DietCodeSplitFactorizationMemo::SampleFactorizationSchemes(
     const std::vector<SplitStepInfo>& split_steps_info,
-    std::mt19937* const rng, const bool simplify_schedule) {
+    std::mt19937* const rng,
+    const bool simplify_schedule) {
+  FactorizationScheme scheme(split_steps_info, simplify_schedule,
+                             is_sample_init_population_1st_iter);
+  scheme.RandomSample(rng);
+  // make sure that the randomly sampled scheme satisfies all the hardware constraints
+  CHECK(IsLegit(scheme));
+  return scheme;
 }
 
 

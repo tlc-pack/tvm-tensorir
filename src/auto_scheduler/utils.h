@@ -327,9 +327,20 @@ inline std::string AxisBaseName(const std::string& str) { return str.substr(0, s
 
 // <bojian/DietCode>
 template<typename T>
+inline std::string ArrayToString(const Array<T>& Arr) {
+  std::ostringstream strout;
+  strout << "[";
+  for (const T& a : Arr) {
+    strout << a << ", ";
+  }
+  strout << "]";
+  return strout.str();
+}
+
+template<typename T>
 inline std::string OptionalArrayToString(const Array<Optional<T>>& Arr) {
   std::ostringstream strout;
-  strout << "(";
+  strout << "[";
   for (const Optional<T>& a : Arr) {
     if (a == nullptr) {
       strout << "NULL, ";
@@ -337,7 +348,7 @@ inline std::string OptionalArrayToString(const Array<Optional<T>>& Arr) {
       strout << a->value() << ", ";
     }
   }
-  strout << ")";
+  strout << "]";
   return strout.str();
 }
 
