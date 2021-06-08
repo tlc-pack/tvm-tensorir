@@ -738,8 +738,10 @@ inline int GetSplitLengths(const bool is_spatial) { return is_spatial ? 4 : 2; }
 struct FactorizationScheme {
   std::vector<std::vector<int>> split_factors;
 
+  // shared properties between all factorization scheme instances
   static std::vector<SplitStepInfo> split_steps_info;
   static std::vector<std::vector<int>> factor_indices_to_incr;
+  static bool simplify_schedule;
 
   FactorizationScheme() = default;
   /**
@@ -747,6 +749,7 @@ struct FactorizationScheme {
    */
   explicit FactorizationScheme(
       const std::vector<SplitStepInfo>& split_steps_info,
+      const bool simplify_schedule,
       const bool init_static_members = false) {
     for (size_t i = 0; i < split_steps_info.size(); ++i) {
       split_factors.push_back(
@@ -754,25 +757,29 @@ struct FactorizationScheme {
     }
     if (init_static_members) {
       FactorizationScheme::split_steps_info = split_steps_info;
-      size_t last_spatial_idx = -1;
-      for (size_t i = 0; i < split_steps_info.size(); ++i) {
-        if (split_steps_info[i].is_spatial) {
-          last_spatial_idx = i;
-        }
-      }
-      for (size_t i = 0; i < split_steps_info.size(); ++i) {
-        if (split_steps_info[i].is_spatial) {
-          if (i == last_spatial_idx) {
-            factor_indices_to_incr.push_back({0, 1});
-          } else {
-            factor_indices_to_incr.push_back({1, 3});
+      FactorizationScheme::simplify_schedule = simplify_schedule;
+      if (simplify_schedule) {
+        size_t last_spatial_idx = -1;
+        for (size_t i = 0; i < split_steps_info.size(); ++i) {
+          if (split_steps_info[i].is_spatial) {
+            last_spatial_idx = i;
           }
-        } else {
-          factor_indices_to_incr.push_back({1});
+        }
+        for (size_t i = 0; i < split_steps_info.size(); ++i) {
+          if (split_steps_info[i].is_spatial) {
+            if (i == last_spatial_idx) {
+              factor_indices_to_incr.push_back({0, 1});
+            } else {
+              factor_indices_to_incr.push_back({1, 3});
+            }
+          } else {
+            factor_indices_to_incr.push_back({1});
+          }
         }
       }
     } else {
       CHECK(FactorizationScheme::split_steps_info == split_steps_info);
+      CHECK(FactorizationScheme::simplify_schedule == simplify_schedule);
     }
   }
 
@@ -798,14 +805,29 @@ struct FactorizationScheme {
     std::vector<std::vector<int>> split_factors_copy = split_factors;
     std::vector<FactorizationScheme> candidates;
 
-    for (size_t iter_idx = 0; iter_idx < split_factors_copy.size();
-         ++iter_idx) {
-      for (const size_t factor_idx : factor_indices_to_incr[iter_idx]) {
-        ++split_factors_copy[iter_idx][factor_idx];
-        FactorizationScheme candidate;
-        candidate.split_factors = split_factors_copy;
-        candidates.push_back(std::move(candidate));
-        --split_factors_copy[iter_idx][factor_idx];
+    if (simplify_schedule) {
+      for (size_t iter_idx = 0; iter_idx < split_factors_copy.size();
+           ++iter_idx) {
+        for (const size_t factor_idx : factor_indices_to_incr[iter_idx]) {
+          ++split_factors_copy[iter_idx][factor_idx];
+          FactorizationScheme candidate;
+          candidate.split_factors = split_factors_copy;
+          candidates.push_back(std::move(candidate));
+          --split_factors_copy[iter_idx][factor_idx];
+        }
+      }
+    } else {
+      for (size_t iter_idx = 0; iter_idx < split_factors_copy.size();
+           ++iter_idx) {
+        for (size_t factor_idx = 0;
+             factor_idx < split_factors_copy[iter_idx].size();
+             ++factor_idx) {
+          ++split_factors_copy[iter_idx][factor_idx];
+          FactorizationScheme candidate;
+          candidate.split_factors = split_factors_copy;
+          candidates.push_back(std::move(candidate));
+          --split_factors_copy[iter_idx][factor_idx];
+        }
       }
     }
     return candidates;
@@ -831,6 +853,9 @@ class DietCodeSplitFactorizationMemo {
   std::queue<FactorizationScheme> workstack_;
   std::unordered_set<std::string> examined_schemes_;
 
+  const std::vector<SplitStepInfo>* split_steps_info_;
+  std::mt19937* rng_;
+
   /**
    * \brief Check whether a factorization scheme is legit.
    */
@@ -852,14 +877,15 @@ class DietCodeSplitFactorizationMemo {
    * \brief Get the factorization scheme.
    */
   const std::vector<FactorizationScheme>&
-  GetAllFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info);
+  GetAllFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info,
+                             const bool simplify_schedule = true);
   /**
    * \brief Randomly sample a legit factorization scheme.
    */
   FactorizationScheme
   SampleFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info,
                              std::mt19937* const rng,
-                             const size_t population_size);
+                             const bool simplify_schedule = true);
 };
 
 
