@@ -466,8 +466,10 @@ const Array<Array<Integer>>& SplitFactorizationMemo::GetFactorizationSchemes(
                  std::make_pair(extent, n_lengths);
   const auto& it = memory_.find(key);
   if (it != memory_.end()) {
+    LOG(INFO) << "exists";
     return it->second;
   }
+  LOG(INFO) << "does not exist";
   // if (!is_sample_init_population_1st_iter) {
   //   LOG(FATAL) << "(extent=" << extent << ", n_lengths=" << n_lengths <<") has "
   //                 "not been found in SplitFactorizationMemo";
@@ -552,6 +554,9 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       ++num_spatial_axes;
     }
   }
+  if (is_sample_init_population_1st_iter) {
+    LOG(INFO) << "num_spatial_axes=" << num_spatial_axes;
+  }
   SplitFactorizationMemo memo;
   const Array<Array<Integer>>& num_threads_factor_schemes =
       memo.GetFactorizationSchemes(num_threads_per_block, num_spatial_axes - 1);
@@ -560,6 +565,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
     LOG(INFO) << "Sampled the factors out of num_threads_factor_schemes.size()="
               << num_threads_factor_schemes.size();
   }
+  CHECK(num_threads_factor_schemes.size() != 0);
   std::uniform_int_distribution<> num_threads_factor_schemes_dist(
       0, num_threads_factor_schemes.size() - 1);
 
@@ -568,14 +574,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   do {
     all_below_max_extents = true;
 
-    if (is_sample_init_population_1st_iter) {
-      LOG(INFO) << "Sampling a random index";
-    }
-    size_t rand_idx = num_threads_factor_schemes_dist(*rng);
-    if (is_sample_init_population_1st_iter) {
-      LOG(INFO) << "Sampling a random index rand_idx=" << rand_idx;
-    }
-    num_threads_factor_scheme = num_threads_factor_schemes[rand_idx];
+    num_threads_factor_scheme = num_threads_factor_schemes[num_threads_factor_schemes_dist(*rng)];
     // if (is_sample_init_population_1st_iter) {
     //   LOG(INFO) << "Factorization Scheme: " << ArrayToString(num_threads_factor_scheme);
     // }

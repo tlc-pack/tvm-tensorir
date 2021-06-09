@@ -696,7 +696,7 @@ class SplitFactorizationMemo {
                     );
 
   // <bojian/DietCode>
-  int max_innermost_factor_;
+  int max_innermost_factor_ = 0;
 
   std::unordered_map<QueryKey, Array<Array<Integer>>> memory_;
 
