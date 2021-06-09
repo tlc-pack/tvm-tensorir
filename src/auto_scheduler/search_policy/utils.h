@@ -709,12 +709,13 @@ class SplitFactorizationMemo {
 
 // <bojian/DietCode> shape-dependent memo -> architecture-dependent cache
 struct SplitStepInfo {
-  bool is_spatial;
-  size_t extent;
+  bool    is_spatial;
+  size_t  max_extent;
 };
 
 inline bool operator==(const SplitStepInfo& LHS, const SplitStepInfo& RHS) {
-  return LHS.is_spatial == RHS.is_spatial && LHS.extent == RHS.extent;
+  return LHS.is_spatial == RHS.is_spatial &&
+         LHS.max_extent == RHS.max_extent;
 }
 
 inline bool operator==(const std::vector<SplitStepInfo>& LHS,
@@ -741,6 +742,7 @@ struct FactorizationScheme {
   // shared properties between all factorization scheme instances
   static std::vector<SplitStepInfo> split_steps_info;
   static bool simplify_schedule;
+  static size_t last_spatial_iter_id;
   static std::vector<std::vector<int>> factor_indices_to_incr;
 
   FactorizationScheme() = default;
@@ -759,15 +761,15 @@ struct FactorizationScheme {
       FactorizationScheme::split_steps_info = split_steps_info;
       FactorizationScheme::simplify_schedule = simplify_schedule;
       if (simplify_schedule) {
-        size_t last_spatial_idx = -1;
-        for (size_t i = 0; i < split_steps_info.size(); ++i) {
-          if (split_steps_info[i].is_spatial) {
-            last_spatial_idx = i;
+        last_spatial_iter_id = -1;
+        for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
+          if (split_steps_info[iter_id].is_spatial) {
+            last_spatial_iter_id = iter_id;
           }
         }
-        for (size_t i = 0; i < split_steps_info.size(); ++i) {
-          if (split_steps_info[i].is_spatial) {
-            if (i == last_spatial_idx) {
+        for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
+          if (split_steps_info[iter_id].is_spatial) {
+            if (iter_id == last_spatial_iter_id) {
               factor_indices_to_incr.push_back({0, 1});
             } else {
               factor_indices_to_incr.push_back({1, 3});
@@ -787,6 +789,7 @@ struct FactorizationScheme {
    * \brief Random sample a factorization scheme.
    */
   void RandomSample(const HardwareParams& hardware_param,
+                    const size_t max_innermost_factor,
                     std::mt19937* const rng);
   /**
    * \brief Serialzie the factorization scheme to string.

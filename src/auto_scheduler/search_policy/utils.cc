@@ -529,13 +529,15 @@ const std::vector<int>& SplitFactorizationMemo::GetFactors(int n) {
 
 std::vector<SplitStepInfo> FactorizationScheme::split_steps_info;
 bool FactorizationScheme::simplify_schedule;
+size_t FactorizationScheme::last_spatial_iter_id;
 std::vector<std::vector<int>> FactorizationScheme::factor_indices_to_incr;
 
 
 void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
+                                       const size_t max_innermost_factor,
                                        std::mt19937* const rng) {
   // ===========================================================================
-  // 1. num_threads_per_block
+  // factor[1] (threadIdx.x)
   // ===========================================================================
   std::uniform_int_distribution<> num_warps_dist(
       1, hardware_params->max_threads_per_block / hardware_params->warp_size - 1);
@@ -575,7 +577,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       if (split_steps_info[iter_id].is_spatial) {
         if (static_cast<size_t>(
               num_threads_factor_scheme[spatial_iter_id]->value) >
-            split_steps_info[iter_id].extent) {
+            split_steps_info[iter_id].max_extent) {
           all_below_max_extents = false;
         }
         ++spatial_iter_id;
@@ -591,6 +593,93 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       ++spatial_iter_id;
     }
   }
+
+#define UNIFORM_SAMPLE_WITHIN_EXTENT(extent)  \
+  std::uniform_int_distribution<> dist(1, extent);  \
+  return dist(*rng)
+
+  // ===========================================================================
+  // factor[0] (vthread)
+  // ===========================================================================
+  auto sample_vthread_extent = [&](const size_t iter_id) -> int {
+        size_t max_vthread_extent =
+            std::min(static_cast<size_t>(hardware_params->max_vthread_extent),
+                     split_steps_info[iter_id].max_extent /
+                     split_factors[iter_id][1]);
+        UNIFORM_SAMPLE_WITHIN_EXTENT(max_vthread_extent);
+      };
+
+  for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
+    if (split_steps_info[iter_id].is_spatial) {
+      if (simplify_schedule && (iter_id != last_spatial_iter_id)) {
+        continue;
+      }
+      split_factors[iter_id][0] = sample_vthread_extent(iter_id);
+    }
+  }
+  // ===========================================================================
+  // factor[3] (innermost)
+  // ===========================================================================
+  auto sample_innermost_factor = [&](const size_t iter_id) {
+        size_t max_innermost_extent =
+            std::min(max_innermost_factor,
+                     split_steps_info[iter_id].max_extent /
+                     split_factors[iter_id][0] / 
+                     split_factors[iter_id][1]);
+        UNIFORM_SAMPLE_WITHIN_EXTENT(max_innermost_extent);
+      };
+  for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
+    if (split_steps_info[iter_id].is_spatial) {
+      if (simplify_schedule && (iter_id == last_spatial_iter_id)) {
+        continue;
+      }
+      split_factors[iter_id][3] = sample_innermost_factor(iter_id);
+    }
+  }
+  // ===========================================================================
+  // factor[2]
+  // ===========================================================================
+  auto sample_2nd_innermost_factor =[&](const size_t iter_id) {
+        size_t max_2nd_innermost_extent =
+            split_steps_info[iter_id].max_extent /
+            split_factors[iter_id][0] /
+            split_factors[iter_id][1] /
+            split_factors[iter_id][3];
+        UNIFORM_SAMPLE_WITHIN_EXTENT(max_2nd_innermost_extent);
+      };
+  for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
+    if (split_steps_info[iter_id].is_spatial) {
+      if (simplify_schedule) {
+        continue;
+      }
+      split_factors[iter_id][2] = sample_2nd_innermost_factor(iter_id);
+    }
+  }
+  // repeat similar procedure for reduction axes
+  // ===========================================================================
+  // rfactor[1] (innermost)
+  // ===========================================================================
+  auto sample_innermost_rfactor = [&](const size_t iter_id) {
+        size_t max_innermost_extent =
+            std::min(max_innermost_factor,
+                     split_steps_info[iter_id].max_extent);
+        UNIFORM_SAMPLE_WITHIN_EXTENT(max_innermost_extent);
+      };
+  for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
+    if (!split_steps_info[iter_id].is_spatial) {
+      split_factors[iter_id][1] = sample_innermost_rfactor(iter_id);
+    }
+  }
+  // ===========================================================================
+  // rfactor[0]
+  // ===========================================================================
+  auto sample_2nd_innermost_rfactor = [&](const size_t iter_id) {
+        size_t max_2nd_innermost_extent =
+            split_steps_info[iter_id].max_extent / 
+            split_factors[iter_id][1];
+        UNIFORM_SAMPLE_WITHIN_EXTENT(max_2nd_innermost_extent);
+      };
+
 }
 
 
@@ -613,7 +702,7 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
         return kOOB;
       }
       size_t split_factors_prod = factors[0] * factors[1] * factors[2] * factors[3];
-      if (split_factors_prod > split_step_info.extent) {
+      if (split_factors_prod > split_step_info.max_extent) {
         return kOOB;
       }
       reg_usage *= split_factors_prod;
@@ -624,7 +713,7 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
         return kOOB;
       }
       size_t split_factors_prod = factors[0] * factors[1];
-      if (split_factors_prod > split_step_info.extent) {
+      if (split_factors_prod > split_step_info.max_extent) {
         return kOOB;
       }
       acc_reduction *= split_factors_prod;
@@ -718,7 +807,7 @@ DietCodeSplitFactorizationMemo::SampleFactorizationSchemes(
     const bool simplify_schedule) {
   FactorizationScheme scheme(split_steps_info, simplify_schedule,
                              is_sample_init_population_1st_iter);
-  scheme.RandomSample(hardware_params_, rng);
+  scheme.RandomSample(hardware_params_, max_innermost_factor_, rng);
   // make sure that the randomly sampled scheme satisfies all the hardware constraints
   CHECK(IsLegit(scheme));
   return scheme;
