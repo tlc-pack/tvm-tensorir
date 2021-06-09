@@ -34,8 +34,7 @@ def test_meta_schedule_design_space_generator_schedule_fn():
         sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
 
     space_gen = ms.ScheduleFn(sch_fn=schedule_matmul)
-    space_gen.initialize(workload=matmul)
-    sch = space_gen.generate()[0]
+    (sch,) = space_gen.generate(workload=matmul)
 
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
         sch.get_sref(i).stmt.extent for i in sch.get_axes(sch.get_block("matmul"))

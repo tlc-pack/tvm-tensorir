@@ -17,10 +17,9 @@
  * under the License.
  */
 
-#ifndef SRC_META_SCHEDULE_SPACE_GENERATOR_H_
-#define SRC_META_SCHEDULE_SPACE_GENERATOR_H_
+#ifndef SRC_META_SCHEDULE_SCHEDULE_RULE_H_
+#define SRC_META_SCHEDULE_SCHEDULE_RULE_H_
 
-#include <tvm/ir/module.h>
 #include <tvm/runtime/container.h>
 #include <tvm/runtime/object.h>
 #include <tvm/runtime/packed_func.h>
@@ -32,42 +31,46 @@ namespace meta_schedule {
 
 class TuneContext;
 
-class SpaceGeneratorNode : public runtime::Object {
+class ScheduleRuleNode : public runtime::Object {
  public:
   using FInitWithTuneContext = void(const TuneContext&);
-  using FGenerate = Array<Schedule>(const IRModule&);
+  using FApply = Array<Schedule>(const Schedule&, const BlockRV&);
 
   /*! \brief Virtual destructor */
-  virtual ~SpaceGeneratorNode() = default;
+  virtual ~ScheduleRuleNode() = default;
 
-  /*! \brief Initialize the design space generator with TuneContext */
+  /*! \brief Name of the rule */
+  String name;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("name", &name); }
+
+  /*! \brief Initialize the f space with TuneContext */
   virtual void InitializeWithTuneContext(const TuneContext& context) = 0;
 
   /*!
-   * \brief Generate a schedule out of the design space generator
-   * \return The generated schedule
+   * \brief Apply a schedule rule to the given workload & block specification
+   * \return The schedule after applying the schedule rule
    */
-  // todo @ zxybazh: Change to Traces class
-  virtual runtime::Array<Schedule> Generate(const IRModule& workload) = 0;
+  virtual runtime::Array<Schedule> Apply(const Schedule& schedule, const BlockRV& block) = 0;
 
-  static constexpr const char* _type_key = "meta_schedule.SpaceGenerator";
-  TVM_DECLARE_BASE_OBJECT_INFO(SpaceGeneratorNode, Object);
+  static constexpr const char* _type_key = "meta_schedule.ScheduleRule";
+  TVM_DECLARE_BASE_OBJECT_INFO(ScheduleRuleNode, Object);
 };
 
 /*!
- * \brief Managed reference to Design Space Generator Node
- * \sa SpaceGeneratorNode
+ * \brief Managed reference to Schedule Rule Node
+ * \sa ScheduleRuleNode
  */
-class SpaceGenerator : public runtime::ObjectRef {
+class ScheduleRule : public runtime::ObjectRef {
  public:
-  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SpaceGenerator, ObjectRef, SpaceGeneratorNode);
-  static SpaceGenerator PySpaceGenerator(
-      runtime::TypedPackedFunc<SpaceGeneratorNode::FInitWithTuneContext>
-          init_with_tune_context_func,
-      runtime::TypedPackedFunc<SpaceGeneratorNode::FGenerate> generate_func);
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ScheduleRule, ObjectRef, ScheduleRuleNode);
+  static ScheduleRule PyScheduleRule(
+      String name,
+      runtime::TypedPackedFunc<ScheduleRuleNode::FInitWithTuneContext> init_with_tune_context_func,
+      runtime::TypedPackedFunc<ScheduleRuleNode::FApply> apply_func);
 };
 
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_SPACE_GENERATOR_H_
+#endif  // SRC_META_SCHEDULE_SCHEDULE_RULE_H_

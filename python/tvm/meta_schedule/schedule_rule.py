@@ -14,59 +14,64 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Space Generator"""
+"""Schedule Rule"""
 
 from typing import Callable, List, Union, TYPE_CHECKING
 
 import tvm
 from tvm._ffi import register_object
 from tvm.runtime import Object
-from tvm.ir import IRModule
 
 from . import _ffi_api
-from .schedule import Schedule
+from .schedule import Schedule, BlockRV
 
 if TYPE_CHECKING:
     from .tune_context import TuneContext
 
 
-@register_object("meta_schedule.SpaceGenerator")
-class SpaceGenerator(Object):
-    """Description and abstraction of a design space generator.
-    The design space generator could be specified by manually written schedule function,
-    generated via loop analysis, ansor-like rules that apply to each block, etc."""
+@register_object("meta_schedule.ScheduleRule")
+class ScheduleRule(Object):
+    """Description and abstraction of a schedule rule."""
 
     def initialize_with_tune_context(
         self,
         context: "TuneContext",
     ) -> None:
-        return _ffi_api.SpaceGeneratorInitializeWithTuneContext(  # pylint: disable=no-member
+        return _ffi_api.ScheduleRuleInitializeWithTuneContext(  # pylint: disable=no-member
             self, context
         )
 
-    def generate(self, workload: IRModule) -> List[Schedule]:
-        return _ffi_api.SpaceGeneratorGenerate(self, workload)  # pylint: disable=no-member
+    def apply(self, schedule: Schedule, block: BlockRV) -> List[Schedule]:
+        return _ffi_api.ScheduleRuleApply(self, schedule, block)  # pylint: disable=no-member
 
     def initialize(self, **kwargs):
         raise NotImplementedError
 
 
-@register_object("meta_schedule.PySpaceGenerator")
-class PySpaceGenerator(SpaceGenerator):
-    """Design space generator that is implemented in python"""
+@register_object("meta_schedule.PyScheduleRule")
+class PyScheduleRule(ScheduleRule):
+    """Schedule rule that is implemented in python"""
 
-    def __init__(self):
+    RULE_FN_TYPE = Union[
+        Callable[[Schedule], None],
+        Callable[[Schedule], Schedule],
+        Callable[[Schedule], List[Schedule]],
+    ]
+
+    def __init__(self, name, rule_func: RULE_FN_TYPE):
         def init_with_tune_context_func(context: "TuneContext"):
             self.init_with_tune_context(context)
 
-        def generate_func(workload: IRModule):
-            return self.generate(workload)
+        def apply_func(schedule: Schedule, block: BlockRV):
+            return self.apply(schedule, block)
 
         self.__init_handle_by_constructor__(
-            _ffi_api.PySpaceGeneratorNew,  # pylint: disable=no-member
+            _ffi_api.PyScheduleRuleNew,  # pylint: disable=no-member
+            name,
             init_with_tune_context_func,
-            generate_func,
+            apply_func,
         )
+        self.rule_func = rule_func
 
     def initialize_with_tune_context(self, context: "TuneContext") -> None:
         """initialize the space generator according to the tune context
@@ -78,38 +83,17 @@ class PySpaceGenerator(SpaceGenerator):
         """
         raise NotImplementedError
 
-    def generate(self, workload: IRModule) -> List[Schedule]:
-        """Generate a list of schedules from generator
+    def apply(self, schedule: Schedule, block: BlockRV) -> List[Schedule]:
+        """apply a list of schedules from schedule rule
 
         Returns
         -------
         results: List[Schedule]
             A list of schedules
         """
-        raise NotImplementedError
-
-
-class ScheduleFn(PySpaceGenerator):
-    """Design space that is specified by a schedule function"""
-
-    SCH_FN_TYPE = Union[
-        Callable[[Schedule], None],
-        Callable[[Schedule], Schedule],
-        Callable[[Schedule], List[Schedule]],
-    ]
-
-    def __init__(self, sch_fn: SCH_FN_TYPE):
-        super().__init__()
-        self.sch_fn = sch_fn
-
-    def initialize_with_tune_context(self, context: "TuneContext") -> None:
-        raise NotImplementedError
-
-    def generate(self, workload: IRModule) -> List[Schedule]:
-        sch = Schedule(workload)
-        result = self.sch_fn(sch)
+        result = self.rule_func(schedule, block)
         if result is None:
-            return [sch]
+            return [schedule]
         if isinstance(result, (list, tvm.ir.Array)):
             for ret in result:
                 if not isinstance(ret, Schedule):
@@ -119,3 +103,23 @@ class ScheduleFn(PySpaceGenerator):
                     )
             return result
         return [result]
+
+
+def as_schedule_rule(name) -> PyScheduleRule:
+    """A decorate that wraps a python function into ScheduleRule
+
+    Parameters
+    ----------
+    name : str
+        Name of the schedule rule
+
+    Returns
+    -------
+    rule : PyScheduleRule
+        The schedule rule
+    """
+
+    def wrap(func):
+        return PyScheduleRule(name, func)
+
+    return wrap

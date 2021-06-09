@@ -16,4 +16,5 @@
 # under the License.
 """ Meta Schedule """
 from .space_generator import SpaceGenerator, PySpaceGenerator, ScheduleFn
-from .schedule import Schedule
+from .schedule_rule import ScheduleRule, PyScheduleRule, as_schedule_rule
+from .schedule import Schedule, BlockRV

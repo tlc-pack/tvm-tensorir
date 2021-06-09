@@ -21,6 +21,7 @@
 #include <tvm/node/node.h>
 #include <tvm/runtime/packed_func.h>
 
+#include "../schedule.h"
 #include "../space_generator.h"
 #include "../tune_context.h"
 
@@ -32,9 +33,6 @@ namespace meta_schedule {
 /*! \brief The cost model returning random value for all predictions */
 class PySpaceGeneratorNode : public SpaceGeneratorNode {
  public:
-  using FInitWithTuneContext = void(const TuneContext&);
-  using FGenerate = Array<ObjectRef>();
-
   /*! \brief Pointer to the Init funcion in python */
   runtime::TypedPackedFunc<FInitWithTuneContext> init_with_tune_context_func;
   /*! \brief Pointer to the Generate funcion in python */
@@ -46,7 +44,9 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
     this->init_with_tune_context_func(context);
   }
 
-  Array<ObjectRef> Generate() override { return this->generate_func(); }
+  Array<Schedule> Generate(const IRModule& workload) override {
+    return this->generate_func(workload);
+  }
 
   static constexpr const char* _type_key = "meta_schedule.PySpaceGenerator";
   TVM_DECLARE_FINAL_OBJECT_INFO(PySpaceGeneratorNode, SpaceGeneratorNode);
@@ -58,11 +58,9 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
  */
 class PySpaceGenerator : public SpaceGenerator {
  public:
-  using FInitWithTuneContext = PySpaceGeneratorNode::FInitWithTuneContext;
-  using FGenerate = PySpaceGeneratorNode::FGenerate;
-
-  PySpaceGenerator(runtime::TypedPackedFunc<FInitWithTuneContext> init_with_tune_context_func,
-                   runtime::TypedPackedFunc<FGenerate> generate_func) {
+  explicit PySpaceGenerator(runtime::TypedPackedFunc<SpaceGeneratorNode::FInitWithTuneContext>
+                                init_with_tune_context_func,
+                            runtime::TypedPackedFunc<SpaceGeneratorNode::FGenerate> generate_func) {
     ObjectPtr<PySpaceGeneratorNode> n = make_object<PySpaceGeneratorNode>();
     n->init_with_tune_context_func = std::move(init_with_tune_context_func);
     n->generate_func = std::move(generate_func);
@@ -73,8 +71,9 @@ class PySpaceGenerator : public SpaceGenerator {
                                                     PySpaceGeneratorNode);
 };
 
-SpaceGenerator SpaceGenerator::PySpaceGenerator(runtime::PackedFunc init_with_tune_context_func,
-                                                runtime::PackedFunc generate_func) {
+SpaceGenerator SpaceGenerator::PySpaceGenerator(
+    runtime::TypedPackedFunc<SpaceGeneratorNode::FInitWithTuneContext> init_with_tune_context_func,
+    runtime::TypedPackedFunc<SpaceGeneratorNode::FGenerate> generate_func) {
   return meta_schedule::PySpaceGenerator(init_with_tune_context_func, generate_func);
 }
 
