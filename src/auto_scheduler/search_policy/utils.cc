@@ -840,8 +840,10 @@ DietCodeSplitFactorizationMemo::SampleFactorizationSchemes(
   FactorizationScheme scheme(split_steps_info, simplify_schedule,
                              is_sample_init_population_1st_iter);
   scheme.RandomSample(hardware_params_, max_innermost_factor_, rng);
-  // make sure that the randomly sampled scheme satisfies all the hardware constraints
-  CHECK(IsLegit(scheme));
+  
+  if (is_sample_init_population_1st_iter) {
+    LOG(INFO) << "Randomly sampled factorization scheme=" << scheme.toString();
+  }
   return scheme;
 }
 
