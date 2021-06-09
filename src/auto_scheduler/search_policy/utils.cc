@@ -468,10 +468,10 @@ const Array<Array<Integer>>& SplitFactorizationMemo::GetFactorizationSchemes(
   if (it != memory_.end()) {
     return it->second;
   }
-  if (!is_sample_init_population_1st_iter) {
-    LOG(FATAL) << "(extent=" << extent << ", n_lengths=" << n_lengths <<") has "
-                  "not been found in SplitFactorizationMemo";
-  }
+  // if (!is_sample_init_population_1st_iter) {
+  //   LOG(FATAL) << "(extent=" << extent << ", n_lengths=" << n_lengths <<") has "
+  //                 "not been found in SplitFactorizationMemo";
+  // }
 
   tmp_stack_ = Array<Integer>(n_lengths, Integer());
   results_ = &memory_[key];
@@ -540,11 +540,11 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   // factor[1] (threadIdx.x)
   // ===========================================================================
   std::uniform_int_distribution<> num_warps_dist(
-      1, hardware_params->max_threads_per_block / hardware_params->warp_size - 1);
+      1, hardware_params->max_threads_per_block / hardware_params->warp_size);
   size_t num_threads_per_block = num_warps_dist(*rng) * hardware_params->warp_size;
   // find all the possible factors of the number of threads per block
   if (is_sample_init_population_1st_iter) {
-    LOG(INFO) << "Number of threads per block: " << num_threads_per_block;
+    LOG(INFO) << "num_threads_per_block=" << num_threads_per_block;
   }
   size_t num_spatial_axes = 0;
   for (const SplitStepInfo& info : split_steps_info) {
@@ -555,22 +555,37 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   SplitFactorizationMemo memo;
   const Array<Array<Integer>>& num_threads_factor_schemes =
       memo.GetFactorizationSchemes(num_threads_per_block, num_spatial_axes - 1);
+
+  if (is_sample_init_population_1st_iter) {
+    LOG(INFO) << "Sampled the factors out of num_threads_factor_schemes.size()="
+              << num_threads_factor_schemes.size();
+  }
   std::uniform_int_distribution<> num_threads_factor_schemes_dist(
       0, num_threads_factor_schemes.size() - 1);
-  
+
   bool all_below_max_extents;
   Array<Integer> num_threads_factor_scheme;
   do {
     all_below_max_extents = true;
-    num_threads_factor_scheme =
-        num_threads_factor_schemes[num_threads_factor_schemes_dist(*rng)];
+
+    if (is_sample_init_population_1st_iter) {
+      LOG(INFO) << "Sampling a random index";
+    }
+    size_t rand_idx = num_threads_factor_schemes_dist(*rng);
+    if (is_sample_init_population_1st_iter) {
+      LOG(INFO) << "Sampling a random index rand_idx=" << rand_idx;
+    }
+    num_threads_factor_scheme = num_threads_factor_schemes[rand_idx];
+    // if (is_sample_init_population_1st_iter) {
+    //   LOG(INFO) << "Factorization Scheme: " << ArrayToString(num_threads_factor_scheme);
+    // }
     int64_t factor_prod = 1;
     for (const Integer& factor : num_threads_factor_scheme) {
       factor_prod *= factor;
     }
     num_threads_factor_scheme.push_back(num_threads_per_block / factor_prod);
     if (is_sample_init_population_1st_iter) {
-      LOG(INFO) << "Factorization Schemes: " << ArrayToString(num_threads_factor_scheme);
+      LOG(INFO) << "Factorization Scheme: " << ArrayToString(num_threads_factor_scheme);
     }
     for (size_t iter_id = 0, spatial_iter_id = 0;
          iter_id < split_steps_info.size(); ++iter_id) {
@@ -583,7 +598,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
         ++spatial_iter_id;
       }
     }  // for (iter_id ∈ [0, split_steps_info.size()))
-  } while (all_below_max_extents);
+  } while (!all_below_max_extents);
   // do the looping again and assign the factors
   for (size_t iter_id = 0, spatial_iter_id = 0;
        iter_id < split_steps_info.size(); ++iter_id) {
@@ -619,6 +634,10 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       reg_usage *= split_factors[iter_id][0];
     }
   }
+
+  if (is_sample_init_population_1st_iter) {
+    LOG(INFO) << "Finished sampling the vthread";
+  }
   // =========================================================================
   // factor[3] (innermost)
   // =========================================================================
@@ -640,10 +659,14 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       reg_usage *= split_factors[iter_id][3];
     }
   }
+
+  if (is_sample_init_population_1st_iter) {
+    LOG(INFO) << "Finished sampling the innermost loop extent";
+  }
   // =========================================================================
   // factor[2]
   // =========================================================================
-  if (reg_usage < static_cast<size_t>(hardware_params->max_local_memory_per_block)) {
+  if (reg_usage > static_cast<size_t>(hardware_params->max_local_memory_per_block)) {
       LOG(WARNING) << "reg_usage=" << reg_usage << " is already greater than the allowable size "
                    << hardware_params->max_local_memory_per_block;
   }
@@ -664,6 +687,9 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       split_factors[iter_id][2] = sample_2nd_innermost_factor(iter_id);
       reg_usage *= split_factors[iter_id][2];
     }
+  }
+  if (is_sample_init_population_1st_iter) {
+    LOG(INFO) << "Finished sampling the 2nd innermost loop extent";
   }
 
   size_t shmem_usage = 0;
@@ -690,10 +716,14 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       shmem_usage *= split_factors[iter_id][1];
     }
   }
+
+  if (is_sample_init_population_1st_iter) {
+    LOG(INFO) << "Finished sampling the innermost loop extent (reduction axis)";
+  }
   // ===========================================================================
   // rfactor[0]
   // ===========================================================================
-  if (shmem_usage < static_cast<size_t>(hardware_params->max_shared_memory_per_block)) {
+  if (shmem_usage > static_cast<size_t>(hardware_params->max_shared_memory_per_block)) {
       LOG(WARNING) << "shmem_usage=" << shmem_usage << " is already greater than the allowable size "
                    << hardware_params->max_shared_memory_per_block;
   }
@@ -706,9 +736,16 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       };
   for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
     if (!split_steps_info[iter_id].is_spatial) {
+      if (simplify_schedule) {
+        continue;
+      }
       split_factors[iter_id][0] = sample_2nd_innermost_rfactor(iter_id);
       shmem_usage *= split_factors[iter_id][0];
     }
+  }
+
+  if (is_sample_init_population_1st_iter) {
+    LOG(INFO) << "Finished sampling the 2nd innermost loop extent (reduction axis)";
   }
   // If the sampled factorization scheme violates the hardware constraints, it
   // will just be discarded.
