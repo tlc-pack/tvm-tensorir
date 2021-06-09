@@ -466,10 +466,8 @@ const Array<Array<Integer>>& SplitFactorizationMemo::GetFactorizationSchemes(
                  std::make_pair(extent, n_lengths);
   const auto& it = memory_.find(key);
   if (it != memory_.end()) {
-    LOG(INFO) << "exists";
     return it->second;
   }
-  LOG(INFO) << "does not exist";
   // if (!is_sample_init_population_1st_iter) {
   //   LOG(FATAL) << "(extent=" << extent << ", n_lengths=" << n_lengths <<") has "
   //                 "not been found in SplitFactorizationMemo";
