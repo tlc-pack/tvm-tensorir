@@ -760,13 +760,13 @@ struct FactorizationScheme {
     if (init_static_members) {
       FactorizationScheme::split_steps_info = split_steps_info;
       FactorizationScheme::simplify_schedule = simplify_schedule;
-      if (simplify_schedule) {
-        last_spatial_iter_id = -1;
-        for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
-          if (split_steps_info[iter_id].is_spatial) {
-            last_spatial_iter_id = iter_id;
-          }
+      last_spatial_iter_id = -1;
+      for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
+        if (split_steps_info[iter_id].is_spatial) {
+          last_spatial_iter_id = iter_id;
         }
+      }
+      if (simplify_schedule) {
         for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
           if (split_steps_info[iter_id].is_spatial) {
             if (iter_id == last_spatial_iter_id) {

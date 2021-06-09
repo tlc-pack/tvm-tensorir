@@ -532,7 +532,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
 
   // <bojian/DietCode> Change how the tile sizes are initialized.
   if (IsDynTask(policy->search_task)) {
-    std::vector<SplitStepInfo> split_step_info;
+    std::vector<SplitStepInfo> split_steps_info;
     arith::Analyzer analyzer;
     // DietCodeSplitFactorizationMemo split_memo(policy->search_task->hardware_params)
 
@@ -555,18 +555,18 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
                     << " with max value=" << s.max();
         }
         CHECK(ps->lengths.size() == 4 || ps->lengths.size() == 2);
-        split_step_info.push_back(SplitStepInfo{ps->lengths.size() == 4,
-                                                static_cast<size_t>(GetIntImm(s.max()))
-                                                });
+        split_steps_info.push_back(SplitStepInfo{ps->lengths.size() == 4,
+                                                 static_cast<size_t>(GetIntImm(s.max()))
+                                                 });
       }
     }
     if (is_sample_init_population_1st_iter) {
       LOG(INFO) << "Getting all the possible factorization schemes";
     }
     const std::vector<FactorizationScheme>& cached_schemes =
-        policy->dietcode_split_memo.GetAllFactorizationSchemes(split_step_info);
+        policy->dietcode_split_memo.GetAllFactorizationSchemes(split_steps_info);
     const FactorizationScheme& scheme = cached_schemes[(*rand_gen)() % cached_schemes.size()];
-    CHECK(scheme.split_factors.size() == split_step_info.size());
+    CHECK(scheme.split_factors.size() == split_steps_info.size());
     // FactorizationScheme scheme;
     // scheme.split_factors = {
     //     {1, 1, 1, 5}, {1, 32, 1, 1}, {15, 1}
@@ -606,10 +606,10 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
     // and the dynamic scheduling
     if (is_sample_init_population_1st_iter) {
       size_t num_possible_factorization_schemes = 1;
-      for (const auto& info : split_step_info) {
-        LOG(INFO) << "extent=" << info.extent << ", n_lengths=" << (info.is_spatial ? 4 : 2);
+      for (const auto& info : split_steps_info) {
+        LOG(INFO) << "extent=" << info.max_extent << ", n_lengths=" << (info.is_spatial ? 4 : 2);
         num_possible_factorization_schemes *=
-            policy->split_memo.GetFactorizationSchemes(info.extent, info.is_spatial ? 4 : 2).size();
+            policy->split_memo.GetFactorizationSchemes(info.max_extent, info.is_spatial ? 4 : 2).size();
         LOG(INFO) << "num_possible_factorization_schemes -> " << num_possible_factorization_schemes;
       }
       LOG(INFO) << "Total number of possible factorization schemes w/ the largest static workload instance: "
