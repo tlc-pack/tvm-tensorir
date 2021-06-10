@@ -566,8 +566,13 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
     // const std::vector<FactorizationScheme>& cached_schemes =
     //     policy->dietcode_split_memo.GetAllFactorizationSchemes(split_steps_info);
     // const FactorizationScheme& scheme = cached_schemes[(*rand_gen)() % cached_schemes.size()];
-    FactorizationScheme scheme =
-        policy->dietcode_split_memo.SampleFactorizationSchemes(split_steps_info, rand_gen, true);
+    FactorizationScheme scheme;
+    try {
+      scheme = policy->dietcode_split_memo.SampleFactorizationSchemes(
+          split_steps_info, rand_gen, false /* simplify_schedule */);
+    } catch(const std::out_of_range& e) {
+      return ResultKind::kInvalid;
+    }
     CHECK(scheme.split_factors.size() == split_steps_info.size());
     // FactorizationScheme scheme;
     // scheme.split_factors = {

@@ -608,23 +608,59 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   // ===========================================================================
   // factor[0] (vthread)
   // ===========================================================================
-  size_t reg_usage = num_threads_per_block;
-  std::vector<size_t> factors_to_assign;
-  std::vector<size_t>::iterator factors_to_assign_it;
+  size_t reg_usage = num_threads_per_block,
+         shmem_usage = 0;
 
   auto sample_factors = [&](std::function<  bool(const size_t)>  continue_predicate,
                             std::function<size_t(const size_t)>  max_extent,
                             std::function<  int&(const size_t)>  factor_to_assign) {
-        factors_to_assign.clear();
+        std::vector<size_t> iter_max_extents;
+        std::vector<size_t> factors_to_assign;
         for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
           if (continue_predicate(iter_id)) {
             continue;
           }
-          std::uniform_int_distribution<> dist(1, max_extent(iter_id));
-          factors_to_assign.push_back(dist(*rng));
-          reg_usage *= factors_to_assign.back();
+          size_t iter_max_extent = max_extent(iter_id);
+          CHECK(iter_max_extent != 0) << "current scheme=" << toString();
+          std::uniform_int_distribution<> dist(1, iter_max_extent);
+          size_t factor_to_assign = dist(*rng);
+
+          if (split_steps_info[iter_id].is_spatial) {
+            reg_usage *= factor_to_assign;
+          } else {
+            shmem_usage *= factor_to_assign;
+          }
+          iter_max_extents.push_back(iter_max_extent);
+          factors_to_assign.push_back(factor_to_assign);
         }
+        // shuffle the factors
+        std::vector<size_t> factors_to_assign_bak = factors_to_assign;
         std::shuffle(factors_to_assign.begin(), factors_to_assign.end(), *rng);
+        // make sure that the shuffle is valid
+        bool valid_shuffle = true;
+        std::vector<size_t>::iterator
+            iter_max_extents_it = iter_max_extents.begin(),
+            factors_to_assign_it = factors_to_assign.begin();
+        // LOG(INFO) << "iter_max_extents=" << VectorToString(iter_max_extents) << " vs. "
+        //           << "factors_to_assign=" << VectorToString(factors_to_assign);
+        for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
+          if (continue_predicate(iter_id)) {
+            continue;
+          }
+          size_t iter_max_extent = *iter_max_extents_it;
+          if (*factors_to_assign_it > iter_max_extent) {
+            valid_shuffle = false;
+          }
+          ++iter_max_extents_it;
+          ++factors_to_assign_it;
+        }
+        if (!valid_shuffle) {
+          if (is_sample_init_population_1st_iter) {
+            LOG(WARNING) << "Shuffling is not valid";
+          }
+          factors_to_assign = std::move(factors_to_assign_bak);
+        }
+        // do the actual assignment
         factors_to_assign_it = factors_to_assign.begin();
         for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
           if (continue_predicate(iter_id)) {
@@ -656,7 +692,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       );
 
   if (is_sample_init_population_1st_iter) {
-    LOG(INFO) << "Finished sampling the vthread";
+    LOG(INFO) << "Finished sampling the vthread, current scheme=" << toString();
   }
   // ===========================================================================
   // factor[3] (innermost)
@@ -683,7 +719,8 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       }
       );
   if (is_sample_init_population_1st_iter) {
-    LOG(INFO) << "Finished sampling the innermost loop extent";
+    LOG(INFO) << "Finished sampling the innermost loop extent, current scheme="
+              << toString();
   }
   // ===========================================================================
   // factor[2]
@@ -711,15 +748,22 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       }
       );
   if (is_sample_init_population_1st_iter) {
-    LOG(INFO) << "Finished sampling the 2nd innermost loop extent";
+    LOG(INFO) << "Finished sampling the 2nd innermost loop extent, "
+                 "current scheme=" << toString();
   }
 
-  size_t shmem_usage = 0;
   for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
     if (split_steps_info[iter_id].is_spatial) {
       shmem_usage += split_factors[iter_id][0] * split_factors[iter_id][1] *
                      split_factors[iter_id][2] * split_factors[iter_id][3];
     }
+  }
+  if (shmem_usage >
+      static_cast<size_t>(hardware_params->max_shared_memory_per_block / sizeof(float))) {
+    // LOG(FATAL) << "shmem_usage=" << shmem_usage << " is already greater than the allowable size "
+    //              << hardware_params->max_shared_memory_per_block
+    //              << ", current scheme=" << toString();
+    throw std::out_of_range("shmem_usage goes out-of-range");
   }
   // repeat similar procedure for reduction axes
   // ===========================================================================
@@ -743,17 +787,12 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       }
       );
   if (is_sample_init_population_1st_iter) {
-    LOG(INFO) << "Finished sampling the innermost loop extent (reduction axis)";
+    LOG(INFO) << "Finished sampling the innermost loop extent (reduction axis), "
+                 "current scheme=" << toString();
   }
   // ===========================================================================
   // rfactor[0]
   // ===========================================================================
-  if (shmem_usage > static_cast<size_t>(hardware_params->max_shared_memory_per_block)) {
-      LOG(FATAL) << "shmem_usage=" << shmem_usage << " is already greater than the allowable size "
-                   << hardware_params->max_shared_memory_per_block
-                   << ", current scheme=" << toString();
-  }
-
   sample_factors(
       [&](const size_t iter_id) -> bool {
         return split_steps_info[iter_id].is_spatial || simplify_schedule;
@@ -770,7 +809,8 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       }
       );
   if (is_sample_init_population_1st_iter) {
-    LOG(INFO) << "Finished sampling the 2nd innermost loop extent (reduction axis)";
+    LOG(INFO) << "Finished sampling the 2nd innermost loop extent (reduction axis), "
+                 "current scheme=" << toString();
   }
   // If the sampled factorization scheme violates the hardware constraints, it
   // will just be discarded.

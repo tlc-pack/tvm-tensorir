@@ -446,7 +446,7 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
                           // <bojian/DietCode> Changed the starting index from 0 -> 1.
                           1
                         , population, [this, &temp_states, &sketches, &rand_gens](int index) {
-    // for (int index = 0; index < population; ++index) {
+    // for (int index = 1; index < population; ++index) {
 
       // Randomly choose a sketch
       State tmp_s = sketches[(rand_gens[index])() % sketches.size()];

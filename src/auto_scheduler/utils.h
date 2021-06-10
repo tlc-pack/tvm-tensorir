@@ -327,6 +327,17 @@ inline std::string AxisBaseName(const std::string& str) { return str.substr(0, s
 
 // <bojian/DietCode>
 template<typename T>
+inline std::string VectorToString(const std::vector<T>& vec) {
+  std::ostringstream strout;
+  strout << "[";
+  for (const T& v : vec) {
+    strout << v << ", ";
+  }
+  strout << "]";
+  return strout.str();
+}
+
+template<typename T>
 inline std::string ArrayToString(const Array<T>& Arr) {
   std::ostringstream strout;
   strout << "[";
