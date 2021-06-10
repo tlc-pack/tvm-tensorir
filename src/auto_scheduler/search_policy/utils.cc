@@ -605,11 +605,6 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       ++spatial_iter_id;
     }
   }
-
-// #define UNIFORM_SAMPLE_WITHIN_EXTENT(extent)  \
-//   std::uniform_int_distribution<> dist(1, extent);  \
-//   return dist(*rng)
-
   // ===========================================================================
   // factor[0] (vthread)
   // ===========================================================================
@@ -617,71 +612,33 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   std::vector<size_t> factors_to_assign;
   std::vector<size_t>::iterator factors_to_assign_it;
 
-  auto sample_spatial_factors = [&](std::function<bool(const size_t)> cont_predicate,
-                                    std::function<size_t(const size_t)> max_extent,
-                                    std::function<int&(const size_t)> factor_to_assign) {
+  auto sample_factors = [&](std::function<  bool(const size_t)>  continue_predicate,
+                            std::function<size_t(const size_t)>  max_extent,
+                            std::function<  int&(const size_t)>  factor_to_assign) {
         factors_to_assign.clear();
         for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
-          if (split_steps_info[iter_id].is_spatial) {
-            if (cont_predicate(iter_id)) {
-              continue;
-            }
-            std::uniform_int_distribution<> dist(1, max_extent(iter_id));
-            factors_to_assign.push_back(dist(*rng));
-            reg_usage *= factors_to_assign.back();
+          if (continue_predicate(iter_id)) {
+            continue;
           }
+          std::uniform_int_distribution<> dist(1, max_extent(iter_id));
+          factors_to_assign.push_back(dist(*rng));
+          reg_usage *= factors_to_assign.back();
         }
         std::shuffle(factors_to_assign.begin(), factors_to_assign.end(), *rng);
         factors_to_assign_it = factors_to_assign.begin();
         for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
-          if (split_steps_info[iter_id].is_spatial) {
-            if (cont_predicate(iter_id)) {
-              continue;
-            }
-            factor_to_assign(iter_id) = *factors_to_assign_it;
-            ++factors_to_assign_it;
+          if (continue_predicate(iter_id)) {
+            continue;
           }
+          factor_to_assign(iter_id) = *factors_to_assign_it;
+          ++factors_to_assign_it;
         }
       };
 
-
-  // auto sample_vthread_extent = [&](const size_t iter_id) -> int {
-  //       size_t max_vthread_extent =
-  //           std::min(static_cast<size_t>(hardware_params->max_vthread_extent),
-  //                    split_steps_info[iter_id].max_extent /
-  //                    split_factors[iter_id][1]);
-  //       max_vthread_extent =
-  //           std::min(max_vthread_extent,
-  //                    hardware_params->max_local_memory_per_block / reg_usage);
-  //       UNIFORM_SAMPLE_WITHIN_EXTENT(max_vthread_extent);
-  //     };
-
-
-  // for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
-  //   if (split_steps_info[iter_id].is_spatial) {
-  //     if (simplify_schedule && (iter_id != last_spatial_iter_id)) {
-  //       continue;
-  //     }
-  //     factors_to_assign.push_back(sample_vthread_extent(iter_id));
-  //     reg_usage *= split_factors[iter_id][0];
-  //   }
-  // }
-  // std::shuffle(factors_to_assign.begin(), factors_to_assign.end(), *rng);
-  // factors_to_assign_it = factors_to_assign.begin();
-  // for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
-  //   if (split_steps_info[iter_id].is_spatial) {
-  //     if (simplify_schedule && (iter_id != last_spatial_iter_id)) {
-  //       continue;
-  //     }
-  //     split_factors[iter_id][0] = *factors_to_assign_it;
-  //     ++factors_to_assign_it;
-  //   }
-  // }
-  // factors_to_assign.clear();
-
-  sample_spatial_factors(
+  sample_factors(
       [&](const size_t iter_id) -> bool {
-        return simplify_schedule && (iter_id != last_spatial_iter_id);
+        return (!split_steps_info[iter_id].is_spatial) || 
+               (simplify_schedule && (iter_id != last_spatial_iter_id));
       },
       [&](const size_t iter_id) -> size_t {
         size_t max_vthread_extent =
@@ -704,7 +661,13 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   // ===========================================================================
   // factor[3] (innermost)
   // ===========================================================================
-  auto sample_innermost_factor = [&](const size_t iter_id) {
+  sample_factors(
+      [&](const size_t iter_id) -> bool {
+        return (!split_steps_info[iter_id].is_spatial) || 
+               (iter_id == last_spatial_iter_id);
+               // always make sure that the final spatial axis has a stride of 1
+      },
+      [&](const size_t iter_id) -> size_t {
         size_t max_innermost_extent =
             std::min(max_innermost_factor,
                      split_steps_info[iter_id].max_extent /
@@ -713,30 +676,12 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
         max_innermost_extent =
             std::min(max_innermost_extent,
                      hardware_params->max_local_memory_per_block / reg_usage);
-        UNIFORM_SAMPLE_WITHIN_EXTENT(max_innermost_extent);
-      };
-  for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
-    if (split_steps_info[iter_id].is_spatial) {
-      // always make sure that the writeback has a stride of 1
-      if (iter_id == last_spatial_iter_id) {
-        continue;
+        return max_innermost_extent;
+      },
+      [&](const size_t iter_id) -> int& {
+        return split_factors[iter_id][3];
       }
-      factors_to_assign.push_back(sample_innermost_factor(iter_id));
-      reg_usage *= split_factors[iter_id][3];
-    }
-  }
-  std::shuffle(factors_to_assign.begin(), factors_to_assign.end(), *rng);
-  factors_to_assign_it = factors_to_assign.begin();
-  for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
-    if (split_steps_info[iter_id].is_spatial) {
-      if (iter_id == last_spatial_iter_id) {
-        continue;
-      }
-      split_factors[iter_id][3] = *factors_to_assign_it;
-      ++factors_to_assign_it;
-    }
-  }
-  factors_to_assign.clear();
+      );
   if (is_sample_init_population_1st_iter) {
     LOG(INFO) << "Finished sampling the innermost loop extent";
   }
@@ -748,24 +693,23 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
                  << hardware_params->max_local_memory_per_block
                  << ", current scheme=" << toString();
   }
-  auto sample_2nd_innermost_factor = [&](const size_t iter_id) {
+  sample_factors(
+      [&](const size_t iter_id) -> bool {
+        return (!split_steps_info[iter_id].is_spatial) || simplify_schedule;
+      },
+      [&](const size_t iter_id) -> size_t {
         size_t max_2nd_innermost_extent =
             std::min(split_steps_info[iter_id].max_extent /
                      split_factors[iter_id][0] /
                      split_factors[iter_id][1] /
                      split_factors[iter_id][3],
                      hardware_params->max_local_memory_per_block / reg_usage);
-        UNIFORM_SAMPLE_WITHIN_EXTENT(max_2nd_innermost_extent);
-      };
-  for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
-    if (split_steps_info[iter_id].is_spatial) {
-      if (simplify_schedule) {
-        continue;
+        return max_2nd_innermost_extent;
+      },
+      [&](const size_t iter_id) -> int& {
+        return split_factors[iter_id][2];
       }
-      split_factors[iter_id][2] = sample_2nd_innermost_factor(iter_id);
-      reg_usage *= split_factors[iter_id][2];
-    }
-  }
+      );
   if (is_sample_init_population_1st_iter) {
     LOG(INFO) << "Finished sampling the 2nd innermost loop extent";
   }
@@ -777,24 +721,27 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
                      split_factors[iter_id][2] * split_factors[iter_id][3];
     }
   }
-  shmem_usage *= sizeof(float);
   // repeat similar procedure for reduction axes
   // ===========================================================================
   // rfactor[1] (innermost)
   // ===========================================================================
-  auto sample_innermost_rfactor = [&](const size_t iter_id) {
+  sample_factors(
+      [&](const size_t iter_id) -> bool {
+        return split_steps_info[iter_id].is_spatial;
+      },
+      [&](const size_t iter_id) -> size_t {
         size_t max_innermost_extent =
             std::min(max_innermost_factor,
                      split_steps_info[iter_id].max_extent);
-        UNIFORM_SAMPLE_WITHIN_EXTENT(max_innermost_extent);
-      };
-  for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
-    if (!split_steps_info[iter_id].is_spatial) {
-      split_factors[iter_id][1] = sample_innermost_rfactor(iter_id);
-      shmem_usage *= split_factors[iter_id][1];
-    }
-  }
-
+        max_innermost_extent =
+            std::min(max_innermost_extent,
+                     hardware_params->max_shared_memory_per_block / sizeof(float) / shmem_usage);
+        return max_innermost_extent;
+      },
+      [&](const size_t iter_id) -> int& {
+        return split_factors[iter_id][1];
+      }
+      );
   if (is_sample_init_population_1st_iter) {
     LOG(INFO) << "Finished sampling the innermost loop extent (reduction axis)";
   }
@@ -802,27 +749,26 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   // rfactor[0]
   // ===========================================================================
   if (shmem_usage > static_cast<size_t>(hardware_params->max_shared_memory_per_block)) {
-      LOG(WARNING) << "shmem_usage=" << shmem_usage << " is already greater than the allowable size "
+      LOG(FATAL) << "shmem_usage=" << shmem_usage << " is already greater than the allowable size "
                    << hardware_params->max_shared_memory_per_block
                    << ", current scheme=" << toString();
   }
-  auto sample_2nd_innermost_rfactor = [&](const size_t iter_id) {
+
+  sample_factors(
+      [&](const size_t iter_id) -> bool {
+        return split_steps_info[iter_id].is_spatial || simplify_schedule;
+      },
+      [&](const size_t iter_id) -> size_t {
         size_t max_2nd_innermost_extent =
             std::min(split_steps_info[iter_id].max_extent / 
                      split_factors[iter_id][1],
-                     hardware_params->max_shared_memory_per_block / shmem_usage);
-        UNIFORM_SAMPLE_WITHIN_EXTENT(max_2nd_innermost_extent);
-      };
-  for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
-    if (!split_steps_info[iter_id].is_spatial) {
-      if (simplify_schedule) {
-        continue;
+                     hardware_params->max_shared_memory_per_block / sizeof(float) / shmem_usage);
+        return max_2nd_innermost_extent;
+      },
+      [&](const size_t iter_id) -> int& {
+        return split_factors[iter_id][0];
       }
-      split_factors[iter_id][0] = sample_2nd_innermost_rfactor(iter_id);
-      shmem_usage *= split_factors[iter_id][0];
-    }
-  }
-
+      );
   if (is_sample_init_population_1st_iter) {
     LOG(INFO) << "Finished sampling the 2nd innermost loop extent (reduction axis)";
   }
