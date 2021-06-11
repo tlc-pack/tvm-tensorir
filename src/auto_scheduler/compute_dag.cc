@@ -1314,6 +1314,36 @@ String ComputeDAG::PrintDAG(bool simple_mode) const {
   return String(ss.str());
 }
 
+
+State ComputeDAG::InferBoundOnSyntheticWorkload(const State& state) const {
+  ICHECK(state->concrete);
+  State ret_state;
+  StateNode* pstate;
+
+  if (state->stages.empty()) {
+    ret_state = operator->()->init_state;
+    pstate = ret_state.CopyOnWrite();
+    pstate->transform_steps = state->transform_steps;
+    for (const auto& step : pstate->transform_steps) {
+      StepApplyToState(step, &ret_state, *this);
+    }
+  } else {
+    ret_state = state;
+    pstate = ret_state.CopyOnWrite();
+  }
+  // so far so good
+
+  Array<te::Stage> stages;
+  StageToAxesMap stage_to_axes;
+  te::Schedule sch;
+  Array<te::Tensor> tensors;
+
+  std::tie(sch, tensors) =
+      GenerateSyntheticWorkloadAndApplySteps(pstate->transform_steps,
+                                             &stages, &stage_to_axes);
+}
+
+
 State ComputeDAG::InferBound(const State& state) const {
   ICHECK(state->concrete) << "Only concrete state can be processed to get bound info.";
 

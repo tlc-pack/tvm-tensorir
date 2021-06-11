@@ -208,6 +208,12 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
       PrintTitle("Search", verbose);
       best_states = SearchOneRound(num_random * 3, &random_states);
 
+      if (IsDynTask(this->search_task)) {
+        LOG(FATAL) << "Number of states after pruning: "
+                      "best_states.size()" << best_states.size()
+                   << "random_states.size()" << random_states.size();
+      }
+
       // Infer bound. This is necessary for computing the correct ToStr() for redundancy check
       best_states = search_task->compute_dag.InferBound(best_states);
       random_states = search_task->compute_dag.InferBound(random_states);
@@ -584,6 +590,11 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
     rule_weights.push_back(rule->weight);
   }
   ComputePrefixSumProb(rule_weights, &rule_selection_probs);
+
+  // <bojian/DietCode> Temporarily setting the number of iterations to 0.
+  LOG(WARNING) << "Setting the number of iterations during evolutionary search "
+                  "to be 1";
+  num_iters = -1;
 
   // Genetic Algorithm
   for (int k = 0; k < num_iters + 1; ++k) {
