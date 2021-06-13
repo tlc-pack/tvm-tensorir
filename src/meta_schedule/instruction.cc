@@ -372,8 +372,7 @@ Instruction CacheWriteAttrs::Make(const BlockRV& block, int i, const String& sto
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction BlockizeAttrs::Make(const LoopRV& loop,
-                                const BlockRV& output) {
+Instruction BlockizeAttrs::Make(const LoopRV& loop, const BlockRV& output) {
   ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
   return Instruction(/*inputs=*/{loop},
                      /*outputs=*/{output},
@@ -747,7 +746,7 @@ Array<ObjectRef> UnrollAttrs::Apply(const Schedule& sch,  //
   return {};
 }
 
-Array<ObjectRef> RFactorAttrs::Apply(const Schedule& sch, //
+Array<ObjectRef> RFactorAttrs::Apply(const Schedule& sch,  //
                                      const Array<Optional<ObjectRef>>& inputs,
                                      const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
@@ -766,7 +765,7 @@ Array<ObjectRef> BindAttrs::Apply(const Schedule& sch,  //
   return {};
 }
 
-Array<ObjectRef> SetScopeAttrs::Apply(const Schedule& sch, //
+Array<ObjectRef> SetScopeAttrs::Apply(const Schedule& sch,  //
                                       const Array<Optional<ObjectRef>>& inputs,
                                       const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
@@ -776,7 +775,7 @@ Array<ObjectRef> SetScopeAttrs::Apply(const Schedule& sch, //
   return {};
 }
 
-Array<ObjectRef> StorageAlignAttrs::Apply(const Schedule& sch, //
+Array<ObjectRef> StorageAlignAttrs::Apply(const Schedule& sch,  //
                                           const Array<Optional<ObjectRef>>& inputs,
                                           const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
@@ -1146,7 +1145,8 @@ void SetScopeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 }
 
 void StorageAlignAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
-                                 const Array<String>& outputs, const Optional<ObjectRef>& decision) const {
+                                 const Array<String>& outputs,
+                                 const Optional<ObjectRef>& decision) const {
   PythonAPICall py("storage_align");
   py.AddArgInput("block", inputs[0]);
   py.AddArgAttr("buffer_index", buffer_index);
@@ -1211,12 +1211,14 @@ void MarkBlockAttrs::Serialize(Array<ObjectRef>* record,
   record->push_back(this->ann_key);
 }
 
-void ComputeAtAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void ComputeAtAttrs::Serialize(Array<ObjectRef>* record,
+                               const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
   record->push_back(Bool(this->preserve_unit_loop));
 }
 
-void ReverseComputeAtAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void ReverseComputeAtAttrs::Serialize(Array<ObjectRef>* record,
+                                      const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
   record->push_back(Bool(this->preserve_unit_loop));
 }
@@ -1261,7 +1263,8 @@ void SetScopeAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef
   record->push_back(this->storage_scope);
 }
 
-void StorageAlignAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void StorageAlignAttrs::Serialize(Array<ObjectRef>* record,
+                                  const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
   record->push_back(Integer(this->buffer_index));
   record->push_back(Integer(this->axis));
@@ -1329,14 +1332,14 @@ InstAttrs MarkBlockAttrs::Deserialize(const Array<ObjectRef>& record,
 }
 
 InstAttrs ComputeAtAttrs::Deserialize(const Array<ObjectRef>& record,
-                                     Optional<ObjectRef>* decision) {
+                                      Optional<ObjectRef>* decision) {
   ObjectPtr<ComputeAtAttrs> n = make_object<ComputeAtAttrs>();
   n->preserve_unit_loop = Downcast<Bool>(record[3]);
   return InstAttrs(std::move(n));
 }
 
 InstAttrs ReverseComputeAtAttrs::Deserialize(const Array<ObjectRef>& record,
-                                      Optional<ObjectRef>* decision) {
+                                             Optional<ObjectRef>* decision) {
   ObjectPtr<ReverseComputeAtAttrs> n = make_object<ReverseComputeAtAttrs>();
   n->preserve_unit_loop = Downcast<Bool>(record[3]);
   return InstAttrs(std::move(n));
@@ -1370,8 +1373,7 @@ InstAttrs TensorizeAttrs::Deserialize(const Array<ObjectRef>& record,
   return InstAttrs(std::move(n));
 }
 
-InstAttrs RFactorAttrs::Deserialize(const Array<ObjectRef>& record,
-                                    Optional<ObjectRef>* decision) {
+InstAttrs RFactorAttrs::Deserialize(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
   ObjectPtr<RFactorAttrs> n = make_object<RFactorAttrs>();
   n->factor_axis = Downcast<Integer>(record[3]);
   return InstAttrs(std::move(n));
