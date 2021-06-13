@@ -32,6 +32,12 @@
 
 #include "sketch_policy.h"
 
+
+// <bojian/DietCode>
+#include <tvm/arith/int_solver.h>
+#include <tvm/tir/dynamic_axis_functor.h>
+
+
 namespace tvm {
 namespace auto_scheduler {
 
@@ -1013,6 +1019,31 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
       const auto& blockidx_it = state->fuse(stage_id, to_fuse);
       state->bind(stage_id, blockidx_it, IteratorAnnotation::kBlockX);
 
+      if (is_sample_init_population_1st_iter) {
+        LOG(INFO) << "blockIdx.x=" << blockidx_it->range->extent;
+        // The approach below does not really work because the function itself
+        // it NOT a linear equation and hence not directly solvable.
+        // DynamicAxisFinder finder;
+        // finder(blockidx_it->range->extent);
+        // Array<Var> dyn_axes;
+        // for (const DynamicAxisNode* const dyn_axis : finder.dyn_axes) {
+        //   dyn_axes.push_back(// GetRef<DynamicAxis>(dyn_axis)
+        //                      Var()
+        //                      );
+        // }
+        // arith::IntConstraintsTransform solution =
+        //     arith::SolveLinearEquations(
+        //       arith::IntConstraints(
+        //         dyn_axes,
+        //         {},
+        //         {
+        //           EQ(blockidx_it->range->extent,
+        //              policy->search_task->hardware_params->num_cores)
+        //         }
+        //       )
+        //       );
+        // LOG(INFO) << "Solution=" << solution;
+      }
       // Fuse the second outermost space tile as vthread
 
       // <bojian/DietCode>
