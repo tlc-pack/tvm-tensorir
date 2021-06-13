@@ -115,7 +115,7 @@ def conv2d_nchwc(  # pylint: disable=invalid-name
         x = X[n, rc0, h + rh, w + rw, rc1].astype(out_type)
         w = W[c0, rc0, rh, rw, rc1, c1].astype(out_type)
         return te.sum(x * w, axis=(rc, rh, rw))
-    
+
     Conv = te.compute(
         (
             n,
@@ -129,6 +129,7 @@ def conv2d_nchwc(  # pylint: disable=invalid-name
     )
 
     return [X, W, Conv]
+
 
 def conv2d_nchw_bias_bn_relu(  # pylint: disable=invalid-name
     n: int,

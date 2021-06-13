@@ -41,7 +41,7 @@ bool IsLoopVarParallelizable(const ScheduleState self, const Var& loop_var,
       << block_realize->GetTypeKey();
   const BlockNode* block = realize->block.get();
   // Cond 1. Binding is validated
-  // TODO: affine
+  // TODO(auto-tir-team): affine
   // if (!self->stmt2ref.at(block)->affine) {
   //   return false;
   // }

@@ -451,13 +451,15 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
     ICHECK(inner_binding);
     if (is_one(division[i][1]->extent)) {  // IsOuter
       // extract this iter var to outer block directly
-      outer_bindings.push_back(arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(outer_binding)));
+      outer_bindings.push_back(
+          arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(outer_binding)));
       outer_block_vars.push_back(iter_var);
       bv_iters[iter_var->var] = Range::FromMinExtent(iter_var->var, 1);
     } else {
       const IterVar outer_var(Range::FromMinExtent(0, division[i][0]->extent),
                               iter_var->var.copy_with_suffix("o"), iter_var->iter_type);
-      outer_bindings.push_back(arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(outer_binding)));
+      outer_bindings.push_back(
+          arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(outer_binding)));
       outer_block_vars.push_back(outer_var);
       // generate a new iter var for outer block
       PrimExpr base = is_one(division[i][0]->extent) ? 0 : outer_var * division[i][1]->extent;
@@ -466,7 +468,8 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
         inner_bindings.push_back(base +
                                  arith::NormalizeIterMapToExpr(arith::IterSumExpr(op->args, 0)));
       } else {
-        inner_bindings.push_back(base + arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(inner_binding)));
+        inner_bindings.push_back(
+            base + arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(inner_binding)));
       }
       inner_block_vars.push_back(iter_var);
       bv_iters[iter_var->var] = Range::FromMinExtent(base, division[i][1]->extent);
@@ -527,8 +530,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
                                 /*writes=*/block->writes,                  //
                                 /*name_hint=*/block->name_hint + "_init",  //
                                 /*body=*/block->init.value(),              //
-                                /*init=*/NullOpt                           //
-                                ),
+                                /*init=*/NullOpt),
                           bv_replace_map);
     new_init =
         BlockRealize(init_bindings, division.back()[1]->extent, Downcast<Block>(new_init.value()));

@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_INSTRUCTION_H_
-#define SRC_META_SCHEDULE_INSTRUCTION_H_
+#ifndef TVM_META_SCHEDULE_INSTRUCTION_H_
+#define TVM_META_SCHEDULE_INSTRUCTION_H_
 
 #include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/var.h>
@@ -517,7 +517,6 @@ struct CacheWriteAttrs : public InstAttrsNode {
 
 /*! \brief Attrs of the instruction that applies blockize */
 struct BlockizeAttrs : public InstAttrsNode {
-
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
@@ -626,9 +625,7 @@ struct RFactorAttrs : public InstAttrsNode {
   /*! \brief The factor_axis in the result buffer */
   int factor_axis;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("factor_axis", &factor_axis);
-  }
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("factor_axis", &factor_axis); }
 
   /*!
    * \brief Create instruction given the inputs and outputs
@@ -639,8 +636,8 @@ struct RFactorAttrs : public InstAttrsNode {
    */
   static Instruction Make(const LoopRV& loop, int factor_axis, const BlockRV& output);
 
-  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(RFactorAttrs,                       //
-                                      "meta_schedule.attrs.RFactorAttrs", //
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(RFactorAttrs,                        //
+                                      "meta_schedule.attrs.RFactorAttrs",  //
                                       "rfactor", false);
 };
 
@@ -684,7 +681,7 @@ struct SetScopeAttrs : public InstAttrsNode {
    */
   static Instruction Make(const BlockRV& block, int i, const String& storage_scope);
 
-  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SetScopeAttrs,                       //
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SetScopeAttrs,                        //
                                       "meta_schedule.attrs.SetScopeAttrs",  //
                                       "SetScope", false);
 };
@@ -717,7 +714,7 @@ struct StorageAlignAttrs : public InstAttrsNode {
    * \return The instruction created
    */
   static Instruction Make(const BlockRV& block, int buffer_index, int axis, int factor, int offset);
-  
+
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(StorageAlignAttrs,                        //
                                       "meta_schedule.attrs.StorageAlignAttrs",  //
                                       "storage_align", false);
@@ -745,4 +742,4 @@ struct EnterPostProcAttrs : public InstAttrsNode {
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_INSTRUCTION_H_
+#endif  // TVM_META_SCHEDULE_INSTRUCTION_H_

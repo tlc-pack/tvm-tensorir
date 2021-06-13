@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_TRACE_H_
-#define SRC_META_SCHEDULE_TRACE_H_
+#ifndef TVM_META_SCHEDULE_TRACE_H_
+#define TVM_META_SCHEDULE_TRACE_H_
 
 #include <tvm/tir/schedule/schedule.h>
 
@@ -134,4 +134,4 @@ class Trace : public runtime::ObjectRef {
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_TRACE_H_
+#endif  // TVM_META_SCHEDULE_TRACE_H_
