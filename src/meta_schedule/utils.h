@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_UTILS_H_
-#define SRC_META_SCHEDULE_UTILS_H_
+#ifndef TVM_META_SCHEDULE_UTILS_H_
+#define TVM_META_SCHEDULE_UTILS_H_
 
 #include <tvm/arith/analyzer.h>
 #include <tvm/target/target.h>
@@ -378,4 +378,4 @@ inline tir::PrimFunc GetOnlyFunc(const IRModule& mod) {
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_UTILS_H_
+#endif  // TVM_META_SCHEDULE_UTILS_H_

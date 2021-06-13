@@ -804,7 +804,10 @@ def dense_pack_strategy(attrs, inputs, out_type, target):
 
 # batch_matmul
 def wrap_compute_batch_matmul(
-    topi_compute, need_auto_scheduler_layout=False, need_out_dtype=False, need_meta_schedule_layout=False
+    topi_compute,
+    need_auto_scheduler_layout=False,
+    need_out_dtype=False,
+    need_meta_schedule_layout=False,
 ):
     """wrap batch_matmul topi compute"""
 
@@ -817,7 +820,7 @@ def wrap_compute_batch_matmul(
             args.append(get_meta_schedule_original_layout(attrs))
         if need_out_dtype:
             args.append(out_type.dtype)
-        
+
         return [topi_compute(*args)]
 
     return _compute_batch_matmul

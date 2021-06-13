@@ -171,8 +171,6 @@ def lower(
     lower_phase2 = [x[1] for x in add_lower_pass if x[0] == 2]
     lower_phase3 = [x[1] for x in add_lower_pass if x[0] > 2]
 
-    is_tir_schedule = False
-
     # Phase 0
     pass_list = lower_phase0
     is_legacy_te_schedule: bool = False

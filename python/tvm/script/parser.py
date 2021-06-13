@@ -36,7 +36,6 @@ from . import context_maintainer, ty
 from .context_maintainer import BlockInfo
 from .meta_unparser import MetaUnparser
 from .registry import Registry
-from .special_stmt import TVMScriptLambda
 from .intrin import Intrin
 from .special_stmt import SpecialStmt
 from .scope_handler import ScopeHandler, WithScopeHandler, ForScopeHandler

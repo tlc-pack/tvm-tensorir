@@ -181,17 +181,20 @@ def _create_fstrategy_from_schedule(op_name, schedule, tir_schedule=None):
     assert compute is not None, "FTVMCompute is not registered for op %s" % op_name
     fstrategy = get_native_generic_func("{}_strategy".format(op_name))
     name_pfx = schedule.__name__
-    name_pfx = name_pfx[name_pfx.index("_") + 1:]
+    name_pfx = name_pfx[name_pfx.index("_") + 1 :]
     _tir_schedule = tir_schedule.fdefault if tir_schedule is not None else None
     fstrategy.set_default(
-        _wrap_default_fstrategy(compute, schedule.fdefault, _tir_schedule,
-                                name="%s.generic" % name_pfx)
+        _wrap_default_fstrategy(
+            compute, schedule.fdefault, _tir_schedule, name="%s.generic" % name_pfx
+        )
     )
     for key, sch in schedule.dispatch_dict.items():
         _tir_sch = None
         if tir_schedule is not None:
             _tir_sch = tir_schedule.dispatch_dict.get(key, tir_schedule.fdefault)
-        fstrategy.register(_wrap_default_fstrategy(compute, sch, _tir_sch, name="%s.%s" % (name_pfx, key)), [key])
+        fstrategy.register(
+            _wrap_default_fstrategy(compute, sch, _tir_sch, name="%s.%s" % (name_pfx, key)), [key]
+        )
     return fstrategy
 
 
