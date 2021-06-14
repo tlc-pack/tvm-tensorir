@@ -16,6 +16,7 @@
 # under the License.
 """ Operation class for computation declaration."""
 # pylint: disable=invalid-name
+from ctypes import Array
 from numbers import Integral as _Integral
 from typing import List
 
@@ -473,6 +474,6 @@ def create_prim_func(ops: List[_tensor.Tensor]) -> tvm.tir.PrimFunc:
     func : tir.PrimFunc
         The created function.
     """
-    if not isinstance(ops, list):
+    if not isinstance(ops, (list, tvm.ir.container.Array)):
         ops = [ops]
     return _ffi_api.CreatePrimFunc(ops)

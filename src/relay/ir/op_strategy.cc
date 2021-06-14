@@ -43,9 +43,9 @@ te::Schedule OpImplementation::Schedule(const Attrs& attrs, const Array<te::Tens
   return (*this)->fschedule(attrs, outs, target);
 }
 
-tir::PrimFunc OpImplementation::PrimFunc(const Attrs& attrs, const Array<te::Tensor>& outs,
+tir::PrimFunc OpImplementation::PrimFunc(const Attrs& attrs, const Array<te::Tensor>& args,
                                          const Target& target) {
-  return (*this)->fprim_func(attrs, outs, target);
+  return (*this)->fprim_func(attrs, args, target);
 }
 
 void OpSpecialization::AddImplementation(const FTVMCompute& fcompute, const FTVMSchedule& fschedule,
