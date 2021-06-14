@@ -1315,33 +1315,74 @@ String ComputeDAG::PrintDAG(bool simple_mode) const {
 }
 
 
-// State ComputeDAG::InferBoundOnSyntheticWorkload(const State& state) const {
-//   ICHECK(state->concrete);
-//   State ret_state;
-//   StateNode* pstate;
+std::pair<te::Schedule, Array<te::Tensor>>
+ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
+    const Array<Step>& transform_steps, Array<te::Stage>* stages, StageToAxesMap* stage_to_axes
+    ) const {
+  // Temporal object to be used if the input pointer is nullptr
+  Array<te::Stage> temp_stages;
+  StageToAxesMap temp_stage_to_axes;
+  if (stages == nullptr) {
+    stages = &temp_stages;
+  }
+  if (stage_to_axes == nullptr) {
+    stage_to_axes = &temp_stage_to_axes;
+  }
+  Array<te::Operation> out_ops;
+  for (const auto& op : operator->()->ops) {
+    if (operator->()->access_analyzer.IsOutput(op)) {
+      out_ops.push_back(op);
+    }
+  }
 
-//   if (state->stages.empty()) {
-//     ret_state = operator->()->init_state;
-//     pstate = ret_state.CopyOnWrite();
-//     pstate->transform_steps = state->transform_steps;
-//     for (const auto& step : pstate->transform_steps) {
-//       StepApplyToState(step, &ret_state, *this);
-//     }
-//   } else {
-//     ret_state = state;
-//     pstate = ret_state.CopyOnWrite();
-//   }
-//   // so far so good
+  // Create the initial schedule
+  te::Schedule schedule = te::create_schedule(out_ops);
 
-//   Array<te::Stage> stages;
-//   StageToAxesMap stage_to_axes;
-//   te::Schedule sch;
-//   Array<te::Tensor> tensors;
+  // init axes
+  for (const auto& x : operator->()->ops) {
+    const te::Stage& stage = schedule[x];
+    stages->push_back(stage);
+    UpdateStageToAxesMap(stage, stage_to_axes);
+  }
 
-//   std::tie(sch, tensors) =
-//       GenerateSyntheticWorkloadAndApplySteps(pstate->transform_steps,
-//                                              &stages, &stage_to_axes);
-// }
+  // Apply the history steps to TVM schedule
+  // Call each step's ApplyToSchedule method
+  for (const auto& step : transform_steps) {
+    StepApplyToSchedule(step, stages, stage_to_axes, &schedule, transform_steps);
+  }
+
+  return std::make_pair(schedule, operator->()->tensors);
+}
+
+
+State ComputeDAG::InferBoundOnSyntheticWorkload(const State& state) const {
+  ICHECK(state->concrete);
+  State ret_state;
+  StateNode* pstate;
+
+  if (state->stages.empty()) {
+    ret_state = operator->()->init_state;
+    pstate = ret_state.CopyOnWrite();
+    pstate->transform_steps = state->transform_steps;
+    for (const auto& step : pstate->transform_steps) {
+      StepApplyToState(step, &ret_state, *this);
+    }
+  } else {
+    ret_state = state;
+    pstate = ret_state.CopyOnWrite();
+  }
+  // so far so good
+
+  Array<te::Stage> stages;
+  StageToAxesMap stage_to_axes;
+  te::Schedule sch;
+  Array<te::Tensor> tensors;
+
+  std::tie(sch, tensors) =
+      GenerateSyntheticWorkloadAndApplySteps(pstate->transform_steps,
+                                             &stages, &stage_to_axes);
+  return ret_state;
+}
 
 
 State ComputeDAG::InferBound(const State& state) const {
