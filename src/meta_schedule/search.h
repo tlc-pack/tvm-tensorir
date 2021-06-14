@@ -47,10 +47,6 @@ class SearchTaskNode : public Object {
   Optional<String> log_file;
   /*! \brief The number of floating point operations in the task */
   double flop_ct;
-  Optional<Array<String>> shape_vars;
-  // Optional<Array<Array<IntImm>>> shape_variants;
-  // Optional<Array<FloatImm>> shape_freq;
-  Optional<Map<Array<IntImm>, FloatImm>> shape_freq;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("workload", &workload);
@@ -59,9 +55,6 @@ class SearchTaskNode : public Object {
     v->Visit("target_host", &target_host);
     v->Visit("log_file", &log_file);
     v->Visit("flop_ct", &flop_ct);
-    v->Visit("shape_vars", &shape_vars);
-    // v->Visit("shape_variants", &shape_variants);
-    v->Visit("shape_freq", &shape_freq);
   }
 
   void Init(TuneContextNode* tune_context) {}
@@ -85,12 +78,7 @@ class SearchTask : public ObjectRef {
    * \param log_file The file to load/store search logs
    */
   explicit SearchTask(tir::PrimFunc workload, String task_name, Target target, Target target_host,
-                      Optional<String> log_file,
-                      Optional<Array<String>> shape_vars,
-                      // Optional<Array<Array<IntImm>>> shape_variants,
-                      // Optional<Array<FloatImm>> shape_freq
-                      Optional<Map<Array<IntImm>, FloatImm>> shape_freq
-                      );
+                      Optional<String> log_file);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
 };
 

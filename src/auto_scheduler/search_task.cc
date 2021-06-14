@@ -65,9 +65,6 @@ HardwareParams HardwareParamsNode::GetDefaultHardwareParams(const Target& target
     auto device_api = static_cast<tvm::runtime::DeviceAPI*>(((*func)()).operator void*());
 
     tvm::runtime::TVMRetValue ret;
-<<<<<<< HEAD
-    device_api->GetAttr(dev, tvm::runtime::DeviceAttrKind::kMaxSharedMemoryPerBlock, &ret);
-=======
 
     // <bojian/DietCode>
     device_api->GetAttr(ctx, tvm::runtime::DeviceAttrKind::kMultiProcessorCount, &ret);
@@ -75,7 +72,6 @@ HardwareParams HardwareParamsNode::GetDefaultHardwareParams(const Target& target
     int mps = ret;
 
     device_api->GetAttr(ctx, tvm::runtime::DeviceAttrKind::kMaxSharedMemoryPerBlock, &ret);
->>>>>>> 2874b6a4d... Finish the check on factorization schemes
     int max_shared_memory_per_block = ret;
 
     // There is no explicit local memory limition in CUDA runtime,

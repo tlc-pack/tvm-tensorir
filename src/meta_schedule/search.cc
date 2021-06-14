@@ -29,12 +29,7 @@ namespace meta_schedule {
 /********** Constructor **********/
 
 SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, Target target_host,
-                       Optional<String> log_file,
-                       Optional<Array<String>> shape_vars,
-                       // Optional<Array<Array<IntImm>>> shape_variants,
-                       // Optional<Array<FloatImm>> shape_freq
-                       Optional<Map<Array<IntImm>, FloatImm>> shape_freq
-                       ) {
+                       Optional<String> log_file) {
   ObjectPtr<SearchTaskNode> n = make_object<SearchTaskNode>();
   if (task_name == "") {
     n->task_name = "func" + std::to_string(StructuralHash()(workload));
@@ -45,11 +40,7 @@ SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, 
   n->target = std::move(target);
   n->target_host = std::move(target_host);
   n->log_file = std::move(log_file);
-  // n->flop_ct = CountFlop(n->workload);
-  n->flop_ct = -1;
-  n->shape_vars = std::move(shape_vars);
-  // n->shape_variants = std::move(shape_variants);
-  n->shape_freq = std::move(shape_freq);
+  n->flop_ct = CountFlop(n->workload);
   data_ = std::move(n);
 }
 
@@ -103,16 +94,8 @@ struct Internal {
    * \sa SearchTask::SearchTask
    */
   static SearchTask SearchTaskNew(tir::PrimFunc func, String task_name, Target target,
-                                  Target target_host, Optional<String> log_file,
-                                  Optional<Array<String>> shape_vars,
-                                  // Optional<Array<Array<IntImm>>> shape_variants,
-                                  // Optional<Array<FloatImm>> shape_freq
-                                  Optional<Map<Array<IntImm>, FloatImm>> shape_freq
-                                  ) {
-    return SearchTask(func, task_name, target, target_host, log_file,
-                      shape_vars,
-                      // shape_variants,
-                      shape_freq);
+                                  Target target_host, Optional<String> log_file) {
+    return SearchTask(func, task_name, target, target_host, log_file);
   }
   /*!
    * \brief Apply postprocessors onto the schedule
