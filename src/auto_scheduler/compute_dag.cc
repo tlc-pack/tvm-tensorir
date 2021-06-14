@@ -1320,13 +1320,13 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     const Array<Step>& transform_steps, Array<te::Stage>* stages, StageToAxesMap* stage_to_axes
     ) const {
   // Temporal object to be used if the input pointer is nullptr
-  Array<te::Stage> temp_stages;
-  StageToAxesMap temp_stage_to_axes;
+  Array<te::Stage> null_stages;
+  StageToAxesMap null_stage_to_axes;
   if (stages == nullptr) {
-    stages = &temp_stages;
+    stages = &null_stages;
   }
   if (stage_to_axes == nullptr) {
-    stage_to_axes = &temp_stage_to_axes;
+    stage_to_axes = &null_stage_to_axes;
   }
   Array<te::Operation> out_ops;
   for (const auto& op : operator->()->ops) {
@@ -1334,11 +1334,8 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
       out_ops.push_back(op);
     }
   }
-
-  // Create the initial schedule
   te::Schedule schedule = te::create_schedule(out_ops);
 
-  // init axes
   for (const auto& x : operator->()->ops) {
     const te::Stage& stage = schedule[x];
     stages->push_back(stage);
@@ -1381,7 +1378,28 @@ State ComputeDAG::InferBoundOnSyntheticWorkload(const State& state) const {
   std::tie(sch, tensors) =
       GenerateSyntheticWorkloadAndApplySteps(pstate->transform_steps,
                                              &stages, &stage_to_axes);
+  LOG(FATAL) << "Implementation is not complete yet";
   return ret_state;
+}
+
+
+Array<State> ComputeDAG::InferBoundOnSyntheticWorkload(const Array<State>& states) const {
+  Array<State> out_states(states.size(), State());
+
+  LOG(WARNING) << "Parallel InferBound has been made sequential";
+  // support::parallel_for(0, states.size(), [this, &states, &out_states](const size_t i) {
+  for (size_t i = 0; i < states.size(); ++i) {
+    try {
+      out_states.Set(i, (states[i].defined()) ?
+                     InferBoundOnSyntheticWorkload(states[i]) : states[i]);
+    } catch (const Error& e) {
+      LOG(WARNING) << "InferBoundOnSyntheticWorkload fails on the state:\n"
+                   << states[i] << "\n"
+                   << "with: " << e.what() << std::endl;
+    }
+  }
+  // );
+  return out_states;
 }
 
 

@@ -216,7 +216,8 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
 
       // Infer bound. This is necessary for computing the correct ToStr() for redundancy check
       if (IsDynTask(search_task)) {
-        best_states   = search_task->compute_dag.Infer
+        best_states   = search_task->compute_dag.InferBoundOnSyntheticWorkload(best_states);
+        random_states = search_task->compute_dag.InferBoundOnSyntheticWorkload(random_states);
       } else {
         best_states   = search_task->compute_dag.InferBound(best_states);
         random_states = search_task->compute_dag.InferBound(random_states);
@@ -489,9 +490,10 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       }
     }
 
-    if (IsDynTask(this->search_task)) {
-      LOG(FATAL) << "Number of states after pruning: " << cand_states.size();
-    }
+
+    // if (IsDynTask(this->search_task)) {
+    //   LOG(FATAL) << "Number of states after pruning: " << cand_states.size();
+    // }
 
 
     unchange_cnt++;
@@ -501,7 +503,11 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       // memory on GPU.
       std::vector<float> pop_scores;
       pop_scores.reserve(cand_states.size());
+      
+      // <bojian/DietCode>
       cand_states = search_task->compute_dag.InferBound(cand_states);
+      
+      
       PruneInvalidState(search_task, &cand_states);
       program_cost_model->Predict(search_task, cand_states, &pop_scores);
 
@@ -515,7 +521,9 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
           fail_ct++;
         }
       }
-    }
+    }  // if (!cand_states.empty())
+    
+    LOG(FATAL) << "out_states.size()=" << out_states.size();
 
     if (iter % 5 == 0) {
       double duration = std::chrono::duration_cast<std::chrono::duration<double>>(

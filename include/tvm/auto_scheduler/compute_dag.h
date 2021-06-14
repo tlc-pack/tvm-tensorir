@@ -270,13 +270,15 @@ class ComputeDAG : public ObjectRef {
   String PrintDAG(bool simple_mode = false) const;
 
   // <bojian/DietCode>
-  std::pair<te::Schedule, Array<te::Tensor>> GenerateSyntheticWorkloadAndApplySteps(
+  std::pair<te::Schedule, Array<te::Tensor>>
+  GenerateSyntheticWorkloadAndApplySteps(
       const Array<Step>& transform_steps, Array<te::Stage>* stages = nullptr,
       StageToAxesMap* stage_to_axes = nullptr) const;
   /**
    * \brief Infer bound on a synthetic workload.
    */
   State InferBoundOnSyntheticWorkload(const State& state) const;
+  Array<State> InferBoundOnSyntheticWorkload(const Array<State>& states) const;
 
   /*!
    * \brief Fill the correct bound information for a given state by calling ir_pass::InferBound.
