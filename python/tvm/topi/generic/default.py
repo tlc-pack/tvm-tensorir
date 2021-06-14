@@ -34,11 +34,9 @@ def default_schedule(outs, auto_inline):
     return s
 
 
-def default_tir_schedule(outs):
+def default_tir_schedule(args):
     """Default tir schedule for llvm."""
     target = tvm.target.Target.current(allow_none=False)
     if target.kind.name not in ("llvm", "c", "gpu", "cuda"):
         raise RuntimeError("schedule not registered for '%s'" % target)
-    func = te.create_func(outs)
-
-    return func
+    return te.create_prim_func(args)

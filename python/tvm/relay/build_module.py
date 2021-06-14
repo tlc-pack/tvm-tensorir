@@ -87,7 +87,7 @@ class BuildModule(object):
         self._get_primfunc = self.mod["get_primfunc"]
         self._set_tune_result = self.mod["set_tune_result"]
 
-    def build(self, mod, target=None, target_host=None, params=None, tune_result=None):
+    def build(self, mod, target=None, target_host=None, params=None, executor="graph"):
         """
         Parameters
         ----------
@@ -148,7 +148,6 @@ class BuildModule(object):
         autotvm.GLOBAL_SCOPE.silent = use_auto_scheduler
 
         self._build(mod, target, target_host, executor)
-        tir_func = self._get_primfunc()
         autotvm.GLOBAL_SCOPE.silent = old_autotvm_silent
 
         # Get artifacts
@@ -156,7 +155,7 @@ class BuildModule(object):
         params = self.get_params()
         executor_config = self.get_graph_json() if executor == "graph" else None
 
-        return executor_config, mod, params, tir_func
+        return executor_config, mod, params
 
     def optimize(self, mod, target=None, params=None):
         """

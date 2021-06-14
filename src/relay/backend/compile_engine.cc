@@ -151,6 +151,11 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
       }
     }
 
+    Array<te::Tensor> all_args = cache_node->inputs;
+    for (te::Tensor arg : cache_node->outputs) {
+      all_args.push_back(arg);
+    }
+
     te::Schedule schedule;
     tir::PrimFunc prim_func;
     // No need to register schedule for device copy op.
@@ -171,8 +176,8 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
             runtime::Registry::Get("meta_schedule.relay_integration.get_func_from_dispatcher");
         ICHECK(fmeta_schedule != nullptr)
             << "meta_schedule.relay_integration.get_func_from_dispatcher is not registered";
-        const auto* fcreate_func = runtime::Registry::Get("te.CreateFunc");
-        ObjectRef func = (*fcreate_func)(tensor_outs);
+        const auto* fcreate_func = runtime::Registry::Get("te.CreatePrimFunc");
+        ObjectRef func = (*fcreate_func)(all_args);
         ObjectRef obj = (*fmeta_schedule)(func);
         if (obj.defined()) {
           prim_func = Downcast<tir::PrimFunc>(obj);
@@ -185,7 +190,7 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
         auto pass_ctx = transform::PassContext::Current();
         bool with_tir = pass_ctx->GetConfig<Bool>("relay.with_tir_schedule", Bool(false)).value();
         if (with_tir) {
-          prim_func = anchor_implementation_.PrimFunc(anchor_attrs_, tensor_outs, target_);
+          prim_func = anchor_implementation_.PrimFunc(anchor_attrs_, all_args, target_);
         } else {
           schedule = anchor_implementation_.Schedule(anchor_attrs_, tensor_outs, target_);
           for (const auto& scalar : scalars_) {

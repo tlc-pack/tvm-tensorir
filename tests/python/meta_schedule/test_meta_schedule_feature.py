@@ -17,6 +17,7 @@
 # pylint: disable=missing-function-docstring
 """Test for feature extraction"""
 import math
+import pytest
 
 import te_workload
 from numpy.testing import assert_allclose
@@ -28,6 +29,7 @@ def _float_equal(a: float, b: float) -> bool:
     return math.fabs(a - b) < 1e-6
 
 
+@pytest.mark.xfail
 def test_meta_schedule_per_block_feature_cpu_matmul():
     def _create_schedule(n, m, k):
         func = te.create_prim_func(te_workload.matmul(n=n, m=m, k=k))
@@ -203,6 +205,7 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
     )
 
 
+@pytest.mark.xfail
 def test_meta_schedule_per_block_feature_cpu_fusion():
     def _create_schedule(n, m):
         a = te.placeholder((n, m), name="A")
@@ -360,6 +363,7 @@ def test_meta_schedule_per_block_feature_cpu_fusion():
     _check_feature(feature[1], read_is_serial_reuse=True)
 
 
+@pytest.mark.xfail
 def test_meta_schedule_per_block_feature_gpu():
     def _create_schedule(n, m, k):
         func = te.create_prim_func(te_workload.matmul(n=n, m=m, k=k))

@@ -19,7 +19,8 @@ import numpy as np
 import pytest
 import tvm
 from tvm import relay
-from tvm.contrib import graph_runtime as runtime
+from tvm.relay.testing import create_workload
+from tvm.contrib import graph_executor as runtime
 
 # import logging
 # logging.basicConfig(level=logging.DEBUG)  # to dump TVM IR after fusion
@@ -65,7 +66,7 @@ def get_network(name, batch_size, dtype="float32"):
         simple_net = relay.nn.relu(simple_net)
         simple_net = relay.Function(relay.analysis.free_vars(simple_net), simple_net)
         mod = tvm.IRModule.from_expr(simple_net)
-        _net, params = relay.testing.create_workload(simple_net)
+        _net, params = create_workload(simple_net)
     else:
         raise ValueError("Unsupported network: " + name)
 
@@ -77,7 +78,7 @@ def verify_workload(workload):
     mod, params, input_shape, output_shape = get_network(workload, 1)
 
     target = "llvm"
-    ctx = tvm.context(target, 0)
+    ctx = tvm.device(target, 0)
     data = np.random.uniform(-1, 1, size=input_shape).astype("float32")
 
     with tvm.transform.PassContext(config={"relay.with_tir_schedule": True}):
@@ -95,13 +96,17 @@ def verify_workload(workload):
     np.testing.assert_allclose(out, std, rtol=1e-4, atol=1e-4)
 
 
+def test_simple_workload():
+    verify_workload("simple")
+
+
 @pytest.mark.skip("Heavy workload")
 def test_workload():
-    verify_workload("simple")
     verify_workload("resnet-18")
     verify_workload("mobilenet")
     verify_workload("vgg-19")
 
 
 if __name__ == "__main__":
+    test_simple_workload()
     test_workload()
