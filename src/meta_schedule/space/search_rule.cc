@@ -1192,7 +1192,7 @@ class RuleSpecialComputeLocationGPU {
                  tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices)) {
       return {sch};
     }
-    Array<tir::LoopRV> consumer_loops = sch->GetAxes(consumers[0]);
+    Array<tir::LoopRV> consumer_loops = sch->GetLoops(consumers[0]);
     for (size_t i = 0; i < consumer_loops.size(); i++) {
       tir::StmtSRef loop_sref = sch->GetSRef(consumer_loops[i]);
       if (tir::GetLoopIterType(sch->state(), loop_sref) == tir::kUnrolled) {

@@ -179,7 +179,7 @@ class BuildModule(object):
         params = self.get_params()
         executor_config = self.get_graph_json() if executor == "graph" else None
 
-        return executor_config, mod, params, tir_func
+        return executor_config, mod, params
 
     def optimize(self, mod, target=None, params=None):
         """
