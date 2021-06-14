@@ -67,11 +67,11 @@ HardwareParams HardwareParamsNode::GetDefaultHardwareParams(const Target& target
     tvm::runtime::TVMRetValue ret;
 
     // <bojian/DietCode>
-    device_api->GetAttr(ctx, tvm::runtime::DeviceAttrKind::kMultiProcessorCount, &ret);
+    device_api->GetAttr(dev, tvm::runtime::DeviceAttrKind::kMultiProcessorCount, &ret);
     LOG(INFO) << "Number of Available SMs: " << int(ret);
     int mps = ret;
 
-    device_api->GetAttr(ctx, tvm::runtime::DeviceAttrKind::kMaxSharedMemoryPerBlock, &ret);
+    device_api->GetAttr(dev, tvm::runtime::DeviceAttrKind::kMaxSharedMemoryPerBlock, &ret);
     int max_shared_memory_per_block = ret;
 
     // There is no explicit local memory limition in CUDA runtime,
@@ -79,7 +79,7 @@ HardwareParams HardwareParamsNode::GetDefaultHardwareParams(const Target& target
     // <bojian/DietCode> Since the current bound on local memory is not used, we
     //                   change that to register.
     // int max_local_memory_per_block = INT32_MAX;
-    device_api->GetAttr(ctx, tvm::runtime::DeviceAttrKind::kMaxRegistersPerBlock, &ret);
+    device_api->GetAttr(dev, tvm::runtime::DeviceAttrKind::kMaxRegistersPerBlock, &ret);
     LOG(INFO) << "Number of Registers Per Block: " << int(ret);
     int max_local_memory_per_block = ret;
 
@@ -160,7 +160,6 @@ SearchTask::SearchTask(ComputeDAG compute_dag, String workload_key, Target targe
   auto node = make_object<SearchTaskNode>();
   node->compute_dag = std::move(compute_dag);
   node->workload_key = std::move(workload_key);
-  node->desc = std::move(desc);
   node->target = std::move(target);
   node->target_host = std::move(target_host);
   if (hardware_params) {
