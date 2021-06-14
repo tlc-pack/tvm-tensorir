@@ -16,15 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-#include "./sampling.h"
-
-#include "../tir/schedule/analysis.h"
-#include "../tir/schedule/utils.h"
-#include "./utils.h"
+#include "../sampler.h"
+#include "../utils.h"
 
 namespace tvm {
-namespace meta_schedule {
+namespace tir {
 
 std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler,
                                        const tir::StmtSRef& loop_sref, int n,
@@ -130,5 +126,100 @@ tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, Sampler* sampler,
   return loop_srefs[i];
 }
 
-}  // namespace meta_schedule
+struct SamplePerfectTileTraits : public UnpackedInstTraits<SamplePerfectTileTraits> {
+  static constexpr const char* kName = "SamplePerfectTile";
+  static constexpr bool kIsPure = true;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 2;
+  static constexpr size_t kNumDecisions = 1;
+
+  static Array<Var> UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, Integer n,
+                                            Integer max_innermost_factor,
+                                            Optional<Array<Integer>> decision) {
+    return sch->SamplePerfectTile(loop_rv, n->value, max_innermost_factor->value, decision);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Integer n,
+                                 Integer max_innermost_factor, Optional<Array<Integer>> decision) {
+    PythonAPICall py("sample_perfect_tile");
+    py.Input("loop", loop_rv);
+    py.Attr("n", n->value);
+    py.Attr("max_innermost_factor", max_innermost_factor->value);
+    py.Decision(decision);
+    py.Outputs(outputs);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct SampleCategoricalTraits : public UnpackedInstTraits<SampleCategoricalTraits> {
+  static constexpr const char* kName = "SampleCategorical";
+  static constexpr bool kIsPure = true;
+
+ private:
+  static constexpr size_t kNumInputs = 0;
+  static constexpr size_t kNumAttrs = 2;
+  static constexpr size_t kNumDecisions = 1;
+
+  static Var UnpackedApplyToSchedule(Schedule sch,               //
+                                     Array<Integer> candidates,  //
+                                     Array<FloatImm> probs,      //
+                                     Optional<Integer> decision) {
+    return sch->SampleCategorical(candidates, probs, decision);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs,      //
+                                 Array<Integer> candidates,  //
+                                 Array<FloatImm> probs,      //
+                                 Optional<Integer> decision) {
+    PythonAPICall py("sample_categorical");
+    py.Attr("candidates", candidates);
+    py.Attr("probs", probs);
+    py.Decision(decision);
+    py.Output(outputs[0]);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct SampleComputeLocationTraits : public UnpackedInstTraits<SampleComputeLocationTraits> {
+  static constexpr const char* kName = "SampleComputeLocation";
+  static constexpr bool kIsPure = true;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 1;
+
+  static LoopRV UnpackedApplyToSchedule(Schedule sch,      //
+                                        BlockRV block_rv,  //
+                                        Optional<Integer> decision) {
+    return sch->SampleComputeLocation(block_rv, decision);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs,  //
+                                 String block_rv,        //
+                                 Optional<Integer> decision) {
+    PythonAPICall py("sample_compute_location");
+    py.Input("block", block_rv);
+    py.Decision(decision);
+    py.Output(outputs[0]);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND(SamplePerfectTileTraits);
+TVM_REGISTER_INST_KIND(SampleCategoricalTraits);
+TVM_REGISTER_INST_KIND(SampleComputeLocationTraits);
+
+}  // namespace tir
 }  // namespace tvm

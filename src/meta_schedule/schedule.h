@@ -22,14 +22,16 @@
 #include <tvm/tir/schedule/schedule.h>
 
 #include "../tir/schedule/concrete_schedule.h"
+#include "../tir/schedule/sampler.h"
 #include "./instruction.h"
-#include "./sampler.h"
 #include "./trace.h"
 
 namespace tvm {
 namespace meta_schedule {
 
 class Schedule;
+
+using tir::Sampler;
 
 /*! \brief The meta schedule class */
 class ScheduleNode : public tir::ConcreteScheduleNode {
@@ -49,15 +51,10 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
  public:
   /*! \brief The trace of the program execution */
   Trace trace;
-  /*! \brief The random number sampler */
-  Sampler sampler;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    // `state_` is not visited
-    // `symbol_table_` is not visited
-    v->Visit("trace", &trace);
-    // `sampler` is not visited
-  }
+  using tir::ConcreteScheduleNode::sampler_;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("trace", &trace); }
 
   static constexpr const char* _type_key = "meta_schedule.Schedule";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, tir::ConcreteScheduleNode);
@@ -69,9 +66,7 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * original schedule, and vice versa.
    * \return A new schedule.
    */
-  Schedule Copy(int64_t new_seed) const;
-
-  void Seed(int64_t seed = -1) final;
+  tir::Schedule Copy(int64_t new_seed = -1) const;
 
   /**************** Sampling ****************/
   /*!
@@ -208,25 +203,14 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * \param loop_rv the loop to be paralleled
    * \param thread The thread axis
    */
-  void Bind(const LoopRV& loop_rv, const tir::IterVar& thread) final;
+  void Bind(const LoopRV& loop_rv, const tir::IterVar& thread) final {
+    LOG(FATAL) << "NotImplemented";
+  }
   /*!
    * \brief parallel a loop
    * \param loop_rv the loop to be paralleled
    */
   void Bind(const LoopRV& loop_rv, const String& thread) final;
-  /*!
-   * \brief add double_buffer annotation to a complete block
-   * \param block_rv the block of interest
-   */
-  void DoubleBuffer(const BlockRV& block_rv) final;
-  /*!
-   * \brief Set the storage scope of a buffer, where the buffer is given as the i-th write buffer
-   *        of the input block
-   * \param block_rv The producer of the buffer
-   * \param i The index of the buffer in block's write region
-   * \param storage_scope The storage scope to be set
-   */
-  void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) final;
   /*!
    * \brief add annotation to a loop
    * \param loop_rv the loop of interest
@@ -234,16 +218,6 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * \param pragma_value the attribute value
    */
   void Pragma(const LoopRV& loop_rv, const String& pragma_type, const ExprRV& pragma_value) final;
-  /*!
-   * \brief Set alignment requirement for specific dimension such that
-   *        stride[axis] == k * factor + offset for some k
-   * \param block_rv The producer block of the buffer
-   * \param buffer_index The index of the buffer in block's write region
-   * \param axis The dimension to be specified for alignment
-   * \param factor The factor multiple of alignment
-   * \param offset The required offset factor
-   */
-  void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor, int offset) final;
 
   /******** Schedule: cache read/write ********/
   /*!
@@ -296,7 +270,9 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * \param loop_rv the loop/block to be tensorized
    * \param intrin the tensor intrinsic
    */
-  void Tensorize(const LoopRV& loop_rv, const tir::TensorIntrin& intrin) final;
+  void Tensorize(const LoopRV& loop_rv, const tir::TensorIntrin& intrin) final {
+    LOG(FATAL) << "NotImplemented";
+  }
   /*!
    * \brief Tensorize the computation enclosed by loop with tensor_intrin
    * \param loop_rv The loop/block to be tensorized
@@ -311,19 +287,44 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * \param ann_key The annotation key
    * \param ann_val The annotation value
    */
-  void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const PrimExpr& ann_val);
+  void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const PrimExpr& ann_val) final;
   /*!
    * \brief Mark a block
    * \param block The block to be marked
    * \param ann_key The annotation key
    * \param ann_val The annotation value
    */
-  void MarkBlock(const BlockRV& block_rv, const String& ann_key, const PrimExpr& ann_val);
+  void MarkBlock(const BlockRV& block_rv, const String& ann_key, const PrimExpr& ann_val) final;
   /*! \brief An NOP indicating entrance of post processing */
-  void EnterPostProc();
+  void EnterPostProc() final;
 
   /******** Schedule: Misc ********/
-  void InlineArgument(int i, const String& func_name) override;
+  /*!
+   * \brief add double_buffer annotation to a complete block
+   * \param block_rv the block of interest
+   */
+  void DoubleBuffer(const BlockRV& block_rv) final;
+  /*!
+   * \brief Set the storage scope of a buffer, where the buffer is given as the i-th write buffer
+   *        of the input block
+   * \param block_rv The producer of the buffer
+   * \param i The index of the buffer in block's write region
+   * \param storage_scope The storage scope to be set
+   */
+  void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) final;
+  /*!
+   * \brief Set alignment requirement for specific dimension such that
+   *        stride[axis] == k * factor + offset for some k
+   * \param block_rv The producer block of the buffer
+   * \param buffer_index The index of the buffer in block's write region
+   * \param axis The dimension to be specified for alignment
+   * \param factor The factor multiple of alignment
+   * \param offset The required offset factor
+   */
+  void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
+                    int offset) final;
+
+  void InlineArgument(int i, const String& func_name) final;
 };
 
 class Schedule : public tir::Schedule {

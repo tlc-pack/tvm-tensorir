@@ -21,10 +21,7 @@
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/transform.h>
 
-#include "../../tir/schedule/primitives/primitives.h"
-#include "../../tir/schedule/utils.h"
 #include "../../relay/transforms/meta_schedule_layout_rewrite.h"
-#include "../analysis.h"
 #include "../utils.h"
 
 namespace tvm {
@@ -107,7 +104,7 @@ class PostprocRewriteTensorize {
       // Tensorize
       for (const tir::TensorIntrin& intrin : tensor_intrins) {
         if (CanTensorize(sch, block_sref, intrin)) {
-          tir::schedule::Tensorize(sch->state(), loop_srefs[0], intrin);
+          tir::Tensorize(sch->state(), loop_srefs[0], intrin);
           return true;
         }
       }
@@ -459,7 +456,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     }
     RemoveParsedAnn(sch, root, parsed);
     for (BlockRV block_rv : sch->GetChildBlocks(root_rv)) {
-      block_rv=sch->GetBlock(sch->Get(block_rv)->name_hint);
+      block_rv = sch->GetBlock(sch->Get(block_rv)->name_hint);
       tir::StmtSRef block_sref = sch->GetSRef(block_rv);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
@@ -890,8 +887,6 @@ class PostProcRewriteLayout {
   };
 
   class IterVarResolver : public tir::StmtExprVisitor {
-
-
     void VisitStmt_(const tir::BlockRealizeNode* op) {
       realize_ = GetRef<tir::BlockRealize>(op);
       for (size_t i = 0; i < realize_->iter_values.size(); i++) {
@@ -899,7 +894,7 @@ class PostProcRewriteLayout {
       }
       VisitStmt(op->block->body);
     }
-    
+
     // true if expr1's loop is above expr2's loop
     static bool compare(
         const arith::IterSplitExpr& expr1, const arith::IterSplitExpr& expr2,
@@ -977,7 +972,7 @@ class PostProcRewriteLayout {
         }
       }
     }
-    
+
     bool visited_ = false;
     tir::BlockRealize realize_;
     Map<tir::Var, PrimExpr> binding_map_{};
@@ -985,9 +980,10 @@ class PostProcRewriteLayout {
     const tir::Buffer& buffer_;
     LayoutRewriteHint& hint_;
     tir::Block block_to_rewrite_;
-    
+
    public:
-    IterVarResolver(const Schedule& sch, const tir::Buffer& buffer, LayoutRewriteHint& hint)
+    explicit IterVarResolver(const Schedule& sch, const tir::Buffer& buffer,
+                             LayoutRewriteHint& hint)
         : sch_(sch), buffer_(buffer), hint_(hint) {}
 
     tir::Block getBufferIterInfo(const tir::Stmt& body) {
@@ -999,8 +995,6 @@ class PostProcRewriteLayout {
 
  public:
   class IndexRewriter : public tir::StmtExprMutator {
-   
-
    public:
     IndexRewriter(const LayoutRewriteHint& hint, const tir::Buffer& buffer_to_rewrite,
                   const tir::Block& block, const tir::Buffer& new_buffer)
@@ -1020,7 +1014,7 @@ class PostProcRewriteLayout {
         n->reads = block_read_write_collector.reads();
         return tir::Block(n);
       }
-      return mutated_block;
+      return std::move(mutated_block);
     }
 
     PrimExpr VisitExpr_(const tir::BufferLoadNode* op) final {
@@ -1055,7 +1049,7 @@ class PostProcRewriteLayout {
   };
 
  public:
-  bool Proc(Schedule& sch, SearchTask& task) const {
+  bool Proc(const Schedule& sch, const SearchTask& task) const {
     tir::PrimFunc func = GetOnlyFunc(sch->mod());
     auto buffer_to_rewrite = func->GetAttr("layout_free_placeholders", Array<tir::Var>());
     if (!buffer_to_rewrite.defined()) {

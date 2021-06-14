@@ -157,41 +157,6 @@ bool RegionCoveredConsumer(const ScheduleState& self, const StmtSRef& consumer_b
                            const StmtSRef& scope_root);
 
 /******** Block-loop relation ********/
-/*!
- * \brief Get block from its tag
- * \param tag The query tag
- * \return the block schedulable reference list
- */
-Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name);
-
-/*!
- * \brief Get loops of the block
- * \param block The query block
- * \return the loop sref list
- */
-Array<StmtSRef> GetAxes(const ScheduleState& self, const StmtSRef& block_sref);
-
-/*!
- * \brief Get the child blocks of a specific parent block/loop
- * \param parent_sref The StmtSRef that points to the parent block/loop
- * \param inclusive If true and parent_sref is a block, return a single-element list containing
- * parent_sref
- * \return A list of child blocks
- */
-Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
-                               bool inclusive = false);
-
-/*!
- * \brief Get the producer of a specific block
- * \return The producers
- */
-Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref);
-
-/*!
- * \brief Get the consumers of a specific block
- * \return The consumers
- */
-Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref);
 
 StmtSRef GetSRefTreeRoot(const StmtSRef& sref);
 

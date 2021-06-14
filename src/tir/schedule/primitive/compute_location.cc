@@ -16,17 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-#include <tvm/tir/analysis.h>
-
 #include "../../../arith/pattern_match.h"
-#include "../analysis.h"
 #include "../utils.h"
-#include "./primitives.h"
 
 namespace tvm {
 namespace tir {
-namespace schedule {
 
 using BufferRegionMap =
     std::unordered_map<Buffer, std::vector<Range>, ObjectPtrHash, ObjectPtrEqual>;
@@ -1131,6 +1125,112 @@ void ReverseComputeInline(ScheduleState self, const StmtSRef& consumer_block_sre
   self->Replace(scope_block_sref, tgt_stmt, block_reuse);
 }
 
-}  // namespace schedule
+/******** Register instruction traits ********/
+
+struct ComputeAtTraits : public UnpackedInstTraits<ComputeAtTraits> {
+  static constexpr const char* kName = "ComputeAt";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 2;
+  static constexpr size_t kNumAttrs = 1;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, LoopRV loop_rv,
+                                      Bool preserve_unit_loop) {
+    return sch->ComputeAt(block_rv, loop_rv, preserve_unit_loop.operator bool());
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block_rv, String loop_rv,
+                                 Bool preserve_unit_loop) {
+    PythonAPICall py("compute_at");
+    py.Input("block", block_rv);
+    py.Input("loop", loop_rv);
+    py.Attr("preserve_unit_loop", preserve_unit_loop.operator bool());
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct ReverseComputeAtTraits : public UnpackedInstTraits<ReverseComputeAtTraits> {
+  static constexpr const char* kName = "ReverseComputeAt";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 2;
+  static constexpr size_t kNumAttrs = 1;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, LoopRV loop_rv,
+                                      Bool preserve_unit_loop) {
+    return sch->ReverseComputeAt(block_rv, loop_rv, preserve_unit_loop.operator bool());
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block_rv, String loop_rv,
+                                 Bool preserve_unit_loop) {
+    PythonAPICall py("reverse_compute_at");
+    py.Input("block", block_rv);
+    py.Input("loop", loop_rv);
+    py.Attr("preserve_unit_loop", preserve_unit_loop.operator bool());
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct ComputeInlineTraits : public UnpackedInstTraits<ComputeInlineTraits> {
+  static constexpr const char* kName = "ComputeInline";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv) {
+    return sch->ComputeInline(block_rv);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block_rv) {
+    PythonAPICall py("compute_inline");
+    py.Input("block", block_rv);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct ReverseComputeInlineTraits : public UnpackedInstTraits<ReverseComputeInlineTraits> {
+  static constexpr const char* kName = "ReverseComputeInline";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv) {
+    return sch->ReverseComputeInline(block_rv);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block_rv) {
+    PythonAPICall py("reverse_compute_inline");
+    py.Input("block", block_rv);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND(ComputeAtTraits);
+TVM_REGISTER_INST_KIND(ReverseComputeAtTraits);
+TVM_REGISTER_INST_KIND(ComputeInlineTraits);
+TVM_REGISTER_INST_KIND(ReverseComputeInlineTraits);
+
 }  // namespace tir
 }  // namespace tvm

@@ -372,8 +372,7 @@ Instruction CacheWriteAttrs::Make(const BlockRV& block, int i, const String& sto
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction BlockizeAttrs::Make(const LoopRV& loop,
-                                const BlockRV& output) {
+Instruction BlockizeAttrs::Make(const LoopRV& loop, const BlockRV& output) {
   ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
   return Instruction(/*inputs=*/{loop},
                      /*outputs=*/{output},
@@ -747,7 +746,7 @@ Array<ObjectRef> UnrollAttrs::Apply(const Schedule& sch,  //
   return {};
 }
 
-Array<ObjectRef> RFactorAttrs::Apply(const Schedule& sch, //
+Array<ObjectRef> RFactorAttrs::Apply(const Schedule& sch,  //
                                      const Array<Optional<ObjectRef>>& inputs,
                                      const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
@@ -766,7 +765,7 @@ Array<ObjectRef> BindAttrs::Apply(const Schedule& sch,  //
   return {};
 }
 
-Array<ObjectRef> SetScopeAttrs::Apply(const Schedule& sch, //
+Array<ObjectRef> SetScopeAttrs::Apply(const Schedule& sch,  //
                                       const Array<Optional<ObjectRef>>& inputs,
                                       const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
@@ -776,7 +775,7 @@ Array<ObjectRef> SetScopeAttrs::Apply(const Schedule& sch, //
   return {};
 }
 
-Array<ObjectRef> StorageAlignAttrs::Apply(const Schedule& sch, //
+Array<ObjectRef> StorageAlignAttrs::Apply(const Schedule& sch,  //
                                           const Array<Optional<ObjectRef>>& inputs,
                                           const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
@@ -799,13 +798,13 @@ Array<ObjectRef> EnterPostProcAttrs::Apply(const Schedule& sch,
 
 /**************** AsPython  ****************/
 
-struct PythonAPICall {
+struct PyAPICall {
   String method_name;
   std::vector<String> arg_names;
   std::vector<String> args;
   Optional<String> output;
 
-  explicit PythonAPICall(const String& method_name) : method_name(method_name), output(NullOpt) {}
+  explicit PyAPICall(const String& method_name) : method_name(method_name), output(NullOpt) {}
 
   void AddArgAttr(const String& arg_name, const ObjectRef& arg) {
     std::ostringstream os;
@@ -886,7 +885,7 @@ struct PythonAPICall {
 void SamplePerfectTileAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                       const Array<String>& outputs,
                                       const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("sample_perfect_tile");
+  PyAPICall py("sample_perfect_tile");
   py.AddArgAttr("n", this->n);
   py.AddArgInput("loop", inputs[0]);
   py.AddArgAttr("max_innermost_factor", this->max_innermost_factor);
@@ -898,7 +897,7 @@ void SamplePerfectTileAttrs::AsPython(std::ostream& os, const Array<String>& inp
 void SampleCategoricalAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                       const Array<String>& outputs,
                                       const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("sample_categorical");
+  PyAPICall py("sample_categorical");
   py.AddArgAttr("candidates", this->candidates);
   py.AddArgAttr("probs", this->probs);
   py.AddDecision(decision);
@@ -909,7 +908,7 @@ void SampleCategoricalAttrs::AsPython(std::ostream& os, const Array<String>& inp
 void SampleComputeLocationAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                           const Array<String>& outputs,
                                           const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("sample_compute_location");
+  PyAPICall py("sample_compute_location");
   py.AddArgInput("block", inputs[0]);
   py.AddDecision(decision);
   py.AddOutput(outputs[0]);
@@ -921,7 +920,7 @@ void SampleComputeLocationAttrs::AsPython(std::ostream& os, const Array<String>&
 void GetProducersAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                  const Array<String>& outputs,
                                  const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("get_producers");
+  PyAPICall py("get_producers");
   py.AddArgInput("block", inputs[0]);
   py.AddOutputs(outputs);
   py.Print(os);
@@ -930,7 +929,7 @@ void GetProducersAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void GetConsumersAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                  const Array<String>& outputs,
                                  const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("get_consumers");
+  PyAPICall py("get_consumers");
   py.AddArgInput("block", inputs[0]);
   py.AddOutputs(outputs);
   py.Print(os);
@@ -939,7 +938,7 @@ void GetConsumersAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void GetBlockAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                              const Array<String>& outputs,
                              const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("get_block");
+  PyAPICall py("get_block");
   py.AddArgAttr("name", this->name);
   py.AddOutput(outputs[0]);
   py.Print(os);
@@ -948,7 +947,7 @@ void GetBlockAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void GetAxesAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                             const Array<String>& outputs,
                             const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("get_axes");
+  PyAPICall py("get_axes");
   py.AddArgInput("block", inputs[0]);
   py.AddOutputs(outputs);
   py.Print(os);
@@ -959,7 +958,7 @@ void GetAxesAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void MarkLoopAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                              const Array<String>& outputs,
                              const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("mark_loop");
+  PyAPICall py("mark_loop");
   if (ann_val.empty()) {
     py.AddArgInput("loop", inputs[0]);
     py.AddArgAttr("ann_key", this->ann_key);
@@ -975,7 +974,7 @@ void MarkLoopAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void MarkBlockAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                               const Array<String>& outputs,
                               const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("mark_block");
+  PyAPICall py("mark_block");
   py.AddArgInput("block", inputs[0]);
   py.AddArgAttr("ann_key", this->ann_key);
   py.AddArgInput("ann_val", inputs[1]);
@@ -984,7 +983,7 @@ void MarkBlockAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 
 void FuseAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                          const Array<String>& outputs, const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("fuse");
+  PyAPICall py("fuse");
   py.AddArgInputList("loops", inputs);
   py.AddOutput(outputs[0]);
   py.Print(os);
@@ -992,7 +991,7 @@ void FuseAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 
 void SplitAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                           const Array<String>& outputs, const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("split");
+  PyAPICall py("split");
   py.AddArgInput("loop", inputs[0]);
   py.AddArgInputList("factors", {inputs.begin() + 1, inputs.end()});
   py.AddOutputs(outputs);
@@ -1002,7 +1001,7 @@ void SplitAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void ReorderAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                             const Array<String>& outputs,
                             const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("reorder");
+  PyAPICall py("reorder");
   py.AddArgInputList("after_axes", inputs);
   py.Print(os);
 }
@@ -1010,7 +1009,7 @@ void ReorderAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void ComputeAtAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                               const Array<String>& outputs,
                               const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("compute_at");
+  PyAPICall py("compute_at");
   py.AddArgInput("block", inputs[0]);
   py.AddArgInput("loop", inputs[1]);
   py.AddArgAttr("preserve_unit_loop", this->preserve_unit_loop);
@@ -1020,7 +1019,7 @@ void ComputeAtAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void ReverseComputeAtAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                      const Array<String>& outputs,
                                      const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("reverse_compute_at");
+  PyAPICall py("reverse_compute_at");
   py.AddArgInput("block", inputs[0]);
   py.AddArgInput("loop", inputs[1]);
   py.AddArgAttr("preserve_unit_loop", this->preserve_unit_loop);
@@ -1030,7 +1029,7 @@ void ReverseComputeAtAttrs::AsPython(std::ostream& os, const Array<String>& inpu
 void ComputeInlineAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                   const Array<String>& outputs,
                                   const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("compute_inline");
+  PyAPICall py("compute_inline");
   py.AddArgInput("block", inputs[0]);
   py.Print(os);
 }
@@ -1038,7 +1037,7 @@ void ComputeInlineAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void ReverseComputeInlineAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                          const Array<String>& outputs,
                                          const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("reverse_compute_inline");
+  PyAPICall py("reverse_compute_inline");
   py.AddArgInput("block", inputs[0]);
   py.Print(os);
 }
@@ -1046,7 +1045,7 @@ void ReverseComputeInlineAttrs::AsPython(std::ostream& os, const Array<String>& 
 void CacheReadAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                               const Array<String>& outputs,
                               const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("cache_read");
+  PyAPICall py("cache_read");
   py.AddArgInput("block", inputs[0]);
   py.AddArgAttr("i", this->i);
   py.AddArgAttr("storage_scope", this->storage_scope);
@@ -1057,7 +1056,7 @@ void CacheReadAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void CacheWriteAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                const Array<String>& outputs,
                                const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("cache_write");
+  PyAPICall py("cache_write");
   py.AddArgInput("block", inputs[0]);
   py.AddArgAttr("i", this->i);
   py.AddArgAttr("storage_scope", this->storage_scope);
@@ -1068,7 +1067,7 @@ void CacheWriteAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void BlockizeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                              const Array<String>& outputs,
                              const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("blockize");
+  PyAPICall py("blockize");
   py.AddArgInput("loop", inputs[0]);
   py.AddOutput(outputs[0]);
   py.Print(os);
@@ -1077,7 +1076,7 @@ void BlockizeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void DecomposeReductionAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                                        const Array<String>& outputs,
                                        const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("decompose_reduction");
+  PyAPICall py("decompose_reduction");
   py.AddArgInput("block", inputs[0]);
   py.AddArgInput("loop", inputs[1]);
   py.AddOutput(outputs[0]);
@@ -1087,7 +1086,7 @@ void DecomposeReductionAttrs::AsPython(std::ostream& os, const Array<String>& in
 void TensorizeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                               const Array<String>& outputs,
                               const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("tensorize");
+  PyAPICall py("tensorize");
   py.AddArgInput("loop", inputs[0]);
   py.AddArgAttr("tensor_intrin_name", this->tensor_intrin_name);
   py.Print(os);
@@ -1096,7 +1095,7 @@ void TensorizeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void ParallelAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                              const Array<String>& outputs,
                              const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("parallel");
+  PyAPICall py("parallel");
   py.AddArgInput("loop", inputs[0]);
   py.Print(os);
 }
@@ -1104,7 +1103,7 @@ void ParallelAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void VectorizeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                               const Array<String>& outputs,
                               const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("vectorize");
+  PyAPICall py("vectorize");
   py.AddArgInput("loop", inputs[0]);
   py.Print(os);
 }
@@ -1112,7 +1111,7 @@ void VectorizeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void UnrollAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                            const Array<String>& outputs,
                            const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("unroll");
+  PyAPICall py("unroll");
   py.AddArgInput("loop", inputs[0]);
   py.Print(os);
 }
@@ -1120,7 +1119,7 @@ void UnrollAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void RFactorAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                             const Array<String>& outputs,
                             const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("rfactor");
+  PyAPICall py("rfactor");
   py.AddArgInput("loop", inputs[0]);
   py.AddArgAttr("factor_axis", this->factor_axis);
   py.AddOutput(outputs[0]);
@@ -1129,7 +1128,7 @@ void RFactorAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 
 void BindAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                          const Array<String>& outputs, const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("bind");
+  PyAPICall py("bind");
   py.AddArgInput("loop", inputs[0]);
   py.AddArgAttr("thread_axis", this->thread_axis);
   py.Print(os);
@@ -1138,7 +1137,7 @@ void BindAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 void SetScopeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                              const Array<String>& outputs,
                              const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("set_scope");
+  PyAPICall py("set_scope");
   py.AddArgInput("block", inputs[0]);
   py.AddArgAttr("i", this->i);
   py.AddArgAttr("storage_scope", this->storage_scope);
@@ -1146,8 +1145,9 @@ void SetScopeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 }
 
 void StorageAlignAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
-                                 const Array<String>& outputs, const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("storage_align");
+                                 const Array<String>& outputs,
+                                 const Optional<ObjectRef>& decision) const {
+  PyAPICall py("storage_align");
   py.AddArgInput("block", inputs[0]);
   py.AddArgAttr("buffer_index", buffer_index);
   py.AddArgAttr("axis", axis);
@@ -1211,12 +1211,14 @@ void MarkBlockAttrs::Serialize(Array<ObjectRef>* record,
   record->push_back(this->ann_key);
 }
 
-void ComputeAtAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void ComputeAtAttrs::Serialize(Array<ObjectRef>* record,
+                               const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
   record->push_back(Bool(this->preserve_unit_loop));
 }
 
-void ReverseComputeAtAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void ReverseComputeAtAttrs::Serialize(Array<ObjectRef>* record,
+                                      const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
   record->push_back(Bool(this->preserve_unit_loop));
 }
@@ -1261,7 +1263,8 @@ void SetScopeAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef
   record->push_back(this->storage_scope);
 }
 
-void StorageAlignAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void StorageAlignAttrs::Serialize(Array<ObjectRef>* record,
+                                  const Optional<ObjectRef>& decision) const {
   ICHECK(!decision.defined());
   record->push_back(Integer(this->buffer_index));
   record->push_back(Integer(this->axis));
@@ -1329,14 +1332,14 @@ InstAttrs MarkBlockAttrs::Deserialize(const Array<ObjectRef>& record,
 }
 
 InstAttrs ComputeAtAttrs::Deserialize(const Array<ObjectRef>& record,
-                                     Optional<ObjectRef>* decision) {
+                                      Optional<ObjectRef>* decision) {
   ObjectPtr<ComputeAtAttrs> n = make_object<ComputeAtAttrs>();
   n->preserve_unit_loop = Downcast<Bool>(record[3]);
   return InstAttrs(std::move(n));
 }
 
 InstAttrs ReverseComputeAtAttrs::Deserialize(const Array<ObjectRef>& record,
-                                      Optional<ObjectRef>* decision) {
+                                             Optional<ObjectRef>* decision) {
   ObjectPtr<ReverseComputeAtAttrs> n = make_object<ReverseComputeAtAttrs>();
   n->preserve_unit_loop = Downcast<Bool>(record[3]);
   return InstAttrs(std::move(n));
@@ -1370,8 +1373,7 @@ InstAttrs TensorizeAttrs::Deserialize(const Array<ObjectRef>& record,
   return InstAttrs(std::move(n));
 }
 
-InstAttrs RFactorAttrs::Deserialize(const Array<ObjectRef>& record,
-                                    Optional<ObjectRef>* decision) {
+InstAttrs RFactorAttrs::Deserialize(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
   ObjectPtr<RFactorAttrs> n = make_object<RFactorAttrs>();
   n->factor_axis = Downcast<Integer>(record[3]);
   return InstAttrs(std::move(n));
