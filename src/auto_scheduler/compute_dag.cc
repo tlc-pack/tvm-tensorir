@@ -1317,8 +1317,9 @@ String ComputeDAG::PrintDAG(bool simple_mode) const {
 
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
-    const Array<Step>& transform_steps, Array<te::Stage>* stages, StageToAxesMap* stage_to_axes
-    ) const {
+    State* const pstate, const HardwareParams& hardware_params,
+    const Array<Step>& transform_steps, Array<te::Stage>* stages,
+    StageToAxesMap* stage_to_axes) const {
   // Temporal object to be used if the input pointer is nullptr
   Array<te::Stage> null_stages;
   StageToAxesMap null_stage_to_axes;
@@ -1328,6 +1329,64 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
   if (stage_to_axes == nullptr) {
     stage_to_axes = &null_stage_to_axes;
   }
+
+  // copied from thread binding initialization
+  std::set<int> multi_level_tiling_root_set;
+  for (size_t stage_id = 0; stage_id < (*pstate)->stages.size(); ++stage_id) {
+    if (operator->()->access_analyzer.NeedsMultiLevelTiling(
+            (*pstate)->stages[stage_id]->op)) {
+      const Stage& stage = (*pstate)->stages[stage_id];
+      if (stage->compute_at == ComputeAtKind::kInlined) {
+        continue;
+      } else if (stage->compute_at != ComputeAtKind::kIter) {
+        ICHECK(HasCrossThreadReduction(*pstate, stage_id));
+      } else {
+        const auto res = (*pstate)->attach_map->stage_to_attach_iter.find(stage_id);
+        ICHECK(res != (*pstate)->attach_map->stage_to_attach_iter.end());
+        multi_level_tiling_root_set.insert(res->second.first);
+      }
+    }
+  }
+  *pstate = InferBound(*pstate);
+
+  for (int stage_id = (*pstate)->stages.size() - 1; stage_id >= 0; --stage_id) {
+    const Stage& stage = (*pstate)->stages[stage_id];
+
+    if (stage->compute_at == ComputeAtKind::kInlined ||
+        stage->op_type == StageKind::kPlaceholder) {
+      continue;
+    }
+    if (HasCrossThreadReduction(*pstate, stage_id)) {
+      if (stage->compute_at != ComputeAtKind::kRoot) {
+        continue;
+      }
+      Iterator fused_it;
+      *pstate = std::move(FuseAllOuterSpaceIterators(*pstate, stage_id,
+                                                     &fused_it));
+      pstate->bind(stage_id, fused_it, IteratorAnnotation::kBlockX);
+      continue;
+    }
+    if (HasAnnotatedIter(stage, IteratorAnnotation::kThreadX)) {
+      continue;
+    }
+    if (stage->compute_at == ComputeAtKind::kRoot) {
+      if (!multi_level_tiling_root_set.count(stage_id)) {
+        Iterator fused_it;
+        *pstate = FuseAllOuterSpaceIterators(*pstate, stage_id, &fused_it);
+        if (GetExtent(fused_it) <= hardware_params->warp_size) {
+          pstate->bind(stage_id, fused_it, IteratorAnnotation::kThreadX);
+        } else {
+          const auto& split_its = pstate->split(
+              stage_id, fused_it, {Integer(hardware_params->warp_size)});
+          pstate->bind(stage_id, split_its[0], IteratorAnnotation::kBlockX);
+          pstate->bind(stage_id, split_its[1], IteratorAnnotation::kThreadX);
+        }
+        continue;
+      }
+    }
+  }
+
+
   Array<te::Operation> out_ops;
   for (const auto& op : operator->()->ops) {
     if (operator->()->access_analyzer.IsOutput(op)) {
@@ -1352,7 +1411,8 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
 }
 
 
-State ComputeDAG::InferBoundOnSyntheticWorkload(const State& state) const {
+State ComputeDAG::InferBoundOnSyntheticWorkload(
+    const State& state, const HardwareParams& hardware_params) const {
   ICHECK(state->concrete);
   State ret_state;
   StateNode* pstate;
@@ -1368,35 +1428,39 @@ State ComputeDAG::InferBoundOnSyntheticWorkload(const State& state) const {
     ret_state = state;
     pstate = ret_state.CopyOnWrite();
   }
-  // so far so good
-
   Array<te::Stage> stages;
   StageToAxesMap stage_to_axes;
   te::Schedule sch;
   Array<te::Tensor> tensors;
 
   std::tie(sch, tensors) =
-      GenerateSyntheticWorkloadAndApplySteps(pstate->transform_steps,
+      GenerateSyntheticWorkloadAndApplySteps(&ret_state, hardware_params,
+                                             pstate->transform_steps,
                                              &stages, &stage_to_axes);
   LOG(FATAL) << "Implementation is not complete yet";
   return ret_state;
 }
 
 
-Array<State> ComputeDAG::InferBoundOnSyntheticWorkload(const Array<State>& states) const {
+Array<State> ComputeDAG::InferBoundOnSyntheticWorkload(
+    const Array<State>& states, const HardwareParams& hardware_params) const {
   Array<State> out_states(states.size(), State());
 
   LOG(WARNING) << "Parallel InferBound has been made sequential";
   // support::parallel_for(0, states.size(), [this, &states, &out_states](const size_t i) {
   for (size_t i = 0; i < states.size(); ++i) {
-    try {
-      out_states.Set(i, (states[i].defined()) ?
-                     InferBoundOnSyntheticWorkload(states[i]) : states[i]);
-    } catch (const Error& e) {
-      LOG(WARNING) << "InferBoundOnSyntheticWorkload fails on the state:\n"
-                   << states[i] << "\n"
-                   << "with: " << e.what() << std::endl;
-    }
+    // try {
+      out_states.Set(
+          i,
+          (states[i].defined()) ?
+            InferBoundOnSyntheticWorkload(states[i], hardware_params) :
+            states[i]
+          );
+    // } catch (const Error& e) {
+    //   LOG(WARNING) << "InferBoundOnSyntheticWorkload fails on the state:\n"
+    //                << states[i] << "\n"
+    //                << "with: " << e.what() << std::endl;
+    // }
   }
   // );
   return out_states;

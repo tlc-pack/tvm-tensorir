@@ -505,8 +505,11 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       pop_scores.reserve(cand_states.size());
       
       // <bojian/DietCode>
-      cand_states = search_task->compute_dag.InferBound(cand_states);
-      
+      if (IsDynTask) {
+        cand_states = search_task->compute_dag.InferBoundOnSyntheticWorkload(cand_states);
+      } else {
+        cand_states = search_task->compute_dag.InferBound(cand_states);
+      }
       
       PruneInvalidState(search_task, &cand_states);
       program_cost_model->Predict(search_task, cand_states, &pop_scores);
@@ -523,6 +526,7 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       }
     }  // if (!cand_states.empty())
     
+    // <bojian/DietCode>
     LOG(FATAL) << "out_states.size()=" << out_states.size();
 
     if (iter % 5 == 0) {

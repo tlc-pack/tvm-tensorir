@@ -272,13 +272,16 @@ class ComputeDAG : public ObjectRef {
   // <bojian/DietCode>
   std::pair<te::Schedule, Array<te::Tensor>>
   GenerateSyntheticWorkloadAndApplySteps(
+      State *const pstate, const HardwareParams& hardware_params,
       const Array<Step>& transform_steps, Array<te::Stage>* stages = nullptr,
       StageToAxesMap* stage_to_axes = nullptr) const;
   /**
    * \brief Infer bound on a synthetic workload.
    */
-  State InferBoundOnSyntheticWorkload(const State& state) const;
-  Array<State> InferBoundOnSyntheticWorkload(const Array<State>& states) const;
+  State InferBoundOnSyntheticWorkload(
+      const State& state, const HardwareParams& hardware_params) const;
+  Array<State> InferBoundOnSyntheticWorkload(
+      const Array<State>& states, const HardwareParams& hardware_params) const;
 
   /*!
    * \brief Fill the correct bound information for a given state by calling ir_pass::InferBound.
