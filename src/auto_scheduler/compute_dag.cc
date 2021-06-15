@@ -25,6 +25,10 @@
 #include <tvm/auto_scheduler/compute_dag.h>
 #include <tvm/auto_scheduler/loop_state.h>
 #include <tvm/auto_scheduler/search_policy.h>
+
+// <bojian/DietCode>
+#include <tvm/auto_scheduler/search_task.h>
+
 #include <tvm/auto_scheduler/transform_step.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/support/parallel_for.h>
@@ -1315,6 +1319,35 @@ String ComputeDAG::PrintDAG(bool simple_mode) const {
 }
 
 
+// <bojian/DietCode>
+
+inline std::string IteratorKindToString(const IteratorKind iter_kind) {
+  if (iter_kind == IteratorKind::kSpatial)   return "Spatial";
+  if (iter_kind == IteratorKind::kReduction) return "Reduction";
+  return "Others";
+}
+
+inline std::string IterAnnotationToString(const IteratorAnnotation annotation) {
+  if (annotation == IteratorAnnotation::kNone)      return "None";
+  if (annotation == IteratorAnnotation::kUnroll)    return "Unroll";
+  if (annotation == IteratorAnnotation::kVectorize) return "Vectorize";
+  if (annotation == IteratorAnnotation::kParallel)  return "Parallel";
+  if (annotation == IteratorAnnotation::kVThread)   return "VThread";
+  if (annotation == IteratorAnnotation::kBlockX)    return "BlockX";
+  if (annotation == IteratorAnnotation::kThreadX)   return "ThreadX";
+  return std::to_string(int(annotation));
+}
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<IteratorNode>([](const ObjectRef& ref, ReprPrinter* p) {
+      auto* node = static_cast<const IteratorNode*>(ref.get());
+      p->stream << "IteratorNode(" << node->name << ", " << node->range << ", "
+                   "kind=" << IteratorKindToString(node->iter_kind) << ", "
+                   "annotation=" << IterAnnotationToString(node->annotation)
+                << ")";
+    });
+
+
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     State* const pstate, const HardwareParams& hardware_params,
@@ -1330,10 +1363,11 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     stage_to_axes = &null_stage_to_axes;
   }
 
+  LOG(INFO) << "Collecting multi_level_tiling_root_set";
   // copied from thread binding initialization
   std::set<int> multi_level_tiling_root_set;
   for (size_t stage_id = 0; stage_id < (*pstate)->stages.size(); ++stage_id) {
-    if (operator->()->access_analyzer.NeedsMultiLevelTiling(
+    if ((*pstate)->current_compute_dag.as<ComputeDAGNode>()->access_analyzer.NeedsMultiLevelTiling(
             (*pstate)->stages[stage_id]->op)) {
       const Stage& stage = (*pstate)->stages[stage_id];
       if (stage->compute_at == ComputeAtKind::kInlined) {
@@ -1347,7 +1381,9 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
       }
     }
   }
+  LOG(INFO) << "Invoking static InferBound";
   *pstate = InferBound(*pstate);
+  LOG(INFO) << "Static InferBound has been completed";
 
   for (int stage_id = (*pstate)->stages.size() - 1; stage_id >= 0; --stage_id) {
     const Stage& stage = (*pstate)->stages[stage_id];
@@ -1367,12 +1403,18 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
       continue;
     }
     if (HasAnnotatedIter(stage, IteratorAnnotation::kThreadX)) {
+
+      LOG(INFO) << "stage.iters=" << ArrayToString(stage->iters);
+
       continue;
     }
     if (stage->compute_at == ComputeAtKind::kRoot) {
       if (!multi_level_tiling_root_set.count(stage_id)) {
         Iterator fused_it;
         *pstate = FuseAllOuterSpaceIterators(*pstate, stage_id, &fused_it);
+
+        LOG(INFO) << "fused_it.extent=" << GetExtent(fused_it);
+
         if (GetExtent(fused_it) <= hardware_params->warp_size) {
           pstate->bind(stage_id, fused_it, IteratorAnnotation::kThreadX);
         } else {
@@ -1383,9 +1425,31 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
         }
         continue;
       }
+      auto pop = stage->op.as<te::ComputeOpNode>();
+      std::vector<Iterator> to_fuse;
+      PrimExpr total_space_extent = 1;
+      for (const auto& i : pop->root_iter_vars()) {
+        ICHECK(i->dom.defined());
+        total_space_extent = total_space_extent * i->dom->extent;
+      }
+      arith::Analyzer analyzer;
+      arith::IntSet s = analyzer.int_set(total_space_extent, {});
+      bool check_min_thread_extent = true;
+      if (GetIntImm(s.max()) <= hardware_params->warp_size * 2) {
+        check_min_thread_extent = false;
+      }
+      for (size_t i = 0; i < pop->axis.size(); i++) {
+        const auto& it = (*pstate)->stages[stage_id]->iters[i];
+        LOG(INFO) << "Handling iterator " << it;
+        if (!StrEndsWith(it->name, ".0")) {
+          break;
+        }
+        to_fuse.push_back(it);
+      }
     }
   }
 
+  LOG(FATAL) << "Implementation is not completed yet";
 
   Array<te::Operation> out_ops;
   for (const auto& op : operator->()->ops) {
@@ -1433,11 +1497,12 @@ State ComputeDAG::InferBoundOnSyntheticWorkload(
   te::Schedule sch;
   Array<te::Tensor> tensors;
 
+  LOG(INFO) << "Generating synthetic workloads";
+
   std::tie(sch, tensors) =
       GenerateSyntheticWorkloadAndApplySteps(&ret_state, hardware_params,
                                              pstate->transform_steps,
                                              &stages, &stage_to_axes);
-  LOG(FATAL) << "Implementation is not complete yet";
   return ret_state;
 }
 

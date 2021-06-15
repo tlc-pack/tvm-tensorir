@@ -552,17 +552,17 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       ++num_spatial_axes;
     }
   }
-  if (is_sample_init_population_1st_iter) {
-    LOG(INFO) << "num_spatial_axes=" << num_spatial_axes;
-  }
+  // if (is_sample_init_population_1st_iter) {
+  //   LOG(INFO) << "num_spatial_axes=" << num_spatial_axes;
+  // }
   SplitFactorizationMemo memo;
   const Array<Array<Integer>>& num_threads_factor_schemes =
       memo.GetFactorizationSchemes(num_threads_per_block, num_spatial_axes - 1);
 
-  if (is_sample_init_population_1st_iter) {
-    LOG(INFO) << "Sampled the factors out of num_threads_factor_schemes.size()="
-              << num_threads_factor_schemes.size();
-  }
+  // if (is_sample_init_population_1st_iter) {
+  //   LOG(INFO) << "Sampled the factors out of num_threads_factor_schemes.size()="
+  //             << num_threads_factor_schemes.size();
+  // }
   CHECK(num_threads_factor_schemes.size() != 0);
   std::uniform_int_distribution<> num_threads_factor_schemes_dist(
       0, num_threads_factor_schemes.size() - 1);

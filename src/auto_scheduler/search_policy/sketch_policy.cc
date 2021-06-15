@@ -216,8 +216,12 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
 
       // Infer bound. This is necessary for computing the correct ToStr() for redundancy check
       if (IsDynTask(search_task)) {
-        best_states   = search_task->compute_dag.InferBoundOnSyntheticWorkload(best_states);
-        random_states = search_task->compute_dag.InferBoundOnSyntheticWorkload(random_states);
+        best_states =
+            search_task->compute_dag.InferBoundOnSyntheticWorkload(
+              best_states, search_task->hardware_params);
+        random_states =
+            search_task->compute_dag.InferBoundOnSyntheticWorkload(
+              random_states, search_task->hardware_params);
       } else {
         best_states   = search_task->compute_dag.InferBound(best_states);
         random_states = search_task->compute_dag.InferBound(random_states);
@@ -506,7 +510,9 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       
       // <bojian/DietCode>
       if (IsDynTask) {
-        cand_states = search_task->compute_dag.InferBoundOnSyntheticWorkload(cand_states);
+        cand_states =
+            search_task->compute_dag.InferBoundOnSyntheticWorkload(
+              cand_states, search_task->hardware_params);
       } else {
         cand_states = search_task->compute_dag.InferBound(cand_states);
       }

@@ -212,6 +212,11 @@ enum class LayoutRewriteOption : int {
   RewriteForPreTransformed = 2,
 };
 
+
+// <bojian/DietCode>
+class HardwareParams;
+
+
 /*!
  * \brief Managed reference to ComputeDAGNode.
  * \sa ComputeDAGNode
