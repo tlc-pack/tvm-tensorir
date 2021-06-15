@@ -575,7 +575,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
     FactorizationScheme scheme;
     try {
       scheme = policy->dietcode_split_memo.SampleFactorizationSchemes(
-          split_steps_info, rand_gen, false /* simplify_schedule */);
+          split_steps_info, rand_gen, true /* simplify_schedule */);
     } catch(const std::out_of_range& e) {
       return ResultKind::kInvalid;
     }
