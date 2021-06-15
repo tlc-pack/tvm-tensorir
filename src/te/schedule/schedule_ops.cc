@@ -34,9 +34,6 @@
 #include "../../tir/transforms/ir_utils.h"
 #include "../operation/op_utils.h"
 #include "graph.h"
-// <bojian/DietCode>
-#include "../DietCode_helper.h"
-
 
 namespace tvm {
 namespace te {
@@ -317,7 +314,6 @@ class SchedulePostProc : public StmtExprMutator {
   // integer analyzer
   arith::Analyzer analyzer_;
 };
-
 
 Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_trivial_loop) {
   Stmt body = Stmt();

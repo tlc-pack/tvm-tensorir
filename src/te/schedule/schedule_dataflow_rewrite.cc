@@ -30,9 +30,6 @@
 #include "../../tir/transforms/ir_utils.h"
 #include "message_passing.h"
 #include "operation_inline.h"
-// <bojian/DietCode>
-#include "../DietCode_helper.h"
-
 
 namespace tvm {
 namespace te {
