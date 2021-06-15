@@ -51,6 +51,10 @@
 #include "search_policy/utils.h"
 #include "utils.h"
 
+// <bojian/DietCode>
+#include <tvm/tir/dynamic_axis_functor.h>
+
+
 namespace tvm {
 namespace auto_scheduler {
 
@@ -1348,107 +1352,70 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     });
 
 
+inline std::string GetIterNamePrefix(const Iterator& iter) {
+  std::string iter_name = iter->name;
+  size_t pos = iter_name.rfind(".");
+  if (pos == std::string::npos) {
+    return iter->name;
+  }
+  return iter_name.substr(0, pos);
+}
+
+std::vector<Iterator> GatherAllItersWithSamePrefix(
+    const Array<Iterator>& all_iters, const Iterator& iter_0) {
+  std::string iter_0_prefix = GetIterNamePrefix(iter_0);
+  std::vector<Iterator> ret_iters;
+
+  for (const Iterator& iter : all_iters) {
+    if (iter == iter_0) {
+      continue;
+    }
+    if (GetIterNamePrefix(iter) == iter_0_prefix) {
+      ret_iters.push_back(iter);
+    }
+  }
+  return ret_iters;
+}
+
+
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     State* const pstate, const HardwareParams& hardware_params,
     const Array<Step>& transform_steps, Array<te::Stage>* stages,
     StageToAxesMap* stage_to_axes) const {
-  // <>
-  // // Temporal object to be used if the input pointer is nullptr
-  // Array<te::Stage> null_stages;
-  // StageToAxesMap null_stage_to_axes;
-  // if (stages == nullptr) {
-  //   stages = &null_stages;
-  // }
-  // if (stage_to_axes == nullptr) {
-  //   stage_to_axes = &null_stage_to_axes;
-  // }
-
-  // LOG(INFO) << "Collecting multi_level_tiling_root_set";
-  // // copied from thread binding initialization
-  // std::set<int> multi_level_tiling_root_set;
-  // for (size_t stage_id = 0; stage_id < (*pstate)->stages.size(); ++stage_id) {
-  //   if ((*pstate)->current_compute_dag.as<ComputeDAGNode>()->access_analyzer.NeedsMultiLevelTiling(
-  //           (*pstate)->stages[stage_id]->op)) {
-  //     const Stage& stage = (*pstate)->stages[stage_id];
-  //     if (stage->compute_at == ComputeAtKind::kInlined) {
-  //       continue;
-  //     } else if (stage->compute_at != ComputeAtKind::kIter) {
-  //       ICHECK(HasCrossThreadReduction(*pstate, stage_id));
-  //     } else {
-  //       const auto res = (*pstate)->attach_map->stage_to_attach_iter.find(stage_id);
-  //       ICHECK(res != (*pstate)->attach_map->stage_to_attach_iter.end());
-  //       multi_level_tiling_root_set.insert(res->second.first);
-  //     }
-  //   }
-  // }
-  // LOG(INFO) << "Invoking static InferBound";
   *pstate = InferBound(*pstate);
-  // LOG(INFO) << "Static InferBound has been completed";
+
+  // check all the tensors
+  LOG(INFO) << "ComputeDAG has tensors=" << ArrayToString(operator->()->tensors);
 
   for (int stage_id = (*pstate)->stages.size() - 1; stage_id >= 0; --stage_id) {
     const Stage& stage = (*pstate)->stages[stage_id];
 
-    LOG(INFO) << "stage.name=" << stage->op->name << ", "
-                 "stage.iters=" << ArrayToString(stage->iters);
+    // LOG(INFO) << "stage->op->name=" << stage->op->name << ", "
+    //              "stage->iters=" << ArrayToString(stage->iters);
+    if (StrEndsWith(stage->op->name, ".local")) {
+      for (const Iterator& iter : stage->iters) {
+        if (StrEndsWith(iter->name, ".0")) {
+          // gather all the iterators that start with the same prefix
+          std::vector<Iterator> iters_w_same_prefix =
+              GatherAllItersWithSamePrefix(stage->iters, iter);
+          size_t extent = 1;
+          for (const Iterator& iter : iters_w_same_prefix) {
+            extent *= GetIntImm(iter->range->extent);
+          }
+          LOG(INFO) << "iter=" << iter << " w/ extent=" << extent;
 
-    // if (stage->compute_at == ComputeAtKind::kInlined ||
-    //     stage->op_type == StageKind::kPlaceholder) {
-    //   continue;
-    // }
-    // if (HasCrossThreadReduction(*pstate, stage_id)) {
-    //   if (stage->compute_at != ComputeAtKind::kRoot) {
-    //     continue;
-    //   }
-    //   Iterator fused_it;
-    //   *pstate = std::move(FuseAllOuterSpaceIterators(*pstate, stage_id,
-    //                                                  &fused_it));
-    //   pstate->bind(stage_id, fused_it, IteratorAnnotation::kBlockX);
-    //   continue;
-    // }
-    // if (HasAnnotatedIter(stage, IteratorAnnotation::kThreadX)) {
-    //   continue;
-    // }
-    // if (stage->compute_at == ComputeAtKind::kRoot) {
-    //   if (!multi_level_tiling_root_set.count(stage_id)) {
-    //     Iterator fused_it;
-    //     *pstate = FuseAllOuterSpaceIterators(*pstate, stage_id, &fused_it);
+          if (iter->iter_kind == IteratorKind::kSpatial) {
 
-    //     LOG(INFO) << "fused_it.extent=" << GetExtent(fused_it);
+          } else if (iter->iter_kind == IteratorKind::kReduction) {
 
-    //     if (GetExtent(fused_it) <= hardware_params->warp_size) {
-    //       pstate->bind(stage_id, fused_it, IteratorAnnotation::kThreadX);
-    //     } else {
-    //       const auto& split_its = pstate->split(
-    //           stage_id, fused_it, {Integer(hardware_params->warp_size)});
-    //       pstate->bind(stage_id, split_its[0], IteratorAnnotation::kBlockX);
-    //       pstate->bind(stage_id, split_its[1], IteratorAnnotation::kThreadX);
-    //     }
-    //     continue;
-    //   }
-    //   auto pop = stage->op.as<te::ComputeOpNode>();
-    //   std::vector<Iterator> to_fuse;
-    //   PrimExpr total_space_extent = 1;
-    //   for (const auto& i : pop->root_iter_vars()) {
-    //     ICHECK(i->dom.defined());
-    //     total_space_extent = total_space_extent * i->dom->extent;
-    //   }
-    //   arith::Analyzer analyzer;
-    //   arith::IntSet s = analyzer.int_set(total_space_extent, {});
-    //   bool check_min_thread_extent = true;
-    //   if (GetIntImm(s.max()) <= hardware_params->warp_size * 2) {
-    //     check_min_thread_extent = false;
-    //   }
-    //   for (size_t i = 0; i < pop->axis.size(); i++) {
-    //     const auto& it = (*pstate)->stages[stage_id]->iters[i];
-    //     LOG(INFO) << "Handling iterator " << it;
-    //     if (!StrEndsWith(it->name, ".0")) {
-    //       break;
-    //     }
-    //     to_fuse.push_back(it);
-    //   }
-    // }
-  }
+          } else {
+            LOG(FATAL) << "Not implemeted yet";
+          }
+        }
+      }  // for (iter ∈ stage->iters)
+    }    // if (StrEndsWith(stage->op->name, ".local"))
+  }      // for (stage ∈ (*pstate)->stages)
 
   LOG(FATAL) << "Implementation is not completed yet";
 
