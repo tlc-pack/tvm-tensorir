@@ -1378,6 +1378,20 @@ std::vector<Iterator> GatherAllItersWithSamePrefix(
 }
 
 
+Iterator FindIterInInitState(const State& init_state, const Iterator& iter_0) {
+  for (size_t stage_id = 0; stage_id < init_state->stages.size(); ++stage_id) {
+    const Stage& stage = init_state->stages[stage_id];
+    for (const Iterator& iter : stage->iters) {
+      if (std::string(iter_0->name).find(std::string(iter->name)) !=
+          std::string::npos) {
+        return iter;
+      }
+    }
+  }
+  return iter_0;
+}
+
+
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     State* const pstate, const HardwareParams& hardware_params,
@@ -1387,6 +1401,9 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
 
   // check all the tensors
   LOG(INFO) << "ComputeDAG has tensors=" << ArrayToString(operator->()->tensors);
+
+  Map<PrimExpr, IntImm> axes_to_extent;
+  bool is_first_spatial_axis = true;
 
   for (int stage_id = (*pstate)->stages.size() - 1; stage_id >= 0; --stage_id) {
     const Stage& stage = (*pstate)->stages[stage_id];
@@ -1405,10 +1422,23 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
           }
           LOG(INFO) << "iter=" << iter << " w/ extent=" << extent;
 
+          Iterator init_iter =
+              FindIterInInitState(operator->()->init_state, iter);
+          LOG(INFO) << "init_iter=" << init_iter;
           if (iter->iter_kind == IteratorKind::kSpatial) {
-
+            if (is_first_spatial_axis) {
+              is_first_spatial_axis = false;
+              axes_to_extent.Set(init_iter->range->extent,
+                                 IntImm(DataType::Int(32),
+                                        extent * hardware_params->num_cores)
+                                 );
+            } else {
+              axes_to_extent.Set(init_iter->range->extent,
+                                 IntImm(DataType::Int(32), extent));
+            }
           } else if (iter->iter_kind == IteratorKind::kReduction) {
-
+            axes_to_extent.Set(init_iter->range->extent,
+                               IntImm(DataType::Int(32), extent));
           } else {
             LOG(FATAL) << "Not implemeted yet";
           }
@@ -1416,6 +1446,11 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
       }  // for (iter ∈ stage->iters)
     }    // if (StrEndsWith(stage->op->name, ".local"))
   }      // for (stage ∈ (*pstate)->stages)
+
+  for (const std::pair<PrimExpr, IntImm> axis_to_extent : axes_to_extent) {
+    LOG(INFO) << "axis=" << axis_to_extent.first << " : "
+                 "extent=" << axis_to_extent.second;
+  }
 
   LOG(FATAL) << "Implementation is not completed yet";
 
