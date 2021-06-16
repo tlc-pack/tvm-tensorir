@@ -496,7 +496,8 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
 
 
     // if (IsDynTask(this->search_task)) {
-    //   LOG(FATAL) << "Number of states after pruning: " << cand_states.size();
+    //   LOG(FATAL) << "Number of states after pruning: "
+    //              << cand_states.size();
     // }
 
 

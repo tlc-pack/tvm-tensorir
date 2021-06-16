@@ -1021,9 +1021,9 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
       state->bind(stage_id, blockidx_it, IteratorAnnotation::kBlockX);
 
       if (is_sample_init_population_1st_iter) {
-        LOG(INFO) << "blockIdx.x=" << blockidx_it->range->extent;
-        // The approach below does not really work because the function itself
-        // it NOT a linear equation and hence not directly solvable.
+        // LOG(INFO) << "blockIdx.x=" << blockidx_it->range->extent;
+        // // The approach below does not really work because the function itself
+        // // it NOT a linear equation and hence not directly solvable.
         // DynamicAxisFinder finder;
         // finder(blockidx_it->range->extent);
         // Array<Var> dyn_axes;

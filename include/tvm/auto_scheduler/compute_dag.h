@@ -182,6 +182,10 @@ class ComputeDAGNode : public Object {
   /*! \brief The static read-write access analyzer. */
   AccessAnalyzer access_analyzer;
 
+  // <bojian/DietCode> Add synthetic tensors.
+  Array<te::Tensor> synthetic_tensors;
+  Array<te::Operation> synthetic_ops;
+
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("tensors", &tensors);
     v->Visit("ops", &ops);

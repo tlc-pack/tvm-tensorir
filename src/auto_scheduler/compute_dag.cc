@@ -1452,6 +1452,16 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
                  "extent=" << axis_to_extent.second;
   }
 
+  for (const te::Tensor& t : operator->()->tensors) {
+    for (const PrimExpr& expr : t->shape) {
+      auto axes_to_extent_it = axes_to_extent.find(expr);
+      if (axes_to_extent_it != axes_to_extent.end()) {
+        LOG(INFO) << "expr=" << expr << " will be replaced with "
+                  << (*axes_to_extent_it).second;
+      }
+    }
+  }
+
   LOG(FATAL) << "Implementation is not completed yet";
 
   Array<te::Operation> out_ops;
