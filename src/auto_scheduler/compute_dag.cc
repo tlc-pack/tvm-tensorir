@@ -1392,13 +1392,31 @@ Iterator FindIterInInitState(const State& init_state, const Iterator& iter_0) {
 }
 
 
+class SyntheticExprReplacer : public StmtExprMutator {
+ private:
+  Map<PrimExpr, IntImm> expr_subst_map_;
+
+ public:
+  SyntheticExprReplacer(const Map<PrimExpr, IntImm>& expr_subst_map)
+      : expr_subst_map_(expr_subst_map) {}
+  PrimExpr VisitExpr(const PrimExpr& expr) override {
+    auto expr_subst_map_it = expr_subst_map_.find(expr);
+    if (expr_subst_map_it != expr_subst_map_.end()) {
+      return (*expr_subst_map_it).second;
+    }
+    return expr;
+  }  
+};
+
+
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     State* const pstate, const HardwareParams& hardware_params,
     const Array<Step>& transform_steps, Array<te::Stage>* stages,
     StageToAxesMap* stage_to_axes) const {
-  *pstate = InferBound(*pstate);
+  Array<te::Tensor> synthetic_tensors_to_ret;
 
+  *pstate = InferBound(*pstate);
   // check all the tensors
   LOG(INFO) << "ComputeDAG has tensors=" << ArrayToString(operator->()->tensors);
 
@@ -1451,15 +1469,59 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     LOG(INFO) << "axis=" << axis_to_extent.first << " : "
                  "extent=" << axis_to_extent.second;
   }
+  SyntheticExprReplacer synthetic_expr_replacer(axes_to_extent);
 
   for (const te::Tensor& t : operator->()->tensors) {
+    // 1. Shape
+    Array<PrimExpr> synthetic_shape;
     for (const PrimExpr& expr : t->shape) {
       auto axes_to_extent_it = axes_to_extent.find(expr);
       if (axes_to_extent_it != axes_to_extent.end()) {
-        LOG(INFO) << "expr=" << expr << " will be replaced with "
-                  << (*axes_to_extent_it).second;
+        synthetic_shape.push_back((*axes_to_extent_it).second);
+      } else {
+        synthetic_shape.push_back(expr);
       }
     }
+    LOG(INFO) << "Synthetic shape=" << ArrayToString(synthetic_shape);
+    // 2. ComputeOp
+    LOG(INFO) << t->op;
+
+    te::Operation synthetic_op;
+
+    const te::ComputeOpNode* compute_op_node = t->op.as<te::ComputeOpNode>();
+    const te::PlaceholderOpNode* placeholder_op_node =
+        t->op.as<te::PlaceholderOpNode>();
+    if (compute_op_node != nullptr) {
+      te::ComputeOp compute_op = GetRef<te::ComputeOp>(compute_op_node);
+      Array<IterVar>  synthetic_axis;
+      Array<PrimExpr> synthetic_body;
+      for (const IterVar& iv : compute_op->axis) {
+        synthetic_axis.push_back(
+            tir::IterVar(Range::FromMinExtent(synthetic_expr_replacer(iv->dom->min),
+                                              synthetic_expr_replacer(iv->dom->extent)),
+                         iv->var,
+                         iv->iter_type,
+                         iv->thread_tag
+                         ));
+      }
+      for (const PrimExpr& expr : compute_op->body) {
+        synthetic_body.push_back(synthetic_expr_replacer(expr));
+      }
+      LOG(INFO) << "Synthetic axis=" << ArrayToString(synthetic_axis) << ", "
+                             "body=" << ArrayToString(synthetic_body);
+
+      synthetic_op = te::ComputeOp(compute_op->name, compute_op->tag, 
+                                   compute_op->attrs, synthetic_axis,
+                                   synthetic_body);
+    } else if (placeholder_op_node != nullptr) {
+      synthetic_op = te::PlaceholderOp(placeholder_op_node->name,
+                                       synthetic_shape,
+                                       placeholder_op_node->dtype);
+    }
+    CHECK(synthetic_op.defined());
+    synthetic_tensors_to_ret.push_back(te::Tensor(synthetic_shape, t->dtype,
+                                                  synthetic_op,
+                                                  t->value_index));
   }
 
   LOG(FATAL) << "Implementation is not completed yet";
