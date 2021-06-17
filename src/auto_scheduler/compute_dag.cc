@@ -1625,7 +1625,7 @@ State ComputeDAG::InferBoundOnSyntheticWorkload(
   te::Schedule sch;
   Array<te::Tensor> tensors;
 
-  LOG(INFO) << "Generating synthetic workloads ...";
+  // LOG(INFO) << "Generating synthetic workloads ...";
             // << pstate->transform_steps.size()
             // << " transformation steps";
 
@@ -1642,24 +1642,24 @@ Array<State> ComputeDAG::InferBoundOnSyntheticWorkload(
   Array<State> out_states(states.size(), State());
 
   LOG(WARNING) << "Parallel InferBound has been made sequential";
-  // support::parallel_for(0, states.size(), [this, &states, &out_states](const size_t i) {
-  for (size_t i = 0; i < states.size(); ++i) {
-    // try {
+  support::parallel_for(0, states.size(),
+                        [this, &states, &out_states, &hardware_params](const size_t i) {
+  // for (size_t i = 0; i < states.size(); ++i) {
+    try {
       out_states.Set(
           i,
           (states[i].defined()) ?
             InferBoundOnSyntheticWorkload(states[i], hardware_params) :
             states[i]
           );
-    // } catch (const Error& e) {
-    //   LOG(WARNING) << "InferBoundOnSyntheticWorkload fails on the state:\n"
-    //                << states[i] << "\n"
-    //                << "with: " << e.what() << std::endl;
-    // }
+    } catch (const Error& e) {
+      LOG(WARNING) << "InferBoundOnSyntheticWorkload fails on the state:\n"
+                   << states[i] << "\n"
+                   << "with: " << e.what() << std::endl;
+    }
   }
-  // );
-
-  LOG(INFO) << "Finished the bound inference";
+  );
+  LOG(FATAL) << "Finished the bound inference";
 
   return out_states;
 }
