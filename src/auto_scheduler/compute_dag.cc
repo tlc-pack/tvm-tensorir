@@ -1351,6 +1351,14 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
                 << ")";
     });
 
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<te::PlaceholderOpNode>([](const ObjectRef& ref, ReprPrinter* p) {
+      auto* node = static_cast<const te::PlaceholderOpNode*>(ref.get());
+      p->stream << "PlaceholderOpNode(" << node->name << ", "
+                   "shape=" << ArrayToString(node->shape)
+                << ")";
+    });
+
 
 inline std::string GetIterNamePrefix(const Iterator& iter) {
   std::string iter_name = iter->name;
@@ -1404,8 +1412,22 @@ class SyntheticExprReplacer : public StmtExprMutator {
     if (expr_subst_map_it != expr_subst_map_.end()) {
       return (*expr_subst_map_it).second;
     }
-    return expr;
-  }  
+    std::ostringstream strout;
+    strout << expr;
+    std::string expr_str = strout.str();
+    for (const std::pair<PrimExpr, IntImm>& kv : expr_subst_map_) {
+      strout.str("");
+      strout.clear();
+      strout << kv.first;
+      std::string k_str = strout.str();
+      if (expr_str == k_str) {
+        LOG(WARNING) << "Despite not sharing the same address, expr=" << expr
+                     << " and key=" << k_str << " are still deemed equal";
+        return kv.second;
+      }
+    }
+    return StmtExprMutator::VisitExpr(expr);
+  }
 };
 
 
@@ -1418,7 +1440,8 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
 
   *pstate = InferBound(*pstate);
   // check all the tensors
-  LOG(INFO) << "ComputeDAG has tensors=" << ArrayToString(operator->()->tensors);
+  // LOG(INFO) << "ComputeDAG has tensors="
+  //           << ArrayToString(operator->()->tensors);
 
   Map<PrimExpr, IntImm> axes_to_extent;
   bool is_first_spatial_axis = true;
@@ -1438,11 +1461,11 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
           for (const Iterator& iter : iters_w_same_prefix) {
             extent *= GetIntImm(iter->range->extent);
           }
-          LOG(INFO) << "iter=" << iter << " w/ extent=" << extent;
+          // LOG(INFO) << "iter=" << iter << " w/ extent=" << extent;
 
           Iterator init_iter =
               FindIterInInitState(operator->()->init_state, iter);
-          LOG(INFO) << "init_iter=" << init_iter;
+          // LOG(INFO) << "init_iter=" << init_iter;
           if (iter->iter_kind == IteratorKind::kSpatial) {
             if (is_first_spatial_axis) {
               is_first_spatial_axis = false;
@@ -1465,10 +1488,10 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     }    // if (StrEndsWith(stage->op->name, ".local"))
   }      // for (stage ∈ (*pstate)->stages)
 
-  for (const std::pair<PrimExpr, IntImm> axis_to_extent : axes_to_extent) {
-    LOG(INFO) << "axis=" << axis_to_extent.first << " : "
-                 "extent=" << axis_to_extent.second;
-  }
+  // for (const std::pair<PrimExpr, IntImm> axis_to_extent : axes_to_extent) {
+  //   LOG(INFO) << "axis=" << axis_to_extent.first << " : "
+  //                "extent=" << axis_to_extent.second;
+  // }
   SyntheticExprReplacer synthetic_expr_replacer(axes_to_extent);
 
   for (const te::Tensor& t : operator->()->tensors) {
@@ -1482,20 +1505,18 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
         synthetic_shape.push_back(expr);
       }
     }
-    LOG(INFO) << "Synthetic shape=" << ArrayToString(synthetic_shape);
+    // LOG(INFO) << "Synthetic shape=" << ArrayToString(synthetic_shape);
     // 2. ComputeOp
-    LOG(INFO) << t->op;
-
     te::Operation synthetic_op;
 
     const te::ComputeOpNode* compute_op_node = t->op.as<te::ComputeOpNode>();
     const te::PlaceholderOpNode* placeholder_op_node =
         t->op.as<te::PlaceholderOpNode>();
     if (compute_op_node != nullptr) {
-      te::ComputeOp compute_op = GetRef<te::ComputeOp>(compute_op_node);
       Array<IterVar>  synthetic_axis;
       Array<PrimExpr> synthetic_body;
-      for (const IterVar& iv : compute_op->axis) {
+      Map<String, ObjectRef> synthetic_attrs;
+      for (const IterVar& iv : compute_op_node->axis) {
         synthetic_axis.push_back(
             tir::IterVar(Range::FromMinExtent(synthetic_expr_replacer(iv->dom->min),
                                               synthetic_expr_replacer(iv->dom->extent)),
@@ -1504,14 +1525,15 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
                          iv->thread_tag
                          ));
       }
-      for (const PrimExpr& expr : compute_op->body) {
+      for (const PrimExpr& expr : compute_op_node->body) {
         synthetic_body.push_back(synthetic_expr_replacer(expr));
       }
-      LOG(INFO) << "Synthetic axis=" << ArrayToString(synthetic_axis) << ", "
-                             "body=" << ArrayToString(synthetic_body);
+      // LOG(INFO) << "Synthetic axis=" << ArrayToString(synthetic_axis);
+      // LOG(INFO) << "Synthetic body=" << ArrayToString(synthetic_body);
 
-      synthetic_op = te::ComputeOp(compute_op->name, compute_op->tag, 
-                                   compute_op->attrs, synthetic_axis,
+      synthetic_op = te::ComputeOp(compute_op_node->name,
+                                   compute_op_node->tag, 
+                                   compute_op_node->attrs, synthetic_axis,
                                    synthetic_body);
     } else if (placeholder_op_node != nullptr) {
       synthetic_op = te::PlaceholderOp(placeholder_op_node->name,
@@ -1519,6 +1541,8 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
                                        placeholder_op_node->dtype);
     }
     CHECK(synthetic_op.defined());
+    // LOG(INFO) << "Original op=" << t->op << " vs.";
+    // LOG(INFO) << "Synthetic op=" << synthetic_op;
     synthetic_tensors_to_ret.push_back(te::Tensor(synthetic_shape, t->dtype,
                                                   synthetic_op,
                                                   t->value_index));

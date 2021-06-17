@@ -28,11 +28,12 @@ namespace tvm {
 namespace te {
 
 // PlaceholderOpNode
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<PlaceholderOpNode>([](const ObjectRef& node, ReprPrinter* p) {
-      auto* op = static_cast<const PlaceholderOpNode*>(node.get());
-      p->stream << "placeholder(" << op->name << ", " << op << ")";
-    });
+// <bojian/DietCode>
+// TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+//     .set_dispatch<PlaceholderOpNode>([](const ObjectRef& node, ReprPrinter* p) {
+//       auto* op = static_cast<const PlaceholderOpNode*>(node.get());
+//       p->stream << "placeholder(" << op->name << ", " << op << ")";
+//     });
 
 TVM_REGISTER_NODE_TYPE(PlaceholderOpNode);
 
