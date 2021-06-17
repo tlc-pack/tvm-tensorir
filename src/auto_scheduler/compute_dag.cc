@@ -52,6 +52,7 @@
 #include "utils.h"
 
 // <bojian/DietCode>
+#include <tvm/driver/driver_api.h>
 #include <tvm/tir/dynamic_axis_functor.h>
 
 
@@ -1404,7 +1405,20 @@ class SyntheticExprReplacer : public StmtExprMutator {
  private:
   Map<PrimExpr, IntImm> expr_subst_map_;
 
+  PrimExpr VisitExpr_(const ProducerLoadNode* op) override {
+    auto producer_subst_map_it = producer_subst_map.find(op->producer);
+    if (producer_subst_map_it != producer_subst_map.end()) {
+      // LOG(INFO) << "Replacing " << op->producer << " w/ "
+      //           << (*producer_subst_map_it).second;
+      return ProducerLoad((*producer_subst_map_it).second,
+                          op->indices);
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
  public:
+  Map<DataProducer, te::Tensor> producer_subst_map;
+
   SyntheticExprReplacer(const Map<PrimExpr, IntImm>& expr_subst_map)
       : expr_subst_map_(expr_subst_map) {}
   PrimExpr VisitExpr(const PrimExpr& expr) override {
@@ -1434,9 +1448,9 @@ class SyntheticExprReplacer : public StmtExprMutator {
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     State* const pstate, const HardwareParams& hardware_params,
-    const Array<Step>& transform_steps, Array<te::Stage>* stages,
-    StageToAxesMap* stage_to_axes) const {
-  Array<te::Tensor> synthetic_tensors_to_ret;
+    // const Array<Step>& transform_steps,
+    Array<te::Stage>* stages, StageToAxesMap* stage_to_axes) const {
+  Array<te::Tensor> synthetic_tensors;
 
   *pstate = InferBound(*pstate);
   // check all the tensors
@@ -1543,34 +1557,49 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     CHECK(synthetic_op.defined());
     // LOG(INFO) << "Original op=" << t->op << " vs.";
     // LOG(INFO) << "Synthetic op=" << synthetic_op;
-    synthetic_tensors_to_ret.push_back(te::Tensor(synthetic_shape, t->dtype,
-                                                  synthetic_op,
-                                                  t->value_index));
+    synthetic_tensors.push_back(te::Tensor(synthetic_shape, t->dtype,
+                                           synthetic_op, t->value_index));
+    synthetic_expr_replacer.producer_subst_map.Set(t, synthetic_tensors.back());
   }
 
-  LOG(FATAL) << "Implementation is not completed yet";
-
+  AccessAnalyzer synthetic_access_analyzer = AccessAnalyzer(synthetic_tensors);
   Array<te::Operation> out_ops;
-  for (const auto& op : operator->()->ops) {
-    if (operator->()->access_analyzer.IsOutput(op)) {
+  for (const te::Operation& op : synthetic_access_analyzer->ops_topo_order) {
+    if (synthetic_access_analyzer.IsOutput(op)) {
       out_ops.push_back(op);
     }
   }
-  te::Schedule schedule = te::create_schedule(out_ops);
+  te::Schedule synthetic_sch = te::create_schedule(out_ops);
+  // LOG(INFO) << lower(synthetic_sch, synthetic_tensors, "main", {});
 
-  for (const auto& x : operator->()->ops) {
-    const te::Stage& stage = schedule[x];
+  // Array<te::Operation> synthetic_ops;
+  // Array<te::Stage>     synthetic_stages;
+  // for (const te::Stage& stage : synthetic_sch->stages) {
+  //   synthetic_ops.push_back(stage->op);
+  // }
+  // for (const te::Operation& op : synthetic_ops) {
+  //   const te::Stage& stage = synthetic_sch[op];
+  //   stages->push_back(stage);
+  //   UpdateStageToAxesMap(stage, stage_to_axes);
+  // }
+  for (const te::Stage& stage : synthetic_sch->stages) {
     stages->push_back(stage);
     UpdateStageToAxesMap(stage, stage_to_axes);
+    // LOG(INFO) << "Updating stage=" << stage;
   }
 
-  // Apply the history steps to TVM schedule
-  // Call each step's ApplyToSchedule method
-  for (const auto& step : transform_steps) {
-    StepApplyToSchedule(step, stages, stage_to_axes, &schedule, transform_steps);
-  }
+  // LOG(INFO) << "Finished updating stages";
+  // LOG(INFO) << "transform_steps.size()=" << (*pstate)->transform_steps.size();
 
-  return std::make_pair(schedule, operator->()->tensors);
+  for (const Step& step : (*pstate)->transform_steps) {
+    // LOG(INFO) << "Applying step=" << step;
+    StepApplyToSchedule(step, stages, stage_to_axes, &synthetic_sch,
+                        (*pstate)->transform_steps);
+  }
+  // LOG(INFO) << "Finished applying the transformation steps";
+  // LOG(INFO) << lower(synthetic_sch, synthetic_tensors, "main", {});
+  // LOG(FATAL) << "Finished generating synthetic schedule";
+  return std::make_pair(synthetic_sch, synthetic_tensors);
 }
 
 
@@ -1596,11 +1625,13 @@ State ComputeDAG::InferBoundOnSyntheticWorkload(
   te::Schedule sch;
   Array<te::Tensor> tensors;
 
-  LOG(INFO) << "Generating synthetic workloads";
+  LOG(INFO) << "Generating synthetic workloads ...";
+            // << pstate->transform_steps.size()
+            // << " transformation steps";
 
   std::tie(sch, tensors) =
       GenerateSyntheticWorkloadAndApplySteps(&ret_state, hardware_params,
-                                             pstate->transform_steps,
+                                             // pstate->transform_steps,
                                              &stages, &stage_to_axes);
   return ret_state;
 }
@@ -1627,6 +1658,9 @@ Array<State> ComputeDAG::InferBoundOnSyntheticWorkload(
     // }
   }
   // );
+
+  LOG(INFO) << "Finished the bound inference";
+
   return out_states;
 }
 
