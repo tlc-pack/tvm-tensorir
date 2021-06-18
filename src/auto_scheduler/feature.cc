@@ -1262,14 +1262,29 @@ void GetPerStoreFeatureName(int max_n_bufs, std::vector<std::string>* ret) {
   // section total : 3
 }
 
+bool is_1st_state_to_extract_feature;
+
 void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, int max_n_bufs,
                                    std::vector<float>* feature, std::atomic<int>* error_ct) {
   te::Schedule sch;
   Array<te::Tensor> tensors;
 
-  std::tie(sch, tensors) = task->compute_dag.ApplySteps(state->transform_steps);
+  // <bojian/DietCode> Use synthetic workloads in the case of dynamic workloads.
+  // std::tie(sch, tensors) =
+  //     task->compute_dag.ApplySteps(state->transform_steps);
+  // sch = sch.normalize_for_feature_extraction();
+  // auto bounds = te::InferBound(sch);
+  if (IsDynTask(task)) {
+    State state_mutable_copy = state;
+    std::tie(sch, tensors) =
+        task->compute_dag.GenerateSyntheticWorkloadAndApplySteps(
+          &state_mutable_copy, task->hardware_params);
+  } else {
+    std::tie(sch, tensors) =
+        task->compute_dag.ApplySteps(state->transform_steps);
+  }
   sch = sch.normalize_for_feature_extraction();
-  auto bounds = te::InferBound(sch);
+  Map<IterVar, Range> bounds = te::InferBound(sch);
 
   try {
     auto stmt = te::ScheduleOps(sch, bounds, false);
@@ -1323,6 +1338,12 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
     const auto& optimize =
         tir::transform::Sequential(Array<tvm::transform::Pass>{tir::transform::Simplify()});
     mod = optimize(std::move(mod));
+
+    // <bojian/DietCode>
+    if (is_1st_state_to_extract_feature) {
+      LOG(INFO) << "Post-Optimization Module=" << mod;
+    }
+
     const auto& it = mod->functions.find(global_var);
     ICHECK(it != mod->functions.end());
     const auto& prim_func = (*it).second.as<PrimFuncNode>();
@@ -1341,11 +1362,21 @@ void GetPerStoreFeaturesFromStates(const Array<State>& states, const SearchTask&
 
   std::atomic<int> error_ct(0);
 
-  support::parallel_for(skip_first_n_feature_extraction, states.size(),
-                        [&task, &states, &max_n_bufs, &features, &error_ct](int i) {
-                          GetPerStoreFeaturesWorkerFunc(task, states[i], max_n_bufs,
-                                                        &(*features)[i], &error_ct);
-                        });
+  LOG(WARNING) << "Parallel feature extraction has been made sequential";
+
+  is_1st_state_to_extract_feature = true;
+  GetPerStoreFeaturesWorkerFunc(task, states[skip_first_n_feature_extraction], max_n_bufs,
+                                &(*features)[skip_first_n_feature_extraction], &error_ct);
+  is_1st_state_to_extract_feature = false;
+  support::parallel_for(
+      skip_first_n_feature_extraction + 1, states.size(),
+  // for (size_t i = skip_first_n_feature_extraction + 1; i < states.size(); ++i) {
+      [&task, &states, &max_n_bufs, &features, &error_ct](int i) {
+        GetPerStoreFeaturesWorkerFunc(task, states[i], max_n_bufs,
+                                      &(*features)[i], &error_ct);
+      }
+  // }
+  );
 }
 
 void GetPerStoreFeaturesFromStates(const Array<State>& states, const std::vector<SearchTask>& tasks,

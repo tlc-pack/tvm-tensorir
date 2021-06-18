@@ -1444,6 +1444,7 @@ class SyntheticExprReplacer : public StmtExprMutator {
   }
 };
 
+extern bool is_1st_state_to_extract_feature;
 
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
@@ -1451,6 +1452,15 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     // const Array<Step>& transform_steps,
     Array<te::Stage>* stages, StageToAxesMap* stage_to_axes) const {
   Array<te::Tensor> synthetic_tensors;
+
+  Array<te::Stage> tmp_stages;
+  StageToAxesMap   tmp_stage_to_axes;
+  if (stages == nullptr) {
+    stages = &tmp_stages;
+  }
+  if (stage_to_axes == nullptr) {
+    stage_to_axes = &tmp_stage_to_axes;
+  }
 
   *pstate = InferBound(*pstate);
   // check all the tensors
@@ -1597,7 +1607,9 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
                         (*pstate)->transform_steps);
   }
   // LOG(INFO) << "Finished applying the transformation steps";
-  // LOG(INFO) << lower(synthetic_sch, synthetic_tensors, "main", {});
+  if (is_1st_state_to_extract_feature) {
+    LOG(INFO) << lower(synthetic_sch, synthetic_tensors, "main", {});
+  }
   // LOG(FATAL) << "Finished generating synthetic schedule";
   return std::make_pair(synthetic_sch, synthetic_tensors);
 }
@@ -1641,7 +1653,7 @@ Array<State> ComputeDAG::InferBoundOnSyntheticWorkload(
     const Array<State>& states, const HardwareParams& hardware_params) const {
   Array<State> out_states(states.size(), State());
 
-  LOG(WARNING) << "Parallel InferBound has been made sequential";
+  // LOG(WARNING) << "Parallel InferBound has been made sequential";
   support::parallel_for(0, states.size(),
                         [this, &states, &out_states, &hardware_params](const size_t i) {
   // for (size_t i = 0; i < states.size(); ++i) {
@@ -1659,8 +1671,7 @@ Array<State> ComputeDAG::InferBoundOnSyntheticWorkload(
     }
   }
   );
-  LOG(FATAL) << "Finished the bound inference";
-
+  // LOG(FATAL) << "Finished the bound inference";
   return out_states;
 }
 
