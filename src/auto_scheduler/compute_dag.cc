@@ -1495,13 +1495,16 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
               is_first_spatial_axis = false;
               axes_to_extent.Set(init_iter->range->extent,
                                  IntImm(DataType::Int(32),
-                                        extent * hardware_params->num_cores)
+                                        2 * extent * hardware_params->num_cores)
                                  );
             } else {
               axes_to_extent.Set(init_iter->range->extent,
                                  IntImm(DataType::Int(32), extent));
             }
           } else if (iter->iter_kind == IteratorKind::kReduction) {
+            
+
+
             axes_to_extent.Set(init_iter->range->extent,
                                IntImm(DataType::Int(32), extent));
           } else {
