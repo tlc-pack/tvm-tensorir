@@ -79,7 +79,7 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
             # float math ops
             0, 27, 27, 0, 0, 0, 0,
             # int math ops
-            0, 0, 0, 0, 0, 0, 0,
+            0, 29, 29, 0, 0, 0, 0,
             # bool/select ops
             0, 0,
         ],
@@ -469,8 +469,8 @@ def test_meta_schedule_per_block_feature_gpu():
     def _check_shared_read(feature, outer_prod, read_feature, write_feature):
         # float/int/bool/select ops, vectorize/unroll/parallel
         assert_allclose(
-            actual=feature[0:49],
-            desired=[0] * 16 + [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] * 3,
+            actual=feature[16:49],
+            desired=[0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] * 3,
             rtol=1e-5,
             atol=1e-5,
         )
@@ -533,7 +533,9 @@ def test_meta_schedule_per_block_feature_gpu():
         assert_allclose(
             actual=read,
             # fmt: off
-            desired=[1, 0, 0, 20, 20, 14, 14, 0, 1, 0, 9.002815, 17.754894, 1, 20, 20, 14, 14, 1],
+            desired=[1.      ,  0.      ,  0.      , 20.000001, 11.000704, 14.000088,
+                     5.044394,  1.      ,  0.      ,  0.      ,  9.002815, 12.000352,
+                     4.087463, 16.000022,  7.011227, 10.001408,  1.584963,  1.],
             # fmt: on
             rtol=1e-5,
             atol=1e-5,
@@ -565,7 +567,11 @@ def test_meta_schedule_per_block_feature_gpu():
         # float/int/bool/select ops, vectorize/unroll/parallel
         assert_allclose(
             actual=feature[0:49],
-            desired=[0, 27, 27] + [0] * 13 + [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] * 3,
+            desired=[0, 27, 27]
+            + [0] * 4
+            + [0, 28, 28]
+            + [0] * 6
+            + [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] * 3,
             rtol=1e-5,
             atol=1e-5,
         )
@@ -575,16 +581,16 @@ def test_meta_schedule_per_block_feature_gpu():
         assert_allclose(
             actual=feature[146:156],
             desired=[
-                0.7097842693328857,
-                0.7548801898956299,
-                0.8775907158851624,
-                0.9820981025695801,
-                1.0400605201721191,
-                1.0980229377746582,
-                1.1437791585922241,
-                1.1447784900665283,
-                1.234665036201477,
-                1.2971993684768677,
+                0.709784,
+                0.75488,
+                0.877591,
+                0.995739,
+                1.244674,
+                1.493608,
+                1.70931,
+                1.803158,
+                1.984183,
+                2.204648,
             ],
             rtol=1e-5,
             atol=1e-5,
@@ -618,8 +624,8 @@ def test_meta_schedule_per_block_feature_gpu():
             actual=buffer_feature_dict[a_name],
             # fmt: off
             desired=[
-                1, 0, 0, 29, 20, 19, 14, 1, 0, 0, 1,
-                3.70044, 4.0874629, 25, 16, 15, 10.001409, 0.0,
+                1, 0, 0, 29, 12.000352, 19, 9.002815, 1, 0, 0, 1,
+                3.70044, 4.0874629, 25, 8.005625, 15, 5.044394, 0.0,
             ],
             # fmt: on
             rtol=1e-5,
@@ -629,8 +635,8 @@ def test_meta_schedule_per_block_feature_gpu():
             actual=buffer_feature_dict[b_name],
             # fmt: off
             desired=[
-                1, 0, 0, 29, 20, 23, 14, 1, 0, 0, 5.044394,
-                7.6510515, 5.044394, 24, 15, 18, 9.0028152, 1,
+                1, 0, 0, 29, 9.002815, 23, 3.169925, 1, 0, 0, 5.044394,
+                7.6510515, 5.044394, 24, 4.087463, 18, 0.321928, 1,
             ],
             # fmt: on
             rtol=1e-5,
@@ -640,8 +646,8 @@ def test_meta_schedule_per_block_feature_gpu():
             actual=buffer_feature_dict[c_name],
             # fmt: off
             desired=[
-                0, 0, 1, 29, 20, 23, 14, 1, 0, 0, 4.0874629,
-                7.0552821, 1.5849625, 28, 19, 22, 13.000176, 1,
+                0, 0, 1, 29, 11.000704, 23, 5.044394, 1, 0, 0, 4.0874629,
+                7.0552821, 1.5849625, 28, 10.001408, 22, 4.087463, 1,
             ],
             # fmt: on
             rtol=1e-5,
@@ -666,10 +672,11 @@ def test_meta_schedule_per_block_feature_gpu():
         outer_prod=27.0,
         # fmt: off
         read_feature=[
-            1, 0, 0, 29, 20, 23, 14, 1, 0, 0, 18, 21, 4.0874629, 25, 16, 19, 10.0014086, 1,
+            1, 0, 0, 29, 20, 23, 14, 1, 0, 0, 18, 20.005626, 4.0874629, 25, 16, 19, 10.0014086, 1,
         ],
         write_feature=[
-            0, 1, 0, 29, 20, 23, 14, 1, 0, 0, 18, 21, 4.0874629, 25, 16, 19, 10.0014086, 1,
+            0, 1, 0, 29, 12.000352, 23, 9.002815, 1, 0, 0, 10.001408, 13.000176, 8.005625, 21, 4.087463, 15,
+            1.584963, 1,
         ],
         # fmt: on
     )
@@ -679,11 +686,11 @@ def test_meta_schedule_per_block_feature_gpu():
         # fmt: off
         read_feature=[
             1, 0, 0, 26, 20, 20, 14, 1, 0, 0, 15,
-            21.169926, 4.0874629, 22, 16, 16, 10.0014086, 1,
+            20.175551, 4.0874629, 22, 16, 16, 10.0014086, 1,
         ],
         write_feature=[
-            0, 1, 0, 26, 20, 20, 14, 1, 0, 0, 15,
-            21.169926, 4.087463, 22, 16, 16, 10.0014086, 1,
+            0, 1, 0, 26, 9.002815, 20, 3.169925, 1, 0, 0, 7.011227,
+            10.001408, 8.005625, 18, 1.584963, 12.000352, 0.044394, 1,
         ],
         # fmt: on
     )
