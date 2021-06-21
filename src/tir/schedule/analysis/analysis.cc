@@ -74,11 +74,12 @@ Definition of a scope that is a stage pipeline:
   } else {
     throw RootBlockError(self->mod);
   }
-  bool stage_pipeline = self->GetBlockInfo(scope_root_sref).scope->stage_pipeline;
-  if (stage_pipeline == false) {
-    const BlockNode* block = TVM_SREF_TO_BLOCK(block, scope_root_sref);
-    throw NotStagePipelineError(self->mod, GetRef<Block>(block));
-  }
+  // TODO: add it back
+  // bool stage_pipeline = self->GetBlockInfo(scope_root_sref).scope->stage_pipeline;
+  // if (stage_pipeline == false) {
+  //   const BlockNode* block = TVM_SREF_TO_BLOCK(block, scope_root_sref);
+  //   throw NotStagePipelineError(self->mod, GetRef<Block>(block));
+  // }
   return scope_root_sref;
 }
 
