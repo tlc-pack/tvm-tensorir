@@ -185,6 +185,9 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
   } else {
     int num_random =
         static_cast<int>(GetDoubleParam(params, SketchParamKey::eps_greedy) * num_measure_per_iter);
+
+    LOG(INFO) << "num_random=" << num_random;
+
     early_stopping = early_stopping < 0 ? std::numeric_limits<int>::max() >> 1 : early_stopping;
     measurer->Reset();
 
@@ -210,8 +213,8 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
 
       if (IsDynTask(this->search_task)) {
         LOG(FATAL) << "Number of states after pruning: "
-                      "best_states.size()" << best_states.size() << ", "
-                      "random_states.size()" << random_states.size();
+                      "best_states.size()=" << best_states.size() << ", "
+                      "random_states.size()=" << random_states.size();
       }
 
       // Infer bound. This is necessary for computing the correct ToStr() for redundancy check
