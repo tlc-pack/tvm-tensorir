@@ -125,6 +125,7 @@ void SetSeqIndex(ScheduleStateNode* self, const Stmt& stmt, int seq_index) {
   } else if (const auto* loop = stmt.as<ForNode>()) {
     ICHECK(self->stmt2ref.count(loop));
     self->stmt2ref.at(loop)->seq_index = seq_index;
+  } else {
     // do nothing
   }
 }
@@ -204,7 +205,7 @@ class StateCreator : private StmtVisitor {
     n->mod = std::move(mod);
     // Set `n->debug_mode`
     n->debug_mode = debug_mode;
-    // Set `n->stmt2ref` and `n->block_scopes`
+    // Set `n->stmt2ref` and `n->block_info`
     StateCreator creator(self);
     for (const auto& kv : n->mod->functions) {
       const BaseFunc& base_func = kv.second;
@@ -450,10 +451,10 @@ ScheduleState::ScheduleState(PrimFunc func, int debug_mode)
 
 /*
  * The goal of the replacement algorithm is to substitute a subtree `src_stmt` of the AST to a new
- * subtree `tgt_stmt`, and maintain the corresponding sref tree accordingly, with some srefs
- * reused, so that the srefs users hold doesn't expire. For example, if we split a loop into 2,
- * and the original loop has a child block, then the sref to the child block should be reused, so
- * that users won't have to acquire that sref again.
+ * subtree `tgt_stmt`, and maintain the corresponding sref tree accordingly, with some srefs reused,
+ * so that the srefs users hold doesn't expire. For example, if we split a loop into 2, and the
+ * original loop has a child block, then the sref to the child block should be reused, so that users
+ * won't have to acquire that sref again.
  *
  * The workflow of the replacement algorithm is:
  * 1) Detect all possible reuses in class ReuseInfo
@@ -1037,7 +1038,8 @@ void ScheduleStateNode::DebugVerify() const {
     VerifySRefTree(GetRef<ScheduleState>(this));
   }
   if (flag & ScheduleDebugMask::kVerifyCachedFlags) {
-    VerifyCachedFlags(GetRef<ScheduleState>(this));
+    // TODO: the verification is turned off for now
+    // VerifyCachedFlags(GetRef<ScheduleState>(this));
   }
 }
 
@@ -1076,7 +1078,6 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetBlockScope")
     .set_body_method<ScheduleState>(&ScheduleStateNode::GetBlockScope);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateReplace")
     .set_body_method<ScheduleState>(&ScheduleStateNode::Replace);
-
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetSRef")
     .set_body_typed([](ScheduleState self, Stmt stmt) -> Optional<StmtSRef> {
       auto it = self->stmt2ref.find(stmt.get());

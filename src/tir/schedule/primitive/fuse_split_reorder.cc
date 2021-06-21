@@ -16,13 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "../analysis.h"
 #include "../utils.h"
-#include "./primitives.h"
 
 namespace tvm {
 namespace tir {
-namespace schedule {
 
 /*! \brief Append a new predicate to the each children of type BlockRealize */
 class PredicateUpdater : public StmtMutator {
@@ -62,8 +59,7 @@ class BlockRealizeRewriter : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
-    auto v =
-        arith::IterMapSimplify(op->iter_values, loop_map_, op->predicate, false);
+    auto v = arith::IterMapSimplify(op->iter_values, loop_map_, op->predicate, false);
     if (v.same_as(op->iter_values)) {
       return GetRef<Stmt>(op);
     } else {
@@ -259,7 +255,7 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& order) {
   std::unordered_map<const StmtSRefNode*, const StmtSRefNode*> successor;
   // Gather all the loops under parent_block
   int n_loops_not_found = order.size();
-  for (const StmtSRefNode* loop : GetLoopsPostOrder(self, GetScopeRoot(order[0]))) {
+  for (const StmtSRefNode* loop : GetLoopsPostOrder(self, GetScopeRoot(order[0]).value())) {
     bool is_in_reorder_list = loops.count(loop);
     bool has_inner_loop = successor.count(loop);
     if (is_in_reorder_list || has_inner_loop) {
@@ -315,6 +311,103 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& order) {
   self->Replace(GetRef<StmtSRef>(top), f_reorder(top, 0), {});
 }
 
-}  // namespace schedule
+struct FuseTraits : public UnpackedInstTraits<FuseTraits> {
+  static constexpr const char* kName = "Fuse";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  template <size_t delta, class TObjectRef>
+  static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
+                                           const Array<TObjectRef>& inputs) {
+    setter(delta, inputs);
+  }
+
+  static LoopRV UnpackedApplyToSchedule(Schedule sch, Array<LoopRV> loop_rvs) {
+    return sch->Fuse(loop_rvs);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, Array<String> loop_rv) {
+    PythonAPICall py("fuse");
+    py.InputList("loop", loop_rv);
+    py.Output(outputs[0]);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct SplitTraits : public UnpackedInstTraits<SplitTraits> {
+  static constexpr const char* kName = "Split";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 2;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  template <size_t delta, class TObjectRef>
+  static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
+                                           const Array<TObjectRef>& inputs) {
+    setter(delta, inputs[0]);
+    setter(delta + 1, Array<ObjectRef>{inputs.begin() + 1, inputs.end()});
+  }
+
+  static Array<LoopRV> UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv,
+                                               Array<Optional<ExprRV>> factors) {
+    return sch->Split(loop_rv, factors);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Array<String> factors) {
+    PythonAPICall py("split");
+    py.Input("loop", loop_rv);
+    py.InputList("factors", factors);
+    py.Outputs(outputs);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct ReorderTraits : public UnpackedInstTraits<ReorderTraits> {
+  static constexpr const char* kName = "Reorder";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  template <size_t delta, class TObjectRef>
+  static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
+                                           const Array<TObjectRef>& inputs) {
+    setter(delta, inputs);
+  }
+
+  static void UnpackedApplyToSchedule(Schedule sch, Array<LoopRV> loop_rvs) {
+    return sch->Reorder(loop_rvs);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, Array<String> loop_rvs) {
+    PythonAPICall py("reorder");
+    for (const String& loop_rv : loop_rvs) {
+      py.Input("", loop_rv);
+    }
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND(FuseTraits);
+TVM_REGISTER_INST_KIND(SplitTraits);
+TVM_REGISTER_INST_KIND(ReorderTraits);
+
 }  // namespace tir
 }  // namespace tvm

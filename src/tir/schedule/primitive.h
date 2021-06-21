@@ -16,15 +16,44 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef TVM_TIR_SCHEDULE_PRIMITIVE_H_
-#define TVM_TIR_SCHEDULE_PRIMITIVE_H_
+#ifndef TVM_TIR_SCHEDULE_PRIMITIVES_PRIMITIVES_H_
+#define TVM_TIR_SCHEDULE_PRIMITIVES_PRIMITIVES_H_
 
-#include <tvm/tir/schedule/state.h>
+#include <tvm/tir/schedule/schedule.h>
+
+#include <vector>
 
 namespace tvm {
 namespace tir {
 
-/******** Schedule: loops manipulation ********/
+
+class Sampler;
+
+/******** Schedule: Sampling ********/
+
+TVM_DLL std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler,
+                                               const tir::StmtSRef& loop_sref, int n,
+                                               int max_innermost_factor,
+                                               Optional<Array<Integer>>* decision);
+TVM_DLL int64_t SampleCategorical(tir::ScheduleState self, Sampler* sampler,
+                                  const Array<Integer>& candidates, const Array<FloatImm>& probs,
+                                  Optional<Integer>* decision);
+TVM_DLL tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, Sampler* sampler,
+                                            const tir::StmtSRef& block_sref,
+                                            Optional<Integer>* decision);
+
+/******** Schedule: Get blocks & loops ********/
+
+TVM_DLL Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name,
+                                  const String& func_name = "main");
+TVM_DLL Array<StmtSRef> GetLoops(const StmtSRef& block_sref);
+TVM_DLL Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
+                                       bool inclusive = false);
+TVM_DLL Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref);
+TVM_DLL Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref);
+
+/******** Schedule: Transform loops ********/
+
 /*!
  * Split a loop into a list of consecutive loops. It requires:
  * 1) The loop can't have annotation or thread binding.
@@ -46,7 +75,28 @@ TVM_DLL Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
  * \return The sref to the fused loop
  */
 TVM_DLL StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs);
-/******** Schedule: compute location ********/
+TVM_DLL void Reorder(ScheduleState self, const Array<StmtSRef>& order);
+
+/******** Schedule: Manipulate ForKind ********/
+
+TVM_DLL void Parallel(ScheduleState self, const StmtSRef& loop_sref);
+TVM_DLL void Vectorize(ScheduleState self, const StmtSRef& loop_sref);
+TVM_DLL void Unroll(ScheduleState self, const StmtSRef& loop_sref);
+TVM_DLL void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread);
+
+/******** Schedule: Insert cache stages ********/
+
+TVM_DLL StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int i,
+                           const String& storage_scope);
+TVM_DLL StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
+                            const String& storage_scope);
+/******** Schedule: Compute location ********/
+
+TVM_DLL void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& loop_sref,
+                       bool preserve_unit_loop);
+TVM_DLL void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref,
+                              const StmtSRef& loop_sref, bool preserve_unit_loop);
+
 /*!
  * \brief Inline a block into its consumer(s). It requires:
  * 1) The block is a complete non-root block, which only produces one buffer
@@ -73,15 +123,39 @@ TVM_DLL void ComputeInline(ScheduleState self, const StmtSRef& block_sref);
  */
 TVM_DLL void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref);
 
-/******** Schedule: loop binding/annotation ********/
+/******** Schedule: Reduction ********/
 
-/******** Schedule: cache read/write ********/
+TVM_DLL StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis);
+TVM_DLL StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
+                                    const Optional<StmtSRef>& loop_sref);
+TVM_DLL void MergeReduction(ScheduleState self, const StmtSRef& init_sref,
+                            const StmtSRef& update_sref);
 
-/******** Schedule: reduction ********/
+/******** Schedule: Blockize & Tensorize ********/
 
-/******** Schedule: blockize & tensorize ********/
+TVM_DLL StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref);
+TVM_DLL void Tensorize(ScheduleState self, const StmtSRef& loop_sref,
+                       const TensorIntrin& intrinsic);
+
+/******** Schedule: Annotation ********/
+
+TVM_DLL void MarkLoop(ScheduleState self, const StmtSRef& loop_sref, const String& ann_key,
+                      const PrimExpr& ann_val);
+TVM_DLL void MarkBlock(ScheduleState self, const StmtSRef& block_sref, const String& ann_key,
+                       const PrimExpr& ann_val);
+TVM_DLL void Pragma(ScheduleState self, const StmtSRef& loop_sref, const String& pragma_type,
+                    const PrimExpr& pragma_value);
+
+/******** Schedule: Misc ********/
+
+TVM_DLL void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref);
+TVM_DLL void SetScope(ScheduleState self, const StmtSRef& block_sref, int i,
+                      const String& storage_scope);
+TVM_DLL void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
+                          int axis, int factor, int offset);
+TVM_DLL void InlineArgument(ScheduleState self, int i, const String& func_name);
 
 }  // namespace tir
 }  // namespace tvm
 
-#endif  // TVM_TIR_SCHEDULE_PRIMITIVE_H_
+#endif  // TVM_TIR_SCHEDULE_PRIMITIVES_PRIMITIVES_H_

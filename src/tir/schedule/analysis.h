@@ -19,12 +19,13 @@
 #ifndef TVM_TIR_SCHEDULE_ANALYSIS_H_
 #define TVM_TIR_SCHEDULE_ANALYSIS_H_
 
+#include <tvm/arith/analyzer.h>
 #include <tvm/tir/schedule/state.h>
+
+#include "../../runtime/thread_storage_scope.h"
 
 namespace tvm {
 namespace tir {
-
-class PrimFuncNode;
 
 /******** Verification ********/
 /*!
@@ -121,35 +122,78 @@ Map<Var, Range> LoopDomainOfSRefTreePath(const StmtSRef& low_inclusive,
  */
 Map<Var, PrimExpr> GetBindings(const BlockRealize& realize);
 
-/******** Block-loop relation ********/
 /*!
- * \brief Retrieves blocks in a specific function with its name
+ * \brief Checks if scope the specified sref is in is a stage-pipeline and return it
+ * \param prim The name of the schedule primitive
  * \param self The schedule state
- * \param name The name of the blocks to be retrieved
- * \param func_name The name of the function
- * \return A list of blocks with the specific name
+ * \param sref The sref whose scope is to be checked
+ * \throw ScheduleError if the sref has been the root of the AST (so it has no scope root), or its
+ * scope root is not a stage pipeline
+ * \return The block sref to the scope root
  */
-Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name, const String& func_name = "main");
+StmtSRef GetScopeRootAndCheckStagePipeline(const ScheduleState& self, const StmtSRef& sref);
+
 /*!
- * \brief Gets the parent loops of the block in its scope, from outer to inner
+ * \brief Checks whether the block is a complete block under the scope
  * \param self The schedule state
- * \param block_sref The query block
- * \return A list of loops above the given block in its scope, from outer to inner
+ * \param block_sref The block to be checked
+ * \param scope_root The sref to the root block of the scope that `block_sref` is in
+ * \return A boolean indicating if the block is a complete block
+ * \note Definition of a complete block:
+ * 1) All block vars are data parallel
+ * 2) Dominant: the block is the only writer of its output,
+ * dominating the reader of its output buffers
+ * 3) No overlap between the buffers the block reads and writes
  */
-Array<StmtSRef> GetLoops(const StmtSRef& block_sref);
+bool IsCompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
+                     const StmtSRef& scope_root);
+
 /*!
- * \brief Gets the leaf blocks of a scope where a specific block/loop is in
+ * \brief Checks if the block is a complete block
  * \param self The schedule state
- * \param parent_sref The StmtSRef that points to the parent block/loop
- * \return A list of leaf blocks
+ * \param block_sref The sref to the block whose completeness is to be checked
+ * \param scope_root_sref The scope root of the block
+ * \throw ScheduleError If the block is not a complete block
  */
-Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref, bool inclusive = false);
+void CheckCompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
+                        const StmtSRef& scope_root_sref);
+
+/******** Binding ********/
 /*!
- * \brief Verify the correctness of the sref tree
- * \param self The schedule state containing the sref to be verified
- * \note An exception will be thrown out if the sref tree is not valid
+ * \brief Verifies if the block binding in a specific BlockRealize is an affine binding.
+ * The binding can be represented as an injective affine map from the loop iterators.
+ * \param realize The BlockRealize to be analyzed
+ * \param loop_var_ranges The ranges of the loop variables
+ * \param analyzer The analyzer
+ * \return A boolean flag indicating if the binding is affine
  */
-void VerifySRefTree(const ScheduleState& self);
+bool IsAffineBinding(const BlockRealize& realize, const Map<Var, Range>& loop_var_ranges,
+                     arith::Analyzer* analyzer);
+
+/*!
+ * \brief Extracts the ranges of loop variables in a path of the sref tree
+ * \param low_inclusive The lowest node in the path
+ * \param high_exclusive The highest node in the path, defaults to the scope root if not specified
+ * \param extra_relax_scope If the scope is not global, the method will look beyond the limit and
+ * retrieve extra domains. For example,
+ * - if the storage scope is warp, it will look upwards for threadIdx.x
+ * - if the storage scope is shared, it will look for threadIdx.x/y/z
+ * \return The loop domain
+ */
+Map<Var, Range> LoopDomainOfSRefTreePath(const StmtSRef& low_inclusive,
+                                         const Optional<StmtSRef>& high_exclusive = NullOpt,
+                                         const runtime::StorageScope& extra_relax_scope =  //
+                                         runtime::StorageScope{runtime::StorageRank::kGlobal, ""});
+
+/*!
+ * \brief Returns the block var binding
+ * \param realize The BlockRealize to be analyzed
+ * \return The block var binding
+ */
+Map<Var, PrimExpr> GetBindings(const BlockRealize& realize);
+
+/******** Misc: not upstream-ed yet ********/
+
 /*!
  * \brief Verify the correctness of the flags cached in BlockInfo
  * \param self The schedule state to be verified
@@ -157,20 +201,9 @@ void VerifySRefTree(const ScheduleState& self);
  */
 void VerifyBlockInfo(const ScheduleState& self);
 
-/******** Binding ********/
-
 bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& loop_var_ranges);
 
 IterVarType GetLoopIterType(const ScheduleState& self, const StmtSRef& loop_sref);
-
-/******** Scope ********/
-
-/*!
- * \brief Get the sref to the scope root block, exclusive
- * \param sref The block or loop sref to be retrieved
- * \return The sref to the scope root block
- */
-StmtSRef GetScopeRoot(const StmtSRef& sref);
 
 /*!
  * \brief Check whether a subtree satisfies the one-way fine-grained data flow check
@@ -245,27 +278,13 @@ bool CanMergeReduction(const ScheduleState& self, const StmtSRef& init_block_sre
 bool RegionCoveredConsumer(const ScheduleState& self, const StmtSRef& consumer_block_sref,
                            const StmtSRef& scope_root);
 
-/******** Block-loop relation ********/
-
-/*!
- * \brief Get the producer of a specific block
- * \return The producers
- */
-Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref);
-
-/*!
- * \brief Get the consumers of a specific block
- * \return The consumers
- */
-Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref);
-
 StmtSRef GetSRefTreeRoot(const StmtSRef& sref);
-
-/******** Misc ********/
 
 bool HasSingleChild(const StmtSRef& loop_or_block_sref);
 
 Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref);
+
+class PrimFuncNode;
 
 /*!
  * \brief Get the pointer to the PrimFunc that the statement pointed by sref belongs to
