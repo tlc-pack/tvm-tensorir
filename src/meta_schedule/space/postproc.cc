@@ -22,9 +22,6 @@
 #include <tvm/tir/transform.h>
 
 #include "../../relay/transforms/meta_schedule_layout_rewrite.h"
-#include "../../tir/schedule/primitives/primitives.h"
-#include "../../tir/schedule/utils.h"
-#include "../analysis.h"
 #include "../utils.h"
 
 namespace tvm {
@@ -107,7 +104,7 @@ class PostprocRewriteTensorize {
       // Tensorize
       for (const tir::TensorIntrin& intrin : tensor_intrins) {
         if (CanTensorize(sch, block_sref, intrin)) {
-          tir::schedule::Tensorize(sch->state(), loop_srefs[0], intrin);
+          tir::Tensorize(sch->state(), loop_srefs[0], intrin);
           return true;
         }
       }
@@ -951,8 +948,8 @@ class PostProcRewriteLayout {
           loop_order.emplace(loop->loop_var, i);
         }
         // analyze the access pattern of the flattened index
-        auto results = arith::DetectIterMap(
-            Array<PrimExpr>{analyzer.Simplify(sum)}, loop_vars, realize_->predicate, true, &analyzer);
+        auto results = arith::DetectIterMap(Array<PrimExpr>{analyzer.Simplify(sum)}, loop_vars,
+                                            realize_->predicate, true, &analyzer);
         Array<arith::IterSplitExpr> splitexprs;
         IterVarMapCollector collector(splitexprs);
         for (size_t i = 0; i < results.size(); i++) {
@@ -990,7 +987,8 @@ class PostProcRewriteLayout {
     tir::Block block_to_rewrite_;
 
    public:
-    IterVarResolver(const Schedule& sch, const tir::Buffer& buffer, LayoutRewriteHint& hint)
+    explicit IterVarResolver(const Schedule& sch, const tir::Buffer& buffer,
+                             LayoutRewriteHint& hint)
         : sch_(sch), buffer_(buffer), hint_(hint) {}
 
     tir::Block getBufferIterInfo(const tir::Stmt& body) {
@@ -1056,7 +1054,7 @@ class PostProcRewriteLayout {
   };
 
  public:
-  bool Proc(Schedule& sch, SearchTask& task) const {
+  bool Proc(const Schedule& sch, const SearchTask& task) const {
     tir::PrimFunc func = GetOnlyFunc(sch->mod());
     auto buffer_to_rewrite = func->GetAttr("layout_free_placeholders", Array<tir::Var>());
     if (!buffer_to_rewrite.defined()) {

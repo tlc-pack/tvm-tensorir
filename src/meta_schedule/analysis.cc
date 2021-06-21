@@ -20,9 +20,8 @@
 
 #include <numeric>
 
-#include "../tir/schedule/primitives/primitives.h"
+#include "./analysis.h"
 #include "./utils.h"
-#include "analysis.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -896,7 +895,8 @@ int GetNumberCommonOutputDims(const tir::Block& producer, const tir::Block& cons
   arith::Analyzer analyzer;
   int n_common;
   for (n_common = 0; n_common < static_cast<int>(shape_buf_producer.size()) &&
-                     n_common < static_cast<int>(shape_buf_consumer.size()); ++n_common) {
+                     n_common < static_cast<int>(shape_buf_consumer.size());
+       ++n_common) {
     // If the shapes of the two buffers don't match, this dimension cannot be common.
     if (!tir::is_zero(
             analyzer.Simplify(shape_buf_producer[n_common] - shape_buf_consumer[n_common]))) {

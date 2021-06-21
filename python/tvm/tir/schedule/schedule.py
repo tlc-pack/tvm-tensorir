@@ -90,6 +90,7 @@ class Schedule(Object):
         self.__init_handle_by_constructor__(
             _ffi_api_schedule.ConcreteSchedule,  # pylint: disable=no-member
             func_or_mod,
+            -1,  # seed
             debug_mode,
         )
 
@@ -375,7 +376,12 @@ class Schedule(Object):
         )
 
     def storage_align(
-        self, block: BlockRV, buffer_index: int, axis: int, factor: int, offset: int
+        self,
+        block: BlockRV,
+        buffer_index: int,
+        axis: int,
+        factor: int,
+        offset: int,
     ) -> None:
         _ffi_api_schedule.ScheduleStorageAlign(  # pylint: disable=no-member
             self, block, buffer_index, axis, factor, offset
@@ -415,6 +421,52 @@ class Schedule(Object):
         if isinstance(intrin, str):
             intrin = String(intrin)
         _ffi_api_schedule.ScheduleTensorize(self, loop, intrin)  # pylint: disable=no-member
+
+    ########## Schedule: Marks and NO-OPs ##########
+
+    def mark_loop(
+        self,
+        loop: LoopRV,
+        ann_key: str,
+        ann_val: str,
+    ) -> None:
+        """Mark a range of loops with the specific mark
+        Parameters
+        ----------
+        loop: LoopRV
+            The loops to be marked
+        ann_key : str
+            The annotation key
+        ann_val : str
+            The annotation value
+        """
+        if isinstance(ann_val, str):
+            ann_val = String(ann_val)
+        elif isinstance(ann_val, int):
+            ann_val = IntImm("int64", ann_val)
+        _ffi_api_schedule.ScheduleMarkLoop(  # pylint: disable=no-member
+            self, loop, ann_key, ann_val
+        )
+
+    def mark_block(
+        self,
+        block: BlockRV,
+        ann_key: str,
+        ann_val: ExprRV,
+    ) -> None:
+        """Mark a block
+        Parameters
+        ----------
+        block : BlockRV
+            The block to be marked
+        ann_key : str
+            The annotation key
+        ann_val : ExprRV
+            The annotation value
+        """
+        _ffi_api_schedule.ScheduleMarkBlock(  # pylint: disable=no-member
+            self, block, ann_key, ann_val
+        )
 
     ########## Schedule: Misc ##########
 

@@ -16,6 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include "./analysis.h"
+
 #include <tvm/tir/analysis.h>
 
 #include "./utils.h"
@@ -338,18 +340,6 @@ StmtSRef GetScopeRoot(const StmtSRef& sref) {
   throw;
 }
 
-Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name) {
-  Array<StmtSRef> result;
-  for (const auto& kv : self->block_info) {
-    const StmtSRef& block_sref = kv.first;
-    const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
-    if (block->name_hint == name) {
-      result.push_back(block_sref);
-    }
-  }
-  return result;
-}
-
 bool IsCompactDataFlow(const ScheduleState& self, const StmtSRef& scope_root,
                        const Array<StmtSRef>& child_blocks) {
   for (const StmtSRef& block : child_blocks) {
@@ -521,57 +511,6 @@ bool CanMergeReduction(const ScheduleState& self, const StmtSRef& init_block_sre
   // Cond 4. All block vars of update_block are either data parallel or reduction,
   // and reduction vars of update_block should not affect indexing the output buffer
   return CheckReductionInstance(update->iter_vars, update_body->indices);
-}
-
-Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
-                               bool inclusive) {
-  struct Collector : public StmtVisitor {
-   private:
-    void VisitStmt_(const BlockNode* block) final { result.push_back(self->stmt2ref.at(block)); }
-
-   public:
-    explicit Collector(const ScheduleState& self) : self(self) {}
-
-    const ScheduleState& self;
-    Array<StmtSRef> result;
-  };
-  Collector collector(self);
-  if (inclusive) {
-    collector(GetRef<Stmt>(parent_sref->stmt));
-  } else if (parent_sref->stmt->IsInstance<ForNode>()) {
-    const auto* loop = static_cast<const ForNode*>(parent_sref->stmt);
-    collector(loop->body);
-  } else if (parent_sref->stmt->IsInstance<BlockNode>()) {
-    const auto* block = static_cast<const BlockNode*>(parent_sref->stmt);
-    collector(block->body);
-  }
-  return std::move(collector.result);
-}
-
-Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<Dependency> pred_edges = self->GetBlockScope(GetScopeRoot(block_sref))  //
-                                     ->GetDepsByDst(block_sref);
-  Array<StmtSRef> results;
-  results.reserve(pred_edges.size());
-  for (const Dependency& edge : pred_edges) {
-    if (edge->kind == DepKind::kRAW || edge->kind == DepKind::kWAW) {
-      results.push_back(edge->src);
-    }
-  }
-  return results;
-}
-
-Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<Dependency> succ_edges = self->GetBlockScope(GetScopeRoot(block_sref))  //
-                                     ->GetDepsBySrc(block_sref);
-  Array<StmtSRef> results;
-  results.reserve(succ_edges.size());
-  for (const Dependency& edge : succ_edges) {
-    if (edge->kind == DepKind::kRAW || edge->kind == DepKind::kWAW) {
-      results.push_back(edge->dst);
-    }
-  }
-  return results;
 }
 
 bool HasSingleChild(const StmtSRef& loop_or_block_sref) {

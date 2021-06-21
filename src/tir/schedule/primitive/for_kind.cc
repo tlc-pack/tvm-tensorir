@@ -16,13 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "../analysis.h"
 #include "../utils.h"
-#include "./primitives.h"
 
 namespace tvm {
 namespace tir {
-namespace schedule {
 
 /*!
  * \brief Checks if a loop variable is parallelizable.
@@ -127,8 +124,7 @@ void ParallelCompute(ScheduleState self, const StmtSRef& loop_sref, const ForKin
   //   1. All the blocks are complete below
   //   2. A single block below the loop
   StmtSRef scope_root = GetScopeRoot(loop_sref);
-  bool is_compact_dataflow =
-      IsCompactDataFlow(self, scope_root, GetChildBlocks(self, loop_sref));
+  bool is_compact_dataflow = IsCompactDataFlow(self, scope_root, GetChildBlocks(self, loop_sref));
   if (!is_compact_dataflow) {
     Array<Stmt> single_child = GetChildren(GetRef<Stmt>(loop), true);
     // TODO(@junrushao1994): I am not super convinced by the checks here, revisit later
@@ -187,8 +183,7 @@ class StorageScopeMutator : StmtExprMutator {
  private:
   StorageScopeMutator(const Buffer& old_buffer, Buffer new_buffer, String storage_scope,
                       Map<Block, Block>* block_sref_reuse)
-      : storage_scope(std::move(storage_scope)),
-        block_sref_reuse_(block_sref_reuse) {
+      : storage_scope(std::move(storage_scope)), block_sref_reuse_(block_sref_reuse) {
     buffer_map_[old_buffer.get()] = std::move(new_buffer);
   }
 
@@ -327,13 +322,6 @@ void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread) 
   ParallelCompute(self, loop_sref, ForKind::kThreadBinding, thread);
 }
 
-void Pragma(ScheduleState self, const StmtSRef& loop_sref, const String& pragma_type,
-            const PrimExpr& pragma_value) {
-  const auto* loop_ptr = loop_sref->StmtAs<ForNode>();
-  CHECK(loop_ptr) << "TypeError: pragma expects a Loop as its first argument";
-  self->Replace(loop_sref, WithAnnotation(loop_ptr, "pragma_" + pragma_type, pragma_value), {});
-}
-
 void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref) {
   const auto* block_ptr = block_sref->StmtAs<BlockNode>();
   CHECK(block_ptr) << "TypeError: double_buffer expects 'block' as its argument";
@@ -426,7 +414,7 @@ void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_ind
   const auto* block_ptr = block_sref->StmtAs<BlockNode>();
   CHECK_GE(buffer_index, 0) << "ValueError: index out of range";
   CHECK_LT(buffer_index, block_ptr->writes.size()) << "ValueError: Index out of range";
-  CHECK_GT(factor, 0) << "ValueError: The factor of stroage align should be positive.";
+  CHECK_GT(factor, 0) << "ValueError: The factor of storage align should be positive.";
   Buffer buffer = block_ptr->writes[buffer_index]->buffer;
   if (axis < 0) {
     axis += buffer->shape.size();
@@ -445,7 +433,7 @@ void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_ind
   // Step 1: Get existing or create new annotation value.
   auto annotation = block_ptr->annotations.Get(attr::buffer_dim_align);
 
-  // Use an array to store the storage alignement information for each output tensor.
+  // Use an array to store the storage alignment information for each output tensor.
   // For each output tensor, we use an array of tuples (axis, factor, offset) to specify storage
   // alignment for each dimension.
   Array<Array<Array<Integer>>> storage_align;
@@ -478,6 +466,184 @@ void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_ind
   self->Replace(block_sref, new_block, {{GetRef<Block>(block_ptr), new_block}});
 }
 
-}  // namespace schedule
+struct VectorizeTraits : public UnpackedInstTraits<VectorizeTraits> {
+  static constexpr const char* kName = "Vectorize";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv) {
+    return sch->Vectorize(loop_rv);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv) {
+    PythonAPICall py("vectorize");
+    py.Input("loop", loop_rv);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct ParallelTraits : public UnpackedInstTraits<ParallelTraits> {
+  static constexpr const char* kName = "Parallel";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv) {
+    return sch->Parallel(loop_rv);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv) {
+    PythonAPICall py("parallel");
+    py.Input("loop", loop_rv);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct UnrollTraits : public UnpackedInstTraits<UnrollTraits> {
+  static constexpr const char* kName = "Unroll";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv) { return sch->Unroll(loop_rv); }
+
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv) {
+    PythonAPICall py("unroll");
+    py.Input("loop", loop_rv);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct BindTraits : public UnpackedInstTraits<BindTraits> {
+  static constexpr const char* kName = "Bind";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 1;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, String thread) {
+    return sch->Bind(loop_rv, thread);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, String thread) {
+    PythonAPICall py("bind");
+    py.Input("loop", loop_rv);
+    py.Attr("thread", thread);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct DoubleBufferTraits : public UnpackedInstTraits<DoubleBufferTraits> {
+  static constexpr const char* kName = "DoubleBuffer";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv) {
+    return sch->DoubleBuffer(block_rv);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block_rv) {
+    PythonAPICall py("double_buffer");
+    py.Input("block", block_rv);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct SetScopeTraits : public UnpackedInstTraits<SetScopeTraits> {
+  static constexpr const char* kName = "SetScope";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 2;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, Integer i,
+                                      String storage_scope) {
+    return sch->SetScope(block_rv, i->value, storage_scope);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block_rv, Integer i,
+                                 String storage_scope) {
+    PythonAPICall py("set_scope");
+    py.Input("block", block_rv);
+    py.Attr("i", i->value);
+    py.Attr("storage_scope", storage_scope);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct StorageAlignTraits : public UnpackedInstTraits<StorageAlignTraits> {
+  static constexpr const char* kName = "StorageAlign";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 4;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, Integer buffer_index,
+                                      Integer axis, Integer factor, Integer offset) {
+    return sch->StorageAlign(block_rv, buffer_index->value, axis->value, factor->value,
+                             offset->value);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block_rv, Integer buffer_index,
+                                 Integer axis, Integer factor, Integer offset) {
+    PythonAPICall py("storage_align");
+    py.Input("block", block_rv);
+    py.Attr("buffer_index", buffer_index->value);
+    py.Attr("axis", axis->value);
+    py.Attr("factor", factor->value);
+    py.Attr("offset", offset->value);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND(VectorizeTraits);
+TVM_REGISTER_INST_KIND(ParallelTraits);
+TVM_REGISTER_INST_KIND(UnrollTraits);
+TVM_REGISTER_INST_KIND(BindTraits);
+TVM_REGISTER_INST_KIND(DoubleBufferTraits);
+TVM_REGISTER_INST_KIND(SetScopeTraits);
+TVM_REGISTER_INST_KIND(StorageAlignTraits);
+
 }  // namespace tir
 }  // namespace tvm

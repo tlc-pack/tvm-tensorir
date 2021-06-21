@@ -20,20 +20,12 @@
 #define TVM_TIR_SCHEDULE_UTILS_H_
 
 #include <tvm/arith/analyzer.h>
-#include <tvm/tir/analysis.h>
-#include <tvm/tir/function.h>
-#include <tvm/tir/op.h>
-#include <tvm/tir/schedule/state.h>
-#include <tvm/tir/stmt_functor.h>
-
-#include "./analysis.h"
-
-#include <tvm/arith/analyzer.h>
 #include <tvm/arith/int_set.h>
 #include <tvm/arith/iter_affine_map.h>
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
+#include <tvm/tir/schedule/inst.h>
 #include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/schedule/state.h>
 #include <tvm/tir/stmt_functor.h>
@@ -45,7 +37,9 @@
 #include <utility>
 #include <vector>
 
+#include "../../arith/pattern_match.h"
 #include "./analysis.h"
+#include "./primitive.h"
 #include "./transform.h"
 
 namespace tvm {
@@ -713,6 +707,40 @@ inline Stmt SeqStmtRemove(const SeqStmt& seq, const Stmt& to_remove) {
     new_stmts.push_back(stmt);
   }
   return SeqStmt::Flatten(new_stmts);
+}
+
+inline void AddAnn(const ScheduleState& sch, const StmtSRef& sref, const String& ann_key,
+                   const PrimExpr& ann_val) {
+  // Extract annotation
+  const Map<String, ObjectRef>* annotations = nullptr;
+  if (const auto* loop = sref->StmtAs<ForNode>()) {
+    annotations = &loop->annotations;
+  } else if (const auto* block = sref->StmtAs<BlockNode>()) {
+    annotations = &block->annotations;
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+  }
+  // Check if the annotation already exists
+  if (annotations->find(ann_key) != annotations->end()) {
+    return;
+  }
+  // Add the new annotation
+  Map<String, ObjectRef> new_ann(*annotations);
+  new_ann.Set(ann_key, ann_val);
+  // Create the new stmt
+  if (const auto* loop = sref->StmtAs<ForNode>()) {
+    ObjectPtr<ForNode> n = make_object<ForNode>(*loop);
+    n->annotations = std::move(new_ann);
+    sch->Replace(sref, For(n), {});
+  } else if (const auto* block = sref->StmtAs<BlockNode>()) {
+    ObjectPtr<BlockNode> n = make_object<BlockNode>(*block);
+    n->annotations = std::move(new_ann);
+    Block p(n);
+    sch->Replace(sref, p, {{GetRef<Block>(block), p}});
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+    throw;
+  }
 }
 
 }  // namespace tir

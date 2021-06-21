@@ -25,7 +25,63 @@
 
 namespace tvm {
 namespace tir {
-namespace schedule {
+
+class Sampler;
+
+/******** Sampling ********/
+
+TVM_DLL std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler,
+                                               const tir::StmtSRef& loop_sref,  //
+                                               int n,                           //
+                                               int max_innermost_factor,        //
+                                               Optional<Array<Integer>>* decision);
+
+TVM_DLL int64_t SampleCategorical(tir::ScheduleState self, Sampler* sampler,  //
+                                  const Array<Integer>& candidates,           //
+                                  const Array<FloatImm>& probs,               //
+                                  Optional<Integer>* decision);
+
+TVM_DLL tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, Sampler* sampler,  //
+                                            const tir::StmtSRef& block_sref,            //
+                                            Optional<Integer>* decision);
+
+/******** Schedule: Block/Loop Relationship ********/
+
+/*!
+ * \brief Get block from its tag
+ * \param tag The query tag
+ * \return the block schedulable reference list
+ */
+Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name);
+
+/*!
+ * \brief Get loops of the block
+ * \param block The query block
+ * \return the loop sref list
+ */
+Array<StmtSRef> GetLoops(const StmtSRef& block_sref);
+
+/*!
+ * \brief Get the child blocks of a specific parent block/loop
+ * \param parent_sref The StmtSRef that points to the parent block/loop
+ * \param inclusive If true and parent_sref is a block, return a single-element list containing
+ * parent_sref
+ * \return A list of child blocks
+ */
+Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
+                               bool inclusive = false);
+
+/*!
+ * \brief Get the producer of a specific block
+ * \return The producers
+ */
+Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref);
+
+/*!
+ * \brief Get the consumers of a specific block
+ * \return The consumers
+ */
+Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref);
 
 /******** Schedule: loops ********/
 
@@ -127,15 +183,6 @@ TVM_DLL void SetScope(ScheduleState self, const StmtSRef& block_sref, int i,
                       const String& storage_scope);
 
 /*!
- * \brief add annotation to a loop
- * \param loop_sref the loop of interest
- * \param pragma_type the attribute key
- * \param pragma_value the attribute value
- */
-TVM_DLL void Pragma(ScheduleState self, const StmtSRef& loop_sref, const String& pragma_type,
-                    const PrimExpr& pragma_value);
-
-/*!
  * \brief Set alignment requirement for specific dimension such that
  *        stride[axis] == k * factor + offset for some k
  * \param block_sref The producer block of the buffer
@@ -144,8 +191,25 @@ TVM_DLL void Pragma(ScheduleState self, const StmtSRef& loop_sref, const String&
  * \param factor The factor multiple of alignment
  * \param offset The required offset factor
  */
-TVM_DLL void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_index, int axis,
-                          int factor, int offset);
+TVM_DLL void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
+                          int axis, int factor, int offset);
+
+/******** Schedule: annotate ********/
+
+/*!
+ * \brief add annotation to a loop
+ * \param loop_sref the loop of interest
+ * \param pragma_type the attribute key
+ * \param pragma_value the attribute value
+ */
+TVM_DLL void Pragma(ScheduleState self, const StmtSRef& loop_sref, const String& pragma_type,
+                    const PrimExpr& pragma_value);
+
+TVM_DLL void MarkLoop(ScheduleState self, const StmtSRef& loop_sref, const String& ann_key,
+                      const PrimExpr& ann_val);
+
+TVM_DLL void MarkBlock(ScheduleState self, const StmtSRef& block_sref, const String& ann_key,
+                       const PrimExpr& ann_val);
 
 /******** Schedule: cache read/write ********/
 
@@ -216,7 +280,6 @@ TVM_DLL void Tensorize(ScheduleState self, const StmtSRef& loop_sref,
 
 TVM_DLL void InlineArgument(ScheduleState self, int i, const String& func_name);
 
-}  // namespace schedule
 }  // namespace tir
 }  // namespace tvm
 

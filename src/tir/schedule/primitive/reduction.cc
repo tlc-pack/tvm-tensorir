@@ -16,13 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "../analysis.h"
 #include "../utils.h"
-#include "./primitives.h"
 
 namespace tvm {
 namespace tir {
-namespace schedule {
 
 bool ListContainsElement(const Array<StmtSRef>& list, const StmtSRef& element) {
   for (const StmtSRef& ele : list) {
@@ -338,7 +335,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   CHECK(init && update) << "ValueError: Currently rfactor only supports the cases that the init "
                            "and body of the reduction block are BufferStores";
   CHECK(0 <= factor_axis && factor_axis <= static_cast<int>(update->buffer->shape.size()))
-    << "ValueError: factor_axis should be in range [0, " << update->buffer->shape.size() << "]";
+      << "ValueError: factor_axis should be in range [0, " << update->buffer->shape.size() << "]";
   // Extract the commutative reducer, combiner lhs and combiner rhs from the reduction identity and
   // the reduction combiner. The lhs will be used when constructing the write-back block, and the
   // rhs will be used when constructing the rfactor block.
@@ -576,7 +573,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   BufferLoad wb_rhs = Downcast<BufferLoad>(Substitute(
       static_cast<PrimExpr>(BufferLoad(rf_update->buffer, rf_update->indices)), var_map));
   BufferStore wb_update(update->buffer, reducer.value().get()->operator()({wb_lhs}, {wb_rhs})[0],
-                      update->indices);
+                        update->indices);
   wb_update = Downcast<BufferStore>(Substitute(static_cast<Stmt>(wb_update), var_map));
   Block wb_block(/*iter_vars=*/wb_block_iters,
                  /*reads=*/{f_wb_create_rw_region(wb_lhs), f_wb_create_rw_region(wb_rhs)},
@@ -677,6 +674,85 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   return rf_block_sref;
 }
 
-}  // namespace schedule
+struct RFactorTraits : public UnpackedInstTraits<RFactorTraits> {
+  static constexpr const char* kName = "RFactor";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 1;
+  static constexpr size_t kNumDecisions = 0;
+
+  static BlockRV UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, Integer factor_axis) {
+    return sch->RFactor(loop_rv, factor_axis->value);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Integer factor_axis) {
+    PythonAPICall py("rfactor");
+    py.Input("loop", loop_rv);
+    py.Attr("factor_axis", factor_axis->value);
+    py.Output(outputs[0]);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct DecomposeReductionTraits : public UnpackedInstTraits<DecomposeReductionTraits> {
+  static constexpr const char* kName = "DecomposeReduction";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 2;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, Optional<LoopRV> loop_rv) {
+    return sch->DecomposeReduction(block_rv, loop_rv);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block_rv, String loop_rv) {
+    PythonAPICall py("decompose_reduction");
+    py.Input("block", block_rv);
+    py.Input("loop", loop_rv);
+    py.Output(outputs[0]);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct MergeReductionTraits : public UnpackedInstTraits<MergeReductionTraits> {
+  static constexpr const char* kName = "MergeReduction";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 2;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV init_block_rv,
+                                      BlockRV update_block_rv) {
+    return sch->MergeReduction(init_block_rv, update_block_rv);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String init_block_rv,
+                                 String update_block_rv) {
+    PythonAPICall py("merge_reduction");
+    py.Input("init_block", init_block_rv);
+    py.Input("update_block", update_block_rv);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND(RFactorTraits);
+TVM_REGISTER_INST_KIND(DecomposeReductionTraits);
+TVM_REGISTER_INST_KIND(MergeReductionTraits);
+
 }  // namespace tir
 }  // namespace tvm

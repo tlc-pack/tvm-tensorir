@@ -33,36 +33,6 @@ class PrimFuncNode;
  * \throw An exception will be thrown if the sref tree is not valid
  */
 void VerifySRefTree(const ScheduleState& self);
-
-/******** Block-loop relation ********/
-/*!
- * \brief Retrieve blocks in a specific function with its name
- * \param self The schedule state
- * \param name The name of the blocks to be retrieved
- * \param func_name The name of the function
- * \return A list of blocks with the specific name
- */
-Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name, const String& func_name = "main");
-/*!
- * \brief Get the parent loops of the block in its scope, from outer to inner
- * \param self The schedule state
- * \param block_sref The query block
- * \return A list of loops above the given block in its scope, from outer to inner
- */
-Array<StmtSRef> GetLoops(const StmtSRef& block_sref);
-/*!
- * \brief Get the leaf blocks of a scope where a specific block/loop is in
- * \param self The schedule state
- * \param parent_sref The StmtSRef that points to the parent block/loop
- * \return A list of leaf blocks
- */
-Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref, bool inclusive = false);
-/*!
- * \brief Verify the correctness of the sref tree
- * \param self The schedule state containing the sref to be verified
- * \note An exception will be thrown out if the sref tree is not valid
- */
-void VerifySRefTree(const ScheduleState& self);
 /*!
  * \brief Verify the correctness of the flags cached in BlockInfo
  * \param self The schedule state to be verified
@@ -159,18 +129,6 @@ bool RegionCoveredConsumer(const ScheduleState& self, const StmtSRef& consumer_b
                            const StmtSRef& scope_root);
 
 /******** Block-loop relation ********/
-
-/*!
- * \brief Get the producer of a specific block
- * \return The producers
- */
-Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref);
-
-/*!
- * \brief Get the consumers of a specific block
- * \return The consumers
- */
-Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref);
 
 StmtSRef GetSRefTreeRoot(const StmtSRef& sref);
 

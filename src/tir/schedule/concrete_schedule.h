@@ -18,12 +18,14 @@
  */
 #ifndef TVM_TIR_SCHEDULE_CONCRETE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_CONCRETE_SCHEDULE_H_
+
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/schedule/schedule.h>
 
 #include <memory>
 #include <utility>
 
+#include "./sampler.h"
 #include "./utils.h"
 
 namespace tvm {
@@ -41,6 +43,8 @@ class ConcreteScheduleNode : public ScheduleNode {
   ScheduleState state_;
   /*! \brief A symbol table that maps random variables to concrete StmtSRef/Integers */
   TSymbolTable symbol_table_;
+  /*! \brief Source of randomness */
+  Sampler sampler_;
   /*! \brief A persistent stateless arithmetic analyzer. */
   std::unique_ptr<arith::Analyzer> analyzer_;
 
@@ -48,6 +52,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   void VisitAttrs(tvm::AttrVisitor* v) {
     // `state_` is not visited
     // `symbol_table_` is not visited
+    // `sampler_` is not visited
     // `analyzer_` is not visitied
   }
 
@@ -58,7 +63,10 @@ class ConcreteScheduleNode : public ScheduleNode {
 
  public:
   ScheduleState state() const final { return state_; }
-  Schedule Copy() const override;
+
+  void Seed(int64_t new_seed = -1) final { this->sampler_.Seed(new_seed); }
+
+  Schedule Copy(int64_t new_seed = -1) const override;
 
  public:
   /******** Lookup random variables ********/
@@ -67,39 +75,85 @@ class ConcreteScheduleNode : public ScheduleNode {
   inline PrimExpr Get(const ExprRV& expr_rv) const final;
   inline StmtSRef GetSRef(const BlockRV& block_rv) const final;
   inline StmtSRef GetSRef(const LoopRV& loop_rv) const final;
+  template <class T>
+  inline Array<StmtSRef> GetSRefs(const Array<T>& rvs) const;
   void RemoveRV(const BlockRV& block_rv) final { RemoveFromSymbolTable(block_rv); }
   void RemoveRV(const LoopRV& loop_rv) final { RemoveFromSymbolTable(loop_rv); }
   void RemoveRV(const ExprRV& expr_rv) final { RemoveFromSymbolTable(expr_rv); }
   using ScheduleNode::GetSRef;
 
  public:
-  /******** Sampling ********/
-
-  Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv,     //
-                                  int n,                     //
-                                  int max_innermost_factor,  //
-                                  Optional<Array<Integer>> decision = NullOpt) override {
-    LOG(FATAL) << "NotImplemented";
-    throw;
-  }
-
-  ExprRV SampleCategorical(const Array<Integer>& candidates,  //
-                           const Array<FloatImm>& probs,      //
-                           Optional<Integer> decision = NullOpt) override {
-    LOG(FATAL) << "NotImplemented";
-    throw;
-  }
-
+  /******** Schedule: Sampling ********/
+  Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
+                                  Optional<Array<Integer>> decision = NullOpt) override;
+  ExprRV SampleCategorical(const Array<Integer>& candidates, const Array<FloatImm>& probs,
+                           Optional<Integer> decision = NullOpt) override;
   LoopRV SampleComputeLocation(const BlockRV& block_rv,
-                               Optional<Integer> decision = NullOpt) override {
-    LOG(FATAL) << "NotImplemented";
-    throw;
-  }
+                               Optional<Integer> decision = NullOpt) override;
 
- public:
-  /******** Block/Loop relation ********/
+  /******** Schedule: Get blocks & loops ********/
+
   BlockRV GetBlock(const String& name, const String& func_name = "main") override;
   Array<LoopRV> GetLoops(const BlockRV& block_rv) override;
+  Array<BlockRV> GetChildBlocks(const BlockRV& block_rv) override;
+  Array<BlockRV> GetChildBlocks(const LoopRV& loop_rv) override;
+  Array<BlockRV> GetProducers(const BlockRV& block_rv) override;
+  Array<BlockRV> GetConsumers(const BlockRV& block_rv) override;
+
+  /******** Schedule: Transform loops ********/
+
+  LoopRV Fuse(const Array<LoopRV>& loop_rvs) override;
+  Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factor_rvs) override;
+  void Reorder(const Array<LoopRV>& order) override;
+
+  /******** Schedule: Manipulate ForKind ********/
+
+  void Parallel(const LoopRV& loop_rv) override;
+  void Vectorize(const LoopRV& loop_rv) override;
+  void Unroll(const LoopRV& loop_rv) override;
+  void Bind(const LoopRV& loop_rv, const IterVar& thread) override;
+  void Bind(const LoopRV& loop_rv, const String& thread) override;
+
+  /******** Schedule: Insert cache stages ********/
+
+  BlockRV CacheRead(const BlockRV& block_rv, int i, const String& storage_scope) override;
+  BlockRV CacheWrite(const BlockRV& block_rv, int i, const String& storage_scope) override;
+
+  /******** Schedule: Compute location ********/
+
+  void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv, bool preserve_unit_loop) override;
+  void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
+                        bool preserve_unit_loop) override;
+  void ComputeInline(const BlockRV& block_rv) override;
+  void ReverseComputeInline(const BlockRV& block_rv) override;
+
+  /******** Schedule: Reduction ********/
+
+  BlockRV RFactor(const LoopRV& loop_rv, int factor_axis) override;
+  BlockRV DecomposeReduction(const BlockRV& block_rv, const Optional<LoopRV>& loop_rv) override;
+  void MergeReduction(const BlockRV& init_block_rv, const BlockRV& update_block_rv) override;
+
+  /******** Schedule: Blockize & Tensorize ********/
+
+  BlockRV Blockize(const LoopRV& loop_rv) override;
+  void Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) override;
+  void Tensorize(const LoopRV& loop_rv, const String& intrin_name) override;
+
+  /******** Schedule: Annotation ********/
+
+  void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const PrimExpr& ann_val) override;
+  void MarkBlock(const BlockRV& block_rv, const String& ann_key, const PrimExpr& ann_val) override;
+  void Pragma(const LoopRV& loop_rv, const String& pragma_type,
+              const ExprRV& pragma_value) override;
+
+  /******** Schedule: Misc ********/
+
+  void EnterPostProc() override {}  // no-op
+  void DoubleBuffer(const BlockRV& block_rv) override;
+  void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) override;
+  void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
+                    int offset) override;
+  void InlineArgument(int i, const String& func_name) override;
 
   /******** Utility functions ********/
  protected:
@@ -108,7 +162,7 @@ class ConcreteScheduleNode : public ScheduleNode {
    * \param new_state The ScheduleState copied
    * \param new_symbol_table The symbol table copied
    */
-  void Copy(ScheduleState* new_state, TSymbolTable* new_symbol_table) const;
+  void MakeCopy(ScheduleState* new_state, TSymbolTable* new_symbol_table) const;
   /*!
    * \brief Add srefs as random variables into the symbol table
    * \tparam T The type of the random variables
@@ -139,95 +193,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   inline Array<ExprRV> CreateRV(const Array<Integer>& numbers);
   /*! \brief Remove a random variable from the symbol table */
   inline void RemoveFromSymbolTable(const ObjectRef& rv);
-
- public:
-  /******** Block/Loop relation ********/
-
-  Array<BlockRV> GetChildBlocks(const BlockRV& block_rv) override;
-
-  Array<BlockRV> GetChildBlocks(const LoopRV& loop_rv) override;
-
-  Array<BlockRV> GetProducers(const BlockRV& block_rv) override;
-
-  Array<BlockRV> GetConsumers(const BlockRV& block_rv) override;
-
-  /******** Schedule: loops ********/
-
-  LoopRV Fuse(const Array<LoopRV>& loop_rvs) override;
-
-  Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factor_rvs) override;
-
-  void Reorder(const Array<LoopRV>& order) override;
-
-  /******** Schedule: compute location ********/
-
-  void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv, bool preserve_unit_loop) override;
-
-  void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
-                        bool preserve_unit_loop) override;
-
-  void ComputeInline(const BlockRV& block_rv) override;
-
-  void ReverseComputeInline(const BlockRV& block_rv) override;
-
-  /******** Schedule: parallelize / annotate ********/
-
-  void Vectorize(const LoopRV& loop_rv) override;
-
-  void Parallel(const LoopRV& loop_rv) override;
-
-  void Unroll(const LoopRV& loop_rv) override;
-
-  void Bind(const LoopRV& loop_rv, const IterVar& thread) override;
-
-  void Bind(const LoopRV& loop_rv, const String& thread) override;
-
-  void DoubleBuffer(const BlockRV& block_rv) override;
-
-  void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) override;
-
-  void Pragma(const LoopRV& loop_rv, const String& pragma_type,
-              const ExprRV& pragma_value) override;
-
-  void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
-                    int offset) override;
-
-  /******** Schedule: cache read/write ********/
-
-  BlockRV CacheRead(const BlockRV& block_rv, int i, const String& storage_scope) override;
-
-  BlockRV CacheWrite(const BlockRV& block_rv, int i, const String& storage_scope) override;
-
-  /******** Schedule: reduction ********/
-
-  BlockRV RFactor(const LoopRV& loop_rv, int factor_axis) override;
-
-  BlockRV DecomposeReduction(const BlockRV& block_rv, const Optional<LoopRV>& loop_rv) override;
-
-  void MergeReduction(const BlockRV& init_block_rv, const BlockRV& update_block_rv) override;
-
-  /******** Schedule: blockize / tensorize ********/
-
-  BlockRV Blockize(const LoopRV& loop_rv) override;
-
-  void Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) override;
-
-  void Tensorize(const LoopRV& loop_rv, const String& intrin_name) override;
-
-  /******** Schedule: Misc ********/
-  void InlineArgument(int i, const String& func_name) override;
-
-  template <class T>
-  inline Array<StmtSRef> FromRV(const Array<T>& rvs) {
-    Array<StmtSRef> result;
-    result.reserve(rvs.size());
-    for (const T& rv : rvs) {
-      result.push_back(this->GetSRef(rv));
-    }
-    return result;
-  }
 };
-/******** Schedule: blockize / tensorize ********/
 
 /******** Lookup random variables ********/
 
@@ -301,6 +267,16 @@ inline StmtSRef ConcreteScheduleNode::GetSRef(const LoopRV& loop_rv) const {
     LOG(FATAL) << "ValueError: The StmtSRef has expired";
   }
   return GetRef<StmtSRef>(sref);
+}
+
+template <class T>
+inline Array<StmtSRef> ConcreteScheduleNode::GetSRefs(const Array<T>& rvs) const {
+  Array<StmtSRef> result;
+  result.reserve(rvs.size());
+  for (const T& rv : rvs) {
+    result.push_back(this->GetSRef(rv));
+  }
+  return result;
 }
 
 /******** Adding/Removing elements in the symbol table ********/

@@ -21,7 +21,7 @@
 #include <random>
 
 namespace tvm {
-namespace meta_schedule {
+namespace tir {
 
 struct PrimeTable {
   /*! \brief The table contains prime numbers in [2, kMaxPrime) */
@@ -340,5 +340,5 @@ std::vector<int> Sampler::SamplePerfectTile(int n_splits, int extent, int max_in
   return result;
 }
 
-}  // namespace meta_schedule
+}  // namespace tir
 }  // namespace tvm
