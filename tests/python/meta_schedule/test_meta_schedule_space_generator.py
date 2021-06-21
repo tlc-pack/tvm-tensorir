@@ -21,7 +21,7 @@ from tir_workload import matmul
 from tvm import meta_schedule as ms
 
 
-def test_meta_schedule_design_space_generator_schedule_fn():
+def test_meta_schedule_space_generator_schedule_fn():
     def schedule_matmul(sch: ms.Schedule):
         block = sch.get_block("matmul")
         i, j, k = sch.get_axes(block=block)
@@ -44,5 +44,41 @@ def test_meta_schedule_design_space_generator_schedule_fn():
     assert k_0 * k_1 == 1024
 
 
+def test_meta_schedule_design_space_generator_union():
+    def schedule_matmul(sch: ms.Schedule):
+        block = sch.get_block("matmul")
+        i, j, k = sch.get_axes(block=block)
+        i_tiles = sch.sample_perfect_tile(i, n=4)
+        j_tiles = sch.sample_perfect_tile(j, n=4)
+        k_tiles = sch.sample_perfect_tile(k, n=2)
+        i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
+        j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
+        k_0, k_1 = sch.split(loop=k, factors=k_tiles)
+        sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
+
+    space_gen = ms.ScheduleFn(sch_fn=schedule_matmul)
+    space_gen_union = ms.SpaceGeneratorUnion([space_gen, space_gen])
+    ret = space_gen_union.generate(workload=matmul)
+    assert len(ret) == 2
+    sch = ret[0]
+
+    i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
+        sch.get_sref(i).stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
+    ]
+    assert i_0 * i_1 * i_2 * i_3 == 1024
+    assert j_0 * j_1 * j_2 * j_3 == 1024
+    assert k_0 * k_1 == 1024
+
+    sch = ret[1]
+
+    i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
+        sch.get_sref(i).stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
+    ]
+    assert i_0 * i_1 * i_2 * i_3 == 1024
+    assert j_0 * j_1 * j_2 * j_3 == 1024
+    assert k_0 * k_1 == 1024
+
+
 if __name__ == "__main__":
-    test_meta_schedule_design_space_generator_schedule_fn()
+    test_meta_schedule_space_generator_schedule_fn()
+    test_meta_schedule_design_space_generator_union()

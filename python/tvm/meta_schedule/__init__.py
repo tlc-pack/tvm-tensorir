@@ -15,6 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Meta Schedule """
-from .space_generator import SpaceGenerator, PySpaceGenerator, ScheduleFn
+from .space_generator import SpaceGenerator, PySpaceGenerator, ScheduleFn, SpaceGeneratorUnion
 from .schedule_rule import ScheduleRule, PyScheduleRule, as_schedule_rule
-from .schedule import Schedule, BlockRV
+from .schedule import Schedule

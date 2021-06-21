@@ -19,11 +19,12 @@
 
 from tir_workload import matmul
 from tvm import meta_schedule as ms
+from tvm.tir.schedule import BlockRV
 
 
 def test_meta_schedule_schedule_rule_do_nothing():
     @ms.as_schedule_rule("do_nothing")
-    def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
+    def do_nothing(sch: ms.Schedule, _block: BlockRV):
         return sch
 
     sch = ms.Schedule(func=matmul)
@@ -32,7 +33,7 @@ def test_meta_schedule_schedule_rule_do_nothing():
 
 
 def test_meta_schedule_print_name():
-    def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
+    def do_nothing(sch: ms.Schedule, _block: BlockRV):
         return sch
 
     sch_rule = ms.PyScheduleRule("Hanamichi Sakuragi", do_nothing)

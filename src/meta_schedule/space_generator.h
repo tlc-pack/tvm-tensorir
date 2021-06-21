@@ -65,6 +65,7 @@ class SpaceGenerator : public runtime::ObjectRef {
       runtime::TypedPackedFunc<SpaceGeneratorNode::FInitWithTuneContext>
           init_with_tune_context_func,
       runtime::TypedPackedFunc<SpaceGeneratorNode::FGenerate> generate_func);
+  static SpaceGenerator SpaceGeneratorUnion(runtime::Array<ObjectRef> space_generators);
 };
 
 }  // namespace meta_schedule

@@ -22,6 +22,7 @@ import tvm
 from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.ir import IRModule
+from tvm.tir import PrimFunc
 
 from . import _ffi_api
 from .schedule import Schedule
@@ -119,3 +120,26 @@ class ScheduleFn(PySpaceGenerator):
                     )
             return result
         return [result]
+
+
+@register_object("meta_schedule.SpaceGeneratorUnion")
+class SpaceGeneratorUnion(SpaceGenerator):
+    """Design space generator union that is implemented in python"""
+
+    def __init__(self, space_generators: List[SpaceGenerator]):
+        self.__init_handle_by_constructor__(
+            _ffi_api.SpaceGeneratorUnionNew, space_generators  # pylint: disable=no-member
+        )
+
+    def initialize_with_tune_context(self, context: "TuneContext") -> None:
+        return _ffi_api.SpaceGeneratorUnionInitializeWithTuneContext(  # pylint: disable=no-member
+            self, context
+        )
+
+    def generate(self, workload: IRModule) -> List[Schedule]:
+        if isinstance(workload, PrimFunc):
+            workload = IRModule({"main": workload})
+        return _ffi_api.SpaceGeneratorUnionGenerate(self, workload)  # pylint: disable=no-member
+
+    def initialize(self, **kwargs):
+        raise NotImplementedError

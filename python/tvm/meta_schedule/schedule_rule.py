@@ -21,9 +21,10 @@ from typing import Callable, List, Union, TYPE_CHECKING
 import tvm
 from tvm._ffi import register_object
 from tvm.runtime import Object
+from tvm.tir.schedule import BlockRV
 
 from . import _ffi_api
-from .schedule import Schedule, BlockRV
+from .schedule import Schedule
 
 if TYPE_CHECKING:
     from .tune_context import TuneContext
