@@ -1502,11 +1502,17 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
                                  IntImm(DataType::Int(32), extent));
             }
           } else if (iter->iter_kind == IteratorKind::kReduction) {
-            
-
-
+            arith::Analyzer analyzer;
+            arith::IntSet s = analyzer.int_set(init_iter->range->extent, {});
+            size_t synthetic_extent =
+                static_cast<size_t>(GetIntImm(s.max())) / extent * extent;
+            CHECK(synthetic_extent >= extent);
+            if (is_1st_state_to_extract_feature) {
+              LOG(INFO) << "Synthetic extent=" << synthetic_extent << " for "
+                           "reduction axis " << init_iter->range->extent;
+            }
             axes_to_extent.Set(init_iter->range->extent,
-                               IntImm(DataType::Int(32), extent));
+                               IntImm(DataType::Int(32), synthetic_extent));
           } else {
             LOG(FATAL) << "Not implemeted yet";
           }

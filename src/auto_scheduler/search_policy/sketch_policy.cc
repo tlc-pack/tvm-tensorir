@@ -210,8 +210,8 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
 
       if (IsDynTask(this->search_task)) {
         LOG(FATAL) << "Number of states after pruning: "
-                      "best_states.size()" << best_states.size()
-                   << "random_states.size()" << random_states.size();
+                      "best_states.size()" << best_states.size() << ", "
+                      "random_states.size()" << random_states.size();
       }
 
       // Infer bound. This is necessary for computing the correct ToStr() for redundancy check
@@ -336,6 +336,9 @@ Array<State> SketchPolicyNode::SearchOneRound(int num_random_states, Array<State
 
   // 3. Perform evolutionary search.
   // Also insert already measured good states to the initial population
+
+  LOG(INFO) << "num_use_measured=" << num_use_measured;
+
   std::vector<int> indices = Argsort(measured_states_throughputs_);
   for (int i = 0; i < num_use_measured; i++) {
     init_population.push_back(measured_states_vector_[indices[i]]);
@@ -534,7 +537,7 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
     }  // if (!cand_states.empty())
     
     // <bojian/DietCode>
-    LOG(FATAL) << "out_states.size()=" << out_states.size();
+    // LOG(FATAL) << "out_states.size()=" << out_states.size();
 
     if (iter % 5 == 0) {
       double duration = std::chrono::duration_cast<std::chrono::duration<double>>(
