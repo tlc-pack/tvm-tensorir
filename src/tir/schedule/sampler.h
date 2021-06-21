@@ -25,7 +25,7 @@
 #include <vector>
 
 namespace tvm {
-namespace meta_schedule {
+namespace tir {
 
 /*! \brief Random number sampler used for sampling in meta schedule */
 class Sampler {
@@ -114,7 +114,7 @@ class Sampler {
   std::minstd_rand rand_;
 };
 
-}  // namespace meta_schedule
+}  // namespace tir
 }  // namespace tvm
 
 #endif  // TVM_TIR_SCHEDULE_SAMPLER_H_

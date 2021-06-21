@@ -24,6 +24,7 @@
 #define TVM_TIR_SCHEDULE_STATE_H_
 
 #include <tvm/ir/module.h>
+#include <tvm/tir/function.h>
 #include <tvm/tir/schedule/block_scope.h>
 
 #include <unordered_map>
@@ -31,8 +32,6 @@
 
 namespace tvm {
 namespace tir {
-
-class PrimFunc;
 
 /*!
  * \brief The information about a TensorIR block, it contains two categories of information
@@ -52,22 +51,13 @@ struct BlockInfo {
    * produced by its producers
    */
   bool region_cover{false};
-  /*!
-   * \brief Property of a block scope root at the block, indicaiting if the scope is an equivalence
-   * of a stage pipeline. Conditions:
-   * 1) The region cover property holds for every of it child blocks
-   * 2) No write-after-read dependency
-   */
-  bool stage_pipeline{false};
 
   BlockInfo() = default;
 
-  explicit BlockInfo(BlockScope scope, bool affine_binding = false, bool region_cover = false,
-                     bool stage_pipeline = false)
+  explicit BlockInfo(BlockScope scope, bool affine_binding = false, bool region_cover = false)
       : scope(std::move(scope)),         //
         affine_binding(affine_binding),  //
-        region_cover(region_cover),      //
-        stage_pipeline(stage_pipeline) {}
+        region_cover(region_cover) {}
 };
 
 /*!

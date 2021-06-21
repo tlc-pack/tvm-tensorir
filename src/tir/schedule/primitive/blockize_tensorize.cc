@@ -18,9 +18,7 @@
  */
 #include "../../../arith/pattern_match.h"
 #include "../../ir/functor_common.h"
-#include "../analysis.h"
 #include "../utils.h"
-#include "./primitives.h"
 
 namespace tvm {
 namespace tir {
@@ -357,8 +355,6 @@ bool TensorizeComparator::VisitExpr(const PrimExpr& n, const PrimExpr& other) {
   return equal;
 }
 
-namespace schedule {
-
 Array<Array<arith::IterMark>> TrivialSubspaceDivision(const Array<IterVar>& iter_vars,
                                                       const Array<PrimExpr>& bindings,
                                                       const std::vector<Var>& outer_loops,
@@ -571,8 +567,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
                            /*writes=*/writes,                              //
                            /*name_hint=*/"blockized_" + block->name_hint,  //
                            /*body=*/std::move(body),                       //
-                           /*init=*/new_init                               //
-  );
+                           /*init=*/new_init);
   auto outer_realize = BlockRealize(outer_bindings, division.back()[0]->extent, outer_block);
 
   self->Replace(loop_sref, outer_realize, {{block, inner_block}});
@@ -582,7 +577,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   }
   {
     StmtSRef block_sref = self->stmt2ref.at(outer_block.get());
-    StmtSRef scope_sref = GetScopeRoot(block_sref);
+    StmtSRef scope_sref = GetScopeRoot(block_sref).value();
     UpdateScope(self, scope_sref);
     UpdateAffineFlag(self, scope_sref);
   }
@@ -874,6 +869,56 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   }
 }
 
-}  // namespace schedule
+struct BlockizeTraits : public UnpackedInstTraits<BlockizeTraits> {
+  static constexpr const char* kName = "Blockize";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static BlockRV UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv) {
+    return sch->Blockize(loop_rv);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv) {
+    PythonAPICall py("blockize");
+    py.Input("loop", loop_rv);
+    py.Output(outputs[0]);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct TensorizeTraits : public UnpackedInstTraits<TensorizeTraits> {
+  static constexpr const char* kName = "Tensorize";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 1;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, String intrin_name) {
+    return sch->Tensorize(loop_rv, intrin_name);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, String intrin_name) {
+    PythonAPICall py("tensorize");
+    py.Input("loop", loop_rv);
+    py.Attr("intrin_name", intrin_name);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND(BlockizeTraits);
+TVM_REGISTER_INST_KIND(TensorizeTraits);
+
 }  // namespace tir
 }  // namespace tvm
