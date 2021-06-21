@@ -92,7 +92,7 @@ void TraceNode::ApplyToSchedule(const Schedule& sch, bool remove_postproc,
     const ObjectRef* p_old = old_outputs.GetArrayNode()->begin();
     const ObjectRef* p_new = new_outputs.GetArrayNode()->begin();
     for (int i = 0; i < n; ++i) {
-      rv_map->at(p_old[i].get()) = p_new[i].get();
+      (*rv_map)[p_old[i].get()] = p_new[i].get();
     }
   };
 
