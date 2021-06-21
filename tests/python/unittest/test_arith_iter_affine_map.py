@@ -716,6 +716,48 @@ def test_normalize_iter_map_to_expr():
     tvm.ir.assert_structural_equal(tvm.arith.normalize_iter_map_to_expr(res[1]), flm(x[0], 5))
 
 
+def test_inverse_affine_iter_map():
+    l0 = create_iter("l0", 64)
+    l1 = create_iter("l1", 64)
+    l2 = create_iter("l2", 64)
+
+    l0_0, l0_1 = isplit(l0, 16)
+    l1_0, l1_1 = isplit(l1, 4)
+    l0_1_l1_1_fused = ifuse([l0_1, l1_1])
+
+    iter_map = tvm.arith.detect_iter_map([l0_1_l1_1_fused[0], l0_0[0], l1_0[0]],
+                                    var_dom([l0, l1]))
+    outputs = [tvm.tir.Var("output_{}".format(i), "int32") for i in range(3)]
+    res = tvm.arith.inverse_affine_iter_map(iter_map, outputs)
+    assert(len(res) == 2)
+    l0_inverse = floormod(floordiv(outputs[0], 4), 16) + outputs[1] * 16
+    l1_inverse = floormod(outputs[0], 4) + outputs[2] * 4
+    tvm.ir.assert_structural_equal(res[l0[0]], l0_inverse)
+    tvm.ir.assert_structural_equal(res[l1[0]], l1_inverse)
+
+
+    l0_0, l0_1 = isplit(l0, 16)
+    l1_0, l1_1 = isplit(l1, 4)
+    l2_1, l2_2 = isplit(l2, 4)
+    l2_0, l2_1 = isplit(l2_1, 4)
+
+    l0_1_l2_1_l1_1_l2_0_fused = ifuse([l0_1, l2_1, l1_1, l2_0])
+
+    iter_map = tvm.arith.detect_iter_map([l0_1_l2_1_l1_1_l2_0_fused[0], l0_0[0], l2_2[0], l1_0[0]],
+                                         var_dom([l0, l1, l2]))
+    outputs = [tvm.tir.Var("output_{}".format(i), "int32") for i in range(4)]
+    res = tvm.arith.inverse_affine_iter_map(iter_map, outputs)
+    assert(len(res) == 3)
+    l0_inverse = floormod(floordiv(outputs[0], 64), 16) + outputs[1] * 16
+    l1_inverse = floormod(floordiv(outputs[0], 4), 4) + outputs[3] * 4
+    l2_inverse = floormod(outputs[0], 4) * 16 + floormod(floordiv(outputs[0], 16), 4) * 4 \
+                 + outputs[2]
+
+    tvm.ir.assert_structural_equal(res[l0[0]], l0_inverse)
+    tvm.ir.assert_structural_equal(res[l1[0]], l1_inverse)
+    tvm.ir.assert_structural_equal(res[l2[0]], l2_inverse)
+
+
 if __name__ == "__main__":
     test_split()
     test_trivial()
@@ -725,3 +767,4 @@ if __name__ == "__main__":
     test_normalize_iter_map_to_expr()
     test_subspace_division()
     test_complex()
+    test_inverse_affine_iter_map()

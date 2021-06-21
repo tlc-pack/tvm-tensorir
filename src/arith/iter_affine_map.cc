@@ -1408,5 +1408,94 @@ TVM_REGISTER_GLOBAL("arith.SubspaceDivide")
       return SubspaceDivide(bindings, root_iters, sub_iters, predicate, require_bijective, &ana);
     });
 
+class InverseAffineIterMapTransformer {
+ public:
+  explicit InverseAffineIterMapTransformer(Analyzer* analyzer) : analyzer_(analyzer) {}
+
+  Map<Var, PrimExpr> operator()(const Array<IterSumExpr>& iter_map,
+                                const Array<PrimExpr>& outputs) {
+    ICHECK(iter_map.size() == outputs.size());
+
+    for (size_t i = 0; i < iter_map.size(); i++) {
+      Visit_(iter_map[i], outputs[i]);
+    }
+    return std::move(inverse_);
+  }
+
+ private:
+  void Visit_(const IterSumExpr& iter_map_expr, const PrimExpr& output) {
+    PrimExpr input = output - iter_map_expr->base;
+
+    Array<IterSplitExpr> splits = FindFuse(iter_map_expr);
+    ICHECK(!splits.empty());
+
+    if (iter_map_expr->args.size() == 1) {
+      Visit_(iter_map_expr->args[0], input);
+      return;
+    }
+
+    for (const IterSplitExpr& split : splits) {
+      Visit_(split, floormod(floordiv(input, split->scale), split->extent));
+    }
+  }
+
+  void Visit_(const IterSplitExpr& iter_map_expr, const PrimExpr& output) {
+    PrimExpr input = output;
+    input = input * iter_map_expr->lower_factor;
+
+    const IterMark& source = iter_map_expr->source;
+    if (source->source.as<arith::IterSumExprNode>()) {
+      Visit_(Downcast<IterSumExpr>(source->source), input);
+    } else {
+      Var source_var = Downcast<Var>(source->source);
+      if (inverse_.count(source_var)) {
+        inverse_.Set(source_var, inverse_.at(source_var) + input);
+      } else {
+        inverse_.Set(source_var, input);
+      }
+    }
+  }
+
+  Array<IterSplitExpr> FindFuse(const IterSumExpr sum_expr) {
+    IntImm base_scale(nullptr);
+    size_t base_index = 0;
+    for (size_t i = 0; i < sum_expr->args.size(); ++i) {
+      if (const auto* op = sum_expr->args[i]->scale.as<IntImmNode>()) {
+        if (!base_scale.defined() || op->value < base_scale->value) {
+          base_scale = GetRef<IntImm>(op);
+          base_index = i;
+        }
+      }
+    }
+    ICHECK(base_scale.defined());
+    std::vector<IterSplitExpr> iters;
+    std::vector<bool> visited(sum_expr->args.size(), false);
+    PrimExpr expected_scale = base_scale;
+    for (size_t i = 0; i < sum_expr->args.size(); i++) {
+      size_t j = i == 0 ? base_index : 0;
+      for (; j < sum_expr->args.size(); ++j) {
+        if (!visited[j] && analyzer_->CanProve(sum_expr->args[j]->scale - expected_scale == 0))
+          break;
+      }
+      ICHECK(j != sum_expr->args.size());
+      visited[j] = true;
+      iters.push_back(sum_expr->args[j]);
+      expected_scale *= sum_expr->args[j]->extent;
+    }
+    return iters;
+  }
+
+  Analyzer* analyzer_;
+  Map<Var, PrimExpr> inverse_;
+};
+
+Map<Var, PrimExpr> InverseAffineIterMap(const Array<IterSumExpr>& iter_map,
+                                        const Array<PrimExpr> outputs) {
+  Analyzer analyzer;
+  return InverseAffineIterMapTransformer(&analyzer)(iter_map, outputs);
+}
+
+TVM_REGISTER_GLOBAL("arith.InverseAffineIterMap").set_body_typed(InverseAffineIterMap);
+
 }  // namespace arith
 }  // namespace tvm
