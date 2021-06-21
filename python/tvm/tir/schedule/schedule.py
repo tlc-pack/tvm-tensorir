@@ -16,15 +16,21 @@
 # under the License.
 # pylint: disable=unused-import
 """The TensorIR schedule class"""
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional, Tuple, Union
 
 from tvm._ffi import register_object as _register_object
+from tvm.error import TVMError, register_error
 from tvm.ir import IRModule, PrimExpr
 from tvm.runtime import Object, String
-from tvm.tir import Block, For, IntImm, IterVar, PrimFunc, TensorIntrin
+from tvm.tir import Block, For, IntImm, PrimFunc, IterVar, TensorIntrin
 
 from . import _ffi_api_schedule
 from .state import ScheduleState, StmtSRef
+
+
+@register_error
+class ScheduleError(TVMError):
+    """Error that happens during TensorIR scheduling."""
 
 
 @_register_object("tir.LoopRV")
@@ -57,10 +63,14 @@ class Schedule(Object):
     Link to tutorial: https://tvm.apache.org/docs/tutorials/language/schedule_primitives.html
     """
 
+    ERROR_RENDER_LEVEL = {"detail": 0, "fast": 1, "none": 2}
+
     def __init__(
         self,
         func_or_mod: Union[PrimFunc, IRModule],
+        *,
         debug_mode: Union[bool, int] = False,
+        error_render_level: str = "detail",
     ):
         """Construct a concrete TensorIR schedule from an IRModule or a PrimFunc
 
@@ -71,14 +81,17 @@ class Schedule(Object):
         debug_mode : Union[bool, int]
             Do extra correctness checking after the class creation and each time
             scheduling primitive
+        error_render_level : str = "detail"
+            The level of error rendering. Choices: "detail", "fast", "none".
+            "detail": Render a detailed error message, with the TIR and error locations printed
+            "fast: Show a simple error message without rendering or string manipulation
+            "none": Do not show any error message.
 
         Note
         ----------
         The checks performed includes:
         1) VerifySRefTree
-        2) VerifyAffineBinding
-        3) VerifyRegionCover
-        4) VerifyStagePipeline
+        2) VerifyCachedFlags
         """
         if isinstance(debug_mode, bool):
             if debug_mode:
@@ -87,10 +100,18 @@ class Schedule(Object):
                 debug_mode = 0
         if not isinstance(debug_mode, int):
             raise TypeError(f"`debug_mode` should be integer or boolean, but gets: {debug_mode}")
+        if error_render_level not in Schedule.ERROR_RENDER_LEVEL:
+            raise ValueError(
+                'error_render_level can be "detail", "fast", or "none", but got: '
+                + f"{error_render_level}"
+            )
+        error_render_level = Schedule.ERROR_RENDER_LEVEL.get(error_render_level)
         self.__init_handle_by_constructor__(
             _ffi_api_schedule.ConcreteSchedule,  # pylint: disable=no-member
             func_or_mod,
+            -1,  # seed
             debug_mode,
+            error_render_level,
         )
 
     ########## Utilities ##########
@@ -197,6 +218,7 @@ class Schedule(Object):
         """
         return _ffi_api_schedule.ScheduleRemoveRV(self, rand_var)  # pylint: disable=no-member
 
+    ########## Block/Loop relation ##########
     ########## Block/Loop relation ##########
 
     def get_block(
@@ -375,7 +397,12 @@ class Schedule(Object):
         )
 
     def storage_align(
-        self, block: BlockRV, buffer_index: int, axis: int, factor: int, offset: int
+        self,
+        block: BlockRV,
+        buffer_index: int,
+        axis: int,
+        factor: int,
+        offset: int,
     ) -> None:
         _ffi_api_schedule.ScheduleStorageAlign(  # pylint: disable=no-member
             self, block, buffer_index, axis, factor, offset
@@ -415,6 +442,52 @@ class Schedule(Object):
         if isinstance(intrin, str):
             intrin = String(intrin)
         _ffi_api_schedule.ScheduleTensorize(self, loop, intrin)  # pylint: disable=no-member
+
+    ########## Schedule: Marks and NO-OPs ##########
+
+    def mark_loop(
+        self,
+        loop: LoopRV,
+        ann_key: str,
+        ann_val: str,
+    ) -> None:
+        """Mark a range of loops with the specific mark
+        Parameters
+        ----------
+        loop: LoopRV
+            The loops to be marked
+        ann_key : str
+            The annotation key
+        ann_val : str
+            The annotation value
+        """
+        if isinstance(ann_val, str):
+            ann_val = String(ann_val)
+        elif isinstance(ann_val, int):
+            ann_val = IntImm("int64", ann_val)
+        _ffi_api_schedule.ScheduleMarkLoop(  # pylint: disable=no-member
+            self, loop, ann_key, ann_val
+        )
+
+    def mark_block(
+        self,
+        block: BlockRV,
+        ann_key: str,
+        ann_val: ExprRV,
+    ) -> None:
+        """Mark a block
+        Parameters
+        ----------
+        block : BlockRV
+            The block to be marked
+        ann_key : str
+            The annotation key
+        ann_val : ExprRV
+            The annotation value
+        """
+        _ffi_api_schedule.ScheduleMarkBlock(  # pylint: disable=no-member
+            self, block, ann_key, ann_val
+        )
 
     ########## Schedule: Misc ##########
 

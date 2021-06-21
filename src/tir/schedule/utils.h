@@ -20,20 +20,12 @@
 #define TVM_TIR_SCHEDULE_UTILS_H_
 
 #include <tvm/arith/analyzer.h>
-#include <tvm/tir/analysis.h>
-#include <tvm/tir/function.h>
-#include <tvm/tir/op.h>
-#include <tvm/tir/schedule/state.h>
-#include <tvm/tir/stmt_functor.h>
-
-#include "./analysis.h"
-
-#include <tvm/arith/analyzer.h>
 #include <tvm/arith/int_set.h>
 #include <tvm/arith/iter_affine_map.h>
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
+#include <tvm/tir/schedule/inst.h>
 #include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/schedule/state.h>
 #include <tvm/tir/stmt_functor.h>
@@ -45,7 +37,13 @@
 #include <utility>
 #include <vector>
 
+#include "../../arith/pattern_match.h"
+#include "../../printer/text_printer.h"
+#include "../../runtime/thread_storage_scope.h"
+#include "../../support/array.h"
 #include "./analysis.h"
+#include "./error.h"
+#include "./primitive.h"
 #include "./transform.h"
 
 namespace tvm {
@@ -106,6 +104,71 @@ namespace tir {
   TVM_TYPE_AS_OR_ERR(Result, From, Type)                                          \
       << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
       << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
+
+/******** Storage scope ********/
+
+/*!
+ * \brief Determine if iterators of a storage scope should be relaxed
+ * under a specific thread scope
+ * \param storage_scope The storage scope that the iterators are on
+ * \param thread_scope The thread scope to be relaxed
+ * \return A boolean indicating the result
+ */
+inline bool CanRelaxStorageUndereThread(const runtime::StorageScope& storage_scope,
+                                        const runtime::ThreadScope& thread_scope) {
+  if (storage_scope.rank == runtime::StorageRank::kWarp) {
+    // for warp memory, we only relax threadIdx.x
+    return thread_scope.rank == 1 && thread_scope.dim_index == 0;
+  }
+  return static_cast<int>(storage_scope.rank) <= static_cast<int>(thread_scope.rank);
+}
+
+/******** SeqStmt ********/
+
+/*!
+ * \brief Remove a specific Stmt from a SeqStmt. If a SeqStmt contains a BlockRealize,
+ * whose block is the Stmt to be removed, then remove that BlockRealize too.
+ * \param seq The SeqStmt to be removed from
+ * \param to_remove The Stmt to be removed
+ * \return The removal result
+ */
+inline Stmt RemoveFromSeqStmt(const SeqStmt& seq, const Stmt& to_remove) {
+  ICHECK_GT(seq->size(), 1);
+  Array<Stmt> new_stmts;
+  new_stmts.reserve(seq->size());
+  for (const Stmt& stmt : seq->seq) {
+    if (to_remove.same_as(stmt)) {
+      continue;
+    }
+    if (const auto* realize = stmt.as<BlockRealizeNode>()) {
+      if (to_remove.same_as(realize->block)) {
+        continue;
+      }
+    }
+    new_stmts.push_back(stmt);
+  }
+  return SeqStmt::Flatten(new_stmts);
+}
+
+/******** Integer set ********/
+
+/*!
+ * \brief Converts the Ranges to IntSets
+ * \param var_dom The ranges of variables
+ * \return The integer sets of the variables
+ */
+inline Map<Var, arith::IntSet> AsIntSet(const Map<Var, Range>& var_dom) {
+  std::unordered_map<Var, arith::IntSet, ObjectPtrHash, ObjectPtrEqual> result;
+  result.reserve(var_dom.size());
+  for (auto kv : var_dom) {
+    Var& var = kv.first;
+    Range& range = kv.second;
+    result.emplace(std::move(var), arith::IntSet::FromRange(std::move(range)));
+  }
+  return {result.begin(), result.end()};
+}
+
+/******** Misc: not upstream-ed ********/
 
 inline String Repr(const IRModule& mod) {
   const auto* f = runtime::Registry::Get("script.AsTVMScript");
@@ -713,6 +776,40 @@ inline Stmt SeqStmtRemove(const SeqStmt& seq, const Stmt& to_remove) {
     new_stmts.push_back(stmt);
   }
   return SeqStmt::Flatten(new_stmts);
+}
+
+inline void AddAnn(const ScheduleState& sch, const StmtSRef& sref, const String& ann_key,
+                   const PrimExpr& ann_val) {
+  // Extract annotation
+  const Map<String, ObjectRef>* annotations = nullptr;
+  if (const auto* loop = sref->StmtAs<ForNode>()) {
+    annotations = &loop->annotations;
+  } else if (const auto* block = sref->StmtAs<BlockNode>()) {
+    annotations = &block->annotations;
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+  }
+  // Check if the annotation already exists
+  if (annotations->find(ann_key) != annotations->end()) {
+    return;
+  }
+  // Add the new annotation
+  Map<String, ObjectRef> new_ann(*annotations);
+  new_ann.Set(ann_key, ann_val);
+  // Create the new stmt
+  if (const auto* loop = sref->StmtAs<ForNode>()) {
+    ObjectPtr<ForNode> n = make_object<ForNode>(*loop);
+    n->annotations = std::move(new_ann);
+    sch->Replace(sref, For(n), {});
+  } else if (const auto* block = sref->StmtAs<BlockNode>()) {
+    ObjectPtr<BlockNode> n = make_object<BlockNode>(*block);
+    n->annotations = std::move(new_ann);
+    Block p(n);
+    sch->Replace(sref, p, {{GetRef<Block>(block), p}});
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+    throw;
+  }
 }
 
 }  // namespace tir

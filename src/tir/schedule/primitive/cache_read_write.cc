@@ -16,13 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "../analysis.h"
 #include "../utils.h"
-#include "./primitives.h"
 
 namespace tvm {
 namespace tir {
-namespace schedule {
 
 /*! \brief The auxilary info used for the insertion point and content of the cache stage */
 struct CacheStageInfo {
@@ -90,8 +87,7 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
       /*init=*/NullOpt,
       /*alloc_buffers=*/{},
       /*match_buffers=*/{},
-      /*annotations=*/{}
-  );
+      /*annotations=*/{});
   // Create the block realize node
   Stmt body = BlockRealize(/*values=*/iter_values,
                            /*predicate=*/Bool(true),
@@ -554,7 +550,7 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& _block_sref, int i,
   BufferRegion cache_region(nullptr);
   if (!block_sref.same_as(root)) {
     // Find the parent scope
-    scope_sref = GetScopeRoot(block_sref);
+    scope_sref = GetScopeRoot(block_sref).value();
     // Check the block is not a output block
     ICHECK(!IsOutputBlock(block_sref, scope_sref));
     // Find the region to be cache_read
@@ -601,7 +597,7 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
   ICHECK(block_sref->parent != nullptr)
       << "ValueError: `cache_write` cannot be applied to an input buffer";
   // Find the parent scope
-  StmtSRef scope_sref = GetScopeRoot(block_sref);
+  StmtSRef scope_sref = GetScopeRoot(block_sref).value();
   CacheLocDetector::Detect(self, block_sref, scope_sref, &info);
   // Generate cache buffer
   Block cache_write_stage = MakeCacheStage(
@@ -621,6 +617,64 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
   return result_block_sref;
 }
 
-}  // namespace schedule
+struct CacheReadTraits : public UnpackedInstTraits<CacheReadTraits> {
+  static constexpr const char* kName = "CacheRead";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 2;
+  static constexpr size_t kNumDecisions = 0;
+
+  static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block, Integer i,
+                                         String storage_scope) {
+    return sch->CacheRead(block, i->value, storage_scope);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block, Integer i,
+                                 String storage_scope) {
+    PythonAPICall py("cache_read");
+    py.Input("block", block);
+    py.Attr("i", i->value);
+    py.Attr("storage_scope", storage_scope);
+    py.Output(outputs[0]);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+struct CacheWriteTraits : public UnpackedInstTraits<CacheWriteTraits> {
+  static constexpr const char* kName = "CacheWrite";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 2;
+  static constexpr size_t kNumDecisions = 0;
+
+  static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block, Integer i,
+                                         String storage_scope) {
+    return sch->CacheWrite(block, i->value, storage_scope);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block, Integer i,
+                                 String storage_scope) {
+    PythonAPICall py("cache_write");
+    py.Input("block", block);
+    py.Attr("i", i->value);
+    py.Attr("storage_scope", storage_scope);
+    py.Output(outputs[0]);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND(CacheReadTraits);
+TVM_REGISTER_INST_KIND(CacheWriteTraits);
+
 }  // namespace tir
 }  // namespace tvm

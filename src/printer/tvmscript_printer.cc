@@ -1014,7 +1014,8 @@ Doc TVMScriptPrinter::PrintPrimFunc(const PrimFunc& primFunc) {
       header_var << PrintDType(var->dtype) << ")";
     }
   }
-  doc << Doc::Indent(4, header_var << header_attr << header_match_buffer << header_buf << header_reducer << body);
+  doc << Doc::Indent(
+      4, header_var << header_attr << header_match_buffer << header_buf << header_reducer << body);
   return doc;
 }
 
@@ -1120,12 +1121,12 @@ Doc TVMScriptPrinter::PrintLoopStack() {
   return res;
 }
 
-TVM_REGISTER_GLOBAL("script.AsTVMScript")
-    .set_body_typed<std::string(const ObjectRef&, bool)>([](const ObjectRef& functions,
-                                                            bool show_meta) {
-      ICHECK(functions.as<PrimFuncNode>() != nullptr || functions.as<IRModuleNode>() != nullptr);
-      return "@tvm.script.tir\n" + TVMScriptPrinter(show_meta).Print(functions).str() + "\n";
-    });
+String AsTVMScript(const ObjectRef& mod, bool show_meta) {
+  ICHECK(mod->IsInstance<PrimFuncNode>() || mod->IsInstance<IRModuleNode>());
+  return "@tvm.script.tir\n" + TVMScriptPrinter(show_meta).Print(mod).str() + "\n";
+}
+
+TVM_REGISTER_GLOBAL("script.AsTVMScript").set_body_typed(AsTVMScript);
 
 }  // namespace tir
 }  // namespace tvm

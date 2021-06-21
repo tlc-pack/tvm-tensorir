@@ -199,18 +199,18 @@ BlockRealize GetBlockRealize(const StmtSRef& block_sref) {
   if (child->IsInstance<BlockRealizeNode>()) {
     BlockRealize block_realize = Downcast<BlockRealize>(child);
     ICHECK_EQ(block_realize->block.get(), block)
-      << "ValueError: The BlockRealize is expected to have the input block as its body block";
+        << "ValueError: The BlockRealize is expected to have the input block as its body block";
     return block_realize;
   } else if (child->IsInstance<SeqStmtNode>()) {
     SeqStmt seq_stmt = Downcast<SeqStmt>(child);
     ICHECK_GE(block_sref->seq_index, 0) << "ValueError: `seq_index` is out of range";
     ICHECK_LT(block_sref->seq_index, static_cast<int64_t>(seq_stmt->seq.size()))
-      << "ValueError: `seq_index` is out of range";
+        << "ValueError: `seq_index` is out of range";
     const auto* block_realize = seq_stmt->seq[block_sref->seq_index].as<BlockRealizeNode>();
     ICHECK(block_realize)
-      << "TypeError: The stmt indicated by `seq_index` is expected to be a BlockRealize";
+        << "TypeError: The stmt indicated by `seq_index` is expected to be a BlockRealize";
     ICHECK_EQ(block_realize->block.get(), block)
-      << "ValueError: The BlockRealize is expected to have the input block as its body block";
+        << "ValueError: The BlockRealize is expected to have the input block as its body block";
     return GetRef<BlockRealize>(block_realize);
   } else {
     LOG(FATAL) << "TypeError: The child stmt can only be a BlockRealize or a SeqStmt here";
@@ -432,9 +432,8 @@ void UpdateScope(ScheduleState self, const StmtSRef& block_sref) {
   // The caller is responsible for correcting the flags
   bool affine_binding = false;
   bool region_cover = false;
-  bool stage_pipeline = false;
-  self->block_info[block_sref] =
-      BlockInfo(std::move(scope), affine_binding, region_cover, stage_pipeline);
+  // TODO: stage_pipeline
+  self->block_info[block_sref] = BlockInfo(std::move(scope), affine_binding, region_cover);
 }
 
 void UpdateAffineFlag(ScheduleState self, const StmtSRef& block_sref) {
@@ -535,7 +534,7 @@ void BlockReadWriteCollector::VisitStmt_(const BlockRealizeNode* op) {
     for (const auto& range : read->region) {
       relaxed_region.push_back(
           arith::EvalSet(arith::IntSet::FromRange(Range::FromMinExtent(
-              Substitute(range->min, vmap), Substitute(range->extent, vmap))),
+                             Substitute(range->min, vmap), Substitute(range->extent, vmap))),
                          dom_map_));
     }
     Update(&read_buffers_, &read_regions_, read->buffer, relaxed_region);
@@ -545,7 +544,7 @@ void BlockReadWriteCollector::VisitStmt_(const BlockRealizeNode* op) {
     for (const auto& range : write->region) {
       relaxed_region.push_back(
           arith::EvalSet(arith::IntSet::FromRange(Range::FromMinExtent(
-              Substitute(range->min, vmap), Substitute(range->extent, vmap))),
+                             Substitute(range->min, vmap), Substitute(range->extent, vmap))),
                          dom_map_));
     }
     Update(&writes_buffers_, &write_regions_, write->buffer, relaxed_region);

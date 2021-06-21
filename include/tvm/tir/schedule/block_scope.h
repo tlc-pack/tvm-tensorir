@@ -109,6 +109,7 @@ class StmtSRef : public ObjectRef {
    * -1 if the parent does not contain multiple children.
    */
   TVM_DLL explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index);
+
   /*! \return The mutable pointer to the StmtSRefNode */
   StmtSRefNode* get() const { return static_cast<StmtSRefNode*>(data_.get()); }
 
@@ -220,7 +221,9 @@ class BlockScopeNode : public Object {
    * equivalent to of a stage pipeline. Under the following conditions:
    *
    * 1) The region cover property holds for every of its child blocks
-   * 2) No write-after-read dependency
+   * 2) No write-after-read dependency or opaque dependency, only read-after-write and
+   * write-after-write are allowed
+   * 3) All the statements in the scope are schedulable statements, i.e. Block and For
    */
   bool stage_pipeline{false};
 
@@ -230,7 +233,7 @@ class BlockScopeNode : public Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(BlockScopeNode, Object);
 
  public:
-  /******** DependencyNode ********/
+  /******** Dependency ********/
   /*!
    * \brief Get all dependencies whose `src` equals `src`
    * \param src The queried block

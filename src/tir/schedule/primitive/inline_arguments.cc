@@ -16,13 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "../analysis.h"
 #include "../utils.h"
-#include "./primitives.h"
 
 namespace tvm {
 namespace tir {
-namespace schedule {
 
 void InlineArgument(ScheduleState self, int i, const String& func_name) {
   GlobalVar g_var = self->mod->GetGlobalVar(func_name);
@@ -47,6 +44,31 @@ void InlineArgument(ScheduleState self, int i, const String& func_name) {
   self->mod->Update(g_var, PrimFunc(new_func));
 }
 
-}  // namespace schedule
+struct InlineArgumentTraits : public UnpackedInstTraits<InlineArgumentTraits> {
+  static constexpr const char* kName = "InlineArgument";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 0;
+  static constexpr size_t kNumAttrs = 2;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, Integer i, String func_name) {
+    return sch->InlineArgument(i, func_name);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, Integer i, String func_name) {
+    PythonAPICall py("inline_argument");
+    py.Attr("i", i->value);
+    py.Attr("func_name", func_name);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND(InlineArgumentTraits);
+
 }  // namespace tir
 }  // namespace tvm

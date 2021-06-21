@@ -24,6 +24,7 @@
 #define TVM_TIR_SCHEDULE_STATE_H_
 
 #include <tvm/ir/module.h>
+#include <tvm/tir/function.h>
 #include <tvm/tir/schedule/block_scope.h>
 
 #include <unordered_map>
@@ -31,8 +32,6 @@
 
 namespace tvm {
 namespace tir {
-
-class PrimFunc;
 
 /*!
  * \brief The information about a TensorIR block, it contains two categories of information
@@ -52,37 +51,24 @@ struct BlockInfo {
    * produced by its producers
    */
   bool region_cover{false};
-  /*!
-   * \brief Property of a block scope root at the block, indicaiting if the scope is an equivalence
-   * of a stage pipeline. Conditions:
-   * 1) The region cover property holds for every of it child blocks
-   * 2) No write-after-read dependency
-   */
-  bool stage_pipeline{false};
 
   BlockInfo() = default;
 
-  explicit BlockInfo(BlockScope scope, bool affine_binding = false, bool region_cover = false,
-                     bool stage_pipeline = false)
+  explicit BlockInfo(BlockScope scope, bool affine_binding = false, bool region_cover = false)
       : scope(std::move(scope)),         //
         affine_binding(affine_binding),  //
-        region_cover(region_cover),      //
-        stage_pipeline(stage_pipeline) {}
+        region_cover(region_cover) {}
 };
 
 /*!
  * \brief The bitmask of the debug flag in the ScheduleStateNode.
  * \sa ScheduleStateNode
  */
-enum class ScheduleDebugMask : int32_t {
+enum ScheduleDebugMask : uint32_t {
   /*! \brief Verify the correctness of the sref tree */
   kVerifySRefTree = 1,
-  /*! \brief Verify the correctness of affine_binding */
-  kVerifyAffineBinding = 2,
-  /*! \brief Verify the correctness of region_cover */
-  kVerifyRegionCover = 4,
-  /*! \brief Verify the correctness of stage_pipeline */
-  kVerifyStagePipeline = 8,
+  /*! \brief Verify the correctness of affine_binding, region_cover and stage_pipeline */
+  kVerifyCachedFlags = 2,
 };
 
 /*!
@@ -145,9 +131,8 @@ class ScheduleStateNode : public Object {
   /*!
    * \brief Trigger the verification according to the `debug_mode` bitmask.
    * 1) If the bitmask `kVerifySRefTree` is on, verify the correctness of the sref tree.
-   * 2) If the bitmask `kVerifyAffineBinding` is on, verify the correctness of `affine_binding`
-   * 3) If the bitmask `kVerifyRegionCover` is on, verify the correctness of `region_cover`
-   * 4) If the bitmask `kVerifyStagePipeline` is on, verify the correctness of `stage_pipeline`
+   * 2) If the bitmask `kVerifyCachedFlags` is on, verify the correctness of `affine_binding`,
+   * `region_cover` and `stage_pipeline`
    */
   TVM_DLL void DebugVerify() const;
 
