@@ -41,18 +41,21 @@ class ConcreteScheduleNode : public ScheduleNode {
  protected:
   /*! \brief The internal state of scheduling */
   ScheduleState state_;
-  /*! \brief A symbol table that maps random variables to concrete StmtSRef/Integers */
-  TSymbolTable symbol_table_;
+  /*! \brief The level of error rendering */
+  ScheduleErrorRenderLevel error_render_level_;
   /*! \brief Source of randomness */
   Sampler sampler_;
+  /*! \brief A symbol table that maps random variables to concrete StmtSRef/Integers */
+  TSymbolTable symbol_table_;
   /*! \brief A persistent stateless arithmetic analyzer. */
   std::unique_ptr<arith::Analyzer> analyzer_;
 
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {
     // `state_` is not visited
-    // `symbol_table_` is not visited
+    // `error_render_level_` is not visited
     // `sampler_` is not visited
+    // `symbol_table_` is not visited
     // `analyzer_` is not visitied
   }
 
@@ -63,10 +66,8 @@ class ConcreteScheduleNode : public ScheduleNode {
 
  public:
   ScheduleState state() const final { return state_; }
-
-  void Seed(int64_t new_seed = -1) final { this->sampler_.Seed(new_seed); }
-
   Schedule Copy(int64_t new_seed = -1) const override;
+  void Seed(int64_t new_seed = -1) final { this->sampler_.Seed(new_seed); }
 
  public:
   /******** Lookup random variables ********/
@@ -75,12 +76,12 @@ class ConcreteScheduleNode : public ScheduleNode {
   inline PrimExpr Get(const ExprRV& expr_rv) const final;
   inline StmtSRef GetSRef(const BlockRV& block_rv) const final;
   inline StmtSRef GetSRef(const LoopRV& loop_rv) const final;
-  template <class T>
-  inline Array<StmtSRef> GetSRefs(const Array<T>& rvs) const;
   void RemoveRV(const BlockRV& block_rv) final { RemoveFromSymbolTable(block_rv); }
   void RemoveRV(const LoopRV& loop_rv) final { RemoveFromSymbolTable(loop_rv); }
   void RemoveRV(const ExprRV& expr_rv) final { RemoveFromSymbolTable(expr_rv); }
   using ScheduleNode::GetSRef;
+  template <class T>
+  inline Array<StmtSRef> GetSRefs(const Array<T>& rvs) const;
 
  public:
   /******** Schedule: Sampling ********/
@@ -162,7 +163,7 @@ class ConcreteScheduleNode : public ScheduleNode {
    * \param new_state The ScheduleState copied
    * \param new_symbol_table The symbol table copied
    */
-  void MakeCopy(ScheduleState* new_state, TSymbolTable* new_symbol_table) const;
+  void Copy(ScheduleState* new_state, TSymbolTable* new_symbol_table) const;
   /*!
    * \brief Add srefs as random variables into the symbol table
    * \tparam T The type of the random variables
@@ -181,10 +182,22 @@ class ConcreteScheduleNode : public ScheduleNode {
   inline T CreateRV(const StmtSRef& sref);
   /*!
    * \brief Add an expr as a random variable into the symbol table
+   * \param expr The expr to be added to the symbol table
+   * \return The new random variable created
+   */
+  inline ExprRV CreateRV(const PrimExpr& expr);
+  /*!
+   * \brief Add expr as random variables into the symbol table
+   * \param exprs The expr to be added to the symbol table
+   * \return The new random variables created
+   */
+  inline Array<ExprRV> CreateRV(const Array<PrimExpr>& exprs);
+  /*!
+   * \brief Add an expr as a random variable into the symbol table
    * \param number The expr to be added to the symbol table
    * \return The new random variable created
    */
-  inline ExprRV CreateRV(const Integer& number);
+  inline ExprRV CreateRV(int64_t number);
   /*!
    * \brief Add expr as random variables into the symbol table
    * \param numbers The number to be added to the symbol table
@@ -194,6 +207,8 @@ class ConcreteScheduleNode : public ScheduleNode {
   /*! \brief Remove a random variable from the symbol table */
   inline void RemoveFromSymbolTable(const ObjectRef& rv);
 };
+
+// implementations
 
 /******** Lookup random variables ********/
 
@@ -210,7 +225,6 @@ inline For ConcreteScheduleNode::Get(const LoopRV& loop_rv) const {
 }
 
 inline PrimExpr ConcreteScheduleNode::Get(const ExprRV& expr_rv) const {
-  // Replace all the Var with their corresponding value in the symbol table
   PrimExpr transformed = Substitute(expr_rv, [this](const Var& var) -> Optional<PrimExpr> {
     auto it = this->symbol_table_.find(var);
     if (it == this->symbol_table_.end()) {
@@ -297,12 +311,29 @@ template <class T>
 inline T ConcreteScheduleNode::CreateRV(const StmtSRef& sref) {
   T rv;
   this->symbol_table_.Set(rv, sref);
-  return rv;
+  return std::move(rv);
 }
 
-inline ExprRV ConcreteScheduleNode::CreateRV(const Integer& number) {
+inline ExprRV ConcreteScheduleNode::CreateRV(const PrimExpr& expr) {
+  ExprRV rv;
+  this->symbol_table_.Set(rv, expr);
+  return std::move(rv);
+}
+
+inline Array<ExprRV> ConcreteScheduleNode::CreateRV(const Array<PrimExpr>& exprs) {
+  Array<ExprRV> result;
+  result.reserve(exprs.size());
+  for (const PrimExpr& expr : exprs) {
+    ExprRV rv;
+    this->symbol_table_.Set(rv, expr);
+    result.push_back(rv);
+  }
+  return result;
+}
+
+inline ExprRV ConcreteScheduleNode::CreateRV(int64_t number) {
   Var rv;
-  this->symbol_table_.Set(rv, number);
+  this->symbol_table_.Set(rv, Integer(number));
   return std::move(rv);
 }
 

@@ -21,16 +21,29 @@
 namespace tvm {
 namespace tir {
 
-Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name) {
-  Array<StmtSRef> result;
-  for (const auto& kv : self->block_info) {
-    const StmtSRef& block_sref = kv.first;
-    const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
-    if (block->name_hint == name) {
-      result.push_back(block_sref);
+Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name, const String& func_name) {
+  struct Finder : public StmtVisitor {
+    explicit Finder(const ScheduleState& self, const String& name) : self_(self), name_(name) {}
+
+    void VisitStmt_(const BlockNode* block) override {
+      if (block->name_hint == name_) {
+        auto it = self_->stmt2ref.find(block);
+        ICHECK(it != self_->stmt2ref.end());
+        results_.push_back(it->second);
+      }
+      StmtVisitor::VisitStmt_(block);
     }
-  }
-  return result;
+
+    const ScheduleState& self_;
+    const String& name_;
+    Array<StmtSRef> results_;
+  };
+
+  BaseFunc func = self->mod->Lookup(func_name);
+  const auto* prim_func = TVM_TYPE_AS(prim_func, func, PrimFuncNode);
+  Finder finder(self, name);
+  finder(prim_func->body);
+  return std::move(finder.results_);
 }
 
 Array<StmtSRef> GetLoops(const StmtSRef& block_sref) {
@@ -68,7 +81,7 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
 }
 
 Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<Dependency> pred_edges = self->GetBlockScope(GetScopeRoot(block_sref))  //
+  Array<Dependency> pred_edges = self->GetBlockScope(GetScopeRoot(block_sref).value())  //
                                      ->GetDepsByDst(block_sref);
   Array<StmtSRef> results;
   results.reserve(pred_edges.size());
@@ -81,7 +94,7 @@ Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sr
 }
 
 Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<Dependency> succ_edges = self->GetBlockScope(GetScopeRoot(block_sref))  //
+  Array<Dependency> succ_edges = self->GetBlockScope(GetScopeRoot(block_sref).value())  //
                                      ->GetDepsBySrc(block_sref);
   Array<StmtSRef> results;
   results.reserve(succ_edges.size());

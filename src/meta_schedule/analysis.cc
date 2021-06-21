@@ -46,7 +46,7 @@ bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block
 }
 
 bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  tir::StmtSRef parent_block_sref = GetScopeRoot(block_sref);
+  tir::StmtSRef parent_block_sref = GetScopeRoot(block_sref).value();
   return parent_block_sref->parent == nullptr;
 }
 
@@ -87,7 +87,7 @@ bool IsSpatial(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) 
 }
 
 bool IsOutputBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  tir::StmtSRef parent_sref = tir::GetScopeRoot(block_sref);
+  tir::StmtSRef parent_sref = tir::GetScopeRoot(block_sref).value();
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   const auto* parent = TVM_SREF_TO_BLOCK(parent, parent_sref);
   if (parent_sref->parent == nullptr) {
@@ -213,7 +213,7 @@ Optional<Array<Bool>> GetReadPattern(const Array<tir::IterVar>& block_vars,
 bool IsElementWiseMatch(const tir::ScheduleState& self, const tir::StmtSRef& producer_sref,
                         const tir::StmtSRef& consumer_sref) {
   // Assume consumer is the only consumer of the producer
-  tir::StmtSRef parent_sref = tir::GetScopeRoot(producer_sref);
+  tir::StmtSRef parent_sref = tir::GetScopeRoot(producer_sref).value();
   const auto* producer = TVM_SREF_TO_BLOCK(producer, producer_sref);
   const auto* consumer = TVM_SREF_TO_BLOCK(consumer, consumer_sref);
   if (producer->writes.empty()) {
@@ -768,7 +768,7 @@ bool NeedsRFactorOrCrossThreadReduction(const tir::ScheduleState& self,
   Array<tir::StmtSRef> loops = tir::GetLoops(block_sref);
 
   // Cond 1. The block is a reduction block and has trivial binding.
-  if (ReductionBlock(self, block_sref, GetScopeRoot(block_sref)) &&
+  if (ReductionBlock(self, block_sref, GetScopeRoot(block_sref).value()) &&
       !IsTrivialBinding(self, block_sref)) {
     return false;
   }

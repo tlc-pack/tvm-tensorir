@@ -595,7 +595,6 @@ def test_reverse_compute_at():
 
 def test_compute_at_with_consumer_predicate():
     func = predicate_consumer_block
-    print(tvm.script.asscript(func))
     # schedule
     s = tir.Schedule(func, debug_mode=True)
     B = s.get_block("B")

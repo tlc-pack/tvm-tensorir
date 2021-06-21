@@ -23,13 +23,12 @@
 namespace tvm {
 namespace tir {
 
-Schedule Schedule::Concrete(PrimFunc func, int64_t seed, int debug_mode) {
-  return Schedule::Concrete(IRModule({{GlobalVar("main"), func}}), seed, debug_mode);
-}
-
-Schedule Schedule::Concrete(IRModule mod, int64_t seed, int debug_mode) {
+Schedule Schedule::Concrete(IRModule mod, int64_t seed, int debug_mode,
+                            ScheduleErrorRenderLevel error_render_level) {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
+  n->error_render_level_ = error_render_level;
+  n->sampler_.Seed(seed);
   n->symbol_table_ = {};
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   return Schedule(std::move(n));
@@ -177,14 +176,13 @@ class ScheduleCopier {
   std::unordered_map<const StmtSRefNode*, StmtSRef> old2new_;
 };
 
-void ConcreteScheduleNode::MakeCopy(ScheduleState* new_state,
-                                    TSymbolTable* new_symbol_table) const {
+void ConcreteScheduleNode::Copy(ScheduleState* new_state, TSymbolTable* new_symbol_table) const {
   ScheduleCopier::Copy(this, new_state, new_symbol_table);
 }
 
 Schedule ConcreteScheduleNode::Copy(int64_t new_seed) const {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
-  MakeCopy(&n->state_, &n->symbol_table_);
+  Copy(&n->state_, &n->symbol_table_);
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   n->sampler_.Seed(new_seed);
   return Schedule(std::move(n));
@@ -214,7 +212,7 @@ LoopRV ConcreteScheduleNode::SampleComputeLocation(const BlockRV& block_rv,
 /******** Schedule: Get blocks & loops ********/
 
 BlockRV ConcreteScheduleNode::GetBlock(const String& name, const String& func_name) {
-  Array<StmtSRef> blocks = tir::GetBlocks(state_, name);
+  Array<StmtSRef> blocks = tir::GetBlocks(state_, name, func_name);
   CHECK_EQ(blocks.size(), 1) << "ValueError: There are " << blocks.size()
                              << " blocks with the name: " << name;
   return CreateRV<BlockRV>(blocks[0]);

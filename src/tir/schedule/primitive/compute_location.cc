@@ -338,10 +338,12 @@ BufferRegionMap GatherRequirements(const Array<BufferRegion>& produced_regions,
     std::vector<BufferRegion> deep_relaxed;
     if (gather_read) {
       RelaxRegion(block_sref, lca_loop_sref, &relaxed, nullptr, relax_vars);
-      RelaxRegion(block_sref, GetScopeRoot(lca_loop_sref), &deep_relaxed, nullptr, relax_vars);
+      RelaxRegion(block_sref, GetScopeRoot(lca_loop_sref).value(), &deep_relaxed, nullptr,
+                  relax_vars);
     } else {
       RelaxRegion(block_sref, lca_loop_sref, nullptr, &relaxed, relax_vars);
-      RelaxRegion(block_sref, GetScopeRoot(lca_loop_sref), nullptr, &deep_relaxed, relax_vars);
+      RelaxRegion(block_sref, GetScopeRoot(lca_loop_sref).value(), nullptr, &deep_relaxed,
+                  relax_vars);
     }
     ICHECK_EQ(relaxed.size(), deep_relaxed.size());
     for (int i = 0; i < static_cast<int>(relaxed.size()); ++i) {
@@ -581,7 +583,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
                           << block_sref->stmt->GetTypeKey();
   CHECK(loop != nullptr) << "TypeError: 'compute_at' expects 'loop' to be a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
-  const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
+  StmtSRef parent_block_sref = GetScopeRoot(block_sref).value();
   const auto* parent_block = parent_block_sref->StmtAs<BlockNode>();
   const BlockScope& scope = self->GetBlockScope(parent_block_sref);
   Array<Dependency> edges_to_pred = scope->GetDepsByDst(block_sref);
@@ -683,7 +685,7 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   CHECK(loop != nullptr)
       << "TypeError: 'reverse_compute_at' expects 'loop' to be a loop, but get type: "
       << loop_sref->stmt->GetTypeKey();
-  const StmtSRef& parent_block_sref = GetScopeRoot(block_sref);
+  StmtSRef parent_block_sref = GetScopeRoot(block_sref).value();
   const auto* parent_block = parent_block_sref->StmtAs<BlockNode>();
   const BlockScope& scope = self->GetBlockScope(parent_block_sref);
   Array<Dependency> edges_to_pred = scope->GetDepsByDst(block_sref);

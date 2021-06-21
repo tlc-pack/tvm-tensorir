@@ -444,12 +444,9 @@ class IterMapRewriter : public ExprMutator {
   IterSumExpr NormalizeToIterOnBoundExpr(IterSumExpr expr,
                                          const PrimExpr& predicate_induced_extent) {
     // We are normalizing the left hand side of iter constraint(iter < predicate_induced_extent)
-    LOG(INFO) << expr;
-    LOG(INFO) << predicate_induced_extent;
     Optional<IterSplitExpr> opt = TryFuseIters(expr);
     // scale should be 1
     if (opt.defined() && is_one(opt.value()->scale)) {
-      LOG(INFO) << opt.value();
       IterSumExpr sum = Downcast<IterSumExpr>(opt.value()->source->source);
       // get the flattened form
       auto it = flattened_map_.find(sum);
@@ -731,8 +728,6 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   IterMapRewriter rewriter(analyzer, input_iters);
   // Step0.0: rewrite constraints in the order from size-small ones to size-big ones
   for (const IterConstraint& constraint : constraints) {
-    LOG(INFO) << constraint.iter;
-    LOG(INFO) << constraint.upper_bound;
     PrimExpr res = rewriter.RewriteIterConstraint(constraint.iter, constraint.upper_bound);
     if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
   }

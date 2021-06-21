@@ -577,7 +577,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   }
   {
     StmtSRef block_sref = self->stmt2ref.at(outer_block.get());
-    StmtSRef scope_sref = GetScopeRoot(block_sref);
+    StmtSRef scope_sref = GetScopeRoot(block_sref).value();
     UpdateScope(self, scope_sref);
     UpdateAffineFlag(self, scope_sref);
   }

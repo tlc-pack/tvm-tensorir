@@ -688,6 +688,17 @@ PrimExpr Substitute(PrimExpr expr, std::function<Optional<PrimExpr>(const Var&)>
   return IRSubstitute(vmap)(std::move(expr));
 }
 
+Array<Range> Substitute(const Array<Range>& region, const Map<Var, PrimExpr>& vmap) {
+  Array<Range> result;
+  result.reserve(region.size());
+  for (const Range& range : region) {
+    PrimExpr min = Substitute(range->min, vmap);
+    PrimExpr extent = Substitute(range->extent, vmap);
+    result.push_back(Range::FromMinExtent(std::move(min), std::move(extent)));
+  }
+  return result;
+}
+
 Stmt Substitute(const Stmt& stmt, const Map<Stmt, Stmt>& replace_plan) {
   class Mutator : public StmtMutator {
    public:

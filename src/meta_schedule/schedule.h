@@ -330,8 +330,12 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
 class Schedule : public tir::Schedule {
  public:
   using TSymbolTable = ScheduleNode::TSymbolTable;
-  explicit Schedule(tir::PrimFunc func, int64_t seed = -1, int debug_mode = false);
-  explicit Schedule(IRModule mod, int64_t seed = -1, int debug_mode = false);
+  explicit Schedule(
+      tir::PrimFunc mod, int64_t seed = -1, int debug_mode = false,
+      tir::ScheduleErrorRenderLevel error_render_level = tir::ScheduleErrorRenderLevel::kDetail);
+  explicit Schedule(
+      IRModule mod, int64_t seed = -1, int debug_mode = false,
+      tir::ScheduleErrorRenderLevel error_render_level = tir::ScheduleErrorRenderLevel::kDetail);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, tir::Schedule, ScheduleNode);
 };
 

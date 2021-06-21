@@ -19,6 +19,7 @@
 #include "./schedule.h"  // NOLINT(build/include)
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/ir/expr.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include "./analysis.h"
@@ -27,23 +28,24 @@
 namespace tvm {
 
 namespace tir {
-tir::Schedule tir::Schedule::Meta(tir::PrimFunc func, int64_t seed, int debug_mode) {
-  return meta_schedule::Schedule(func, seed, debug_mode);
-}
-tir::Schedule tir::Schedule::Meta(IRModule mod, int64_t seed, int debug_mode) {
-  return meta_schedule::Schedule(mod, seed, debug_mode);
+tir::Schedule tir::Schedule::Meta(IRModule mod, int64_t seed, int debug_mode,
+                                  ScheduleErrorRenderLevel error_render_level) {
+  return meta_schedule::Schedule(mod, seed, debug_mode, error_render_level);
 }
 }  // namespace tir
 
 namespace meta_schedule {
 
-Schedule::Schedule(tir::PrimFunc func, int64_t seed, int debug_mode)
-    : Schedule(IRModule({{GlobalVar("main"), func}}), seed, debug_mode) {}
+Schedule::Schedule(tir::PrimFunc func, int64_t seed, int debug_mode,
+                   tir::ScheduleErrorRenderLevel error_render_level)
+    : Schedule(IRModule({{GlobalVar("main"), func}}), seed, debug_mode, error_render_level) {}
 
-Schedule::Schedule(IRModule mod, int64_t seed, int debug_mode) {
+Schedule::Schedule(IRModule mod, int64_t seed, int debug_mode,
+                   tir::ScheduleErrorRenderLevel error_render_level) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->state_ = tir::ScheduleState(mod, debug_mode);
   n->symbol_table_ = {};
+  n->error_render_level_ = error_render_level;
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   if (seed != -1) {
     n->sampler_.Seed(seed);
@@ -56,7 +58,7 @@ Schedule::Schedule(IRModule mod, int64_t seed, int debug_mode) {
 
 tir::Schedule ScheduleNode::Copy(int64_t new_seed) const {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
-  tir::ConcreteScheduleNode::MakeCopy(&n->state_, &n->symbol_table_);
+  tir::ConcreteScheduleNode::Copy(&n->state_, &n->symbol_table_);
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   n->sampler_.Seed(new_seed);
   n->trace = Trace(this->trace->insts, this->trace->decisions);
@@ -78,8 +80,8 @@ Array<tir::ExprRV> ScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n,
 tir::ExprRV ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
                                             const Array<FloatImm>& probs,
                                             Optional<Integer> decision) {
-  tir::ExprRV result_rv =
-      CreateRV(tir::SampleCategorical(state_, &this->sampler_, candidates, probs, &decision));
+  int64_t result = tir::SampleCategorical(state_, &this->sampler_, candidates, probs, &decision);
+  tir::ExprRV result_rv = CreateRV(result);
   this->trace->Append(SampleCategoricalAttrs::Make(candidates, probs, result_rv), decision);
   return result_rv;
 }
@@ -289,14 +291,16 @@ void ScheduleNode::InlineArgument(int i, const String& func_name) {
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule")
     .set_body_typed([](ObjectRef obj, int64_t seed, int debug_mode) -> Schedule {
+      IRModule mod{nullptr};
       if (const auto* func = obj.as<tir::PrimFuncNode>()) {
-        return Schedule(GetRef<tir::PrimFunc>(func), seed, debug_mode);
+        mod = IRModule({{GlobalVar("main"), GetRef<BaseFunc>(func)}});
+      } else if (const auto* p_mod = obj.as<IRModuleNode>()) {
+        mod = GetRef<IRModule>(p_mod);
+      } else {
+        LOG(FATAL) << "TypeError: Expects `IRModule` or `PrimFunc`, but gets: "
+                   << obj->GetTypeKey();
       }
-      if (const auto* mod = obj.as<IRModuleNode>()) {
-        return Schedule(GetRef<IRModule>(mod), seed, debug_mode);
-      }
-      LOG(FATAL) << "TypeError: Expects `IRModule` or `PrimFunc`, but gets: " << obj->GetTypeKey();
-      throw;
+      return Schedule(mod, seed, debug_mode);
     });
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed([](Schedule self, int new_seed) {
   return self->Copy(new_seed);

@@ -65,7 +65,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     CHECK(ListContainsElement(loops, loop_sref))
         << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
     // Cond 1. Check block is reduction
-    CHECK(ReductionBlock(self, block_sref, GetScopeRoot(block_sref)))
+    CHECK(ReductionBlock(self, block_sref, GetScopeRoot(block_sref).value()))
         << "decompose_reduction expect the block to be a reduction block";
     // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
@@ -249,7 +249,7 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
   ExprDeepEqual equal;
   CHECK(equal(init_realize->predicate, update_realize->predicate))
       << "ValueError: 'merge_reduction' expects the predicate of init and update to be the same";
-  const StmtSRef& scope = GetScopeRoot(init_sref);
+  StmtSRef scope = GetScopeRoot(init_sref).value();
   StmtSRef lca = LowestCommonAncestor({init_sref, update_sref}, scope);
   // Cond 1. Check init_block is under the same scope with update_sref
   CHECK_EQ(scope.get(), GetScopeRoot(update_sref).get())
@@ -324,7 +324,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   StmtSRef block_sref = child_blocks[0];
   BlockRealize block_realize = GetBlockRealize(block_sref);
   Block block = block_realize->block;
-  StmtSRef scope_root = GetScopeRoot(block_sref);
+  StmtSRef scope_root = GetScopeRoot(block_sref).value();
   CHECK(ReductionBlock(self, block_sref, scope_root))
       << "ValueError: We can only do rfactor for loops of a reduction block";
 

@@ -48,10 +48,10 @@ void TuneContextNode::Init(Optional<Integer> seed) {
   if (cost_model.defined()) {
     cost_model.value()->Init(this);
   }
-  for (const Postproc& postproc : postprocs) {
+  for (const DMLC_ATTRIBUTE_UNUSED Postproc& postproc : postprocs) {
     // TODO(@junrushao1994): support PostprocNode::Init
   }
-  for (const MeasureCallback& callback : measure_callbacks) {
+  for (const DMLC_ATTRIBUTE_UNUSED MeasureCallback& callback : measure_callbacks) {
     callback->Init(this);
   }
 }

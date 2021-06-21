@@ -19,11 +19,20 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_H_
 
-#include <tvm/tir/function.h>
 #include <tvm/tir/schedule/state.h>
 
 namespace tvm {
 namespace tir {
+
+/*! \brief The level of detailed error message rendering */
+enum class ScheduleErrorRenderLevel : int32_t {
+  /*! \brief Render a detailed error message */
+  kDetail = 0,
+  /*! \brief Render the error in fast mode */
+  kFast = 1,
+  /*! \brief No error message at all */
+  kNone = 2,
+};
 
 /**************** Random variable: BlockRV ****************/
 
@@ -87,35 +96,6 @@ class ScheduleNode : public runtime::Object {
 
   static constexpr const char* _type_key = "tir.Schedule";
   TVM_DECLARE_BASE_OBJECT_INFO(ScheduleNode, runtime::Object);
-
- public:
-  /******** Schedule: Sampling ********/
-  /*!
-   * \brief Sample the factors to perfect tiling a specific LoopRV
-   * \param loop_rv The loop to be tiled
-   * \param n The number of loops after tiling
-   * \param max_innermost_factor The maximum factor in the innermost loop, -1 if disabled
-   * \param decision The sampling decision
-   * \return An array of n random variables, the result of sampling
-   */
-  virtual Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
-                                          Optional<Array<Integer>> decision = NullOpt) = 0;
-  /*!
-   * \brief Sample an integer given the probability distribution
-   * \param candidates The candidates
-   * \param probs The probability distribution of the candidates
-   * \param decision The sampling decision
-   * \return The random variable sampled from candidates
-   */
-  virtual ExprRV SampleCategorical(const Array<Integer>& candidates, const Array<FloatImm>& probs,
-                                   Optional<Integer> decision = NullOpt) = 0;
-  /*!
-   * \brief Sample a compute-at location on a BlockRV so that its producer can compute at that loop
-   * \param block_rv The consumer block to be computed at
-   * \return The sampled loop to be computed at
-   */
-  virtual LoopRV SampleComputeLocation(const BlockRV& block_rv,
-                                       Optional<Integer> decision = NullOpt) = 0;
 
  public:
   /*! \brief Get the IRModule associated with this schedule. */
@@ -240,6 +220,35 @@ class ScheduleNode : public runtime::Object {
    */
   virtual Array<BlockRV> GetConsumers(const BlockRV& block_rv) = 0;
 
+ public:
+  /******** Schedule: Sampling ********/
+  /*!
+   * \brief Sample the factors to perfect tiling a specific LoopRV
+   * \param loop_rv The loop to be tiled
+   * \param n The number of loops after tiling
+   * \param max_innermost_factor The maximum factor in the innermost loop, -1 if disabled
+   * \param decision The sampling decision
+   * \return An array of n random variables, the result of sampling
+   */
+  virtual Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
+                                          Optional<Array<Integer>> decision = NullOpt) = 0;
+  /*!
+   * \brief Sample an integer given the probability distribution
+   * \param candidates The candidates
+   * \param probs The probability distribution of the candidates
+   * \param decision The sampling decision
+   * \return The random variable sampled from candidates
+   */
+  virtual ExprRV SampleCategorical(const Array<Integer>& candidates, const Array<FloatImm>& probs,
+                                   Optional<Integer> decision = NullOpt) = 0;
+  /*!
+   * \brief Sample a compute-at location on a BlockRV so that its producer can compute at that loop
+   * \param block_rv The consumer block to be computed at
+   * \return The sampled loop to be computed at
+   */
+  virtual LoopRV SampleComputeLocation(const BlockRV& block_rv,
+                                       Optional<Integer> decision = NullOpt) = 0;
+
   /******** Schedule: Transform loops ********/
   /*!
    * \brief Fuse consecutive loops into one.
@@ -326,17 +335,28 @@ class ScheduleNode : public runtime::Object {
   virtual void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
                                 bool preserve_unit_loop) = 0;
   /*!
-   * \brief Remove the block, and produce the value needed inplace
-   * where it is used on the consumer.
-   * \param block_rv The block to be inlined
+   * \brief Inline a block into its consumer(s). It requires:
+   * 1) The block is a complete non-root block, which only produces one buffer
+   * 2) The block must not be the only leaf in the scope.
+   * 3) The body of the block must be a BufferStore statement in the form of,
+   *    A[i, j, k, ...] = ...
+   * where the indices of the LHS are all distinct atomic variables,
+   * and no variables other than those indexing variables are allowed in the statement.
+   * \param block The block to be inlined to its consumer(s)
    */
-  virtual void ComputeInline(const BlockRV& block_rv) = 0;
+  virtual void ComputeInline(const BlockRV& block) = 0;
   /*!
-   * \brief Remove the block, and produce the value needed inplace
-   * where it is used on the producer.
-   * \param block_rv The block to be reverse-inlined
+   * \brief Inline a block into its only producer. It requires:
+   * 1) The block is a complete non-root block, which only produces and consumers one buffer
+   * 2) The block must not be the only leaf in the scope.
+   * 3) The only producer of the block is a read-after-write producer and a complete non-root block
+   * 4) The body of the block must be a BufferStore statement in the form of,
+   *    B[f(i, j, k, ...)] = g(i, j, k, A[i, j, k, ...] ...)
+   * where the indices of each `BufferLoad` on the RHS are all distinct atomic variables,
+   * and no variables other than those indexing variables are allowed in the statement.
+   * \param block The block to be inlined to its producer
    */
-  virtual void ReverseComputeInline(const BlockRV& block_rv) = 0;
+  virtual void ReverseComputeInline(const BlockRV& block) = 0;
 
   /******** Schedule: Reduction ********/
   /*!
@@ -457,20 +477,20 @@ class Schedule : public runtime::ObjectRef {
   /*!
    * \brief Construct a concrete TensorIR schedule from an IRModule
    * \param mod The IRModule to be scheduled
+   * \param seed The random seed
    * \param debug_mode Do extra correctness checking after the class creation
    * and each time after calling the Replace method.
+   * \param error_render_level The level of error rendering
    * \return The concrete schedule created
    * \sa ScheduleDebugMask
    * \note The checks performed includes:
    * 1) VerifySRefTree
-   * 2) VerifyAffineBinding
-   * 3) VerifyRegionCover
-   * 4) VerifyStagePipeline
+   * 2) VerifyCachedFlags
    */
-  TVM_DLL static Schedule Concrete(PrimFunc func, int64_t seed, int debug_mode);
-  TVM_DLL static Schedule Concrete(IRModule func, int64_t seed, int debug_mode);
-  TVM_DLL static Schedule Meta(PrimFunc func, int64_t seed, int debug_mode);
-  TVM_DLL static Schedule Meta(IRModule mod, int64_t seed, int debug_mode);
+  TVM_DLL static Schedule Concrete(IRModule mod, int64_t seed, int debug_mode,
+                                   ScheduleErrorRenderLevel error_render_level);
+  TVM_DLL static Schedule Meta(IRModule mod, int64_t seed, int debug_mode,
+                               ScheduleErrorRenderLevel error_render_level);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };
 
