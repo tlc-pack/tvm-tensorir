@@ -28,6 +28,7 @@
 #include <tvm/tir/schedule/inst.h>
 #include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/schedule/state.h>
+#include <tvm/tir/schedule/trace.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include <algorithm>

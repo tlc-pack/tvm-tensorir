@@ -21,7 +21,6 @@
 
 #include <tvm/tir/schedule/schedule.h>
 
-#include <cstddef>
 #include <utility>
 #include <vector>
 

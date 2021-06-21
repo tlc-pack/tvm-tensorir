@@ -24,6 +24,7 @@
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "./sampler.h"
 #include "./utils.h"
@@ -203,7 +204,7 @@ class ConcreteScheduleNode : public ScheduleNode {
    * \param numbers The number to be added to the symbol table
    * \return The new random variables created
    */
-  inline Array<ExprRV> CreateRV(const Array<Integer>& numbers);
+  inline Array<ExprRV> CreateRV(const std::vector<int64_t>& numbers);
   /*! \brief Remove a random variable from the symbol table */
   inline void RemoveFromSymbolTable(const ObjectRef& rv);
 };
@@ -337,12 +338,12 @@ inline ExprRV ConcreteScheduleNode::CreateRV(int64_t number) {
   return std::move(rv);
 }
 
-inline Array<ExprRV> ConcreteScheduleNode::CreateRV(const Array<Integer>& numbers) {
+inline Array<ExprRV> ConcreteScheduleNode::CreateRV(const std::vector<int64_t>& numbers) {
   Array<ExprRV> result;
   result.reserve(numbers.size());
-  for (const Integer& number : numbers) {
+  for (int number : numbers) {
     Var rv;
-    this->symbol_table_.Set(rv, number);
+    this->symbol_table_.Set(rv, Integer(number));
     result.push_back(rv);
   }
   return result;

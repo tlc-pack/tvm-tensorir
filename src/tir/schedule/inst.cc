@@ -23,8 +23,6 @@
 namespace tvm {
 namespace tir {
 
-/********** Implementation details **********/
-
 Inst::Inst(InstKind kind, Array<ObjectRef> inputs, Array<ObjectRef> attrs,
            Array<ObjectRef> outputs) {
   ObjectPtr<InstNode> n = make_object<InstNode>();
@@ -34,9 +32,6 @@ Inst::Inst(InstKind kind, Array<ObjectRef> inputs, Array<ObjectRef> attrs,
   n->outputs = std::move(outputs);
   this->data_ = std::move(n);
 }
-
-TVM_REGISTER_NODE_TYPE(InstNode);
-TVM_REGISTER_NODE_TYPE(InstKindNode);
 
 using InstKindRegistry = AttrRegistry<InstKindRegEntry, InstKind>;
 
@@ -56,6 +51,8 @@ InstKindRegEntry::InstKindRegEntry(uint32_t reg_index) {
 InstKindRegEntry& InstKindRegEntry::RegisterOrGet(const String& name) {
   return InstKindRegistry::Global()->RegisterOrGet(name);
 }
+
+/********** PythonAPICall **********/
 
 void PythonAPICall::Input(String arg_name, String arg) {
   arg_names_.emplace_back(std::move(arg_name));
@@ -140,6 +137,11 @@ String PythonAPICall::Str() const {
   os << ')';
   return os.str();
 }
+
+/**************** FFI ****************/
+
+TVM_REGISTER_NODE_TYPE(InstNode);
+TVM_REGISTER_NODE_TYPE(InstKindNode);
 
 }  // namespace tir
 }  // namespace tvm

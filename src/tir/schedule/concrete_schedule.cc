@@ -217,8 +217,8 @@ Array<ExprRV> ConcreteScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int
                                                       int max_innermost_factor,
                                                       Optional<Array<Integer>> decision) {
   TVM_TIR_SCHEDULE_BEGIN();
-  return CreateRV(AsArray<int64_t, Integer>(tir::SamplePerfectTile(
-      state_, &this->sampler_, this->GetSRef(loop_rv), n, max_innermost_factor, &decision)));
+  return CreateRV(tir::SamplePerfectTile(state_, &this->sampler_, this->GetSRef(loop_rv), n,
+                                         max_innermost_factor, &decision));
   TVM_TIR_SCHEDULE_END("sample-perfect-tile", this->error_render_level_);
 }
 
