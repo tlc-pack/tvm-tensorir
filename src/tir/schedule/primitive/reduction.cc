@@ -695,7 +695,6 @@ struct RFactorTraits : public UnpackedInstTraits<RFactorTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -720,7 +719,6 @@ struct DecomposeReductionTraits : public UnpackedInstTraits<DecomposeReductionTr
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -746,7 +744,6 @@ struct MergeReductionTraits : public UnpackedInstTraits<MergeReductionTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 

@@ -609,7 +609,6 @@ struct ComputeAtTraits : public UnpackedInstTraits<ComputeAtTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -636,7 +635,6 @@ struct ReverseComputeAtTraits : public UnpackedInstTraits<ReverseComputeAtTraits
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 

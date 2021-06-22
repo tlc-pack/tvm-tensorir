@@ -124,7 +124,6 @@ struct GetBlockTraits : public UnpackedInstTraits<GetBlockTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -148,7 +147,6 @@ struct GetLoopsTraits : public UnpackedInstTraits<GetLoopsTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -179,7 +177,6 @@ struct GetChildBlocksTraits : public UnpackedInstTraits<GetChildBlocksTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -203,7 +200,6 @@ struct GetProducersTraits : public UnpackedInstTraits<GetProducersTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -227,7 +223,6 @@ struct GetConsumersTraits : public UnpackedInstTraits<GetConsumersTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 

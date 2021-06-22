@@ -152,7 +152,6 @@ struct SamplePerfectTileTraits : public UnpackedInstTraits<SamplePerfectTileTrai
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -184,7 +183,6 @@ struct SampleCategoricalTraits : public UnpackedInstTraits<SampleCategoricalTrai
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -213,7 +211,6 @@ struct SampleComputeLocationTraits : public UnpackedInstTraits<SampleComputeLoca
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
