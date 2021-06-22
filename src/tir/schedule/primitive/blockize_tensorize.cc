@@ -889,7 +889,6 @@ struct BlockizeTraits : public UnpackedInstTraits<BlockizeTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -913,7 +912,6 @@ struct TensorizeTraits : public UnpackedInstTraits<TensorizeTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 

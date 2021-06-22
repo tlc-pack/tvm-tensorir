@@ -337,7 +337,6 @@ struct FuseTraits : public UnpackedInstTraits<FuseTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -370,7 +369,6 @@ struct SplitTraits : public UnpackedInstTraits<SplitTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -401,7 +399,6 @@ struct ReorderTraits : public UnpackedInstTraits<ReorderTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 

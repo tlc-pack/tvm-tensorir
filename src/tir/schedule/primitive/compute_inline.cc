@@ -692,7 +692,6 @@ struct ComputeInlineTraits : public UnpackedInstTraits<ComputeInlineTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -715,7 +714,6 @@ struct ReverseComputeInlineTraits : public UnpackedInstTraits<ReverseComputeInli
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 

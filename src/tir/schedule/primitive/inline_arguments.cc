@@ -64,7 +64,6 @@ struct InlineArgumentTraits : public UnpackedInstTraits<InlineArgumentTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 

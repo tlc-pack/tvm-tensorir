@@ -641,7 +641,6 @@ struct CacheReadTraits : public UnpackedInstTraits<CacheReadTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -669,7 +668,6 @@ struct CacheWriteTraits : public UnpackedInstTraits<CacheWriteTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
