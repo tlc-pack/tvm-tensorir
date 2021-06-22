@@ -1694,5 +1694,69 @@ TVM_REGISTER_GLOBAL("auto_scheduler.GetPerStoreFeatureNames")
       *ret = arr;
     });
 
+
+// <bojian/DietCode> Add the API for adaption penalty.
+static void AdaptStateToWorkload(const SearchTask& task, const State& state,
+                                 const Array<String>& shape_vars,
+                                 const Array<IntImm>& shape_vals,
+                                 const FloatImm& score, float* const ret_score
+                                 ) {
+
+}
+
+
+Array<Array<FloatImm>> AdaptStatesToWorkloads(const SearchTask& task,
+                                              const Array<State>& states,
+                                              const Array<FloatImm>& scores) {
+  std::vector<std::vector<float>> adapted_scores(
+      states.size(),
+      std::vector<float>(task->shape_freq.value().size()));
+
+  Array<Array<IntImm>> shape_vals;
+  for (const std::pair<Array<IntImm>, FloatImm>& kv :
+       task->shape_freq.value()) {
+    shape_vals.push_back(kv.first);
+  }
+
+
+
+  support::parallel_for(
+      1, states.size() * task->shape_freq.value().size(),
+      [&states, &task, &scores, &shape_vals, &adapted_scores](const size_t i) {
+        size_t state_id = i / task->shape_freq.value().size(),
+               wkl_id   = i % task->shape_freq.value().size();
+        AdaptStateToWorkload(task, states[state_id], task->shape_vars.value(),
+                             shape_vals[wkl_id], scores[state_id],
+                             &adapted_scores[state_id][wkl_id]);
+      }
+  );
+
+  Array<Array<FloatImm>> ret_scores;
+
+  for (const std::vector<float>& adapted_scores_per_state : adapted_scores) {
+    Array<FloatImm> ret_scores_per_state;
+    for (const float& adapted_score : adapted_scores_per_state) {
+    }
+    ret_scores.push_back(ret_scores_per_state);
+  }
+
+  return ret_scores;
+}
+
+
+TVM_REGISTER_GLOBAL("auto_scheduler.AdaptStatesToWorkloads")
+    .set_body([](TVMArgs args, TVMRetValue* ret) {
+      SearchTask       task   = args[0];
+      Array<State>     states = args[1];
+      Array<FloatImm>  scores = args[2];
+      CHECK(IsDynTask(task))
+          << "Adaption only makes sense for dynamic workloads";
+      CHECK(states.size() == scores.size())
+          << "The number of states is not equal to the number of predicted scores";
+      LOG(FATAL) << "Received scores=" << ArrayToString(scores);
+      *ret = AdaptStatesToWorkloads(task, states, scores);
+    });
+
+
 }  // namespace auto_scheduler
 }  // namespace tvm

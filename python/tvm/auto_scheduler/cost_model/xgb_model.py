@@ -25,7 +25,10 @@ import numpy as np
 
 from tvm.autotvm.tuner.metric import max_curve
 from .cost_model import PythonBasedModel
-from ..feature import get_per_store_features_from_measure_pairs, get_per_store_features_from_states
+from ..feature import get_per_store_features_from_measure_pairs, \
+                      get_per_store_features_from_states, \
+                      add_adaption_penalty
+                      # <bojina/DietCode>
 from ..measure_record import RecordReader
 
 xgb = None
@@ -241,6 +244,11 @@ class XGBModel(PythonBasedModel):
         for idx, feature in enumerate(features):
             if feature.min() == feature.max() == 0:
                 ret[idx] = float("-inf")
+
+        # <bojian/DietCode> Add the adaption penalty in addition to the
+        #                   predicted cost.
+        print("Predicted Cost={}".format(ret))
+        ret = add_adaption_penalty(states, task, ret.tolist())
 
         return ret
 

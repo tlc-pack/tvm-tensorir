@@ -363,6 +363,17 @@ inline std::string OptionalArrayToString(const Array<Optional<T>>& Arr) {
   return strout.str();
 }
 
+template<typename T>
+inline std::string MatrixToString(const Array<Array<T>>& Mat) {
+  std::ostringstream strout;
+  strout << "[" << std::endl;
+  for (const Array<T>& Arr : Mat) {
+    strout << "  " << ArrayToString(Arr) << std::endl;
+  }
+  strout << "]";
+  return strout.str();
+}
+
 }  // namespace auto_scheduler
 }  // namespace tvm
 
