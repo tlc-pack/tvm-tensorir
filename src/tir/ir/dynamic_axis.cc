@@ -86,7 +86,7 @@ Array<PrimExpr> InitializeDynamicArgs(Array<PrimExpr> args,
   }
   Array<PrimExpr> new_args;
   DynamicAxisReplacer dynamic_axis_replacer(
-      [dyn_axes_info](const DynamicAxisNode* op) ->PrimExpr {
+      [&dyn_axes_info](const DynamicAxisNode* op) ->PrimExpr {
         auto dyn_axes_info_iter = dyn_axes_info.find(std::string(op->name_hint));
         if (dyn_axes_info_iter != dyn_axes_info.end()) {
           Array<IntImm> possible_values;
