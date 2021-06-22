@@ -485,7 +485,6 @@ struct VectorizeTraits : public UnpackedInstTraits<VectorizeTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -508,7 +507,6 @@ struct ParallelTraits : public UnpackedInstTraits<ParallelTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -529,7 +527,6 @@ struct UnrollTraits : public UnpackedInstTraits<UnrollTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -553,7 +550,6 @@ struct BindTraits : public UnpackedInstTraits<BindTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -576,7 +572,6 @@ struct DoubleBufferTraits : public UnpackedInstTraits<DoubleBufferTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -603,7 +598,6 @@ struct SetScopeTraits : public UnpackedInstTraits<SetScopeTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -633,7 +627,6 @@ struct StorageAlignTraits : public UnpackedInstTraits<StorageAlignTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
