@@ -1701,7 +1701,9 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
                                  const Array<IntImm>& shape_vals,
                                  const FloatImm& score, float* const ret_score
                                  ) {
-
+  // ===========================================================================
+  // Padding
+  // ===========================================================================
 }
 
 
@@ -1719,6 +1721,8 @@ Array<Array<FloatImm>> AdaptStatesToWorkloads(const SearchTask& task,
   }
 
   enable_verbose_logging = true;
+  AdaptStateToWorkload(task, states[0], task->shape_vars.value(),
+                       shape_vals[0], scores[0], &adapted_scores[0][0]);
   enable_verbose_logging = false;
 
   support::parallel_for(
@@ -1731,7 +1735,6 @@ Array<Array<FloatImm>> AdaptStatesToWorkloads(const SearchTask& task,
                              &adapted_scores[state_id][wkl_id]);
       }
   );
-
   Array<Array<FloatImm>> ret_scores;
 
   for (const std::vector<float>& adapted_scores_per_state : adapted_scores) {
