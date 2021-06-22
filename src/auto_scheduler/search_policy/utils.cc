@@ -457,6 +457,7 @@ void PruneInvalidState(const SearchTask& task, Array<State>* states) {
 /********** SplitFactorizationMemo **********/
 
 extern bool is_sample_init_population_1st_iter;
+extern bool enable_verbose_logging;
 
 const Array<Array<Integer>>& SplitFactorizationMemo::GetFactorizationSchemes(
     int extent, int n_lengths
@@ -543,7 +544,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       1, hardware_params->max_threads_per_block / hardware_params->warp_size);
   size_t num_threads_per_block = num_warps_dist(*rng) * hardware_params->warp_size;
   // find all the possible factors of the number of threads per block
-  if (is_sample_init_population_1st_iter) {
+  if (enable_verbose_logging) {
     LOG(INFO) << "num_threads_per_block=" << num_threads_per_block;
   }
   size_t num_spatial_axes = 0;
@@ -552,14 +553,14 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       ++num_spatial_axes;
     }
   }
-  // if (is_sample_init_population_1st_iter) {
+  // if (enable_verbose_logging) {
   //   LOG(INFO) << "num_spatial_axes=" << num_spatial_axes;
   // }
   SplitFactorizationMemo memo;
   const Array<Array<Integer>>& num_threads_factor_schemes =
       memo.GetFactorizationSchemes(num_threads_per_block, num_spatial_axes - 1);
 
-  // if (is_sample_init_population_1st_iter) {
+  // if (enable_verbose_logging) {
   //   LOG(INFO) << "Sampled the factors out of num_threads_factor_schemes.size()="
   //             << num_threads_factor_schemes.size();
   // }
@@ -573,7 +574,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
     all_below_max_extents = true;
 
     num_threads_factor_scheme = num_threads_factor_schemes[num_threads_factor_schemes_dist(*rng)];
-    // if (is_sample_init_population_1st_iter) {
+    // if (enable_verbose_logging) {
     //   LOG(INFO) << "Factorization Scheme: " << ArrayToString(num_threads_factor_scheme);
     // }
     int64_t factor_prod = 1;
@@ -581,7 +582,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       factor_prod *= factor;
     }
     num_threads_factor_scheme.push_back(num_threads_per_block / factor_prod);
-    if (is_sample_init_population_1st_iter) {
+    if (enable_verbose_logging) {
       LOG(INFO) << "Factorization Scheme: " << ArrayToString(num_threads_factor_scheme);
     }
     for (size_t iter_id = 0, spatial_iter_id = 0;
@@ -655,7 +656,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
           ++factors_to_assign_it;
         }
         if (!valid_shuffle) {
-          if (is_sample_init_population_1st_iter) {
+          if (enable_verbose_logging) {
             LOG(WARNING) << "Shuffling is not valid";
           }
           factors_to_assign = std::move(factors_to_assign_bak);
@@ -691,7 +692,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       }
       );
 
-  if (is_sample_init_population_1st_iter) {
+  if (enable_verbose_logging) {
     LOG(INFO) << "Finished sampling the vthread, current scheme=" << toString();
   }
   // ===========================================================================
@@ -718,7 +719,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
         return split_factors[iter_id][3];
       }
       );
-  if (is_sample_init_population_1st_iter) {
+  if (enable_verbose_logging) {
     LOG(INFO) << "Finished sampling the innermost loop extent, current scheme="
               << toString();
   }
@@ -747,7 +748,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
         return split_factors[iter_id][2];
       }
       );
-  if (is_sample_init_population_1st_iter) {
+  if (enable_verbose_logging) {
     LOG(INFO) << "Finished sampling the 2nd innermost loop extent, "
                  "current scheme=" << toString();
   }
@@ -786,7 +787,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
         return split_factors[iter_id][1];
       }
       );
-  if (is_sample_init_population_1st_iter) {
+  if (enable_verbose_logging) {
     LOG(INFO) << "Finished sampling the innermost loop extent (reduction axis), "
                  "current scheme=" << toString();
   }
@@ -808,7 +809,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
         return split_factors[iter_id][0];
       }
       );
-  if (is_sample_init_population_1st_iter) {
+  if (enable_verbose_logging) {
     LOG(INFO) << "Finished sampling the 2nd innermost loop extent (reduction axis), "
                  "current scheme=" << toString();
   }
@@ -943,7 +944,7 @@ DietCodeSplitFactorizationMemo::SampleFactorizationSchemes(
                              is_sample_init_population_1st_iter);
   scheme.RandomSample(hardware_params_, max_innermost_factor_, rng);
   
-  if (is_sample_init_population_1st_iter) {
+  if (enable_verbose_logging) {
     LOG(INFO) << "Randomly sampled factorization scheme=" << scheme.toString();
   }
   return scheme;

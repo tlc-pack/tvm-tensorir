@@ -1444,7 +1444,7 @@ class SyntheticExprReplacer : public StmtExprMutator {
   }
 };
 
-extern bool is_1st_state_to_extract_feature;
+extern bool enable_verbose_logging;
 
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
@@ -1507,7 +1507,7 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
             size_t synthetic_extent =
                 static_cast<size_t>(GetIntImm(s.max())) / extent * extent;
             CHECK(synthetic_extent >= extent);
-            if (is_1st_state_to_extract_feature) {
+            if (enable_verbose_logging) {
               LOG(INFO) << "Synthetic extent=" << synthetic_extent << " for "
                            "reduction axis " << init_iter->range->extent;
             }
@@ -1616,7 +1616,7 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
                         (*pstate)->transform_steps);
   }
   // LOG(INFO) << "Finished applying the transformation steps";
-  if (is_1st_state_to_extract_feature) {
+  if (enable_verbose_logging) {
     LOG(INFO) << lower(synthetic_sch, synthetic_tensors, "main", {});
   }
   // LOG(FATAL) << "Finished generating synthetic schedule";

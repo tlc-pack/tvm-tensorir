@@ -1262,7 +1262,7 @@ void GetPerStoreFeatureName(int max_n_bufs, std::vector<std::string>* ret) {
   // section total : 3
 }
 
-bool is_1st_state_to_extract_feature;
+extern bool enable_verbose_logging;
 
 void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, int max_n_bufs,
                                    std::vector<float>* feature, std::atomic<int>* error_ct) {
@@ -1340,7 +1340,7 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
     mod = optimize(std::move(mod));
 
     // <bojian/DietCode>
-    if (is_1st_state_to_extract_feature) {
+    if (enable_verbose_logging) {
       LOG(INFO) << "Post-Optimization Module=" << mod;
     }
 
@@ -1364,10 +1364,10 @@ void GetPerStoreFeaturesFromStates(const Array<State>& states, const SearchTask&
 
   LOG(WARNING) << "Parallel feature extraction has been made sequential";
 
-  is_1st_state_to_extract_feature = true;
+  enable_verbose_logging = true;
   GetPerStoreFeaturesWorkerFunc(task, states[skip_first_n_feature_extraction], max_n_bufs,
                                 &(*features)[skip_first_n_feature_extraction], &error_ct);
-  is_1st_state_to_extract_feature = false;
+  enable_verbose_logging = false;
   support::parallel_for(
       skip_first_n_feature_extraction + 1, states.size(),
   // for (size_t i = skip_first_n_feature_extraction + 1; i < states.size(); ++i) {
@@ -1718,7 +1718,8 @@ Array<Array<FloatImm>> AdaptStatesToWorkloads(const SearchTask& task,
     shape_vals.push_back(kv.first);
   }
 
-
+  enable_verbose_logging = true;
+  enable_verbose_logging = false;
 
   support::parallel_for(
       1, states.size() * task->shape_freq.value().size(),
@@ -1736,6 +1737,7 @@ Array<Array<FloatImm>> AdaptStatesToWorkloads(const SearchTask& task,
   for (const std::vector<float>& adapted_scores_per_state : adapted_scores) {
     Array<FloatImm> ret_scores_per_state;
     for (const float& adapted_score : adapted_scores_per_state) {
+      ret_scores_per_state.push_back(FloatImm(DataType::Float(32), adapted_score));
     }
     ret_scores.push_back(ret_scores_per_state);
   }

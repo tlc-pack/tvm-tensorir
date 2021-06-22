@@ -526,6 +526,7 @@ std::vector<std::pair<State, int>> RuleCustomSketch::Apply(const SketchPolicyNod
 /********** Init Population **********/
 
 extern bool is_sample_init_population_1st_iter;
+extern bool enable_verbose_logging;
 
 PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* policy, State* state,
                                                              std::mt19937* rand_gen) const {
@@ -556,7 +557,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
           continue;
         }
         arith::IntSet s = analyzer.int_set(ps->extent.value(), {});
-        if (is_sample_init_population_1st_iter) {
+        if (enable_verbose_logging) {
           LOG(INFO) << "Initializing the tile size for extent=" << ps->extent
                     << " with max value=" << s.max();
         }
@@ -566,7 +567,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
                                                  });
       }
     }
-    if (is_sample_init_population_1st_iter) {
+    if (enable_verbose_logging) {
       LOG(INFO) << "Getting all the possible factorization schemes";
     }
     // const std::vector<FactorizationScheme>& cached_schemes =
@@ -585,7 +586,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
     //     {1, 1, 1, 5}, {1, 32, 1, 1}, {15, 1}
     //     };
 
-    if (is_sample_init_population_1st_iter) {
+    if (enable_verbose_logging) {
       LOG(INFO) << "Picking factorization scheme=" << scheme.toString();
     }
 
@@ -989,7 +990,7 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
 
       arith::Analyzer analyzer;
       arith::IntSet s = analyzer.int_set(total_space_extent, {});
-      if (is_sample_init_population_1st_iter) {
+      if (enable_verbose_logging) {
         LOG(INFO) << "total_space_extent=" << total_space_extent << " w/ max="
                   << GetIntImm(s.max());
       }
@@ -1020,31 +1021,31 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
       const auto& blockidx_it = state->fuse(stage_id, to_fuse);
       state->bind(stage_id, blockidx_it, IteratorAnnotation::kBlockX);
 
-      if (is_sample_init_population_1st_iter) {
-        // LOG(INFO) << "blockIdx.x=" << blockidx_it->range->extent;
-        // // The approach below does not really work because the function itself
-        // // it NOT a linear equation and hence not directly solvable.
-        // DynamicAxisFinder finder;
-        // finder(blockidx_it->range->extent);
-        // Array<Var> dyn_axes;
-        // for (const DynamicAxisNode* const dyn_axis : finder.dyn_axes) {
-        //   dyn_axes.push_back(// GetRef<DynamicAxis>(dyn_axis)
-        //                      Var()
-        //                      );
-        // }
-        // arith::IntConstraintsTransform solution =
-        //     arith::SolveLinearEquations(
-        //       arith::IntConstraints(
-        //         dyn_axes,
-        //         {},
-        //         {
-        //           EQ(blockidx_it->range->extent,
-        //              policy->search_task->hardware_params->num_cores)
-        //         }
-        //       )
-        //       );
-        // LOG(INFO) << "Solution=" << solution;
-      }
+      // if (enable_verbose_logging) {
+      //   LOG(INFO) << "blockIdx.x=" << blockidx_it->range->extent;
+      //   // The approach below does not really work because the function itself
+      //   // it NOT a linear equation and hence not directly solvable.
+      //   DynamicAxisFinder finder;
+      //   finder(blockidx_it->range->extent);
+      //   Array<Var> dyn_axes;
+      //   for (const DynamicAxisNode* const dyn_axis : finder.dyn_axes) {
+      //     dyn_axes.push_back(// GetRef<DynamicAxis>(dyn_axis)
+      //                        Var()
+      //                        );
+      //   }
+      //   arith::IntConstraintsTransform solution =
+      //       arith::SolveLinearEquations(
+      //         arith::IntConstraints(
+      //           dyn_axes,
+      //           {},
+      //           {
+      //             EQ(blockidx_it->range->extent,
+      //                policy->search_task->hardware_params->num_cores)
+      //           }
+      //         )
+      //         );
+      //   LOG(INFO) << "Solution=" << solution;
+      // }
       // Fuse the second outermost space tile as vthread
 
       // <bojian/DietCode>
