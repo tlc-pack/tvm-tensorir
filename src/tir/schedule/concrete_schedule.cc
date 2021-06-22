@@ -650,7 +650,6 @@ struct EnterPostProcTraits : public UnpackedInstTraits<EnterPostProcTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 

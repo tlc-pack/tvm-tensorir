@@ -59,7 +59,6 @@ struct PragmaTraits : public UnpackedInstTraits<PragmaTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -86,7 +85,6 @@ struct MarkLoopTraits : public UnpackedInstTraits<MarkLoopTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
@@ -113,7 +111,6 @@ struct MarkBlockTraits : public UnpackedInstTraits<MarkBlockTraits> {
     return py.Str();
   }
 
-  template <typename>
   friend struct UnpackedInstTraits;
 };
 
