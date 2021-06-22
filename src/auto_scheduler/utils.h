@@ -28,6 +28,9 @@
 #include <dmlc/common.h>
 #include <tvm/tir/expr.h>
 
+// <bojian/DietCode>
+#include <tvm/auto_scheduler/transform_step.h>
+
 #include <algorithm>
 #include <deque>
 #include <exception>
@@ -373,6 +376,25 @@ inline std::string MatrixToString(const Array<Array<T>>& Mat) {
   strout << "]";
   return strout.str();
 }
+
+template<typename K, typename V>
+inline std::string MapToString(const Map<K, V>& Map) {
+  std::ostringstream strout;
+  strout << "{" << std::endl;
+  for (const std::pair<K, V>& kv : Map) {
+    strout << "  " << kv.first << " : " << kv.second << std::endl;
+  }
+  strout << "}";
+  return strout.str();
+}
+
+
+// The following functions are defined in compute_dag.cc.
+std::vector<Iterator> GatherAllItersWithSamePrefix(
+    const Array<Iterator>& all_iters, const Iterator& iter_0);
+
+Iterator FindIterInInitState(const State& init_state, const Iterator& iter_0);
+
 
 }  // namespace auto_scheduler
 }  // namespace tvm

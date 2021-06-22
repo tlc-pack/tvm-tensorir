@@ -27,7 +27,7 @@ from tvm.autotvm.tuner.metric import max_curve
 from .cost_model import PythonBasedModel
 from ..feature import get_per_store_features_from_measure_pairs, \
                       get_per_store_features_from_states, \
-                      add_adaption_penalty
+                      adapt_states_to_workloads
                       # <bojina/DietCode>
 from ..measure_record import RecordReader
 
@@ -248,7 +248,7 @@ class XGBModel(PythonBasedModel):
         # <bojian/DietCode> Add the adaption penalty in addition to the
         #                   predicted cost.
         print("Predicted Cost={}".format(ret))
-        ret = add_adaption_penalty(states, task, ret.tolist())
+        ret = adapt_states_to_workloads(task, states, ret.tolist())
 
         return ret
 

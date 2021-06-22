@@ -1515,11 +1515,11 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
                                IntImm(DataType::Int(32), synthetic_extent));
           } else {
             LOG(FATAL) << "Not implemeted yet";
-          }
-        }
-      }  // for (iter ∈ stage->iters)
-    }    // if (StrEndsWith(stage->op->name, ".local"))
-  }      // for (stage ∈ (*pstate)->stages)
+          }  // if (iter->iter_kind == IteratorKind::kSpatial)
+        }    // if (StrEndsWith(iter->name, ".0"))
+      }      // for (iter ∈ stage->iters)
+    }        // if (StrEndsWith(stage->op->name, ".local"))
+  }          // for (stage ∈ (*pstate)->stages)
 
   // for (const std::pair<PrimExpr, IntImm> axis_to_extent : axes_to_extent) {
   //   LOG(INFO) << "axis=" << axis_to_extent.first << " : "

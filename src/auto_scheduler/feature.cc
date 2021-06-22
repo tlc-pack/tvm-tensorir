@@ -35,6 +35,9 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
+// <bojian/DietCode>
+#include <tvm/tir/dynamic_axis_functor.h>
+
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -1696,14 +1699,93 @@ TVM_REGISTER_GLOBAL("auto_scheduler.GetPerStoreFeatureNames")
 
 
 // <bojian/DietCode> Add the API for adaption penalty.
+static inline size_t floor_by(const size_t a, const size_t b) {
+  return (a + b - 1) / b;
+}
+
 static void AdaptStateToWorkload(const SearchTask& task, const State& state,
                                  const Array<String>& shape_vars,
-                                 const Array<IntImm>& shape_vals,
+                                 const Array<IntImm>& shape_values,
                                  const FloatImm& score, float* const ret_score
                                  ) {
-  // ===========================================================================
-  // Padding
-  // ===========================================================================
+  Map<String, IntImm> shape_var_value_map;
+  CHECK(shape_vars.size() == shape_values.size());
+  for (size_t i = 0; i < shape_vars.size(); ++i) {
+    shape_var_value_map.Set(shape_vars[i], shape_values[i]);
+  }
+
+  if (enable_verbose_logging) {
+    LOG(INFO) << MapToString(shape_var_value_map);
+  }
+
+  DynamicAxisReplacer replacer(
+      [&shape_var_value_map](const DynamicAxisNode* op) -> PrimExpr {
+        auto shape_var_value_map_iter =
+            shape_var_value_map.find(op->name_hint);
+        if (shape_var_value_map_iter != shape_var_value_map.end()) {
+          return (*shape_var_value_map_iter).second;
+        }
+        LOG(FATAL) << "Dynamic Axis Node " << GetRef<DynamicAxis>(op)
+                   << " has not been found in "
+                   << MapToString(shape_var_value_map);
+        return GetRef<DynamicAxis>(op);
+      }
+      );
+  arith::Analyzer analyzer;
+
+  // initialize both the occupancy and padding penalty to be 1
+  float padding_penalty = 1.0;
+
+  for (int stage_id = state->stages.size() - 1; stage_id >= 0; --stage_id) {
+    const Stage& stage = state->stages[stage_id];
+
+    if (StrEndsWith(stage->op->name, ".local")) {
+      for (const Iterator& iter : stage->iters) {
+        if (StrEndsWith(iter->name, ".0")) {
+          // gather all the iterators that start with the same prefix
+          std::vector<Iterator> iters_w_same_prefix =
+              GatherAllItersWithSamePrefix(stage->iters, iter);
+          size_t extent = 1;
+          for (const Iterator& iter : iters_w_same_prefix) {
+            extent *= GetIntImm(iter->range->extent);
+          }
+          if (enable_verbose_logging) {
+            LOG(INFO) << "extent=" << extent;
+          }
+          Iterator init_iter =
+            FindIterInInitState(task->compute_dag->init_state, iter);
+          size_t grid_dim = 1;
+
+          if (iter->iter_kind == IteratorKind::kSpatial) {
+            // 1. Compute the extent of the initial iterator.
+            size_t init_iter_extent =
+                static_cast<size_t>(GetIntImm(
+                  analyzer.Simplify(replacer(init_iter->range->extent))));
+            if (enable_verbose_logging) {
+              LOG(INFO) << "init_iter_extent=" << init_iter_extent;
+            }
+
+            // 2. Compute the padding ratio and accumulate in the padding penalty.
+            float padding_ratio =
+                init_iter_extent * 1. / floor_by(init_iter_extent, extent);
+            padding_penalty *= padding_ratio;
+            if (enable_verbose_logging) {
+              LOG(INFO) << "padding_penalty *= " << padding_ratio
+                        << " -> " << padding_penalty;
+            }
+
+            // 3. Compute the grid dimension.
+            size_t extent_ratio = floor_by(init_iter_extent, extent) / extent;
+            CHECK(extent_ratio >= 1);
+            grid_dim *= extent_ratio;
+            if (enable_verbose_logging) {
+              LOG(INFO) << "grid_dim *= " << extent_ratio << " -> " << grid_dim;
+            }
+          }  // if (iter->iter_kind == IteratorKind::kSpatial)
+        }    // if (StrEndsWith(iter->name, ".0"))
+      }      // for (iter ∈ stage-iters)
+    }        // if (StrEndsWith(stage->op->name, ".local"))
+  }          // for (stage ∈ state->stages)
 }
 
 
@@ -1714,24 +1796,25 @@ Array<Array<FloatImm>> AdaptStatesToWorkloads(const SearchTask& task,
       states.size(),
       std::vector<float>(task->shape_freq.value().size()));
 
-  Array<Array<IntImm>> shape_vals;
+  Array<Array<IntImm>> shape_values;
   for (const std::pair<Array<IntImm>, FloatImm>& kv :
        task->shape_freq.value()) {
-    shape_vals.push_back(kv.first);
+    shape_values.push_back(kv.first);
   }
 
   enable_verbose_logging = true;
   AdaptStateToWorkload(task, states[0], task->shape_vars.value(),
-                       shape_vals[0], scores[0], &adapted_scores[0][0]);
+                       shape_values[0], scores[0], &adapted_scores[0][0]);
   enable_verbose_logging = false;
 
   support::parallel_for(
       1, states.size() * task->shape_freq.value().size(),
-      [&states, &task, &scores, &shape_vals, &adapted_scores](const size_t i) {
+      [&states, &task, &scores, &shape_values, &adapted_scores]
+      (const size_t i) {
         size_t state_id = i / task->shape_freq.value().size(),
                wkl_id   = i % task->shape_freq.value().size();
         AdaptStateToWorkload(task, states[state_id], task->shape_vars.value(),
-                             shape_vals[wkl_id], scores[state_id],
+                             shape_values[wkl_id], scores[state_id],
                              &adapted_scores[state_id][wkl_id]);
       }
   );
@@ -1744,6 +1827,8 @@ Array<Array<FloatImm>> AdaptStatesToWorkloads(const SearchTask& task,
     }
     ret_scores.push_back(ret_scores_per_state);
   }
+
+  LOG(FATAL) << "Finished computing the adaption penalty";
 
   return ret_scores;
 }
@@ -1758,7 +1843,7 @@ TVM_REGISTER_GLOBAL("auto_scheduler.AdaptStatesToWorkloads")
           << "Adaption only makes sense for dynamic workloads";
       CHECK(states.size() == scores.size())
           << "The number of states is not equal to the number of predicted scores";
-      LOG(FATAL) << "Received scores=" << ArrayToString(scores);
+      // LOG(FATAL) << "Received scores=" << ArrayToString(scores);
       *ret = AdaptStatesToWorkloads(task, states, scores);
     });
 
