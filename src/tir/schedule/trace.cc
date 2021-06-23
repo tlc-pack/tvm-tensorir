@@ -355,7 +355,23 @@ Trace TraceNode::Simplified(bool remove_postproc) const {
 
 Trace TraceNode::WithDecision(const Inst& inst, const ObjectRef& decision,
                               bool remove_postproc) const {
-  throw;  //
+  int postproc_idx = 0;
+  if (remove_postproc) {
+    static InstKind inst_enter_postproc = InstKind::Get("EnterPostProc");
+    postproc_idx = 0;
+    for (const Inst& inst : this->insts) {
+      if (inst->kind.same_as(inst_enter_postproc)) {
+        break;
+      }
+      ++postproc_idx;
+    }
+  } else {
+    postproc_idx = this->insts.size();
+  }
+  Array<Inst> new_insts = Array<Inst>{this->insts.begin(), this->insts.begin() + postproc_idx};
+  Map<Inst, ObjectRef> new_decisions{this->decisions.begin(), this->decisions.end()};
+  new_decisions.Set(inst, decision);
+  return Trace(new_insts, new_decisions);
 }
 
 /**************** FFI ****************/
