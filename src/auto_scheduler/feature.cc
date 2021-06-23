@@ -1700,7 +1700,7 @@ TVM_REGISTER_GLOBAL("auto_scheduler.GetPerStoreFeatureNames")
 
 // <bojian/DietCode> Add the API for adaption penalty.
 static inline size_t floor_by(const size_t a, const size_t b) {
-  return (a + b - 1) / b;
+  return (a + b - 1) / b * b;
 }
 
 static void AdaptStateToWorkload(const SearchTask& task, const State& state,
@@ -1733,8 +1733,8 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
       );
   arith::Analyzer analyzer;
 
-  // initialize both the occupancy and padding penalty to be 1
   float padding_penalty = 1.0;
+  size_t grid_dim = 1;
 
   for (int stage_id = state->stages.size() - 1; stage_id >= 0; --stage_id) {
     const Stage& stage = state->stages[stage_id];
@@ -1754,7 +1754,6 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
           }
           Iterator init_iter =
             FindIterInInitState(task->compute_dag->init_state, iter);
-          size_t grid_dim = 1;
 
           if (iter->iter_kind == IteratorKind::kSpatial) {
             // 1. Compute the extent of the initial iterator.
@@ -1789,12 +1788,14 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
 }
 
 
-Array<Array<FloatImm>> AdaptStatesToWorkloads(const SearchTask& task,
-                                              const Array<State>& states,
-                                              const Array<FloatImm>& scores) {
-  std::vector<std::vector<float>> adapted_scores(
-      states.size(),
-      std::vector<float>(task->shape_freq.value().size()));
+Array<NDArray> AdaptStatesToWorkloads(
+    const SearchTask& task, const Array<State>& states,
+    const Array<FloatImm>& scores) {
+  std::vector<float> adapted_scores(
+      states.size() * task->shape_freq.value().size());
+  std::vector<float> adapted_scores(
+      states.size() * task->shape_freq.value().size(),
+      );
 
   Array<Array<IntImm>> shape_values;
   for (const std::pair<Array<IntImm>, FloatImm>& kv :
@@ -1823,14 +1824,13 @@ Array<Array<FloatImm>> AdaptStatesToWorkloads(const SearchTask& task,
   for (const std::vector<float>& adapted_scores_per_state : adapted_scores) {
     Array<FloatImm> ret_scores_per_state;
     for (const float& adapted_score : adapted_scores_per_state) {
-      ret_scores_per_state.push_back(FloatImm(DataType::Float(32), adapted_score));
+      ret_scores_per_state.push_back(FloatImm(DataType::Float(32),
+                                              adapted_score));
     }
     ret_scores.push_back(ret_scores_per_state);
   }
-
   LOG(FATAL) << "Finished computing the adaption penalty";
-
-  return ret_scores;
+  return Array<Array<Array<FloatImm>>>{ret_scores, padding_penalty, };
 }
 
 

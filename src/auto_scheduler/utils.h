@@ -28,9 +28,6 @@
 #include <dmlc/common.h>
 #include <tvm/tir/expr.h>
 
-// <bojian/DietCode>
-#include <tvm/auto_scheduler/transform_step.h>
-
 #include <algorithm>
 #include <deque>
 #include <exception>
@@ -45,6 +42,9 @@
 #include <vector>
 
 // <bojian/DietCode>
+#include <tvm/auto_scheduler/transform_step.h>
+#include <tvm/runtime/ndarray.h>
+
 #include <sstream>
 
 
@@ -388,6 +388,17 @@ inline std::string MapToString(const Map<K, V>& Map) {
   return strout.str();
 }
 
+using runtime::NDArray;
+
+static NDArray VecToNDArray(const std::vector<float>& vec,
+                            const std::vector<int64_t>& shape) {
+  int64_t ndarr_size = 1;
+  for (const int64_t s : shape) {
+    ndarr_size *= s;
+  }
+  CHECK(vec.size() == ndarr_size)
+      << "Vector size=" << vec.size() << " does not match shape size=" << ndarr_size;
+}
 
 // The following functions are defined in compute_dag.cc.
 std::vector<Iterator> GatherAllItersWithSamePrefix(
