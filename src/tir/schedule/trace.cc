@@ -55,79 +55,44 @@ Optional<Inst> TraceNode::Pop() {
 
 /**************** Interfacing with InstKind ****************/
 
-void TraceNode::ApplyToSchedule(const Schedule& sch, bool remove_postproc,
-                                std::function<ObjectRef(const Array<ObjectRef>& inputs,  //
-                                                        const Array<ObjectRef>& attrs,   //
-                                                        const ObjectRef& decision)>
-                                    decision_provider) const {
-  auto f_translate_inputs =
-      [](const Array<ObjectRef>& inputs,
-         const std::unordered_map<const Object*, const Object*>& rv_map) -> Array<ObjectRef> {
-    Array<ObjectRef> result;
-    result.reserve(inputs.size());
-    for (const ObjectRef& input : inputs) {
-      if (!input.defined() ||                   // constant: nullptr
-          input->IsInstance<StringObj>() ||     // constant: string
-          input->IsInstance<IntImmNode>() ||    // constant: integer
-          input->IsInstance<FloatImmNode>()) {  // constant: float
-        result.push_back(input);
-      } else if (input->IsInstance<BlockNode>() ||   // RV: block
-                 input->IsInstance<LoopRVNode>() ||  // RV: loop
-                 input->IsInstance<VarNode>()) {     // RV: var
-        auto it = rv_map.find(input.get());
-        ICHECK(it != rv_map.end()) << "IndexError: Random variable doesn't exist: " << input;
-        result.push_back(GetRef<ObjectRef>(it->second));
-      } else if (const auto* expr = input.as<PrimExprNode>()) {  // RV: Expr
-        result.push_back(
-            Substitute(GetRef<PrimExpr>(expr), [&rv_map](const Var& var) -> Optional<PrimExpr> {
-              auto it = rv_map.find(var.get());
-              if (it == rv_map.end()) {
-                return NullOpt;
-              }
-              const Object* dst = it->second;
-              ICHECK(dst->IsInstance<VarNode>())
-                  << "TypeError: Expect 'tir.Var', but gets: " << dst->GetTypeKey();
-              return GetRef<Var>(static_cast<const VarNode*>(dst));
-            }));
-      } else {
-        ICHECK(false) << "TypeError: Cannot recognize the type of an input random variable: "
-                      << input->GetTypeKey();
-        throw;
-      }
+Array<ObjectRef> TranslateInputRVs(const Array<ObjectRef>& inputs,
+                                   const std::unordered_map<const Object*, const Object*>& rv_map) {
+  Array<ObjectRef> result;
+  result.reserve(inputs.size());
+  for (const ObjectRef& input : inputs) {
+    if (!input.defined() ||                   // constant: nullptr
+        input->IsInstance<StringObj>() ||     // constant: string
+        input->IsInstance<IntImmNode>() ||    // constant: integer
+        input->IsInstance<FloatImmNode>()) {  // constant: float
+      result.push_back(input);
+    } else if (input->IsInstance<BlockNode>() ||   // RV: block
+               input->IsInstance<LoopRVNode>() ||  // RV: loop
+               input->IsInstance<VarNode>()) {     // RV: var
+      auto it = rv_map.find(input.get());
+      ICHECK(it != rv_map.end()) << "IndexError: Random variable doesn't exist: " << input;
+      result.push_back(GetRef<ObjectRef>(it->second));
+    } else if (const auto* expr = input.as<PrimExprNode>()) {  // RV: Expr
+      result.push_back(
+          Substitute(GetRef<PrimExpr>(expr), [&rv_map](const Var& var) -> Optional<PrimExpr> {
+            auto it = rv_map.find(var.get());
+            if (it == rv_map.end()) {
+              return NullOpt;
+            }
+            const Object* dst = it->second;
+            ICHECK(dst->IsInstance<VarNode>())
+                << "TypeError: Expect 'tir.Var', but gets: " << dst->GetTypeKey();
+            return GetRef<Var>(static_cast<const VarNode*>(dst));
+          }));
+    } else {
+      ICHECK(false) << "TypeError: Cannot recognize the type of an input random variable: "
+                    << input->GetTypeKey();
+      throw;
     }
-    return result;
-  };
-
-  auto f_translate_outputs = [](const Array<ObjectRef>& old_outputs,
-                                const Array<ObjectRef>& new_outputs,
-                                std::unordered_map<const Object*, const Object*>* rv_map) -> void {
-    ICHECK_EQ(old_outputs.size(), new_outputs.size());
-    int n = old_outputs.size();
-    const ObjectRef* p_old = old_outputs.GetArrayNode()->begin();
-    const ObjectRef* p_new = new_outputs.GetArrayNode()->begin();
-    for (int i = 0; i < n; ++i) {
-      (*rv_map)[p_old[i].get()] = p_new[i].get();
-    }
-  };
-
-  static InstKind inst_enter_postproc = InstKind::Get("EnterPostProc");
-  std::unordered_map<const Object*, const Object*> rv_map;
-  for (const Inst& inst : this->insts) {
-    if (remove_postproc && inst->kind.same_as(inst_enter_postproc)) {
-      break;
-    }
-    Array<ObjectRef> inputs = f_translate_inputs(inst->inputs, rv_map);
-    Array<ObjectRef> attrs = inst->attrs;
-    ObjectRef decision = this->decisions.Get(inst);
-    if (decision_provider) {
-      decision = decision_provider(inputs, attrs, decision);
-    }
-    Array<ObjectRef> outputs = inst->kind->f_apply_to_schedule(sch, inputs, attrs, decision);
-    f_translate_outputs(inst->outputs, outputs, &rv_map);
   }
+  return result;
 }
 
-Array<String> InputsAsNames(
+Array<String> TranslateInputRVs(
     const Array<ObjectRef>& inputs,
     const std::unordered_map<ObjectRef, String, ObjectPtrHash, ObjectPtrEqual>& rv_names) {
   Array<String> results;
@@ -162,7 +127,18 @@ Array<String> InputsAsNames(
   return results;
 }
 
-Array<String> AddOutputsNames(
+void TranslateAddOutputRVs(const Array<ObjectRef>& old_outputs, const Array<ObjectRef>& new_outputs,
+                           std::unordered_map<const Object*, const Object*>* rv_map) {
+  ICHECK_EQ(old_outputs.size(), new_outputs.size());
+  int n = old_outputs.size();
+  const ObjectRef* p_old = old_outputs.GetArrayNode()->begin();
+  const ObjectRef* p_new = new_outputs.GetArrayNode()->begin();
+  for (int i = 0; i < n; ++i) {
+    (*rv_map)[p_old[i].get()] = p_new[i].get();
+  }
+}
+
+Array<String> TranslateAddOutputRVs(
     const Array<ObjectRef>& outputs,
     std::unordered_map<ObjectRef, String, ObjectPtrHash, ObjectPtrEqual>* rv_names) {
   Array<String> results;
@@ -189,24 +165,46 @@ Array<String> AddOutputsNames(
   return results;
 }
 
+void TraceNode::ApplyToSchedule(const Schedule& sch, bool remove_postproc,
+                                std::function<ObjectRef(const Array<ObjectRef>& inputs,  //
+                                                        const Array<ObjectRef>& attrs,   //
+                                                        const ObjectRef& decision)>
+                                    decision_provider) const {
+  static InstKind inst_enter_postproc = InstKind::Get("EnterPostProc");
+  std::unordered_map<const Object*, const Object*> rv_map;
+  for (const Inst& inst : this->insts) {
+    if (remove_postproc && inst->kind.same_as(inst_enter_postproc)) {
+      break;
+    }
+    Array<ObjectRef> inputs = TranslateInputRVs(inst->inputs, rv_map);
+    Array<ObjectRef> attrs = inst->attrs;
+    ObjectRef decision = this->decisions.Get(inst);
+    if (decision_provider) {
+      decision = decision_provider(inputs, attrs, decision);
+    }
+    Array<ObjectRef> outputs = inst->kind->f_apply_to_schedule(sch, inputs, attrs, decision);
+    TranslateAddOutputRVs(inst->outputs, outputs, &rv_map);
+  }
+}
+
 ObjectRef TraceNode::AsJSON() const {
   std::unordered_map<ObjectRef, String, ObjectPtrHash, ObjectPtrEqual> rv_names;
-  Array<ObjectRef> json_trace;
-  Array<ObjectRef> json_decision;
-  json_trace.reserve(this->insts.size());
-  json_decision.reserve(this->insts.size());
+  Array<ObjectRef> json_insts;
+  Array<ObjectRef> json_decisions;
+  json_insts.reserve(this->insts.size());
+  json_decisions.reserve(this->insts.size());
 
   int i = 0;
   for (const Inst& inst : this->insts) {
     const InstKind& kind = inst->kind;
-    json_trace.push_back(Array<ObjectRef>{
+    json_insts.push_back(Array<ObjectRef>{
         /* 0: inst name */ kind->name,
-        /* 1: inputs    */ InputsAsNames(inst->inputs, rv_names),
+        /* 1: inputs    */ TranslateInputRVs(inst->inputs, rv_names),
         /* 2: attrs     */ kind->f_attrs_as_json ? kind->f_attrs_as_json(inst->attrs) : inst->attrs,
-        /* 3: outputs   */ AddOutputsNames(inst->outputs, &rv_names),
+        /* 3: outputs   */ TranslateAddOutputRVs(inst->outputs, &rv_names),
     });
     if (Optional<ObjectRef> decision = this->decisions.Get(inst)) {
-      json_decision.push_back(Array<ObjectRef>{
+      json_decisions.push_back(Array<ObjectRef>{
           /* 0: index    */ Integer(i),
           /* 1: decision */ decision.value(),
       });
@@ -214,8 +212,8 @@ ObjectRef TraceNode::AsJSON() const {
     ++i;
   }
   return Array<ObjectRef>{
-      /* 0: trace    */ std::move(json_trace),
-      /* 1: decision */ std::move(json_decision),
+      /* 0: trace    */ std::move(json_insts),
+      /* 1: decision */ std::move(json_decisions),
   };
 }
 
@@ -225,16 +223,57 @@ Array<String> TraceNode::AsPython() const {
   py_trace.reserve(this->insts.size());
   for (const Inst& inst : this->insts) {
     py_trace.push_back(
-        inst->kind->f_as_python(/*inputs=*/InputsAsNames(inst->inputs, rv_names),
+        inst->kind->f_as_python(/*inputs=*/TranslateInputRVs(inst->inputs, rv_names),
                                 /*attrs=*/inst->attrs,
                                 /*decision=*/this->decisions.Get(inst),
-                                /*outputs=*/AddOutputsNames(inst->outputs, &rv_names)));
+                                /*outputs=*/TranslateAddOutputRVs(inst->outputs, &rv_names)));
   }
   return py_trace;
 }
 
 void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
-  throw;  //
+  Array<ObjectRef> json_insts{nullptr};
+  Array<ObjectRef> json_decisions{nullptr};
+  // Parse `json` into `json_insts` and `json_decisions`
+  try {
+    const ArrayNode* arr = json.as<ArrayNode>();
+    ICHECK_NOTNULL(arr);
+    ICHECK_EQ(arr->size(), 2);
+    const auto* arr0 = arr->at(0).as<ArrayNode>();
+    const auto* arr1 = arr->at(1).as<ArrayNode>();
+    ICHECK_NOTNULL(arr0);
+    ICHECK_NOTNULL(arr1);
+    json_insts = GetRef<Array<ObjectRef>>(arr0);
+    json_decisions = GetRef<Array<ObjectRef>>(arr1);
+  } catch (const tvm::Error& e) {
+    LOG(FATAL) << "ValueError: The json entry of a trace should contain two arrays, an array of "
+                  "instructions and an array of decisions, but gets: "
+               << json;
+    throw;
+  }
+  // Parse `json_decisions`
+  std::unordered_map<int, ObjectRef> decisions;
+  decisions.reserve(json_decisions.size());
+  for (const ObjectRef& decision_entry : json_decisions) {
+    int index = -1;
+    ObjectRef decision{nullptr};
+    try {
+      const ArrayNode* arr = decision_entry.as<ArrayNode>();
+      ICHECK_NOTNULL(arr);
+      ICHECK_EQ(arr->size(), 2);
+      const IntImmNode* arr0 = arr->at(0).as<IntImmNode>();
+      ICHECK_NOTNULL(arr0);
+      index = arr0->value;
+      decision = arr->at(1);
+    } catch (const tvm::Error& e) {
+      LOG(FATAL) << "ValueError: Each entry of a json decision should be a tuple [index, "
+                    "decision], but gets: "
+                 << decision_entry;
+      throw;
+    }
+    decisions.emplace(index, std::move(decision));
+  }
+  // Parse `json_insts`
 }
 
 /**************** Creation ****************/
