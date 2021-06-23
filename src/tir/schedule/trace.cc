@@ -92,10 +92,10 @@ Array<ObjectRef> TranslateInputRVs(const Array<ObjectRef>& inputs,
   return result;
 }
 
-Array<String> TranslateInputRVs(
+Array<ObjectRef> TranslateInputRVs(
     const Array<ObjectRef>& inputs,
     const std::unordered_map<ObjectRef, String, ObjectPtrHash, ObjectPtrEqual>& rv_names) {
-  Array<String> results;
+  Array<ObjectRef> results;
   results.reserve(inputs.size());
   for (const ObjectRef& input : inputs) {
     if (!input.defined()) {
@@ -109,20 +109,42 @@ Array<String> TranslateInputRVs(
       results.push_back(it->second);
     } else if (const auto* str_obj = input.as<StringObj>()) {
       // Case 2. string => "content"
-      results.push_back('"' + std::string(str_obj->data) + '"');
-    } else if (const auto* int_imm = input.as<IntImmNode>()) {
-      // Case 3. int => 8
-      results.push_back(std::to_string(int_imm->value));
-    } else if (const auto* float_imm = input.as<FloatImmNode>()) {
-      // Case 4. float => 1.00002
-      std::ostringstream os;
-      os.precision(19);
-      os << std::fixed << float_imm->value;
-      results.push_back(os.str());
+      results.push_back(String('"' + std::string(str_obj->data) + '"'));
+    } else if (input->IsInstance<IntImmNode>() || input->IsInstance<FloatImmNode>()) {
+      // Case 3. integer or floating-point number
+      results.push_back(input);
     } else {
       LOG(FATAL) << "TypeError: Stringifying is not supported for type: " << input->GetTypeKey();
       throw;
     }
+  }
+  return results;
+}
+
+Array<ObjectRef> TranslateInputRVs(const Array<ObjectRef>& inputs,
+                                   const std::unordered_map<std::string, ObjectRef>& named_rvs) {
+  Array<ObjectRef> results;
+  results.reserve(inputs.size());
+  for (const ObjectRef& input : inputs) {
+    // Case 3. integer or floating-point number
+    if (input->IsInstance<IntImmNode>() || input->IsInstance<FloatImmNode>()) {
+      results.push_back(input);
+      continue;
+    }
+    const auto* str = input.as<StringObj>();
+    CHECK(str) << "TypeError: Expect String, but gets: " << input->GetTypeKey();
+    CHECK_GT(str->size, 0) << "ValueError: Empty string is not allowed in input names";
+    const char* name = str->data;
+    int64_t size = str->size;
+    // Case 2. string
+    if (size > 2 && name[0] == '"' && name[size - 1] == '"') {
+      results.push_back(String(std::string(name + 1, size - 2)));
+      continue;
+    }
+    // Case 0 & 1. None, BlockRV, LoopRV, VarRV
+    auto it = named_rvs.find(name);
+    CHECK(it != named_rvs.end()) << "ValueError: The random variable is not defined: " << name;
+    results.push_back(it->second);
   }
   return results;
 }
@@ -163,6 +185,18 @@ Array<String> TranslateAddOutputRVs(
     rv_names->emplace(output, std::move(result));
   }
   return results;
+}
+
+void TranslateAddOutputRVs(const Array<String>& old_outputs, const Array<ObjectRef>& new_outputs,
+                           std::unordered_map<std::string, ObjectRef>* named_rvs) {
+  ICHECK_EQ(old_outputs.size(), new_outputs.size());
+  int n = old_outputs.size();
+  const ObjectRef* p_old = old_outputs.GetArrayNode()->begin();
+  const ObjectRef* p_new = new_outputs.GetArrayNode()->begin();
+  for (int i = 0; i < n; ++i) {
+    const auto* name = static_cast<const StringObj*>(p_old[i].get());
+    named_rvs->emplace(std::string(name->data, name->size), p_new[i]);
+  }
 }
 
 void TraceNode::ApplyToSchedule(const Schedule& sch, bool remove_postproc,
@@ -237,12 +271,10 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
   // Parse `json` into `json_insts` and `json_decisions`
   try {
     const ArrayNode* arr = json.as<ArrayNode>();
-    ICHECK_NOTNULL(arr);
-    ICHECK_EQ(arr->size(), 2);
+    ICHECK(arr && arr->size() == 2);
     const auto* arr0 = arr->at(0).as<ArrayNode>();
     const auto* arr1 = arr->at(1).as<ArrayNode>();
-    ICHECK_NOTNULL(arr0);
-    ICHECK_NOTNULL(arr1);
+    ICHECK(arr0 && arr1);
     json_insts = GetRef<Array<ObjectRef>>(arr0);
     json_decisions = GetRef<Array<ObjectRef>>(arr1);
   } catch (const tvm::Error& e) {
@@ -252,17 +284,15 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
     throw;
   }
   // Parse `json_decisions`
-  std::unordered_map<int, ObjectRef> decisions;
-  decisions.reserve(json_decisions.size());
+  std::vector<Optional<ObjectRef>> decisions(json_insts.size(), NullOpt);
   for (const ObjectRef& decision_entry : json_decisions) {
     int index = -1;
     ObjectRef decision{nullptr};
     try {
       const ArrayNode* arr = decision_entry.as<ArrayNode>();
-      ICHECK_NOTNULL(arr);
-      ICHECK_EQ(arr->size(), 2);
+      ICHECK(arr && arr->size() == 2);
       const IntImmNode* arr0 = arr->at(0).as<IntImmNode>();
-      ICHECK_NOTNULL(arr0);
+      ICHECK(arr0);
       index = arr0->value;
       decision = arr->at(1);
     } catch (const tvm::Error& e) {
@@ -271,9 +301,50 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
                  << decision_entry;
       throw;
     }
-    decisions.emplace(index, std::move(decision));
+    decisions[index] = std::move(decision);
   }
   // Parse `json_insts`
+  std::unordered_map<std::string, ObjectRef> named_rvs;
+  int i = 0;
+  for (const ObjectRef& inst_entry : json_insts) {
+    InstKind kind{nullptr};
+    Array<ObjectRef> inputs{nullptr};
+    Array<ObjectRef> attrs{nullptr};
+    Array<String> outputs{nullptr};
+    // Parse the entry
+    try {
+      const auto* arr = inst_entry.as<ArrayNode>();
+      ICHECK(arr && arr->size() == 4);
+      const auto* arr0 = arr->at(0).as<StringObj>();
+      const auto* arr1 = arr->at(1).as<ArrayNode>();
+      const auto* arr2 = arr->at(2).as<ArrayNode>();
+      const auto* arr3 = arr->at(3).as<ArrayNode>();
+      ICHECK(arr0 && arr1 && arr2 && arr3);
+      for (const ObjectRef& str : *arr3) {
+        ICHECK(str->IsInstance<StringObj>());
+      }
+      kind = InstKind::Get(arr0->data);
+      inputs = GetRef<Array<ObjectRef>>(arr1);
+      attrs = GetRef<Array<ObjectRef>>(arr2);
+      outputs = GetRef<Array<String>>(arr3);
+    } catch (const tvm::Error& e) {
+      LOG(FATAL) << "ValueError: Each entry of a json instruction should be a tuple [inst_name, "
+                    "inputs, attrs, outputs], but gets: "
+                 << inst_entry;
+      throw;
+    }
+    // Parse inputs
+    inputs = TranslateInputRVs(inputs, named_rvs);
+    // Parse attrs
+    if (kind->f_attrs_from_json) {
+      attrs = kind->f_attrs_from_json(attrs);
+    }
+    // Apply to the schedule
+    Array<ObjectRef> new_outputs = kind->f_apply_to_schedule(sch, inputs, attrs, decisions[i]);
+    // Parse outputs
+    TranslateAddOutputRVs(outputs, new_outputs, &named_rvs);
+    ++i;
+  }
 }
 
 /**************** Creation ****************/

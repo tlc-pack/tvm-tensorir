@@ -53,7 +53,7 @@ class InstKindNode : public runtime::Object {
    */
   using FAsPython = std::function<String(
       /*! \param inputs Names of the input random variables */
-      const Array<String>& inputs,
+      const Array<ObjectRef>& inputs,
       /*! \param attrs Instruction attributes */
       const Array<ObjectRef>& attrs,
       /*! \param decisions Decisions made on the instruction */
@@ -292,7 +292,7 @@ struct UnpackedInstTraits {
    * \brief Unpack the arguments into the calling convention of `TTraits::UnpackedAsPython`
    * \sa InstKindNode::FAsPython
    */
-  static String AsPython(const Array<String>& inputs, const Array<ObjectRef>& attrs,
+  static String AsPython(const Array<ObjectRef>& inputs, const Array<ObjectRef>& attrs,
                          const Optional<ObjectRef>& decision, const Array<String>& outputs);
 
   /*! \brief No customized serializer */
@@ -302,9 +302,9 @@ struct UnpackedInstTraits {
   static constexpr std::nullptr_t AttrsFromJSON = nullptr;
 
  protected:
-  template <size_t delta, class TObjectRef>
+  template <size_t delta>
   static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
-                                           const Array<TObjectRef>& inputs);
+                                           const Array<ObjectRef>& inputs);
   template <size_t delta>
   static TVM_ALWAYS_INLINE void _SetAttrs(const runtime::TVMArgsSetter& setter,
                                           const Array<ObjectRef>& attrs);
@@ -483,7 +483,7 @@ Array<ObjectRef> UnpackedInstTraits<TTraits>::ApplyToSchedule(const Schedule& sc
   int tvm_type_codes[kNumArgs];
   runtime::TVMArgsSetter setter(tvm_values, tvm_type_codes);
   setter(0, sch);
-  TTraits::template _SetInputs<1, ObjectRef>(setter, inputs);
+  TTraits::template _SetInputs<1>(setter, inputs);
   TTraits::template _SetAttrs<1 + kNumInputs>(setter, attrs);
   TTraits::template _SetDecision<1 + kNumInputs + kNumAttrs>(setter, decision);
   PackedFunc pf([](const TVMArgs& args, TVMRetValue* rv) -> void {
@@ -498,7 +498,7 @@ Array<ObjectRef> UnpackedInstTraits<TTraits>::ApplyToSchedule(const Schedule& sc
 }
 
 template <class TTraits>
-String UnpackedInstTraits<TTraits>::AsPython(const Array<String>& inputs,
+String UnpackedInstTraits<TTraits>::AsPython(const Array<ObjectRef>& inputs,
                                              const Array<ObjectRef>& attrs,
                                              const Optional<ObjectRef>& decision,
                                              const Array<String>& outputs) {
@@ -516,7 +516,7 @@ String UnpackedInstTraits<TTraits>::AsPython(const Array<String>& inputs,
   int tvm_type_codes[kNumArgs];
   runtime::TVMArgsSetter setter(tvm_values, tvm_type_codes);
   setter(0, outputs);
-  TTraits::template _SetInputs<1, String>(setter, inputs);
+  TTraits::template _SetInputs<1>(setter, inputs);
   TTraits::template _SetAttrs<1 + kNumInputs>(setter, attrs);
   TTraits::template _SetDecision<1 + kNumInputs + kNumAttrs>(setter, decision);
   PackedFunc pf([](const TVMArgs& args, TVMRetValue* rv) -> void {
@@ -532,9 +532,9 @@ String UnpackedInstTraits<TTraits>::AsPython(const Array<String>& inputs,
 }
 
 template <class TTraits>
-template <size_t delta, class TObjectRef>
+template <size_t delta>
 TVM_ALWAYS_INLINE void UnpackedInstTraits<TTraits>::_SetInputs(const runtime::TVMArgsSetter& setter,
-                                                               const Array<TObjectRef>& inputs) {
+                                                               const Array<ObjectRef>& inputs) {
   constexpr size_t kNumInputs = TTraits::kNumInputs;
   ICHECK_EQ(kNumInputs, inputs.size());
   const ObjectRef* ptr = inputs.template as<ArrayNode>()->begin();
