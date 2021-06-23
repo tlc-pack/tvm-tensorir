@@ -290,6 +290,14 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
  * in reverse topology order and applies the inverse of the affine transformation until it reaches
  * the input. The affine iter map is required to be bijective.
  *
+ * For example, iter_map = [IterSum([IterSplit(IterMark(l0, extent=64), lower_factor=16, extent=4, 
+ *                                             scale=1)], 0),
+ *                          IterSum([IterSplit(IterMark(l0, extent=64), lower_factor=1, extent=16,
+ *                                             scale=1)], 0)], 
+ * outputs = [Var(output_0), Var(output_1)],
+ * the affine transformation by `iter_map` will be applied to `outputs` and the result will be
+ * {l0: ((output_0*16) + output_1)}.
+ *
  * \param iter_map The bijective affine iter map.
  * \param outputs The outputs of the affine transformation.
  *
