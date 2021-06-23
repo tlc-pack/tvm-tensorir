@@ -1706,7 +1706,9 @@ static inline size_t floor_by(const size_t a, const size_t b) {
 static void AdaptStateToWorkload(const SearchTask& task, const State& state,
                                  const Array<String>& shape_vars,
                                  const Array<IntImm>& shape_values,
-                                 const FloatImm& score, float* const ret_score
+                                 const FloatImm& score,
+                                 float* const occupancy_penalty,
+                                 float* const padding_penalty, float* const adapted_score
                                  ) {
   Map<String, IntImm> shape_var_value_map;
   CHECK(shape_vars.size() == shape_values.size());
@@ -1733,7 +1735,6 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
       );
   arith::Analyzer analyzer;
 
-  float padding_penalty = 1.0;
   size_t grid_dim = 1;
 
   for (int stage_id = state->stages.size() - 1; stage_id >= 0; --stage_id) {
@@ -1767,7 +1768,7 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
             // 2. Compute the padding ratio and accumulate in the padding penalty.
             float padding_ratio =
                 init_iter_extent * 1. / floor_by(init_iter_extent, extent);
-            padding_penalty *= padding_ratio;
+            *padding_penalty *= padding_ratio;
             if (enable_verbose_logging) {
               LOG(INFO) << "padding_penalty *= " << padding_ratio
                         << " -> " << padding_penalty;
@@ -1785,6 +1786,10 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
       }      // for (iter ∈ stage-iters)
     }        // if (StrEndsWith(stage->op->name, ".local"))
   }          // for (stage ∈ state->stages)
+  // temporarily assign the occupancy penalty to be 1.0
+  *occupancy_penalty = 1.0;
+
+  *adapted_score = score->value * (*occupancy_penalty) * (*padding_penalty);
 }
 
 
@@ -1793,9 +1798,10 @@ Array<NDArray> AdaptStatesToWorkloads(
     const Array<FloatImm>& scores) {
   std::vector<float> adapted_scores(
       states.size() * task->shape_freq.value().size());
-  std::vector<float> adapted_scores(
-      states.size() * task->shape_freq.value().size(),
-      );
+  std::vector<float> occupancy_penalty(
+      states.size() * task->shape_freq.value().size());
+  std::vector<float> padding_penalty(
+      states.size() * task->shape_freq.value().size());
 
   Array<Array<IntImm>> shape_values;
   for (const std::pair<Array<IntImm>, FloatImm>& kv :
@@ -1805,32 +1811,30 @@ Array<NDArray> AdaptStatesToWorkloads(
 
   enable_verbose_logging = true;
   AdaptStateToWorkload(task, states[0], task->shape_vars.value(),
-                       shape_values[0], scores[0], &adapted_scores[0][0]);
+                       shape_values[0], scores[0], &occupancy_penalty[0],
+                       &padding_penalty[0], &adapted_scores[0]);
   enable_verbose_logging = false;
 
   support::parallel_for(
       1, states.size() * task->shape_freq.value().size(),
-      [&states, &task, &scores, &shape_values, &adapted_scores]
+      [&states, &task, &scores, &shape_values, &occupancy_penalty,
+       &padding_penalty, &adapted_scores]
       (const size_t i) {
         size_t state_id = i / task->shape_freq.value().size(),
                wkl_id   = i % task->shape_freq.value().size();
         AdaptStateToWorkload(task, states[state_id], task->shape_vars.value(),
                              shape_values[wkl_id], scores[state_id],
-                             &adapted_scores[state_id][wkl_id]);
+                             &occupancy_penalty[i], &padding_penalty[i],
+                             &adapted_scores[i]);
       }
   );
-  Array<Array<FloatImm>> ret_scores;
-
-  for (const std::vector<float>& adapted_scores_per_state : adapted_scores) {
-    Array<FloatImm> ret_scores_per_state;
-    for (const float& adapted_score : adapted_scores_per_state) {
-      ret_scores_per_state.push_back(FloatImm(DataType::Float(32),
-                                              adapted_score));
-    }
-    ret_scores.push_back(ret_scores_per_state);
-  }
   LOG(FATAL) << "Finished computing the adaption penalty";
-  return Array<Array<Array<FloatImm>>>{ret_scores, padding_penalty, };
+  std::vector<int64_t> ndarr_shape =
+      {static_cast<int64_t>(states.size()),
+       static_cast<int64_t>(task->shape_freq.value().size())};
+  return Array<NDArray>{VecToNDArray(adapted_scores, ndarr_shape),
+                        VecToNDArray(occupancy_penalty, ndarr_shape),
+                        VecToNDArray(padding_penalty, ndarr_shape)};
 }
 
 

@@ -390,14 +390,17 @@ inline std::string MapToString(const Map<K, V>& Map) {
 
 using runtime::NDArray;
 
-static NDArray VecToNDArray(const std::vector<float>& vec,
+inline NDArray VecToNDArray(const std::vector<float>& vec,
                             const std::vector<int64_t>& shape) {
   int64_t ndarr_size = 1;
   for (const int64_t s : shape) {
     ndarr_size *= s;
   }
-  CHECK(vec.size() == ndarr_size)
+  CHECK(vec.size() == static_cast<size_t>(ndarr_size))
       << "Vector size=" << vec.size() << " does not match shape size=" << ndarr_size;
+  NDArray ret = NDArray::Empty(shape, DataType::Float(32), {kDLCPU, 0});
+  ret.CopyFromBytes(vec.data(), sizeof(float) * ndarr_size);
+  return ret;
 }
 
 // The following functions are defined in compute_dag.cc.
