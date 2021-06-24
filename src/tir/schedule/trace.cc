@@ -32,6 +32,13 @@ Trace::Trace(Array<Inst> insts, Map<Inst, ObjectRef> decisions) {
   data_ = std::move(n);
 }
 
+/**************** Utilities  ****************/
+
+bool IsPostproc(const Inst& inst) {
+  static InstKind inst_enter_postproc = InstKind::Get("EnterPostProc");
+  return inst->kind.same_as(inst_enter_postproc);
+}
+
 /**************** Add/Remove ****************/
 
 void TraceNode::Append(const Inst& inst) { insts.push_back(inst); }
@@ -204,10 +211,9 @@ void TraceNode::ApplyToSchedule(const Schedule& sch, bool remove_postproc,
                                                         const Array<ObjectRef>& attrs,   //
                                                         const ObjectRef& decision)>
                                     decision_provider) const {
-  static InstKind inst_enter_postproc = InstKind::Get("EnterPostProc");
   std::unordered_map<const Object*, const Object*> rv_map;
   for (const Inst& inst : this->insts) {
-    if (remove_postproc && inst->kind.same_as(inst_enter_postproc)) {
+    if (remove_postproc && IsPostproc(inst)) {
       break;
     }
     Array<ObjectRef> inputs = TranslateInputRVs(inst->inputs, rv_map);
@@ -349,29 +355,75 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
 
 /**************** Creation ****************/
 
-Trace TraceNode::Simplified(bool remove_postproc) const {
-  throw;  //
+int IndexLastInst(const Array<Inst>& insts, bool remove_postproc) {
+  if (!remove_postproc) {
+    return insts.size();
+  }
+  int n_insts = 0;
+  for (const Inst& inst : insts) {
+    if (!IsPostproc(inst)) {
+      ++n_insts;
+    } else {
+      break;
+    }
+  }
+  return n_insts;
 }
 
 Trace TraceNode::WithDecision(const Inst& inst, const ObjectRef& decision,
                               bool remove_postproc) const {
-  int postproc_idx = 0;
-  if (remove_postproc) {
-    static InstKind inst_enter_postproc = InstKind::Get("EnterPostProc");
-    postproc_idx = 0;
-    for (const Inst& inst : this->insts) {
-      if (inst->kind.same_as(inst_enter_postproc)) {
-        break;
-      }
-      ++postproc_idx;
-    }
-  } else {
-    postproc_idx = this->insts.size();
-  }
-  Array<Inst> new_insts = Array<Inst>{this->insts.begin(), this->insts.begin() + postproc_idx};
+  int n_insts = IndexLastInst(this->insts, remove_postproc);
+  Array<Inst> new_insts = Array<Inst>{this->insts.begin(), this->insts.begin() + n_insts};
   Map<Inst, ObjectRef> new_decisions{this->decisions.begin(), this->decisions.end()};
   new_decisions.Set(inst, decision);
   return Trace(new_insts, new_decisions);
+}
+
+Trace TraceNode::Simplified(bool remove_postproc) const {
+  int n_insts = IndexLastInst(this->insts, remove_postproc);
+  std::unordered_set<const Object*> used_rvs;
+  std::vector<Inst> new_insts;
+  std::unordered_map<Inst, ObjectRef, ObjectPtrHash, ObjectPtrEqual> new_decisions;
+  new_insts.reserve(n_insts);
+  new_decisions.reserve(this->decisions.size());
+  for (int inst_idx = n_insts - 1; inst_idx >= 0; --inst_idx) {
+    const Inst& inst = this->insts[inst_idx];
+    // Check if all the variables the instruction defined are dead
+    // If so, and the instruction is pure, we can safely remove this instruction
+    bool all_defs_dead = inst->kind->is_pure;
+    if (all_defs_dead) {
+      for (const ObjectRef& obj : inst->outputs) {
+        if (!used_rvs.count(obj.get())) {
+          all_defs_dead = false;
+          break;
+        }
+      }
+    }
+    // Remove this instruction
+    if (all_defs_dead) {
+      continue;
+    }
+    // Otherwise this instruction is not dead
+    new_insts.push_back(inst);
+    if (Optional<ObjectRef> decision = this->decisions.Get(inst)) {
+      new_decisions.emplace(inst, std::move(decision));
+    }
+    // Add its inputs as "used" ones
+    for (const ObjectRef& obj : inst->inputs) {
+      if (obj->IsInstance<BlockRVNode>() || obj->IsInstance<LoopRVNode>() ||
+          obj->IsInstance<VarNode>()) {
+        used_rvs.insert(obj.get());
+        continue;
+      }
+      PostOrderVisit(obj, [&used_rvs](const ObjectRef& obj) -> void {
+        if (obj->IsInstance<VarNode>()) {
+          used_rvs.insert(obj.get());
+        }
+      });
+    }
+  }
+  return Trace(Array<Inst>(new_insts.rbegin(), new_insts.rend()),
+               Map<Inst, ObjectRef>(new_decisions));
 }
 
 /**************** FFI ****************/
