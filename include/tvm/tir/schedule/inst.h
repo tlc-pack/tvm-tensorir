@@ -21,7 +21,6 @@
 
 #include <tvm/tir/schedule/schedule.h>
 
-#include <cstddef>
 #include <utility>
 #include <vector>
 
@@ -54,7 +53,7 @@ class InstKindNode : public runtime::Object {
    */
   using FAsPython = std::function<String(
       /*! \param inputs Names of the input random variables */
-      const Array<String>& inputs,
+      const Array<ObjectRef>& inputs,
       /*! \param attrs Instruction attributes */
       const Array<ObjectRef>& attrs,
       /*! \param decisions Decisions made on the instruction */
@@ -65,14 +64,14 @@ class InstKindNode : public runtime::Object {
    * \brief A functor type used to serialize attributes of an instrcution
    * \return An array, serialized attributes
    */
-  using FSerializeAttrs = std::function<Array<ObjectRef>(
+  using FAttrsAsJSON = std::function<Array<ObjectRef>(
       /*! \brief The attributes to be serialized */
       const Array<ObjectRef>& attrs)>;
   /*!
    * \brief A functor type used to deserialize attributes of an instrcution
    * \return An array, deserialized attributes
    */
-  using FDeserializeAttrs = std::function<Array<ObjectRef>(
+  using FAttrsFromJSON = std::function<Array<ObjectRef>(
       /*! \brief The attributes to be serialized */
       const Array<ObjectRef>& attrs_record)>;
 
@@ -86,9 +85,9 @@ class InstKindNode : public runtime::Object {
   /*! \brief The functor to convert an instruction to python api call */
   FAsPython f_as_python{nullptr};
   /*! \brief The functor to serialize the attributes of an instruction */
-  FSerializeAttrs f_serialize_attrs{nullptr};
+  FAttrsAsJSON f_attrs_as_json{nullptr};
   /*! \brief The functor to deserialize the attributes of an instruction */
-  FDeserializeAttrs f_deserialize_attrs{nullptr};
+  FAttrsFromJSON f_attrs_from_json{nullptr};
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -193,12 +192,12 @@ class Inst : public runtime::ObjectRef {
  *      const Optional<ObjectRef>& decision,
  *      const Array<String>& outputs);
  *
- *   // Convertible to `InstKindNode::FSerializeAttrs`
- *   static Array<ObjectRef> SerializeAttrs(
+ *   // Convertible to `InstKindNode::FAttrsAsJSON`
+ *   static Array<ObjectRef> AttrsAsJSON(
  *      const Array<ObjectRef>& attrs);
  *
- *   // Convertible to `InstKindNode::FDeserializeAttrs`
- *   static Array<ObjectRef> DeserializeAttrs(
+ *   // Convertible to `InstKindNode::FAttrsFromJSON`
+ *   static Array<ObjectRef> AttrsFromJSON(
  *      const Array<ObjectRef>& attrs_record);
  * };
  *
@@ -212,8 +211,8 @@ class Inst : public runtime::ObjectRef {
           .set_name()                                                    \
           .set_is_pure(InstKindTraits::kIsPure)                          \
           .set_apply_to_schedule(InstKindTraits::ApplyToSchedule)        \
-          .set_serialize_attrs(InstKindTraits::SerializeAttrs)           \
-          .set_deserialize_attrs(InstKindTraits::DeserializeAttrs)       \
+          .set_attrs_as_json(InstKindTraits::AttrsAsJSON)                \
+          .set_attrs_from_json(InstKindTraits::AttrsFromJSON)            \
           .set_as_python(InstKindTraits::AsPython)
 
 /*!
@@ -293,19 +292,19 @@ struct UnpackedInstTraits {
    * \brief Unpack the arguments into the calling convention of `TTraits::UnpackedAsPython`
    * \sa InstKindNode::FAsPython
    */
-  static String AsPython(const Array<String>& inputs, const Array<ObjectRef>& attrs,
+  static String AsPython(const Array<ObjectRef>& inputs, const Array<ObjectRef>& attrs,
                          const Optional<ObjectRef>& decision, const Array<String>& outputs);
 
   /*! \brief No customized serializer */
-  static constexpr std::nullptr_t SerializeAttrs = nullptr;
+  static constexpr std::nullptr_t AttrsAsJSON = nullptr;
 
   /*! \brief No customized deserializer */
-  static constexpr std::nullptr_t DeserializeAttrs = nullptr;
+  static constexpr std::nullptr_t AttrsFromJSON = nullptr;
 
  protected:
-  template <size_t delta, class TObjectRef>
+  template <size_t delta>
   static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
-                                           const Array<TObjectRef>& inputs);
+                                           const Array<ObjectRef>& inputs);
   template <size_t delta>
   static TVM_ALWAYS_INLINE void _SetAttrs(const runtime::TVMArgsSetter& setter,
                                           const Array<ObjectRef>& attrs);
@@ -377,13 +376,13 @@ class InstKindRegEntry {
     return *this;
   }
 
-  InstKindRegEntry& set_serialize_attrs(InstKindNode::FSerializeAttrs f_serialize_attrs) {
-    get_mutable()->f_serialize_attrs = std::move(f_serialize_attrs);
+  InstKindRegEntry& set_attrs_as_json(InstKindNode::FAttrsAsJSON f_attrs_as_json) {
+    get_mutable()->f_attrs_as_json = std::move(f_attrs_as_json);
     return *this;
   }
 
-  InstKindRegEntry& set_deserialize_attrs(InstKindNode::FDeserializeAttrs f_deserialize_attrs) {
-    get_mutable()->f_deserialize_attrs = std::move(f_deserialize_attrs);
+  InstKindRegEntry& set_attrs_from_json(InstKindNode::FAttrsFromJSON f_attrs_from_json) {
+    get_mutable()->f_attrs_from_json = std::move(f_attrs_from_json);
     return *this;
   }
 
@@ -484,7 +483,7 @@ Array<ObjectRef> UnpackedInstTraits<TTraits>::ApplyToSchedule(const Schedule& sc
   int tvm_type_codes[kNumArgs];
   runtime::TVMArgsSetter setter(tvm_values, tvm_type_codes);
   setter(0, sch);
-  TTraits::template _SetInputs<1, ObjectRef>(setter, inputs);
+  TTraits::template _SetInputs<1>(setter, inputs);
   TTraits::template _SetAttrs<1 + kNumInputs>(setter, attrs);
   TTraits::template _SetDecision<1 + kNumInputs + kNumAttrs>(setter, decision);
   PackedFunc pf([](const TVMArgs& args, TVMRetValue* rv) -> void {
@@ -499,7 +498,7 @@ Array<ObjectRef> UnpackedInstTraits<TTraits>::ApplyToSchedule(const Schedule& sc
 }
 
 template <class TTraits>
-String UnpackedInstTraits<TTraits>::AsPython(const Array<String>& inputs,
+String UnpackedInstTraits<TTraits>::AsPython(const Array<ObjectRef>& inputs,
                                              const Array<ObjectRef>& attrs,
                                              const Optional<ObjectRef>& decision,
                                              const Array<String>& outputs) {
@@ -517,7 +516,7 @@ String UnpackedInstTraits<TTraits>::AsPython(const Array<String>& inputs,
   int tvm_type_codes[kNumArgs];
   runtime::TVMArgsSetter setter(tvm_values, tvm_type_codes);
   setter(0, outputs);
-  TTraits::template _SetInputs<1, String>(setter, inputs);
+  TTraits::template _SetInputs<1>(setter, inputs);
   TTraits::template _SetAttrs<1 + kNumInputs>(setter, attrs);
   TTraits::template _SetDecision<1 + kNumInputs + kNumAttrs>(setter, decision);
   PackedFunc pf([](const TVMArgs& args, TVMRetValue* rv) -> void {
@@ -533,9 +532,9 @@ String UnpackedInstTraits<TTraits>::AsPython(const Array<String>& inputs,
 }
 
 template <class TTraits>
-template <size_t delta, class TObjectRef>
+template <size_t delta>
 TVM_ALWAYS_INLINE void UnpackedInstTraits<TTraits>::_SetInputs(const runtime::TVMArgsSetter& setter,
-                                                               const Array<TObjectRef>& inputs) {
+                                                               const Array<ObjectRef>& inputs) {
   constexpr size_t kNumInputs = TTraits::kNumInputs;
   ICHECK_EQ(kNumInputs, inputs.size());
   const ObjectRef* ptr = inputs.template as<ArrayNode>()->begin();

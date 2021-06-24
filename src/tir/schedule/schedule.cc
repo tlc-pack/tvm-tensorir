@@ -17,6 +17,7 @@
  * under the License.
  */
 #include <tvm/tir/schedule/schedule.h>
+#include <tvm/tir/schedule/trace.h>
 
 namespace tvm {
 namespace tir {
@@ -44,32 +45,16 @@ TVM_REGISTER_NODE_TYPE(BlockRVNode);
 TVM_REGISTER_NODE_TYPE(LoopRVNode);
 TVM_REGISTER_OBJECT_TYPE(ScheduleNode);
 
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleModule")  //
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetMod")  //
     .set_body_method<Schedule>(&ScheduleNode::mod);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetState")  //
     .set_body_method<Schedule>(&ScheduleNode::state);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetTrace")  //
+    .set_body_method<Schedule>(&ScheduleNode::trace);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSeed")  //
     .set_body_method<Schedule>(&ScheduleNode::Seed);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCopy")  //
     .set_body_method<Schedule>(&ScheduleNode::Copy);
-
-/**************** (FFI) Constructor ****************/
-
-TVM_REGISTER_GLOBAL("tir.schedule.ConcreteSchedule")
-    .set_body_typed([](ObjectRef obj, int64_t seed, int debug_mode,
-                       int error_render_level) -> Schedule {
-      IRModule mod{nullptr};
-      if (const auto* func = obj.as<PrimFuncNode>()) {
-        mod = IRModule({{GlobalVar("main"), GetRef<BaseFunc>(func)}});
-      } else if (const auto* p_mod = obj.as<IRModuleNode>()) {
-        mod = GetRef<IRModule>(p_mod);
-      } else {
-        LOG(FATAL) << "TypeError: Expects `IRModule` or `PrimFunc`, but gets: "
-                   << obj->GetTypeKey();
-      }
-      return Schedule::Concrete(mod, seed, debug_mode,
-                                static_cast<ScheduleErrorRenderLevel>(error_render_level));
-    });
 
 /******** (FFI) Lookup random variables ********/
 

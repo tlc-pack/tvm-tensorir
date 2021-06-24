@@ -21,25 +21,7 @@
 namespace tvm {
 namespace tir {
 
-Stmt RealizeInitBlock(const Stmt& init, const Array<IterVar>& iter_vars) {
-  std::vector<PrimExpr> conditions;
-  for (const IterVar& var : iter_vars) {
-    if (var->iter_type == IterVarType::kCommReduce) {
-      conditions.push_back(equal(var->var, var->dom->min));
-    }
-  }
-  int n = conditions.size();
-  // Handle the case where there is no condition
-  if (n == 0) {
-    return init;
-  }
-  // Concate the conditions with logical and (&&)
-  PrimExpr cond = conditions[0];
-  for (int i = 1; i < n; ++i) {
-    cond = logical_and(cond, conditions[i]);
-  }
-  return IfThenElse(cond, init);
-}
+//
 
 }  // namespace tir
 }  // namespace tvm
