@@ -516,10 +516,14 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       // This may happen due to illegal schedules or the schedules that uses too much
       // memory on GPU.
       std::vector<float> pop_scores;
+
+      // <bojian/DietCode>
+      std::vector<float> occupancy_penalty, padding_penalty;
+
       pop_scores.reserve(cand_states.size());
       
       // <bojian/DietCode>
-      if (IsDynTask) {
+      if (IsDynTask(search_task)) {
         cand_states =
             search_task->compute_dag.InferBoundOnSyntheticWorkload(
               cand_states, search_task->hardware_params);
@@ -528,7 +532,16 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       }
       
       PruneInvalidState(search_task, &cand_states);
-      program_cost_model->Predict(search_task, cand_states, &pop_scores);
+
+      // <bojian/DietCode>
+      if (IsDynTask(search_task)) {
+        program_cost_model->PredictForAllWorkloads(search_task, cand_states,
+                                                   &occupancy_penalty,
+                                                   &padding_penalty,
+                                                   &pop_scores);
+      } else {
+        program_cost_model->Predict(search_task, cand_states, &pop_scores);
+      }
 
       for (size_t i = 0; i < cand_states.size(); i++) {
         const auto state_str = cand_states[i].ToStr();

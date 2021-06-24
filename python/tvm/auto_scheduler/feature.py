@@ -262,4 +262,4 @@ def adapt_states_to_workloads(task: "SearchTask",
         state_objects = [s.state_object for s in states]
     elif isinstance(states[0], StateObject):
         state_objects = states
-    return _ffi_api.AdaptStatesToWorkloads(task, state_objects, scores)
+    return [arr.asnumpy() for arr in _ffi_api.AdaptStatesToWorkloads(task, state_objects, scores)]

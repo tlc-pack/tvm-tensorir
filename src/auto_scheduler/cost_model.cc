@@ -48,11 +48,30 @@ void RandomModelNode::Predict(const SearchTask& task, const Array<State>& states
   (*random_number_func)(states.size(), static_cast<void*>(scores->data()));
 }
 
+// <bojian/DietCode>
+void RandomModelNode::PredictForAllInstances(
+    const SearchTask& task, const Array<State>& states,
+    std::vector<float>* const occupancy_penalty,
+    std::vector<float>* const padding_penalty,
+    std::vector<float>* const scores) {
+  LOG(FATAL) << "Function has not been implemented";
+}
+
+
+
 PythonBasedModel::PythonBasedModel(PackedFunc update_func, PackedFunc predict_func,
+
+                                   // <bojian/DietCode>
+                                   PackedFunc predict_for_all_instances_func,
+
                                    PackedFunc predict_stage_func) {
   auto node = make_object<PythonBasedModelNode>();
   node->update_func = std::move(update_func);
   node->predict_func = std::move(predict_func);
+
+  // <bojian/DietCode>
+  node->predict_for_all_instances_func = predict_for_all_instances_func;
+
   node->predict_stage_func = std::move(predict_stage_func);
   data_ = std::move(node);
 }
@@ -67,6 +86,22 @@ void PythonBasedModelNode::Predict(const SearchTask& task, const Array<State>& s
   scores->resize(states.size());
   predict_func(task, states, static_cast<void*>(scores->data()));
 }
+
+
+// <bojian/DietCode>
+void PythonBasedModelNode::PredictForAllInstances(
+    const SearchTask& task, const Array<State>& states,
+    std::vector<float>* const occupancy_penalty,
+    std::vector<float>* const padding_penalty,
+    std::vector<float>* const scores) {
+  scores->resize(states.size());
+  predict_for_all_instances_func(
+      task, states,
+      static_cast<void*>(occupancy_penalty->data()),
+      static_cast<void*>(padding_penalty->data()),
+      static_cast<void*>(scores->data()));
+}
+
 
 void PythonBasedModelNode::PredictStages(const SearchTask& task, const Array<State>& states,
                                          std::vector<float>* state_scores,
@@ -149,8 +184,17 @@ TVM_REGISTER_GLOBAL("auto_scheduler.RandomModel").set_body_typed([]() { return R
 
 TVM_REGISTER_GLOBAL("auto_scheduler.PythonBasedModel")
     .set_body_typed([](PackedFunc update_func, PackedFunc predict_func,
+
+                       // <bojian/DietCode>
+                       PackedFunc predict_for_all_instances_func,
+
                        PackedFunc predict_stage_func) {
-      return PythonBasedModel(update_func, predict_func, predict_stage_func);
+      return PythonBasedModel(update_func, predict_func,
+      
+                              // <bojian/DietCode>
+                              predict_for_all_instances_func,
+
+                              predict_stage_func);
     });
 
 TVM_REGISTER_GLOBAL("auto_scheduler.CostModelUpdate")

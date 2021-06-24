@@ -245,16 +245,29 @@ class XGBModel(PythonBasedModel):
             if feature.min() == feature.max() == 0:
                 ret[idx] = float("-inf")
 
-        # <bojian/DietCode> Add the adaption penalty in addition to the
-        #                   predicted cost.
-        print("Predicted Cost={}".format(ret))
-        [ret, occupancy_penalty, padding_penalty] = \
-                adapt_states_to_workloads(task, states, ret.tolist())
-        print("occupancy={}, padding={}".format(occupancy_penalty, padding_penalty))
-        print("Predicted Cost (after Adaption Penalty)={}".format(ret))
-        assert False, "Current implementation ends here"
-
         return ret
+
+
+    # <bojian/DietCode> Prediction function for dynamic workloads.
+    def predict_for_all_instances(self, task, states):
+        # copied from the above prediction function
+        features = get_per_store_features_from_states(states, task)
+        if self.bst is not None and len(self.inputs) > self.num_warmup_sample:
+            dtest, pack_ids = feature_to_pack_sum_xgbmatrix(features)
+            raw_preds = self.bst.predict(dtest)
+            ret = predict_throughput_pack_sum(raw_preds, pack_ids)
+        else:
+            ret = np.random.uniform(0, 1, (len(states),))
+
+        # Predict -inf for invalid states that failed to be lowered.
+        for idx, feature in enumerate(features):
+            if feature.min() == feature.max() == 0:
+                ret[idx] = float("-inf")
+
+        # <bojian/DietCode> Add the adaption penalty in addition to the
+        #                   predicted cost. The penalty terms might be needed in
+        #                   the evolutionary stage.
+        return adapt_states_to_workloads(task, states, ret.tolist())
 
     def predict_stages(self, task, states):
         """Predict the scores of all stages in states. This is the breakdown version of `predict`.

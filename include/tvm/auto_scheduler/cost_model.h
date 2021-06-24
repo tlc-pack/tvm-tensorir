@@ -57,6 +57,15 @@ class CostModelNode : public Object {
   virtual void Predict(const SearchTask& task, const Array<State>& states,
                        std::vector<float>* scores) = 0;
 
+
+  // <bojian/DietCode>
+  virtual void PredictForAllInstances(const SearchTask& task,
+                                      const Array<State>& states,
+                                      std::vector<float>* const occupancy_penalty,
+                                      std::vector<float>* const padding_penalty,
+                                      std::vector<float>* const scores);
+
+
   /*!
    * \brief Predict the scores of all stages in states. This is the breakdown version of `Predict`
    * \param task The search task
@@ -99,6 +108,15 @@ class RandomModelNode : public CostModelNode {
   void Predict(const SearchTask& task, const Array<State>& states,
                std::vector<float>* scores) final;
 
+
+  // <bojian/DietCode> Note that this method is not implemented
+  void PredictForAllInstances(const SearchTask& task,
+                              const Array<State>& states,
+                              std::vector<float>* const occupancy_penalty,
+                              std::vector<float>* const padding_penalty,
+                              std::vector<float>* const scores) override final;
+
+
   static constexpr const char* _type_key = "auto_scheduler.RandomModel";
   TVM_DECLARE_FINAL_OBJECT_INFO(RandomModelNode, CostModelNode);
 };
@@ -126,6 +144,10 @@ class PythonBasedModelNode : public CostModelNode {
   PackedFunc update_func;
   /*! \brief Pointer to the predict funcion in python */
   PackedFunc predict_func;
+
+  // <bojian/DietCode>
+  PackedFunc predict_for_all_instances_func;
+
   /*! \brief Pointer to the predict funcion in python */
   PackedFunc predict_stage_func;
 
@@ -133,6 +155,15 @@ class PythonBasedModelNode : public CostModelNode {
 
   void Predict(const SearchTask& task, const Array<State>& states,
                std::vector<float>* scores) final;
+
+
+  // <bojian/DietCode>
+  void PredictForAllInstances(const SearchTask& task,
+                              const Array<State>& states,
+                              std::vector<float>* const occupancy_penalty,
+                              std::vector<float>* const padding_penalty,
+                              std::vector<float>* const scores) override final;
+
 
   void PredictStages(const SearchTask& task, const Array<State>& states,
                      std::vector<float>* state_scores,
@@ -154,7 +185,12 @@ class PythonBasedModel : public CostModel {
    * \param predict_func The pointer to the prediction function defined in python
    * \param predict_stage_func The pointer to the prediction function defined in python
    */
-  PythonBasedModel(PackedFunc update_func, PackedFunc predict_func, PackedFunc predict_stage_func);
+  PythonBasedModel(PackedFunc update_func, PackedFunc predict_func,
+
+                   // <bojian/DietCode>
+                   PackedFunc predict_for_all_instances_func,
+
+                   PackedFunc predict_stage_func);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(PythonBasedModel, CostModel, PythonBasedModelNode);
 };

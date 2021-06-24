@@ -97,6 +97,25 @@ class PythonBasedModel(CostModel):
             array_wrapper = np.ctypeslib.as_array(return_ptr, shape=(len(states),))
             array_wrapper[:] = self.predict(task, states)
 
+        # <bojian/DietCode>
+        def predict_for_all_instances_func(task, states, occupancy_penalty_ptr,
+                                           padding_penalty_ptr, scores_ptr):
+            def wrap_as_np_array(ptr, shape):
+                ret_ptr = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_float))
+                np_arr_wrapper = np.ctypeslib.as_array(ret_ptr, shape=shape)
+                return np_arr_wrapper
+               
+            scores_shape = (len(states), len(task.shape_freq))
+            print("Shape output from cost model={}".format(scores_shape))
+            occupancy_penalty_np_arr = \
+                    wrap_as_np_array(occupancy_penalty_ptr, scores_shape)
+            padding_penalty_np_arr = \
+                    wrap_as_np_array(padding_penalty_ptr, scores_shape)
+            scores_np_arr = wrap_as_np_array(scores_ptr, scores_shape)
+            [occupancy_penalty_np_arr[:], padding_penalty_np_arr[:],
+             scores_np_arr[:]] = self.predict(task, states)
+
+
         def predict_stage_func(task, states, return_ptr):
             ret = self.predict_stages(task, states)
             return_ptr = ctypes.cast(return_ptr, ctypes.POINTER(ctypes.c_float))
@@ -104,7 +123,12 @@ class PythonBasedModel(CostModel):
             array_wrapper[:] = ret
 
         self.__init_handle_by_constructor__(
-            _ffi_api.PythonBasedModel, update_func, predict_func, predict_stage_func
+            _ffi_api.PythonBasedModel, update_func, predict_func, 
+            
+            # <bojian/DietCode>
+            predict_for_all_instances_func,
+            
+            predict_stage_func
         )
 
     def update(self, inputs, results):
@@ -135,6 +159,13 @@ class PythonBasedModel(CostModel):
             The predicted scores for all states
         """
         raise NotImplementedError
+
+
+    # <bojian/DietCode> Add another method for predicting for all the workload
+    #                   instances.
+    def predict_for_all_instances(self, task, states):
+        raise NotImplementedError
+
 
     def predict_stages(self, task, states):
         """Predict the scores of all stages in states. This is the breakdown version of `predict`.
