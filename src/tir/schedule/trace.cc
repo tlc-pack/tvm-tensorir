@@ -39,28 +39,22 @@ bool IsPostproc(const Inst& inst) {
   return inst->kind.same_as(inst_enter_postproc);
 }
 
-/**************** Add/Remove ****************/
-
-void TraceNode::Append(const Inst& inst) { insts.push_back(inst); }
-
-void TraceNode::Append(const Inst& inst, const ObjectRef& decision) {
-  insts.push_back(inst);
-  decisions.Set(inst, decision);
+int IndexLastInst(const Array<Inst>& insts, bool remove_postproc) {
+  if (!remove_postproc) {
+    return insts.size();
+  }
+  int n_insts = 0;
+  for (const Inst& inst : insts) {
+    if (!IsPostproc(inst)) {
+      ++n_insts;
+    } else {
+      break;
+    }
+  }
+  return n_insts;
 }
 
-Optional<Inst> TraceNode::Pop() {
-  if (insts.empty()) {
-    return NullOpt;
-  }
-  Inst inst = insts.back();
-  insts.pop_back();
-  if (decisions.count(inst)) {
-    decisions.erase(inst);
-  }
-  return inst;
-}
-
-/**************** Interfacing with InstKind ****************/
+/**************** TranslateInputRVs  ****************/
 
 Array<ObjectRef> TranslateInputRVs(const Array<ObjectRef>& inputs,
                                    const std::unordered_map<const Object*, const Object*>& rv_map) {
@@ -156,6 +150,8 @@ Array<ObjectRef> TranslateInputRVs(const Array<ObjectRef>& inputs,
   return results;
 }
 
+/**************** TranslateAddOutputRVs  ****************/
+
 void TranslateAddOutputRVs(const Array<ObjectRef>& old_outputs, const Array<ObjectRef>& new_outputs,
                            std::unordered_map<const Object*, const Object*>* rv_map) {
   ICHECK_EQ(old_outputs.size(), new_outputs.size());
@@ -205,6 +201,29 @@ void TranslateAddOutputRVs(const Array<String>& old_outputs, const Array<ObjectR
     named_rvs->emplace(std::string(name->data, name->size), p_new[i]);
   }
 }
+
+/**************** Add/Remove ****************/
+
+void TraceNode::Append(const Inst& inst) { insts.push_back(inst); }
+
+void TraceNode::Append(const Inst& inst, const ObjectRef& decision) {
+  insts.push_back(inst);
+  decisions.Set(inst, decision);
+}
+
+Optional<Inst> TraceNode::Pop() {
+  if (insts.empty()) {
+    return NullOpt;
+  }
+  Inst inst = insts.back();
+  insts.pop_back();
+  if (decisions.count(inst)) {
+    decisions.erase(inst);
+  }
+  return inst;
+}
+
+/**************** Interfacing with InstKind ****************/
 
 void TraceNode::ApplyToSchedule(const Schedule& sch, bool remove_postproc,
                                 std::function<ObjectRef(const Array<ObjectRef>& inputs,  //
