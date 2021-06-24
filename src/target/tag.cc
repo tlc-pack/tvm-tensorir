@@ -72,6 +72,7 @@ Target TargetTag::AddTag(String name, Map<String, ObjectRef> config, bool overri
 
 #define TVM_REGISTER_CUDA_TAG(Name, Arch, SharedMem, RegPerBlock) \
   TVM_REGISTER_TARGET_TAG(Name).set_config({                      \
+      {"tag", String(Name)},                                      \
       {"kind", String("cuda")},                                   \
       {"arch", String(Arch)},                                     \
       {"shared_memory_per_block", Integer(SharedMem)},            \

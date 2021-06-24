@@ -36,6 +36,7 @@
 #include <tvm/tir/transform.h>
 
 // <bojian/DietCode>
+#include <tvm/target/tag.h>
 #include <tvm/tir/dynamic_axis_functor.h>
 
 #include <algorithm>
@@ -1735,7 +1736,7 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
       );
   arith::Analyzer analyzer;
 
-  size_t grid_dim = 1;
+  size_t grid_size = 1;
 
   for (int stage_id = state->stages.size() - 1; stage_id >= 0; --stage_id) {
     const Stage& stage = state->stages[stage_id];
@@ -1777,15 +1778,38 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
             // 3. Compute the grid dimension.
             size_t extent_ratio = floor_by(init_iter_extent, extent) / extent;
             CHECK(extent_ratio >= 1);
-            grid_dim *= extent_ratio;
+            grid_size *= extent_ratio;
             if (enable_verbose_logging) {
-              LOG(INFO) << "grid_dim *= " << extent_ratio << " -> " << grid_dim;
+              LOG(INFO) << "grid_size *= " << extent_ratio << " -> " << grid_size;
             }
           }  // if (iter->iter_kind == IteratorKind::kSpatial)
         }    // if (StrEndsWith(iter->name, ".0"))
       }      // for (iter ∈ stage-iters)
     }        // if (StrEndsWith(stage->op->name, ".local"))
   }          // for (stage ∈ state->stages)
+
+  if (task->target->tag == "nvidia/nvidia-t4") {
+    if (enable_verbose_logging) {
+      LOG(INFO) << "Target detected as Tesla T4 GPU";
+      LOG(INFO) << "grid_size=" << grid_size;
+    }
+    float coeff =
+        grid_size < static_cast<size_t>(task->hardware_params->num_cores) ?
+        1.433 : 2.14;
+    *occupancy_penalty =
+        coeff * grid_size /
+        ((coeff - 1) * grid_size + floor_by(grid_size, task->hardware_params->num_cores));
+    if (enable_verbose_logging) {
+      LOG(INFO) << "occupancy_penalty=" << *occupancy_penalty;
+    }
+  } else {
+    if (enable_verbose_logging) {
+      LOG(WARNING) << "Target has not yet been examined, falling to the default heuristic";
+    }
+    *occupancy_penalty =
+        1. * grid_size / floor_by(grid_size, task->hardware_params->num_cores);
+  }
+
   // temporarily assign the occupancy penalty to be 1.0
   *adapted_score = score->value * (*occupancy_penalty) * (*padding_penalty);
 }
