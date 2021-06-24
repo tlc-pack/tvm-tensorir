@@ -38,163 +38,176 @@ Schedule TracedScheduleNode::Copy(int64_t new_seed) const {
 
 /******** Schedule: Sampling ********/
 
-Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
-                                Optional<Array<Integer>> decision) {
+Array<ExprRV> TracedScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n,
+                                                    int max_innermost_factor,
+                                                    Optional<Array<Integer>> decision) {
   throw;  //
 }
 
-ExprRV SampleCategorical(const Array<Integer>& candidates, const Array<FloatImm>& probs,
-                         Optional<Integer> decision) {
+ExprRV TracedScheduleNode::SampleCategorical(const Array<Integer>& candidates,
+                                             const Array<FloatImm>& probs,
+                                             Optional<Integer> decision) {
   throw;  //
 }
 
-LoopRV SampleComputeLocation(const BlockRV& block_rv, Optional<Integer> decision) {
+LoopRV TracedScheduleNode::SampleComputeLocation(const BlockRV& block_rv,
+                                                 Optional<Integer> decision) {
   throw;  //
 }
 
 /******** Schedule: Get blocks & loops ********/
 
-BlockRV GetBlock(const String& name, const String& func_name) {
+BlockRV TracedScheduleNode::GetBlock(const String& name, const String& func_name) {
   throw;  //
 }
 
-Array<LoopRV> GetLoops(const BlockRV& block_rv) {
+Array<LoopRV> TracedScheduleNode::GetLoops(const BlockRV& block_rv) {
   throw;  //
 }
 
-Array<BlockRV> GetChildBlocks(const BlockRV& block_rv) {
+Array<BlockRV> TracedScheduleNode::GetChildBlocks(const BlockRV& block_rv) {
   throw;  //
 }
 
-Array<BlockRV> GetChildBlocks(const LoopRV& loop_rv) {
+Array<BlockRV> TracedScheduleNode::GetChildBlocks(const LoopRV& loop_rv) {
   throw;  //
 }
 
-Array<BlockRV> GetProducers(const BlockRV& block_rv) {
+Array<BlockRV> TracedScheduleNode::GetProducers(const BlockRV& block_rv) {
   throw;  //
 }
 
-Array<BlockRV> GetConsumers(const BlockRV& block_rv) {
+Array<BlockRV> TracedScheduleNode::GetConsumers(const BlockRV& block_rv) {
   throw;  //
 }
 
 /******** Schedule: Transform loops ********/
 
-LoopRV Fuse(const Array<LoopRV>& loop_rvs) {
+LoopRV TracedScheduleNode::Fuse(const Array<LoopRV>& loop_rvs) {
   throw;  //
 }
 
-Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factor_rvs) {
+Array<LoopRV> TracedScheduleNode::Split(const LoopRV& loop_rv,
+                                        const Array<Optional<ExprRV>>& factor_rvs) {
   throw;  //
 }
 
-void Reorder(const Array<LoopRV>& order) {
+void TracedScheduleNode::Reorder(const Array<LoopRV>& order) {
   throw;  //
 }
 
 /******** Schedule: Manipulate ForKind ********/
 
-void Parallel(const LoopRV& loop_rv) {
+void TracedScheduleNode::Parallel(const LoopRV& loop_rv) {
   throw;  //
 }
 
-void Vectorize(const LoopRV& loop_rv) {
+void TracedScheduleNode::Vectorize(const LoopRV& loop_rv) {
   throw;  //
 }
 
-void Unroll(const LoopRV& loop_rv) {
+void TracedScheduleNode::Unroll(const LoopRV& loop_rv) {
   throw;  //
 }
 
-void Bind(const LoopRV& loop_rv, const String& thread) {
+void TracedScheduleNode::Bind(const LoopRV& loop_rv, const String& thread) {
   throw;  //
 }
 
 /******** Schedule: Insert cache stages ********/
 
-BlockRV CacheRead(const BlockRV& block_rv, int i, const String& storage_scope) {
+BlockRV TracedScheduleNode::CacheRead(const BlockRV& block_rv, int i, const String& storage_scope) {
   throw;  //
 }
 
-BlockRV CacheWrite(const BlockRV& block_rv, int i, const String& storage_scope) {
+BlockRV TracedScheduleNode::CacheWrite(const BlockRV& block_rv, int i,
+                                       const String& storage_scope) {
   throw;  //
 }
 
 /******** Schedule: Compute location ********/
 
-void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv, bool preserve_unit_loop) {
+void TracedScheduleNode::ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
+                                   bool preserve_unit_loop) {
   throw;  //
 }
 
-void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv, bool preserve_unit_loop) {
+void TracedScheduleNode::ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
+                                          bool preserve_unit_loop) {
   throw;  //
 }
 
-void ComputeInline(const BlockRV& block_rv) {
+void TracedScheduleNode::ComputeInline(const BlockRV& block_rv) {
   throw;  //
 }
 
-void ReverseComputeInline(const BlockRV& block_rv) {
+void TracedScheduleNode::ReverseComputeInline(const BlockRV& block_rv) {
   throw;  //
 }
 
 /******** Schedule: Reduction ********/
 
-BlockRV RFactor(const LoopRV& loop_rv, int factor_axis) {
+BlockRV TracedScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
   throw;  //
 }
 
-BlockRV DecomposeReduction(const BlockRV& block_rv, const Optional<LoopRV>& loop_rv) {
+BlockRV TracedScheduleNode::DecomposeReduction(const BlockRV& block_rv,
+                                               const Optional<LoopRV>& loop_rv) {
   throw;  //
 }
 
-void MergeReduction(const BlockRV& init_block_rv, const BlockRV& update_block_rv) {
+void TracedScheduleNode::MergeReduction(const BlockRV& init_block_rv,
+                                        const BlockRV& update_block_rv) {
   throw;  //
 }
 
 /******** Schedule: Blockize & Tensorize ********/
 
-BlockRV Blockize(const LoopRV& loop_rv) {
+BlockRV TracedScheduleNode::Blockize(const LoopRV& loop_rv) {
   throw;  //
 }
 
-void Tensorize(const LoopRV& loop_rv, const String& intrin_name) {
+void TracedScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin_name) {
   throw;  //
 }
 
 /******** Schedule: Annotation ********/
 
-void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const PrimExpr& ann_val) {
+void TracedScheduleNode::MarkLoop(const LoopRV& loop_rv, const String& ann_key,
+                                  const PrimExpr& ann_val) {
   throw;  //
 }
 
-void MarkBlock(const BlockRV& block_rv, const String& ann_key, const PrimExpr& ann_val) {
+void TracedScheduleNode::MarkBlock(const BlockRV& block_rv, const String& ann_key,
+                                   const PrimExpr& ann_val) {
   throw;  //
 }
 
-void Pragma(const LoopRV& loop_rv, const String& pragma_type, const ExprRV& pragma_value) {
+void TracedScheduleNode::Pragma(const LoopRV& loop_rv, const String& pragma_type,
+                                const ExprRV& pragma_value) {
   throw;  //
 }
 
 /******** Schedule: Misc ********/
 
-void EnterPostProc() {
+void TracedScheduleNode::EnterPostProc() {
   throw;  //
 }
 
-void DoubleBuffer(const BlockRV& block_rv) {
+void TracedScheduleNode::DoubleBuffer(const BlockRV& block_rv) {
   throw;  //
 }
 
-void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) {
+void TracedScheduleNode::SetScope(const BlockRV& block_rv, int i, const String& storage_scope) {
   throw;  //
 }
 
-void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor, int offset) {
+void TracedScheduleNode::StorageAlign(const BlockRV& block_rv, int buffer_index, int axis,
+                                      int factor, int offset) {
   throw;  //
 }
 
-void InlineArgument(int i, const String& func_name) {
+void TracedScheduleNode::InlineArgument(int i, const String& func_name) {
   throw;  //
 }
 
