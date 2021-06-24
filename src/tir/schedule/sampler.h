@@ -16,11 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef TVM_META_SCHEDULE_SAMPLER_H_
-#define TVM_META_SCHEDULE_SAMPLER_H_
+#ifndef TVM_TIR_SCHEDULE_SAMPLER_H_
+#define TVM_TIR_SCHEDULE_SAMPLER_H_
 
-#include <tvm/node/node.h>
-
+#include <functional>
 #include <random>
 #include <vector>
 

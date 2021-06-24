@@ -70,8 +70,9 @@ class Schedule(Object):
 
     def __init__(
         self,
-        func_or_mod: Union[PrimFunc, IRModule],
+        mod: Union[PrimFunc, IRModule],
         *,
+        seed: Optional[int] = None,
         debug_mode: Union[bool, int] = False,
         error_render_level: str = "detail",
     ):
@@ -79,7 +80,7 @@ class Schedule(Object):
 
         Parameters
         ----------
-        func_or_mod : Union[PrimFunc, IRModule]
+        mod : Union[PrimFunc, IRModule]
             The IRModule or PrimFunc to be scheduled
         debug_mode : Union[bool, int]
             Do extra correctness checking after the class creation and each time
@@ -96,6 +97,15 @@ class Schedule(Object):
         1) VerifySRefTree
         2) VerifyCachedFlags
         """
+        # preprocess `mod`
+        if isinstance(mod, PrimFunc):
+            mod = IRModule({"main": mod})
+        # preprocess `seed`
+        if seed is None:
+            seed = -1
+        if seed < -1:
+            raise ValueError("Expect nonnegative seed, but gets: " + seed)
+        # preprocess `debug_mode`
         if isinstance(debug_mode, bool):
             if debug_mode:
                 debug_mode = -1
@@ -103,6 +113,7 @@ class Schedule(Object):
                 debug_mode = 0
         if not isinstance(debug_mode, int):
             raise TypeError(f"`debug_mode` should be integer or boolean, but gets: {debug_mode}")
+        # preprocess `error_render_level`
         if error_render_level not in Schedule.ERROR_RENDER_LEVEL:
             raise ValueError(
                 'error_render_level can be "detail", "fast", or "none", but got: '
@@ -128,6 +139,11 @@ class Schedule(Object):
     def state(self) -> ScheduleState:
         """Returns the ScheduleState in the current schedule class"""
         return _ffi_api_schedule.ScheduleGetState(self)  # type: ignore # pylint: disable=no-member
+
+    # TODO
+    # @property
+    # def trace(self) -> "Trace":
+    #     return _ffi_api_schedule.ScheduleGetTrace(self)  # pylint: disable=no-member
 
     def copy(self) -> "Schedule":
         """Returns a copy of the schedule, including both the state and the symbol table,

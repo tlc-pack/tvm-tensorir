@@ -19,7 +19,7 @@
 #ifndef TVM_TIR_SCHEDULE_PRIMITIVES_PRIMITIVES_H_
 #define TVM_TIR_SCHEDULE_PRIMITIVES_PRIMITIVES_H_
 
-#include <tvm/tir/schedule/schedule.h>
+#include <tvm/tir/schedule/state.h>
 
 #include <vector>
 

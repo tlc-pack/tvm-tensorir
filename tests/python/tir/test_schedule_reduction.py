@@ -362,7 +362,7 @@ def test_reduction_rfactor_3():
 
 
 def test_reduction_allreduce_1():
-    ctx = tvm.gpu(0)
+    ctx = tvm.cuda(0)
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
     thread_x = tir.thread_axis((0, 16), "threadIdx.x")
     thread_y = tir.thread_axis((0, 16), "threadIdx.y")
@@ -381,7 +381,7 @@ def test_reduction_allreduce_1():
 
 
 def test_reduction_allreduce_2():
-    ctx = tvm.gpu(0)
+    ctx = tvm.cuda(0)
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
     thread_x = tir.thread_axis((0, 16), "threadIdx.x")
     B_block = s.get_block("B")
@@ -398,7 +398,7 @@ def test_reduction_allreduce_2():
 
 
 def test_reduction_allreduce_3():
-    ctx = tvm.gpu(0)
+    ctx = tvm.cuda(0)
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
     thread_x = tir.thread_axis((0, 16), "threadIdx.x")
     B_block = s.get_block("B")
@@ -415,7 +415,7 @@ def test_reduction_allreduce_3():
 
 
 def test_reduction_allreduce_4():
-    ctx = tvm.gpu(0)
+    ctx = tvm.cuda(0)
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
     _ = tir.thread_axis((0, 16), "threadIdx.x")
     B_block = s.get_block("B")
@@ -439,7 +439,7 @@ def test_reduction_allreduce_4():
 
 
 def test_reduction_allreduce_5():
-    ctx = tvm.gpu(0)
+    ctx = tvm.cuda(0)
     s = tir.Schedule(non_multiple_allreduce, debug_mode=True)
     B = s.get_block("B")
     _, k = s.get_loops(B)

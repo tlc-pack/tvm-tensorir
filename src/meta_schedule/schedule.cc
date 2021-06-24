@@ -70,8 +70,8 @@ tir::Schedule ScheduleNode::Copy(int64_t new_seed) const {
 Array<tir::ExprRV> ScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n,
                                                    int max_innermost_factor,
                                                    Optional<Array<Integer>> decision) {
-  Array<tir::ExprRV> result_rvs = CreateRV(AsArray<int64_t, Integer>(tir::SamplePerfectTile(
-      state_, &this->sampler_, this->GetSRef(loop_rv), n, max_innermost_factor, &decision)));
+  Array<tir::ExprRV> result_rvs = CreateRV(tir::SamplePerfectTile(
+      state_, &this->sampler_, this->GetSRef(loop_rv), n, max_innermost_factor, &decision));
   this->trace->Append(SamplePerfectTileAttrs::Make(loop_rv, n, max_innermost_factor, result_rvs),
                       decision);
   return result_rvs;

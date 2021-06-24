@@ -18,7 +18,9 @@
  */
 #include "./sampler.h"
 
-#include <random>
+#include <tvm/runtime/logging.h>
+
+#include <algorithm>
 
 namespace tvm {
 namespace tir {
