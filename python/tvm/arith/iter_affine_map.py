@@ -181,6 +181,12 @@ def inverse_affine_iter_map(iter_map, outputs):
     in reverse topology order and applies the inverse of the affine transformation until it reaches
     the input. The affine iter map is required to be bijective.
 
+    For example, iter_map = [l0 // 16, l0 % 16], outputs = [output_0, output_1],
+    the affine transformation specified by `iter_map` will be applied to `outputs` and the result 
+    will be {l0: ((output_0*16) + output_1)}.
+  
+    See also :any:`detect_iter_map`.
+
     Parameters
     ----------
     iter_map : List[IterSumExpr]
