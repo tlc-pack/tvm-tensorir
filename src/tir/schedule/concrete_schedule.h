@@ -19,11 +19,9 @@
 #ifndef TVM_TIR_SCHEDULE_CONCRETE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_CONCRETE_SCHEDULE_H_
 
-#include <tvm/arith/analyzer.h>
-#include <tvm/tir/schedule/schedule.h>
-
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "./sampler.h"
 #include "./utils.h"
@@ -66,6 +64,10 @@ class ConcreteScheduleNode : public ScheduleNode {
 
  public:
   ScheduleState state() const final { return state_; }
+  Trace trace() const override {
+    LOG(FATAL) << "ValueError: ConcreteSchedule is not traced. Please use TracedSchedule instead";
+    throw;
+  }
   Schedule Copy(int64_t new_seed = -1) const override;
   void Seed(int64_t new_seed = -1) final { this->sampler_.Seed(new_seed); }
 
@@ -203,7 +205,7 @@ class ConcreteScheduleNode : public ScheduleNode {
    * \param numbers The number to be added to the symbol table
    * \return The new random variables created
    */
-  inline Array<ExprRV> CreateRV(const Array<Integer>& numbers);
+  inline Array<ExprRV> CreateRV(const std::vector<int64_t>& numbers);
   /*! \brief Remove a random variable from the symbol table */
   inline void RemoveFromSymbolTable(const ObjectRef& rv);
 };
@@ -337,12 +339,12 @@ inline ExprRV ConcreteScheduleNode::CreateRV(int64_t number) {
   return std::move(rv);
 }
 
-inline Array<ExprRV> ConcreteScheduleNode::CreateRV(const Array<Integer>& numbers) {
+inline Array<ExprRV> ConcreteScheduleNode::CreateRV(const std::vector<int64_t>& numbers) {
   Array<ExprRV> result;
   result.reserve(numbers.size());
-  for (const Integer& number : numbers) {
+  for (int number : numbers) {
     Var rv;
-    this->symbol_table_.Set(rv, number);
+    this->symbol_table_.Set(rv, Integer(number));
     result.push_back(rv);
   }
   return result;

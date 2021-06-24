@@ -183,6 +183,7 @@ void ConcreteScheduleNode::Copy(ScheduleState* new_state, TSymbolTable* new_symb
 Schedule ConcreteScheduleNode::Copy(int64_t new_seed) const {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   Copy(&n->state_, &n->symbol_table_);
+  n->error_render_level_ = this->error_render_level_;
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   n->sampler_.Seed(new_seed);
   return Schedule(std::move(n));
@@ -217,8 +218,8 @@ Array<ExprRV> ConcreteScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int
                                                       int max_innermost_factor,
                                                       Optional<Array<Integer>> decision) {
   TVM_TIR_SCHEDULE_BEGIN();
-  return CreateRV(AsArray<int64_t, Integer>(tir::SamplePerfectTile(
-      state_, &this->sampler_, this->GetSRef(loop_rv), n, max_innermost_factor, &decision)));
+  return CreateRV(tir::SamplePerfectTile(state_, &this->sampler_, this->GetSRef(loop_rv), n,
+                                         max_innermost_factor, &decision));
   TVM_TIR_SCHEDULE_END("sample-perfect-tile", this->error_render_level_);
 }
 
@@ -632,32 +633,15 @@ void ConcreteScheduleNode::InlineArgument(int i, const String& func_name) {
   TVM_TIR_SCHEDULE_END("inline-argument", this->error_render_level_);
 }
 
-/******** Instruction traits ********/
-
-struct EnterPostProcTraits : public UnpackedInstTraits<EnterPostProcTraits> {
-  static constexpr const char* kName = "EnterPostProc";
-  static constexpr bool kIsPure = false;
-
- private:
-  static constexpr size_t kNumInputs = 0;
-  static constexpr size_t kNumAttrs = 0;
-  static constexpr size_t kNumDecisions = 0;
-
-  static void UnpackedApplyToSchedule(Schedule sch) { return sch->EnterPostProc(); }
-
-  static String UnpackedAsPython(Array<String> outputs) {
-    PythonAPICall py("enter_postproc");
-    return py.Str();
-  }
-
-  friend struct UnpackedInstTraits;
-};
-
-TVM_REGISTER_INST_KIND(EnterPostProcTraits);
-
 /******** FFI ********/
 
 TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);
+TVM_REGISTER_GLOBAL("tir.schedule.ConcreteSchedule")
+    .set_body_typed([](IRModule mod, int64_t seed, int debug_mode,
+                       int error_render_level) -> Schedule {
+      return Schedule::Concrete(mod, seed, debug_mode,
+                                static_cast<ScheduleErrorRenderLevel>(error_render_level));
+    });
 
 }  // namespace tir
 }  // namespace tvm

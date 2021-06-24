@@ -86,6 +86,7 @@ using ExprRVNode = PrimExprNode;
 /**************** The Schedule class ****************/
 
 class Schedule;
+class Trace;
 
 /*! \brief The user-facing schedule class */
 class ScheduleNode : public runtime::Object {
@@ -102,6 +103,8 @@ class ScheduleNode : public runtime::Object {
   virtual IRModule mod() const { return state()->mod; }
   /*! \return The internal state of scheduling */
   virtual ScheduleState state() const = 0;
+  /*! \return The internally maintained trace of scheduling primitives applied */
+  virtual Trace trace() const = 0;
   /*!
    * \brief Returns a copy of the schedule, including both its state and its symbol table,
    * guaranteeing that
@@ -115,9 +118,7 @@ class ScheduleNode : public runtime::Object {
    * \brief Seed the randomness
    * \param seed The new random seed, -1 if use device random, otherwise non-negative
    */
-  virtual void Seed(int64_t seed = -1) {
-    LOG(FATAL) << "ValueError: The schedule cannot be seeded because no randomness is allowed";
-  }
+  virtual void Seed(int64_t seed = -1) = 0;
 
  public:
   /******** Lookup/Remove random variables ********/
@@ -491,6 +492,8 @@ class Schedule : public runtime::ObjectRef {
                                    ScheduleErrorRenderLevel error_render_level);
   TVM_DLL static Schedule Meta(IRModule mod, int64_t seed, int debug_mode,
                                ScheduleErrorRenderLevel error_render_level);
+  TVM_DLL static Schedule Traced(IRModule mod, int64_t seed, int debug_mode,
+                                 ScheduleErrorRenderLevel error_render_level);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };
 
