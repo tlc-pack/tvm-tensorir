@@ -374,21 +374,6 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
 
 /**************** Creation ****************/
 
-int IndexLastInst(const Array<Inst>& insts, bool remove_postproc) {
-  if (!remove_postproc) {
-    return insts.size();
-  }
-  int n_insts = 0;
-  for (const Inst& inst : insts) {
-    if (!IsPostproc(inst)) {
-      ++n_insts;
-    } else {
-      break;
-    }
-  }
-  return n_insts;
-}
-
 Trace TraceNode::WithDecision(const Inst& inst, const ObjectRef& decision,
                               bool remove_postproc) const {
   int n_insts = IndexLastInst(this->insts, remove_postproc);
@@ -463,7 +448,7 @@ TVM_REGISTER_GLOBAL("tir.TraceAppend")
 TVM_REGISTER_GLOBAL("tir.TracePop").set_body_method<Trace>(&TraceNode::Pop);
 TVM_REGISTER_GLOBAL("tir.TraceApplyToSchedule")
     .set_body_typed([](Trace self, Schedule sch, bool remove_postproc) {
-      return self->ApplyToSchedule(sch, remove_postproc);
+      return self->ApplyToSchedule(sch, remove_postproc, nullptr);
     });
 TVM_REGISTER_GLOBAL("tir.TraceAsJSON").set_body_method<Trace>(&TraceNode::AsJSON);
 TVM_REGISTER_GLOBAL("tir.TraceAsPython").set_body_method<Trace>(&TraceNode::AsPython);
