@@ -454,6 +454,7 @@ TVM_REGISTER_GLOBAL("tir.TraceAsJSON").set_body_method<Trace>(&TraceNode::AsJSON
 TVM_REGISTER_GLOBAL("tir.TraceAsPython").set_body_method<Trace>(&TraceNode::AsPython);
 TVM_REGISTER_GLOBAL("tir.TraceWithDecision").set_body_method<Trace>(&TraceNode::WithDecision);
 TVM_REGISTER_GLOBAL("tir.TraceSimplified").set_body_method<Trace>(&TraceNode::Simplified);
+TVM_REGISTER_GLOBAL("tir.TraceApplyJSONToSchedule").set_body_typed(Trace::ApplyJSONToSchedule);
 
 }  // namespace tir
 }  // namespace tvm
