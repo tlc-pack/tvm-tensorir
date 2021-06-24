@@ -58,9 +58,9 @@ class TraceNode : public runtime::Object {
 
   Array<String> AsPython() const;
 
-  Trace Simplified(bool remove_postproc) const;
-
   Trace WithDecision(const Inst& inst, const ObjectRef& decision, bool remove_postproc) const;
+
+  Trace Simplified(bool remove_postproc) const;
 };
 
 /*!

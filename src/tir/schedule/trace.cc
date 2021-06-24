@@ -429,6 +429,27 @@ Trace TraceNode::Simplified(bool remove_postproc) const {
 /**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(TraceNode);
+TVM_REGISTER_GLOBAL("tir.Trace")
+    .set_body_typed([](Optional<Array<Inst>> insts, Optional<Map<Inst, ObjectRef>> decisions) {
+      return Trace(insts.value_or(Array<Inst>()), decisions.value_or(Map<Inst, ObjectRef>()));
+    });
+TVM_REGISTER_GLOBAL("tir.TraceAppend")
+    .set_body_typed([](Trace self, Inst inst, Optional<ObjectRef> decision) {
+      if (decision.defined()) {
+        return self->Append(inst, decision.value());
+      } else {
+        return self->Append(inst);
+      }
+    });
+TVM_REGISTER_GLOBAL("tir.TracePop").set_body_method<Trace>(&TraceNode::Pop);
+TVM_REGISTER_GLOBAL("tir.TraceApplyToSchedule")
+    .set_body_typed([](Trace self, Schedule sch, bool remove_postproc) {
+      return self->ApplyToSchedule(sch, remove_postproc);
+    });
+TVM_REGISTER_GLOBAL("tir.TraceAsJSON").set_body_method<Trace>(&TraceNode::AsJSON);
+TVM_REGISTER_GLOBAL("tir.TraceAsPython").set_body_method<Trace>(&TraceNode::AsPython);
+TVM_REGISTER_GLOBAL("tir.TraceWithDecision").set_body_method<Trace>(&TraceNode::WithDecision);
+TVM_REGISTER_GLOBAL("tir.TraceSimplified").set_body_method<Trace>(&TraceNode::Simplified);
 
 }  // namespace tir
 }  // namespace tvm
