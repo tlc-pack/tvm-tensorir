@@ -491,6 +491,8 @@ class Schedule : public runtime::ObjectRef {
                                    ScheduleErrorRenderLevel error_render_level);
   TVM_DLL static Schedule Meta(IRModule mod, int64_t seed, int debug_mode,
                                ScheduleErrorRenderLevel error_render_level);
+  TVM_DLL static Schedule Traced(IRModule mod, int64_t seed, int debug_mode,
+                                 ScheduleErrorRenderLevel error_render_level);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };
 

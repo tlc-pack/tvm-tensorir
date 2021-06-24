@@ -19,20 +19,10 @@
 #ifndef TVM_TIR_SCHEDULE_TRANSFORM_H_
 #define TVM_TIR_SCHEDULE_TRANSFORM_H_
 
-#include <tvm/tir/stmt.h>
-
-#include <unordered_set>
-
 namespace tvm {
 namespace tir {
 
-/*!
- * \brief Transform the init block into actual computation
- * \param init The init block
- * \param iter_vars The block variables
- * \return The actual computation
- */
-Stmt RealizeInitBlock(const Stmt& init, const Array<IterVar>& iter_vars);
+//
 
 }  // namespace tir
 }  // namespace tvm
