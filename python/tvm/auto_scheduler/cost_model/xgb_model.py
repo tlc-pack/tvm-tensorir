@@ -248,7 +248,11 @@ class XGBModel(PythonBasedModel):
         # <bojian/DietCode> Add the adaption penalty in addition to the
         #                   predicted cost.
         print("Predicted Cost={}".format(ret))
-        ret = adapt_states_to_workloads(task, states, ret.tolist())
+        [ret, occupancy_penalty, padding_penalty] = \
+                adapt_states_to_workloads(task, states, ret.tolist())
+        print("occupancy={}, padding={}".format(occupancy_penalty, padding_penalty))
+        print("Predicted Cost (after Adaption Penalty)={}".format(ret))
+        assert False, "Current implementation ends here"
 
         return ret
 

@@ -1771,7 +1771,7 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
             *padding_penalty *= padding_ratio;
             if (enable_verbose_logging) {
               LOG(INFO) << "padding_penalty *= " << padding_ratio
-                        << " -> " << padding_penalty;
+                        << " -> " << *padding_penalty;
             }
 
             // 3. Compute the grid dimension.
@@ -1787,8 +1787,6 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
     }        // if (StrEndsWith(stage->op->name, ".local"))
   }          // for (stage ∈ state->stages)
   // temporarily assign the occupancy penalty to be 1.0
-  *occupancy_penalty = 1.0;
-
   *adapted_score = score->value * (*occupancy_penalty) * (*padding_penalty);
 }
 
@@ -1799,9 +1797,9 @@ Array<NDArray> AdaptStatesToWorkloads(
   std::vector<float> adapted_scores(
       states.size() * task->shape_freq.value().size());
   std::vector<float> occupancy_penalty(
-      states.size() * task->shape_freq.value().size());
+      states.size() * task->shape_freq.value().size(), 1.f);
   std::vector<float> padding_penalty(
-      states.size() * task->shape_freq.value().size());
+      states.size() * task->shape_freq.value().size(), 1.f);
 
   Array<Array<IntImm>> shape_values;
   for (const std::pair<Array<IntImm>, FloatImm>& kv :
@@ -1828,7 +1826,7 @@ Array<NDArray> AdaptStatesToWorkloads(
                              &adapted_scores[i]);
       }
   );
-  LOG(FATAL) << "Finished computing the adaption penalty";
+  // LOG(FATAL) << "Finished computing the adaption penalty";
   std::vector<int64_t> ndarr_shape =
       {static_cast<int64_t>(states.size()),
        static_cast<int64_t>(task->shape_freq.value().size())};
