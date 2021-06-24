@@ -29,11 +29,18 @@ Schedule Schedule::Traced(IRModule mod, int64_t seed, int debug_mode,
   n->sampler_.Seed(seed);
   n->symbol_table_ = {};
   n->analyzer_ = std::make_unique<arith::Analyzer>();
+  n->trace_ = Trace();
   return Schedule(std::move(n));
 }
 
 Schedule TracedScheduleNode::Copy(int64_t new_seed) const {
-  throw;  //
+  ObjectPtr<TracedScheduleNode> n = make_object<TracedScheduleNode>();
+  ConcreteScheduleNode::Copy(&n->state_, &n->symbol_table_);
+  n->error_render_level_ = this->error_render_level_;
+  n->analyzer_ = std::make_unique<arith::Analyzer>();
+  n->sampler_.Seed(new_seed);
+  n->trace_ = Trace(this->trace_->insts, this->trace_->decisions);
+  return Schedule(std::move(n));
 }
 
 /******** Schedule: Sampling ********/
@@ -210,6 +217,10 @@ void TracedScheduleNode::StorageAlign(const BlockRV& block_rv, int buffer_index,
 void TracedScheduleNode::InlineArgument(int i, const String& func_name) {
   throw;  //
 }
+
+/******** FFI ********/
+
+TVM_REGISTER_NODE_TYPE(TracedScheduleNode);
 
 }  // namespace tir
 }  // namespace tvm

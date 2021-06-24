@@ -138,6 +138,29 @@ String PythonAPICall::Str() const {
   return os.str();
 }
 
+/******** Instruction traits ********/
+
+struct EnterPostProcTraits : public UnpackedInstTraits<EnterPostProcTraits> {
+  static constexpr const char* kName = "EnterPostProc";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 0;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch) { return sch->EnterPostProc(); }
+
+  static String UnpackedAsPython(Array<String> outputs) {
+    PythonAPICall py("enter_postproc");
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND(EnterPostProcTraits);
+
 /**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(InstNode);

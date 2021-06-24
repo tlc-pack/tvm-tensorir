@@ -25,6 +25,11 @@ namespace tvm {
 namespace tir {
 
 class TracedScheduleNode : public ConcreteScheduleNode {
+  friend class Schedule;
+
+ protected:
+  Trace trace_;
+
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {
     // `state_` is not visited
@@ -32,6 +37,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
     // `sampler_` is not visited
     // `symbol_table_` is not visited
     // `analyzer_` is not visitied
+    // `trace_` is not visited
   }
 
   ~TracedScheduleNode() = default;
@@ -40,6 +46,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(TracedScheduleNode, ScheduleNode);
 
  public:
+  Trace trace() const final { return trace_; }
   Schedule Copy(int64_t new_seed = -1) const final;
 
  public:
