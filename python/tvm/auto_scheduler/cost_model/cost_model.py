@@ -112,8 +112,8 @@ class PythonBasedModel(CostModel):
             padding_penalty_np_arr = \
                     wrap_as_np_array(padding_penalty_ptr, scores_shape)
             scores_np_arr = wrap_as_np_array(scores_ptr, scores_shape)
-            [occupancy_penalty_np_arr[:], padding_penalty_np_arr[:],
-             scores_np_arr[:]] = self.predict(task, states)
+            occupancy_penalty_np_arr[:], padding_penalty_np_arr[:], \
+                    scores_np_arr[:] = self.predict_for_all_instances(task, states)
 
 
         def predict_stage_func(task, states, return_ptr):
