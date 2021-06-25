@@ -63,7 +63,7 @@ class CostModelNode : public Object {
                                       const Array<State>& states,
                                       std::vector<float>* const occupancy_penalty,
                                       std::vector<float>* const padding_penalty,
-                                      std::vector<float>* const scores);
+                                      std::vector<float>* const scores) = 0;
 
 
   /*!

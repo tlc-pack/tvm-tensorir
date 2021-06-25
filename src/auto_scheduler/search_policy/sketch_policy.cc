@@ -212,9 +212,9 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
       best_states = SearchOneRound(num_random * 3, &random_states);
 
       if (IsDynTask(this->search_task)) {
-        LOG(FATAL) << "Number of states after pruning: "
-                      "best_states.size()=" << best_states.size() << ", "
-                      "random_states.size()=" << random_states.size();
+        LOG(INFO) << "Number of states after pruning: "
+                     "best_states.size()=" << best_states.size() << ", "
+                     "random_states.size()=" << random_states.size();
       }
 
       // Infer bound. This is necessary for computing the correct ToStr() for redundancy check
@@ -739,6 +739,10 @@ Array<MeasureInput> SketchPolicyNode::PickStatesWithEpsGreedy(const Array<State>
   int num_random =
       static_cast<int>(GetDoubleParam(params, SketchParamKey::eps_greedy) * num_measure_per_iter_);
   int num_good = num_measure_per_iter_ - num_random;
+
+
+  // <bojian/DietCode>
+  LOG(FATAL) << "Collecting the inputs used for measurements";
 
   Array<MeasureInput> inputs;
   size_t offset_best = 0, offset_random = 0;
