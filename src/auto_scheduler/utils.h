@@ -409,6 +409,16 @@ std::vector<Iterator> GatherAllItersWithSamePrefix(
 
 Iterator FindIterInInitState(const State& init_state, const Iterator& iter_0);
 
+class Dispatcher {
+  virtual std::unordered_map<size_t, size_t>
+  dispatch(const std::vector<float>& scores, const size_t num_states) = 0;
+};
+
+
+class TopKDispatcher : public Dispatcher {
+  virtual std::unordered_map<size_t, size_t>
+  dispatch(const std::vector<float>& scores, const size_t num_states) override final;
+};
 
 }  // namespace auto_scheduler
 }  // namespace tvm
