@@ -15,10 +15,30 @@
 # specific language governing permissions and limitations
 # under the License.
 # pylint: disable=unused-import
-"""Namespace for the TensorIR schedule API."""
+"""Instructions each corresponds to a schedule primitive"""
+from typing import List, Union, Optional, TYPE_CHECKING
+from tvm._ffi import register_object as _register_object
+from tvm.runtime import Object
 
-from .block_scope import BlockScope, Dependency, DepKind, StmtSRef
-from .state import ScheduleDebugMask, ScheduleState
-from .inst import Inst, InstKind
-from .trace import Trace
-from .schedule import RAND_VAR_TYPE, BlockRV, ExprRV, LoopRV, Schedule
+from . import _ffi_api_schedule
+
+if TYPE_CHECKING:
+    from .schedule import RAND_VAR_TYPE
+
+
+@_register_object("tir.InstKind")
+class InstKind(Object):
+    name: str
+    is_pure: bool
+
+    @staticmethod
+    def get(name: str) -> "InstKind":
+        return _ffi_api_schedule.InstKindGet(name)  # pylint: disable=no-member
+
+
+@_register_object("tir.Inst")
+class Inst(Object):
+    kind: InstKind
+    inputs: List[Optional[Union["RAND_VAR_TYPE", str, int, float]]]
+    attrs: List[Object]
+    outputs: List["RAND_VAR_TYPE"]

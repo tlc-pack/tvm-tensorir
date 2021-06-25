@@ -112,14 +112,17 @@ struct GetBlockTraits : public UnpackedInstTraits<GetBlockTraits> {
 
  private:
   static constexpr size_t kNumInputs = 0;
-  static constexpr size_t kNumAttrs = 1;
+  static constexpr size_t kNumAttrs = 2;
   static constexpr size_t kNumDecisions = 0;
 
-  static BlockRV UnpackedApplyToSchedule(Schedule sch, String name) { return sch->GetBlock(name); }
+  static BlockRV UnpackedApplyToSchedule(Schedule sch, String name, String func_name) {
+    return sch->GetBlock(name, func_name);
+  }
 
-  static String UnpackedAsPython(Array<String> outputs, String name) {
+  static String UnpackedAsPython(Array<String> outputs, String name, String func_name) {
     PythonAPICall py("get_block");
     py.Attr("name", name);
+    py.Attr("func_name", func_name);
     py.Output(outputs[0]);
     return py.Str();
   }

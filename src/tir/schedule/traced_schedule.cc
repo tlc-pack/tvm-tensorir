@@ -105,7 +105,7 @@ BlockRV TracedScheduleNode::GetBlock(const String& name, const String& func_name
 Array<LoopRV> TracedScheduleNode::GetLoops(const BlockRV& block_rv) {
   Array<LoopRV> results = ConcreteScheduleNode::GetLoops(block_rv);
 
-  static const InstKind& kind = InstKind::Get("GetBlock");
+  static const InstKind& kind = InstKind::Get("GetLoops");
   trace_->Append(/*inst=*/Inst(/*kind=*/kind,  //
                                /*inputs=*/{block_rv},
                                /*attrs=*/{},
@@ -449,6 +449,12 @@ void TracedScheduleNode::InlineArgument(int i, const String& func_name) {
 /******** FFI ********/
 
 TVM_REGISTER_NODE_TYPE(TracedScheduleNode);
+TVM_REGISTER_GLOBAL("tir.schedule.TracedSchedule")
+    .set_body_typed([](IRModule mod, int64_t seed, int debug_mode,
+                       int error_render_level) -> Schedule {
+      return Schedule::Traced(mod, seed, debug_mode,
+                              static_cast<ScheduleErrorRenderLevel>(error_render_level));
+    });
 
 }  // namespace tir
 }  // namespace tvm

@@ -35,7 +35,7 @@ Inst::Inst(InstKind kind, Array<ObjectRef> inputs, Array<ObjectRef> attrs,
 
 using InstKindRegistry = AttrRegistry<InstKindRegEntry, InstKind>;
 
-const InstKind& InstKind::Get(const String& inst_kind_name) {
+InstKind InstKind::Get(const String& inst_kind_name) {
   const InstKindRegEntry* reg = InstKindRegistry::Global()->Get(inst_kind_name);
   ICHECK(reg != nullptr) << "AttributeError: Instruction kind " << inst_kind_name
                          << " is not registered";
@@ -165,6 +165,8 @@ TVM_REGISTER_INST_KIND(EnterPostProcTraits);
 
 TVM_REGISTER_NODE_TYPE(InstNode);
 TVM_REGISTER_NODE_TYPE(InstKindNode);
+
+TVM_REGISTER_GLOBAL("tir.schedule.InstKindGet").set_body_typed(InstKind::Get);
 
 }  // namespace tir
 }  // namespace tvm

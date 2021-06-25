@@ -26,6 +26,7 @@ from tvm.tir import Block, For, IntImm, PrimFunc, IterVar, TensorIntrin
 
 from . import _ffi_api_schedule
 from .state import ScheduleState, StmtSRef
+from .trace import Trace
 
 
 @register_error
@@ -72,6 +73,7 @@ class Schedule(Object):
         seed: Optional[int] = None,
         debug_mode: Union[bool, int] = False,
         error_render_level: str = "detail",
+        traced: bool = False,
     ):
         """Construct a concrete TensorIR schedule from an IRModule or a PrimFunc
 
@@ -82,11 +84,15 @@ class Schedule(Object):
         debug_mode : Union[bool, int]
             Do extra correctness checking after the class creation and each time
             scheduling primitive
+        seed : Optional[int] = None
+            The seed for the random number generator
         error_render_level : str = "detail"
             The level of error rendering. Choices: "detail", "fast", "none".
             "detail": Render a detailed error message, with the TIR and error locations printed
             "fast: Show a simple error message without rendering or string manipulation
             "none": Do not show any error message.
+        traced : bool = False
+            Whether to create a traced schedule
 
         Note
         ----------
@@ -117,8 +123,13 @@ class Schedule(Object):
                 + f"{error_render_level}"
             )
         error_render_level = Schedule.ERROR_RENDER_LEVEL.get(error_render_level)
+        # preprocess `traced`
+        if traced:
+            f_constructor = _ffi_api_schedule.TracedSchedule  # pylint: disable=no-member
+        else:
+            f_constructor = _ffi_api_schedule.ConcreteSchedule  # pylint: disable=no-member
         self.__init_handle_by_constructor__(
-            _ffi_api_schedule.ConcreteSchedule,  # pylint: disable=no-member
+            f_constructor,
             mod,
             seed,
             debug_mode,
@@ -137,10 +148,10 @@ class Schedule(Object):
         """Returns the ScheduleState in the current schedule class"""
         return _ffi_api_schedule.ScheduleGetState(self)  # pylint: disable=no-member
 
-    # TODO
-    # @property
-    # def trace(self) -> "Trace":
-    #     return _ffi_api_schedule.ScheduleGetTrace(self)  # pylint: disable=no-member
+    @property
+    def _trace(self) -> Trace:
+        # TODO
+        return _ffi_api_schedule.ScheduleGetTrace(self)  # pylint: disable=no-member
 
     def copy(self) -> "Schedule":
         """Returns a copy of the schedule, including both the state and the symbol table,

@@ -89,7 +89,10 @@ class InstKindNode : public runtime::Object {
   /*! \brief The functor to deserialize the attributes of an instruction */
   FAttrsFromJSON f_attrs_from_json{nullptr};
 
-  void VisitAttrs(tvm::AttrVisitor* v) {}
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("name", &name);
+    v->Visit("is_pure", &is_pure);
+  }
 
   static constexpr const char* _type_key = "tir.InstKind";
   TVM_DECLARE_FINAL_OBJECT_INFO(InstKindNode, runtime::Object);
@@ -111,7 +114,7 @@ class InstKindNode : public runtime::Object {
  */
 class InstKind : public runtime::ObjectRef {
  public:
-  static const InstKind& Get(const String& inst_kind_name);
+  static InstKind Get(const String& inst_kind_name);
   TVM_DEFINE_OBJECT_REF_METHODS(InstKind, runtime::ObjectRef, InstKindNode);
 };
 
@@ -536,7 +539,8 @@ template <size_t delta>
 TVM_ALWAYS_INLINE void UnpackedInstTraits<TTraits>::_SetInputs(const runtime::TVMArgsSetter& setter,
                                                                const Array<ObjectRef>& inputs) {
   constexpr size_t kNumInputs = TTraits::kNumInputs;
-  ICHECK_EQ(kNumInputs, inputs.size());
+  ICHECK_EQ(kNumInputs, inputs.size())
+      << "ValueError: Incorrect kNumInputs for instruction: " << TTraits::kName;
   const ObjectRef* ptr = inputs.template as<ArrayNode>()->begin();
   for (size_t i = 0; i < kNumInputs; ++i) {
     setter(i + delta, *(ptr + i));
@@ -548,7 +552,8 @@ template <size_t delta>
 TVM_ALWAYS_INLINE void UnpackedInstTraits<TTraits>::_SetAttrs(const runtime::TVMArgsSetter& setter,
                                                               const Array<ObjectRef>& attrs) {
   constexpr size_t kNumAttrs = TTraits::kNumAttrs;
-  ICHECK_EQ(kNumAttrs, attrs.size());
+  ICHECK_EQ(kNumAttrs, attrs.size())
+      << "ValueError: Incorrect kNumAttrs for instruction: " << TTraits::kName;
   const ObjectRef* ptr = attrs.as<ArrayNode>()->begin();
   for (size_t i = 0; i < kNumAttrs; ++i) {
     setter(i + delta, *(ptr + i));
