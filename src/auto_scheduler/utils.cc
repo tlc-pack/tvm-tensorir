@@ -32,5 +32,12 @@ NullStream& NullStream::Global() {
   return stream;
 }
 
+
+std::unordered_map<size_t, size_t>
+TopKDispatcher::dispatch(const std::vector<float>& scores,
+                         const size_t num_states) {
+  const size_t num_instances = scores.size() / num_states;
+}
+
 }  // namespace auto_scheduler
 }  // namespace tvm
