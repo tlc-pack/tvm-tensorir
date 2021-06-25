@@ -499,6 +499,11 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       if (tmp_s.defined()) {
         cand_states.push_back(std::move(tmp_s));
       } else {
+
+        // <bojian/DietCode>
+        LOG(WARNING) << "State=" << tmp_s << " is not valid and hence discarded";
+
+
         fail_ct++;
       }
     }
@@ -549,6 +554,11 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
           out_states.push_back(std::move(cand_states[i]));
           unchange_cnt = 0;  // Reset the counter once we found a valid state
         } else {
+
+          // <bojian/DietCode>
+          LOG(WARNING) << "State=" << state_str
+                       << " is not valid and hence discarded";
+
           fail_ct++;
         }
       }
