@@ -230,9 +230,9 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
         random_states = search_task->compute_dag.InferBound(random_states);
       }
 
-      if (IsDynTask(search_task)) {
-        LOG(FATAL) << "Finished generating synthetic workloads";
-      }
+      // if (IsDynTask(search_task)) {
+      //   LOG(FATAL) << "Finished generating synthetic workloads";
+      // }
 
       // Pick `num_measure_per_iter` states to measure, check hash to remove already measured state
       // Also pick some random states to do eps-greedy
