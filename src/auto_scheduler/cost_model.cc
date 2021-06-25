@@ -95,10 +95,9 @@ void PythonBasedModelNode::PredictForAllInstances(
     std::vector<float>* const padding_penalty,
     std::vector<float>* const scores) {
   CHECK(task->shape_freq != nullptr);
-  size_t scores_shape = states.size() * task->shape_freq.value().size();
-  occupancy_penalty->assign(scores_shape, 0.);
-  padding_penalty->assign(scores_shape, 0.);
-  scores->assign(scores_shape, 0.);
+  scores->assign(task->shape_freq.value().size() * states.size(), 0.);
+  occupancy_penalty->assign(scores->size(), 0.);
+  padding_penalty->assign(scores->size(), 0.);
   predict_for_all_instances_func(
       task, states,
       static_cast<void*>(occupancy_penalty->data()),

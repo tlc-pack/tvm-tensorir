@@ -105,7 +105,7 @@ class PythonBasedModel(CostModel):
                 np_arr_wrapper = np.ctypeslib.as_array(ret_ptr, shape=shape)
                 return np_arr_wrapper
                
-            scores_shape = (len(states), len(task.shape_freq))
+            scores_shape = (len(task.shape_freq), len(states))
             print("Shape output from cost model={}".format(scores_shape))
             occupancy_penalty_np_arr = \
                     wrap_as_np_array(occupancy_penalty_ptr, scores_shape)

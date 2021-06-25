@@ -37,6 +37,17 @@ std::unordered_map<size_t, size_t>
 TopKDispatcher::dispatch(const std::vector<float>& scores,
                          const size_t num_states) {
   const size_t num_instances = scores.size() / num_states;
+  float max_acc_score;
+  size_t k = 1;
+
+  do {
+    max_acc_score = 1e-10;
+
+    for (size_t inst_id = 0; inst_id < num_instances; ++inst_id) {
+      
+    }
+  } while (max_acc_score > 1e-10);
+  LOG(INFO) << "k=" << k;
 }
 
 }  // namespace auto_scheduler

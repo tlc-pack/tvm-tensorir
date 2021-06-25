@@ -1825,11 +1825,9 @@ Array<NDArray> AdaptStatesToWorkloads(
     const SearchTask& task, const Array<State>& states,
     const Array<FloatImm>& scores) {
   std::vector<float> adapted_scores(
-      states.size() * task->shape_freq.value().size());
-  std::vector<float> occupancy_penalty(
-      states.size() * task->shape_freq.value().size(), 1.f);
-  std::vector<float> padding_penalty(
-      states.size() * task->shape_freq.value().size(), 1.f);
+      task->shape_freq.value().size() * states.size());
+  std::vector<float> occupancy_penalty(adapted_scores.size(), 1.f);
+  std::vector<float> padding_penalty(adapted_scores.size(), 1.f);
 
   Array<Array<IntImm>> shape_values;
   for (const std::pair<Array<IntImm>, FloatImm>& kv :
@@ -1844,12 +1842,12 @@ Array<NDArray> AdaptStatesToWorkloads(
   enable_verbose_logging = false;
 
   support::parallel_for(
-      1, states.size() * task->shape_freq.value().size(),
+      1, task->shape_freq.value().size() * states.size(),
       [&states, &task, &scores, &shape_values, &occupancy_penalty,
        &padding_penalty, &adapted_scores]
       (const size_t i) {
-        size_t state_id = i / task->shape_freq.value().size(),
-               wkl_id   = i % task->shape_freq.value().size();
+        size_t wkl_id   = i / task->shape_freq.value().size(),
+               state_id = i % task->shape_freq.value().size();
         AdaptStateToWorkload(task, states[state_id], task->shape_vars.value(),
                              shape_values[wkl_id], scores[state_id],
                              &occupancy_penalty[i], &padding_penalty[i],
@@ -1858,8 +1856,8 @@ Array<NDArray> AdaptStatesToWorkloads(
   );
   // LOG(FATAL) << "Finished computing the adaption penalty";
   std::vector<int64_t> ndarr_shape =
-      {static_cast<int64_t>(states.size()),
-       static_cast<int64_t>(task->shape_freq.value().size())};
+      {static_cast<int64_t>(task->shape_freq.value().size()),
+       static_cast<int64_t>(states.size())};
   return Array<NDArray>{VecToNDArray(adapted_scores, ndarr_shape),
                         VecToNDArray(occupancy_penalty, ndarr_shape),
                         VecToNDArray(padding_penalty, ndarr_shape)};
