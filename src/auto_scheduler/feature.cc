@@ -1354,6 +1354,11 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
     GetPerStoreFeature(prim_func->body, task->hardware_params->cache_line_bytes, max_n_bufs,
                        feature);
   } catch (Error& e) {
+
+    // <bojian/DietCode>
+    LOG(WARNING) << "Error " << e.what() << " received while lowering";
+
+
     (*error_ct)++;
   }
 }
@@ -1709,7 +1714,8 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
                                  const Array<IntImm>& shape_values,
                                  const FloatImm& score,
                                  float* const occupancy_penalty,
-                                 float* const padding_penalty, float* const adapted_score
+                                 float* const padding_penalty,
+                                 float* const adapted_score
                                  ) {
   Map<String, IntImm> shape_var_value_map;
   CHECK(shape_vars.size() == shape_values.size());

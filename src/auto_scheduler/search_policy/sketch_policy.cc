@@ -556,8 +556,8 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
         } else {
 
           // <bojian/DietCode>
-          LOG(WARNING) << "State=" << state_str
-                       << " is not valid and hence discarded";
+          // make sure that the explored states are always valid
+          CHECK(explored_state_strs.count(state_str) != 0);
 
           fail_ct++;
         }
