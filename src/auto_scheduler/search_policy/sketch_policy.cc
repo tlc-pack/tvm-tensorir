@@ -535,10 +535,9 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
 
       // <bojian/DietCode>
       if (IsDynTask(search_task)) {
-        program_cost_model->PredictForAllWorkloads(search_task, cand_states,
+        program_cost_model->PredictForAllInstances(search_task, cand_states,
                                                    &occupancy_penalty,
-                                                   &padding_penalty,
-                                                   &pop_scores);
+                                                   &padding_penalty, &pop_scores);
       } else {
         program_cost_model->Predict(search_task, cand_states, &pop_scores);
       }
