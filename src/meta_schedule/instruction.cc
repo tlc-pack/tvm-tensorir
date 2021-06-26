@@ -563,7 +563,7 @@ Array<ObjectRef> MarkLoopAttrs::Apply(const Schedule& sch,  //
     sch->MarkLoop(loop, ann_key, val);
   } else {
     ICHECK_EQ(inputs.size(), 1);
-    sch->MarkLoop(loop, ann_key, tir::StringImm(ann_val));
+    sch->MarkLoop(loop, ann_key, ann_val);
   }
   return {};
 }

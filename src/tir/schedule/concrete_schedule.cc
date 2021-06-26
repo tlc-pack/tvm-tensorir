@@ -599,7 +599,9 @@ void ConcreteScheduleNode::MarkBlock(const BlockRV& block_rv, const String& ann_
   if (const auto* str = ann_val.as<StringObj>()) {
     tir::MarkLoop(state_, this->GetSRef(block_rv), ann_key, StringImm(GetRef<String>(str)));
   } else if (const auto* int_imm = ann_val.as<IntImmNode>()) {
-    tir::MarkLoop(state_, this->GetSRef(block_rv), ann_key, GetRef<IntImm>(int_imm));
+    // TODO: fix this behavior
+    tir::MarkLoop(state_, this->GetSRef(block_rv), ann_key,
+                  StringImm(std::to_string(int_imm->value)));
   } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
     int64_t value = Downcast<IntImm>(this->Get(GetRef<PrimExpr>(expr)))->value;
     tir::MarkBlock(state_, this->GetSRef(block_rv), ann_key, StringImm(std::to_string(value)));

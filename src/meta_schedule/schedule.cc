@@ -283,7 +283,6 @@ void ScheduleNode::MarkBlock(const BlockRV& block_rv, const String& ann_key,
                              const ObjectRef& ann_val) {
   tir::ConcreteScheduleNode::MarkBlock(block_rv, ann_key, ann_val);
   if (const auto* expr = ann_val.as<PrimExprNode>()) {
-    // this->trace->Append(MarkLoopAttrs::Make(loop_rv, ann_key, ));
     this->trace->Append(MarkBlockAttrs::Make(block_rv, ann_key, GetRef<PrimExpr>(expr)));
   } else if (const auto* str = ann_val.as<StringObj>()) {
     this->trace->Append(

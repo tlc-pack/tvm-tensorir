@@ -691,8 +691,8 @@ def test_traced_schedule_mark_block():
         block = sch.get_sref(block).stmt
         assert len(block.annotations) == 1
         attr_key, value = block.annotations.items()[0]
-        # assert attr_key == "ann_key"
-        # assert value == "1"
+        assert attr_key == "ann_key"
+        assert value == "1"
 
     sch = tir.Schedule(mod=matmul, traced=True)
     block = sch.get_block("matmul")

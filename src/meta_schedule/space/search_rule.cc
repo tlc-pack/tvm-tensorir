@@ -415,7 +415,7 @@ class RuleMultiLevelTiling {
         fused = splits[0];
       }
       // Add cooperative fetching
-      sch->MarkLoop(fused, tir::attr::loop_type, tir::StringImm("lazy_cooperative_fetch"));
+      sch->MarkLoop(fused, tir::attr::loop_type, String("lazy_cooperative_fetch"));
     }
     return {state};
   }
