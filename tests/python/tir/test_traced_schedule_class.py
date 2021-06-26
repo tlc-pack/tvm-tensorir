@@ -14,15 +14,16 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Test for traced schedule class"""
 # pylint: disable=missing-function-docstring
+"""Test for traced schedule class"""
+from collections import defaultdict
 from typing import Union
 
 import tvm
 from tvm import tir
 from tvm.ir import IRModule
-from tvm.tir import PrimFunc
 from tvm.script import ty
+from tvm.tir import PrimFunc
 from tvm.tir.schedule import Trace
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
@@ -382,7 +383,7 @@ def matmul_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 
 
-def _check_serialization(sch: tir.Schedule, mod: Union[PrimFunc, IRModule]) -> str:
+def _check_serialization(sch: tir.Schedule, mod: Union[PrimFunc, IRModule]) -> tir.Schedule:
     record = sch._trace.as_json()
     new_sch = tir.Schedule(mod=mod, traced=True)
     Trace.apply_json_to_schedule(json=record, sch=new_sch)
@@ -390,7 +391,11 @@ def _check_serialization(sch: tir.Schedule, mod: Union[PrimFunc, IRModule]) -> s
     py_repr = "\n".join(sch._trace.as_python())
     new_py_repr = "\n".join(new_sch._trace.as_python())
     assert py_repr == new_py_repr
-    return py_repr
+    # print(py_repr)
+    return new_sch
+
+
+##########  Sampling  ##########
 
 
 def test_traced_schedule_sample_perfect_tile():
@@ -403,21 +408,134 @@ def test_traced_schedule_sample_perfect_tile():
     _check_serialization(sch, mod=matmul)
 
 
+def test_traced_schedule_sample_categorical():
+    n = 1000
+    sch = tir.Schedule(mod=matmul, traced=True)
+    counter = defaultdict(int)
+    candidates = [5, 2, 7, 1]
+    probs = [0.15, 0.55, 0.05, 0.25]
+    for _ in range(n):
+        v = sch.get(sch.sample_categorical(candidates, probs))
+        counter[v] += 1
+    for i, prob in enumerate(probs):
+        assert (prob - 0.07) * n <= counter[candidates[i]] <= (prob + 0.07) * n
+    _check_serialization(sch, mod=matmul)
+
+
+def test_traced_schedule_sample_compute_location():
+    counter = defaultdict(int)
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    for _ in range(100):
+        loop = sch.sample_compute_location(block=block)
+        loop = sch.get_sref(loop)
+        counter[str(loop)] += 1
+        new_sch = _check_serialization(sch, mod=matmul)
+        old_decision = int(sch._trace.decisions[sch._trace.insts[-1]])
+        new_decision = int(new_sch._trace.decisions[new_sch._trace.insts[-1]])
+        assert old_decision == new_decision
+    assert len(counter) == 5
+    assert str(tir.schedule.StmtSRef.root_mark()) in counter
+    assert str(tir.schedule.StmtSRef.inline_mark()) in counter
+
+
+##########  Get blocks & loops  ##########
+
+
+def test_traced_schedule_get_block():
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    assert tvm.ir.structural_equal(
+        sch.get_sref(block).stmt,
+        matmul.body.block.body.body.body.body.block,
+    )
+    _check_serialization(sch, mod=matmul)
+
+
+def test_traced_schedule_get_loops():
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    axes = sch.get_loops(block)
+    i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in axes]
+    assert tvm.ir.structural_equal(i_0, matmul.body.block.body)
+    assert tvm.ir.structural_equal(i_1, matmul.body.block.body.body)
+    assert tvm.ir.structural_equal(i_2, matmul.body.block.body.body.body)
+    _check_serialization(sch, mod=matmul)
+
+
+def test_traced_schedule_get_producers():
+    sch = tir.Schedule(mod=matmul_relu, traced=True)
+    block = sch.get_block("relu")
+    (producer,) = sch.get_producers(block)
+    assert tvm.ir.structural_equal(
+        sch.get_sref(producer).stmt,
+        sch.get_sref(sch.get_block("matmul")).stmt,
+    )
+    _check_serialization(sch, mod=matmul_relu)
+
+
+def test_traced_schedule_get_consumers():
+    sch = tir.Schedule(mod=matmul_relu, traced=True)
+    block = sch.get_block("matmul")
+    (consumer,) = sch.get_consumers(block)
+    assert tvm.ir.structural_equal(
+        sch.get_sref(consumer).stmt,
+        sch.get_sref(sch.get_block("relu")).stmt,
+    )
+    _check_serialization(sch, mod=matmul_relu)
+
+
+##########  Transform loops  ##########
+
+
+def test_traced_schedule_fuse():
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    i, j, _ = sch.get_loops(block)
+    sch.fuse(i, j)
+    assert len(sch.get_loops(block)) == 2
+    _check_serialization(sch, mod=matmul)
+
+
+def test_traced_schedule_split():
+    sch = tir.Schedule(mod=matmul, traced=True)
+    i, _, _ = sch.get_loops(sch.get_block("matmul"))
+    i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in sch.split(i, factors=[-1, 8, 32])]
+    assert tvm.ir.structural_equal(i_0, sch.mod["main"].body.block.body)
+    assert tvm.ir.structural_equal(i_1, sch.mod["main"].body.block.body.body)
+    assert tvm.ir.structural_equal(i_2, sch.mod["main"].body.block.body.body.body)
+    _check_serialization(sch, mod=matmul)
+
+
+def test_traced_schedule_reorder():
+    sch = tir.Schedule(mod=matmul, traced=True)
+    i_0, i_1, i_2 = sch.get_loops(sch.get_block("matmul"))
+    sch.reorder(i_2, i_1, i_0)
+    i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in [i_0, i_1, i_2]]
+    tir_sch = tir.Schedule(matmul, debug_mode=True)
+    ti_0, ti_1, ti_2 = tir_sch.get_loops(tir_sch.get_block("matmul"))
+    tir_sch.reorder(ti_2, ti_1, ti_0)
+    assert tvm.ir.structural_equal(i_0, tir_sch.get(ti_0))
+    assert tvm.ir.structural_equal(i_1, tir_sch.get(ti_1))
+    assert tvm.ir.structural_equal(i_2, tir_sch.get(ti_2))
+    _check_serialization(sch, mod=matmul)
+
+
 if __name__ == "__main__":
     ##########  Sampling  ##########
     test_traced_schedule_sample_perfect_tile()
-    # test_traced_schedule_sample_categorical()
-    # test_traced_schedule_sample_compute_location()
+    test_traced_schedule_sample_categorical()
+    test_traced_schedule_sample_compute_location()
     ##########  Get blocks & loops  ##########
-    # test_traced_schedule_get_block()
-    # test_traced_schedule_get_loops()
-    # test_traced_schedule_get_child_blocks()
-    # test_traced_schedule_get_producers()
-    # test_traced_schedule_get_consumers()
+    test_traced_schedule_get_block()
+    test_traced_schedule_get_loops()
+    # test_traced_schedule_get_child_blocks() TODO
+    test_traced_schedule_get_producers()
+    test_traced_schedule_get_consumers()
     ##########  Transform loops  ##########
-    # test_traced_schedule_fuse()
-    # test_traced_schedule_split()
-    # test_traced_schedule_reorder()
+    test_traced_schedule_fuse()
+    test_traced_schedule_split()
+    test_traced_schedule_reorder()
     ##########  Manipulate ForKind  ##########
     # test_traced_schedule_parallel()
     # test_traced_schedule_vectorize()

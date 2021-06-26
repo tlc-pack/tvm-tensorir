@@ -329,7 +329,7 @@ class PythonAPICall {
   /*! \brief Add an input random variable */
   void Input(String arg_name, String arg);
   /*! \brief Add a list of input random variables */
-  void InputList(String arg_name, const Array<String>& arg);
+  void InputList(String arg_name, const Array<ObjectRef>& arg);
   /*! \brief Add an attribute */
   void Attr(String arg_name, int arg);
   /*! \brief Add an attribute */

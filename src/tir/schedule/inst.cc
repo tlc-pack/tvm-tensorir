@@ -60,7 +60,7 @@ void PythonAPICall::Input(String arg_name, String arg) {
   args_.emplace_back(std::move(arg));
 }
 
-void PythonAPICall::InputList(String arg_name, const Array<String>& arg) {
+void PythonAPICall::InputList(String arg_name, const Array<ObjectRef>& arg) {
   arg_names_.emplace_back(std::move(arg_name));
   std::ostringstream os;
   os << '[';

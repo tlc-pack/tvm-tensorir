@@ -320,9 +320,9 @@ struct FuseTraits : public UnpackedInstTraits<FuseTraits> {
   static constexpr size_t kNumAttrs = 0;
   static constexpr size_t kNumDecisions = 0;
 
-  template <size_t delta, class TObjectRef>
+  template <size_t delta>
   static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
-                                           const Array<TObjectRef>& inputs) {
+                                           const Array<ObjectRef>& inputs) {
     setter(delta, inputs);
   }
 
@@ -330,7 +330,7 @@ struct FuseTraits : public UnpackedInstTraits<FuseTraits> {
     return sch->Fuse(loop_rvs);
   }
 
-  static String UnpackedAsPython(Array<String> outputs, Array<String> loop_rv) {
+  static String UnpackedAsPython(Array<String> outputs, Array<ObjectRef> loop_rv) {
     PythonAPICall py("fuse");
     py.InputList("loop", loop_rv);
     py.Output(outputs[0]);
@@ -349,11 +349,15 @@ struct SplitTraits : public UnpackedInstTraits<SplitTraits> {
   static constexpr size_t kNumAttrs = 0;
   static constexpr size_t kNumDecisions = 0;
 
-  template <size_t delta, class TObjectRef>
+  template <size_t delta>
   static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
-                                           const Array<TObjectRef>& inputs) {
-    setter(delta, inputs[0]);
-    setter(delta + 1, Array<ObjectRef>{inputs.begin() + 1, inputs.end()});
+                                           const Array<ObjectRef>& inputs) {
+    thread_local ObjectRef loop_rv{nullptr};
+    thread_local Array<ObjectRef> factors{nullptr};
+    loop_rv = inputs[0];
+    factors = Array<ObjectRef>{inputs.begin() + 1, inputs.end()};
+    setter(delta, loop_rv);
+    setter(delta + 1, factors);
   }
 
   static Array<LoopRV> UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv,
@@ -361,7 +365,7 @@ struct SplitTraits : public UnpackedInstTraits<SplitTraits> {
     return sch->Split(loop_rv, factors);
   }
 
-  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Array<String> factors) {
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Array<ObjectRef> factors) {
     PythonAPICall py("split");
     py.Input("loop", loop_rv);
     py.InputList("factors", factors);
@@ -381,9 +385,9 @@ struct ReorderTraits : public UnpackedInstTraits<ReorderTraits> {
   static constexpr size_t kNumAttrs = 0;
   static constexpr size_t kNumDecisions = 0;
 
-  template <size_t delta, class TObjectRef>
+  template <size_t delta>
   static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
-                                           const Array<TObjectRef>& inputs) {
+                                           const Array<ObjectRef>& inputs) {
     setter(delta, inputs);
   }
 
