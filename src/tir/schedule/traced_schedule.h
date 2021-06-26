@@ -114,8 +114,8 @@ class TracedScheduleNode : public ConcreteScheduleNode {
 
   /******** Schedule: Annotation ********/
 
-  void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const PrimExpr& ann_val) final;
-  void MarkBlock(const BlockRV& block_rv, const String& ann_key, const PrimExpr& ann_val) final;
+  void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) final;
+  void MarkBlock(const BlockRV& block_rv, const String& ann_key, const ObjectRef& ann_val) final;
   void Pragma(const LoopRV& loop_rv, const String& pragma_type, const ExprRV& pragma_value) final;
 
   /******** Schedule: Misc ********/

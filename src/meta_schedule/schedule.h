@@ -287,14 +287,14 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    * \param ann_key The annotation key
    * \param ann_val The annotation value
    */
-  void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const PrimExpr& ann_val) final;
+  void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) final;
   /*!
    * \brief Mark a block
    * \param block The block to be marked
    * \param ann_key The annotation key
    * \param ann_val The annotation value
    */
-  void MarkBlock(const BlockRV& block_rv, const String& ann_key, const PrimExpr& ann_val) final;
+  void MarkBlock(const BlockRV& block_rv, const String& ann_key, const ObjectRef& ann_val) final;
   /*! \brief An NOP indicating entrance of post processing */
   void EnterPostProc() final;
 

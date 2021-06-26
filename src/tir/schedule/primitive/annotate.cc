@@ -71,17 +71,28 @@ struct MarkLoopTraits : public UnpackedInstTraits<MarkLoopTraits> {
   static constexpr size_t kNumAttrs = 1;
   static constexpr size_t kNumDecisions = 0;
 
-  static void UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, ExprRV ann_val,
+  static void UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, ObjectRef ann_val,
                                       String ann_key) {
     return sch->MarkLoop(loop_rv, ann_key, ann_val);
   }
 
-  static String UnpackedAsPython(Array<String> outputs, String loop_rv, String ann_val,
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, ObjectRef ann_val,
                                  String ann_key) {
     PythonAPICall py("mark_loop");
     py.Input("loop", loop_rv);
     py.Attr("ann_key", ann_key);
-    py.Input("ann_val", ann_val);
+    if (const auto* int_imm = ann_val.as<IntImmNode>()) {
+      py.Input("ann_val", std::to_string(int_imm->value));
+    } else if (const auto* str_imm = ann_val.as<StringObj>()) {
+      py.Input("ann_val", GetRef<String>(str_imm));
+    } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
+      std::ostringstream os;
+      os << GetRef<PrimExpr>(expr);
+      py.Input("ann_val", os.str());
+    } else {
+      LOG(FATAL) << "TypeError: Cannot handle type: " << ann_val->GetTypeKey();
+      throw;
+    }
     return py.Str();
   }
 
@@ -97,17 +108,28 @@ struct MarkBlockTraits : public UnpackedInstTraits<MarkBlockTraits> {
   static constexpr size_t kNumAttrs = 1;
   static constexpr size_t kNumDecisions = 0;
 
-  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, ExprRV ann_val,
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, ObjectRef ann_val,
                                       String ann_key) {
     return sch->MarkBlock(block_rv, ann_key, ann_val);
   }
 
-  static String UnpackedAsPython(Array<String> outputs, String block_rv, String ann_val,
+  static String UnpackedAsPython(Array<String> outputs, String block_rv, ObjectRef ann_val,
                                  String ann_key) {
     PythonAPICall py("mark_block");
     py.Input("block", block_rv);
     py.Attr("ann_key", ann_key);
-    py.Input("ann_val", ann_val);
+    if (const auto* int_imm = ann_val.as<IntImmNode>()) {
+      py.Input("ann_val", std::to_string(int_imm->value));
+    } else if (const auto* str_imm = ann_val.as<StringObj>()) {
+      py.Input("ann_val", GetRef<String>(str_imm));
+    } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
+      std::ostringstream os;
+      os << GetRef<PrimExpr>(expr);
+      py.Input("ann_val", os.str());
+    } else {
+      LOG(FATAL) << "TypeError: Cannot handle type: " << ann_val->GetTypeKey();
+      throw;
+    }
     return py.Str();
   }
 

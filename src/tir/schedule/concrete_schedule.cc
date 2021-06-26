@@ -575,21 +575,39 @@ void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin
 /******** Schedule: Annotation ********/
 
 void ConcreteScheduleNode::MarkLoop(const LoopRV& loop_rv, const String& ann_key,
-                                    const PrimExpr& ann_val) {
+                                    const ObjectRef& ann_val) {
   TVM_TIR_SCHEDULE_BEGIN();
-  ICHECK(ann_val->IsInstance<StringImmNode>() || ann_val->IsInstance<IntImmNode>())
-      << "TypeError: Only StringImm and IntImm are supported for now, but gets: "
-      << ann_val->GetTypeKey();
-  tir::MarkLoop(state_, this->GetSRef(loop_rv), ann_key, ann_val);
+  if (const auto* str = ann_val.as<StringObj>()) {
+    tir::MarkLoop(state_, this->GetSRef(loop_rv), ann_key, StringImm(GetRef<String>(str)));
+  } else if (const auto* int_imm = ann_val.as<IntImmNode>()) {
+    tir::MarkLoop(state_, this->GetSRef(loop_rv), ann_key, GetRef<IntImm>(int_imm));
+  } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
+    int64_t value = Downcast<IntImm>(this->Get(GetRef<PrimExpr>(expr)))->value;
+    tir::MarkBlock(state_, this->GetSRef(loop_rv), ann_key, StringImm(std::to_string(value)));
+  } else {
+    LOG(FATAL) << "TypeError: Only strings, integers and ExprRVs are supported for now, but gets: "
+               << ann_val->GetTypeKey();
+    throw;
+  }
   this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("mark-loop", this->error_render_level_);
 }
 
 void ConcreteScheduleNode::MarkBlock(const BlockRV& block_rv, const String& ann_key,
-                                     const PrimExpr& ann_val) {
+                                     const ObjectRef& ann_val) {
   TVM_TIR_SCHEDULE_BEGIN();
-  int64_t value = Downcast<IntImm>(this->Get(ann_val))->value;
-  tir::MarkBlock(state_, this->GetSRef(block_rv), ann_key, StringImm(std::to_string(value)));
+  if (const auto* str = ann_val.as<StringObj>()) {
+    tir::MarkLoop(state_, this->GetSRef(block_rv), ann_key, StringImm(GetRef<String>(str)));
+  } else if (const auto* int_imm = ann_val.as<IntImmNode>()) {
+    tir::MarkLoop(state_, this->GetSRef(block_rv), ann_key, GetRef<IntImm>(int_imm));
+  } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
+    int64_t value = Downcast<IntImm>(this->Get(GetRef<PrimExpr>(expr)))->value;
+    tir::MarkBlock(state_, this->GetSRef(block_rv), ann_key, StringImm(std::to_string(value)));
+  } else {
+    LOG(FATAL) << "TypeError: Only strings, integers and ExprRVs are supported for now, but gets: "
+               << ann_val->GetTypeKey();
+    throw;
+  }
   this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("mark-block", this->error_render_level_);
 }

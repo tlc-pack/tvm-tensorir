@@ -23,7 +23,7 @@ import tvm
 from tvm import tir
 from tvm.ir import IRModule
 from tvm.script import ty
-from tvm.tir import PrimFunc
+from tvm.tir import ForKind, PrimFunc
 from tvm.tir.schedule import Trace
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
@@ -521,6 +521,186 @@ def test_traced_schedule_reorder():
     _check_serialization(sch, mod=matmul)
 
 
+##########  Manipulate ForKind  ##########
+
+
+def test_traced_schedule_parallel():
+    def check_annotation(sch, loop):
+        loop = sch.get_sref(loop).stmt
+        assert loop.kind == ForKind.PARALLEL
+
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    i, _, _ = sch.get_loops(block)
+    sch.parallel(i)
+    check_annotation(sch, i)
+    _check_serialization(sch, mod=matmul)
+
+
+def test_traced_schedule_vectorize():
+    def check_annotation(sch, loop):
+        loop = sch.get_sref(loop).stmt
+        assert loop.kind == ForKind.VECTORIZED
+
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    i, _, _ = sch.get_loops(block)
+    sch.vectorize(i)
+    check_annotation(sch, i)
+    _check_serialization(sch, mod=matmul)
+
+
+def test_traced_schedule_unroll():
+    def check_annotation(sch, loop):
+        loop = sch.get_sref(loop).stmt
+        assert loop.kind == ForKind.UNROLLED
+
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    _, _, k = sch.get_loops(block)
+    sch.unroll(k)
+    check_annotation(sch, k)
+    _check_serialization(sch, mod=matmul)
+
+
+def test_traced_schedule_bind():
+    def check_annotation(sch, loop):
+        loop = sch.get_sref(loop).stmt
+        assert loop.kind == ForKind.THREAD_BINDING
+        assert loop.thread_binding.thread_tag == "threadIdx.x"
+
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    i, _, _ = sch.get_loops(block)
+    sch.bind(i, "threadIdx.x")
+    check_annotation(sch, i)
+    _check_serialization(sch, mod=matmul)
+
+
+##########  Insert cache stages  ##########
+
+
+def test_traced_schedule_cache_read():
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    sch.cache_read(block, i=1, storage_scope="local")
+    sch.cache_read(block, i=2, storage_scope="local")
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_cache_read)
+    _check_serialization(sch, mod=matmul)
+
+
+def test_traced_schedule_cache_write():
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    sch.cache_write(block, i=0, storage_scope="local")
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_cache_write)
+    _check_serialization(sch, mod=matmul)
+
+
+##########  Compute location  ##########
+
+
+def test_traced_schedule_compute_at():
+    sch = tir.Schedule(mod=plus_one_matmul, traced=True)
+    plus_one_block = sch.get_block("plus_one")
+    matmul_block = sch.get_block("matmul")
+    _, _, i_2 = sch.get_loops(matmul_block)
+    sch.compute_at(plus_one_block, i_2, preserve_unit_loop=True)
+    assert tvm.ir.structural_equal(sch.mod["main"], plus_one_matmul_fused)
+    _check_serialization(sch, mod=plus_one_matmul)
+
+
+def test_traced_schedule_reverse_compute_at():
+    sch = tir.Schedule(mod=matmul_relu, traced=True)
+    relu_block = sch.get_block("relu")
+    matmul_block = sch.get_block("matmul")
+    _, i_1, _ = sch.get_loops(matmul_block)
+    sch.reverse_compute_at(relu_block, i_1, preserve_unit_loop=True)
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_relu_fused)
+    _check_serialization(sch, mod=matmul_relu)
+
+
+def test_traced_schedule_compute_inline():
+    sch = tir.Schedule(mod=elementwise, traced=True)
+    block = sch.get_block(name="B")
+    sch.compute_inline(block=block)
+    assert tvm.ir.structural_equal(sch.mod["main"], elementwise_inlined)
+    _check_serialization(sch, mod=elementwise)
+
+
+##########  Reduction  ##########
+
+
+def test_traced_schedule_decompose_reduction():
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    _, _, k = sch.get_loops(block)
+    sch.decompose_reduction(block, k)
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_decomposed)
+    _check_serialization(sch, mod=matmul)
+
+
+##########  Blockize & Tensorize  ##########
+
+
+def test_traced_schedule_blockize():
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    _, _, k = sch.get_loops(block)
+    sch.blockize(k)
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_blockized)
+    _check_serialization(sch, mod=matmul)
+
+
+def test_traced_schedule_tensorize():
+    tir.TensorIntrin.register("tir_test.tensor_intrin", tensorize_desc, tensorize_impl)
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    i, j, k = sch.get_loops(block)
+    i_o, i_i = sch.split(i, factor=16)
+    j_o, j_i = sch.split(j, factor=16)
+    k_o, k_i = sch.split(k, factor=16)
+    sch.reorder(i_o, j_o, k_o, i_i, j_i, k_i)
+    sch.decompose_reduction(block, k_o)
+    sch.tensorize(i_i, "tir_test.tensor_intrin")
+    assert tvm.ir.structural_equal(sch.mod["main"], matmul_tensorized)
+    _check_serialization(sch, mod=matmul)
+
+
+##########  Annotation  ##########
+
+
+def test_traced_schedule_mark_loop():
+    def check_annotation(sch, loop):
+        loop = sch.get_sref(loop).stmt
+        assert len(loop.annotations) == 1
+        attr_key, value = loop.annotations.items()[0]
+        assert attr_key == "ann_key"
+        assert value == "ann_val"
+
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    i, _, _ = sch.get_loops(block)
+    sch.mark_loop(i, "ann_key", "ann_val")
+    check_annotation(sch, i)
+    _check_serialization(sch, mod=matmul)
+
+
+def test_traced_schedule_mark_block():
+    def check_annotation(sch, block):
+        block = sch.get_sref(block).stmt
+        assert len(block.annotations) == 1
+        attr_key, value = block.annotations.items()[0]
+        # assert attr_key == "ann_key"
+        # assert value == "1"
+
+    sch = tir.Schedule(mod=matmul, traced=True)
+    block = sch.get_block("matmul")
+    sch.mark_block(block, "ann_key", 1)
+    check_annotation(sch, block)
+    _check_serialization(sch, mod=matmul)
+
+
 if __name__ == "__main__":
     ##########  Sampling  ##########
     test_traced_schedule_sample_perfect_tile()
@@ -537,32 +717,32 @@ if __name__ == "__main__":
     test_traced_schedule_split()
     test_traced_schedule_reorder()
     ##########  Manipulate ForKind  ##########
-    # test_traced_schedule_parallel()
-    # test_traced_schedule_vectorize()
-    # test_traced_schedule_unroll()
-    # test_traced_schedule_bind()
+    test_traced_schedule_parallel()
+    test_traced_schedule_vectorize()
+    test_traced_schedule_unroll()
+    test_traced_schedule_bind()
     ##########  Insert cache stages  ##########
-    # test_traced_schedule_cache_read()
-    # test_traced_schedule_cache_write()
+    test_traced_schedule_cache_read()
+    test_traced_schedule_cache_write()
     ##########  Compute location  ##########
-    # test_traced_schedule_compute_at()
-    # test_traced_schedule_reverse_compute_at()
-    # test_traced_schedule_compute_inline()
-    # test_traced_schedule_reverse_compute_inline()
+    test_traced_schedule_compute_at()
+    test_traced_schedule_reverse_compute_at()
+    test_traced_schedule_compute_inline()
+    # test_traced_schedule_reverse_compute_inline() TODO
     ##########  Reduction  ##########
-    # test_traced_schedule_rfactor()
-    # test_traced_schedule_decompose_reduction()
-    # test_traced_schedule_merge_reduction()
+    # test_traced_schedule_rfactor() TODO
+    test_traced_schedule_decompose_reduction()
+    # test_traced_schedule_merge_reduction() TODO
     ##########  Blockize & Tensorize  ##########
-    # test_traced_schedule_blockize()
-    # test_traced_schedule_tensorize()
+    test_traced_schedule_blockize()
+    test_traced_schedule_tensorize()
     ##########  Annotation  ##########
-    # test_traced_schedule_mark_loop()
-    # test_traced_schedule_mark_block()
-    # test_traced_schedule_pragma()
+    test_traced_schedule_mark_loop()
+    test_traced_schedule_mark_block()
+    # test_traced_schedule_pragma() TODO
     ##########  Misc  ##########
-    # test_traced_schedule_enter_postproc()
-    # test_traced_schedule_double_buffer()
-    # test_traced_schedule_set_scope()
-    # test_traced_schedule_storage_align()
-    # test_traced_schedule_inline_argument()
+    # test_traced_schedule_enter_postproc() TODO
+    # test_traced_schedule_double_buffer() TODO
+    # test_traced_schedule_set_scope() TODO
+    # test_traced_schedule_storage_align() TODO
+    # test_traced_schedule_inline_argument() TODO

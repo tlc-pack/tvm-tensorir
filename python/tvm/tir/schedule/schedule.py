@@ -512,6 +512,10 @@ class Schedule(Object):
         ann_val : ExprRV
             The annotation value
         """
+        if isinstance(ann_val, str):
+            ann_val = String(ann_val)
+        elif isinstance(ann_val, int):
+            ann_val = IntImm("int64", ann_val)
         _ffi_api_schedule.ScheduleMarkBlock(  # pylint: disable=no-member
             self, block, ann_key, ann_val
         )

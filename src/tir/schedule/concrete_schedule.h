@@ -141,8 +141,8 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   /******** Schedule: Annotation ********/
 
-  void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const PrimExpr& ann_val) override;
-  void MarkBlock(const BlockRV& block_rv, const String& ann_key, const PrimExpr& ann_val) override;
+  void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
+  void MarkBlock(const BlockRV& block_rv, const String& ann_key, const ObjectRef& ann_val) override;
   void Pragma(const LoopRV& loop_rv, const String& pragma_type,
               const ExprRV& pragma_value) override;
 

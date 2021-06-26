@@ -367,7 +367,7 @@ void TracedScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin_n
 /******** Schedule: Annotation ********/
 
 void TracedScheduleNode::MarkLoop(const LoopRV& loop_rv, const String& ann_key,
-                                  const PrimExpr& ann_val) {
+                                  const ObjectRef& ann_val) {
   ConcreteScheduleNode::MarkLoop(loop_rv, ann_key, ann_val);
   static const InstKind& kind = InstKind::Get("MarkLoop");
   trace_->Append(/*inst=*/Inst(/*kind=*/kind,
@@ -377,7 +377,7 @@ void TracedScheduleNode::MarkLoop(const LoopRV& loop_rv, const String& ann_key,
 }
 
 void TracedScheduleNode::MarkBlock(const BlockRV& block_rv, const String& ann_key,
-                                   const PrimExpr& ann_val) {
+                                   const ObjectRef& ann_val) {
   ConcreteScheduleNode::MarkBlock(block_rv, ann_key, ann_val);
   static const InstKind& kind = InstKind::Get("MarkBlock");
   trace_->Append(/*inst=*/Inst(/*kind=*/kind,

@@ -648,11 +648,11 @@ class RuleParallelizeVectorizeUnroll {
     if (max_jobs_per_core != -1) {
       int max_extent =
           GetTargetNumCores(task->target, &warned_num_cores_missing) * max_jobs_per_core;
-      sch->MarkBlock(root_rv, tir::attr::auto_parallel_extent, max_extent);
+      sch->MarkBlock(root_rv, tir::attr::auto_parallel_extent, Integer(max_extent));
     }
     // Vectorization
     if (max_vectorize_extent != -1) {
-      sch->MarkBlock(root_rv, tir::attr::auto_vectorize_extent, max_vectorize_extent);
+      sch->MarkBlock(root_rv, tir::attr::auto_vectorize_extent, Integer(max_vectorize_extent));
     }
     // Unroll
     if (!unroll_max_steps.empty()) {

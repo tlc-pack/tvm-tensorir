@@ -329,7 +329,7 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
     decisions[index] = std::move(decision);
   }
   // Parse `json_insts`
-  std::unordered_map<std::string, ObjectRef> named_rvs;
+  std::unordered_map<std::string, ObjectRef> named_rvs{{"None", ObjectRef{nullptr}}};
   int i = 0;
   for (const ObjectRef& inst_entry : json_insts) {
     InstKind kind{nullptr};

@@ -266,15 +266,32 @@ void ScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin_name) {
 
 /**************** Marks and NO-OPs ****************/
 
-void ScheduleNode::MarkLoop(const LoopRV& loop_rv, const String& ann_key, const PrimExpr& ann_val) {
+void ScheduleNode::MarkLoop(const LoopRV& loop_rv, const String& ann_key,
+                            const ObjectRef& ann_val) {
   tir::ConcreteScheduleNode::MarkLoop(loop_rv, ann_key, ann_val);
-  this->trace->Append(MarkLoopAttrs::Make(loop_rv, ann_key, ann_val));
+  if (const auto* expr = ann_val.as<PrimExprNode>()) {
+    this->trace->Append(MarkLoopAttrs::Make(loop_rv, ann_key, GetRef<PrimExpr>(expr)));
+  } else if (const auto* str = ann_val.as<StringObj>()) {
+    this->trace->Append(MarkLoopAttrs::Make(loop_rv, ann_key, tir::StringImm(GetRef<String>(str))));
+  } else {
+    LOG(FATAL) << "TypeError: Unsupported type for ann_val: " << ann_val->GetTypeKey();
+    throw;
+  }
 }
 
 void ScheduleNode::MarkBlock(const BlockRV& block_rv, const String& ann_key,
-                             const PrimExpr& ann_val) {
+                             const ObjectRef& ann_val) {
   tir::ConcreteScheduleNode::MarkBlock(block_rv, ann_key, ann_val);
-  this->trace->Append(MarkBlockAttrs::Make(block_rv, ann_key, ann_val));
+  if (const auto* expr = ann_val.as<PrimExprNode>()) {
+    // this->trace->Append(MarkLoopAttrs::Make(loop_rv, ann_key, ));
+    this->trace->Append(MarkBlockAttrs::Make(block_rv, ann_key, GetRef<PrimExpr>(expr)));
+  } else if (const auto* str = ann_val.as<StringObj>()) {
+    this->trace->Append(
+        MarkBlockAttrs::Make(block_rv, ann_key, tir::StringImm(GetRef<String>(str))));
+  } else {
+    LOG(FATAL) << "TypeError: Unsupported type for ann_val: " << ann_val->GetTypeKey();
+    throw;
+  }
 }
 
 void ScheduleNode::EnterPostProc() { this->trace->Append(EnterPostProcAttrs::Make()); }
