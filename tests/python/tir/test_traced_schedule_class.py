@@ -16,6 +16,7 @@
 # under the License.
 # pylint: disable=missing-function-docstring
 """Test for traced schedule class"""
+import pytest
 from collections import defaultdict
 from typing import Union
 
@@ -395,6 +396,39 @@ def _check_serialization(sch: tir.Schedule, mod: Union[PrimFunc, IRModule]) -> t
     return new_sch
 
 
+##########  Utility  ##########
+
+
+def test_traced_schedule_copy():
+    sch = tir.Schedule(mod=matmul, traced=True)
+    i, j, k = sch.get_loops(sch.get_block("matmul"))
+    sch_copy = sch.copy(seed=42)
+    assert not sch.get_sref(i).same_as(sch_copy.get_sref(i))
+    assert not sch.get_sref(j).same_as(sch_copy.get_sref(j))
+    assert not sch.get_sref(k).same_as(sch_copy.get_sref(k))
+    assert sch.get_sref(i).stmt.same_as(sch_copy.get_sref(i).stmt)
+    assert sch.get_sref(j).stmt.same_as(sch_copy.get_sref(j).stmt)
+    assert sch.get_sref(k).stmt.same_as(sch_copy.get_sref(k).stmt)
+    i_0, i_1 = sch.split(i, factor=512)
+    j_0, j_1 = sch_copy.split(j, factors=[-1, 256])
+
+    assert sch.get_sref(i_0).stmt.extent == 2
+    assert sch.get_sref(i_1).stmt.extent == 512
+    with pytest.raises(IndexError):
+        sch_copy.get_sref(i_0)
+    with pytest.raises(IndexError):
+        sch_copy.get_sref(i_1)
+
+    with pytest.raises(IndexError):
+        sch.get_sref(j_0)
+    with pytest.raises(IndexError):
+        sch.get_sref(j_1)
+    assert sch_copy.get_sref(j_0).stmt.extent == 4
+    assert sch_copy.get_sref(j_1).stmt.extent == 256
+    _check_serialization(sch, mod=matmul)
+    _check_serialization(sch_copy, mod=matmul)
+
+
 ##########  Sampling  ##########
 
 
@@ -702,6 +736,8 @@ def test_traced_schedule_mark_block():
 
 
 if __name__ == "__main__":
+    ##########  Utility  ##########
+    test_traced_schedule_copy()
     ##########  Sampling  ##########
     test_traced_schedule_sample_perfect_tile()
     test_traced_schedule_sample_categorical()

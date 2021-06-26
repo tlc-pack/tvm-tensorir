@@ -153,19 +153,20 @@ class Schedule(Object):
         # TODO
         return _ffi_api_schedule.ScheduleGetTrace(self)  # pylint: disable=no-member
 
-    def copy(self) -> "Schedule":
+    def copy(self, seed: int = -1) -> "Schedule":
         """Returns a copy of the schedule, including both the state and the symbol table,
         * guaranteeing that
         * 1) SRef tree is completely reconstructed;
         * 2) The IRModule being scheduled is untouched;
         * 3) All the random variables are valid in the copy, pointing to the correpsonding sref
         * reconstructed
+
         Returns
         -------
         copy : Schedule
             A new copy of the schedule
         """
-        return _ffi_api_schedule.ScheduleCopy(self)  # pylint: disable=no-member
+        return _ffi_api_schedule.ScheduleCopy(self, seed)  # pylint: disable=no-member
 
     def seed(self, seed: int) -> None:
         """Seed the randomness
@@ -529,3 +530,8 @@ class Schedule(Object):
 @_register_object("tir.ConcreteSchedule")
 class ConcreteSchedule(Schedule):
     """A concrete schedule class of TensorIR. Do not use directly, use tvm.tir.Schedule instead."""
+
+
+@_register_object("tir.TracedSchedule")
+class TracedSchedule(Schedule):
+    """A traced schedule class of TensorIR. Do not use directly, use tvm.tir.Schedule instead."""
