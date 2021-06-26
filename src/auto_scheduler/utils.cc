@@ -95,17 +95,46 @@ TopKDispatcher::dispatch(const std::vector<float>& scores,
     
     // make a copy of the dispatch status
     std::unordered_set<size_t> inst_disp_remainder(inst_disp_init_remainder);
+    std::unordered_set<size_t> selected_state;
 
+    // keep iterating until all the iterators have been dispatched
     while (!inst_disp_remainder.empty()) {
-      // count the number of votes per state
-      std::unordered_map<size_t, size_t> votes;
+      // count the number of votes per state [state_id → vote_cnt]
+      std::unordered_map<size_t, float> votes;
 
       for (const size_t inst_id : inst_disp_remainder) {
         for (const ScoreboardItem& cand : inst_topK_candidates[inst_id]) {
-          // auto votes_it = votes.find
+          auto votes_it = votes.find(cand.state_id);
+          if (votes_it == votes.end()) {
+            votes[cand.state_id] = 0.;
+          }
+          votes[cand.state_id] += scores[inst_id * num_states + cand.state_id];
+        }  // for (cand ∈ inst_topK_candidates[inst_id])
+      }    // for (inst_id ∈ inst_disp_remainder)
+
+      // pick the state_id with the maximum accumulated score
+      const auto& votes_max_it = 
+          std::max(votes.begin(), votes.end(),
+                   [](const std::pair<size_t, float>& LHS,
+                      const std::pair<size_t, float>& RHS) {
+                     return LHS.second < RHS.second;
+                   }
+                   );
+      selected_state.insert(votes_max_it->first);
+
+      std::unordered_set<size_t> inst_disp_remainder_copy = inst_disp_remainder;
+
+      for (const size_t inst_id : inst_disp_remainder) {
+        Scoreboard& topK_candidates = inst_topK_candidates[inst_id];
+        auto topK_candidates_it =
+            std::find(topK_candidates.begin(), topK_candidates.end(),
+                      votes_max_it->first);
+        if (topK_candidates_it != topK_candidates.end()) {
+          inst_disp_remainder_copy.erase(inst_id);
         }
-      }
-    }
+      }    // for (inst_id ∈ inst_disp_remainder)
+      inst_disp_remainder = std::move(inst_disp_remainder_copy);
+    }  // while (!inst_disp_remainder.empty())
   } while (max_acc_score > 1e-10);
   LOG(INFO) << "k=" << k;
 }
