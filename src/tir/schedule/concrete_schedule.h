@@ -64,10 +64,7 @@ class ConcreteScheduleNode : public ScheduleNode {
 
  public:
   ScheduleState state() const final { return state_; }
-  Trace trace() const override {
-    LOG(FATAL) << "ValueError: ConcreteSchedule is not traced. Please use TracedSchedule instead";
-    throw;
-  }
+  Optional<Trace> trace() const override { return NullOpt; }
   Schedule Copy(int64_t new_seed = -1) const override;
   void Seed(int64_t new_seed = -1) final { this->sampler_.Seed(new_seed); }
 

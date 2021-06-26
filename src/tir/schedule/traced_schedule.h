@@ -46,7 +46,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(TracedScheduleNode, ScheduleNode);
 
  public:
-  Trace trace() const final { return trace_; }
+  Optional<Trace> trace() const final { return trace_; }
   Schedule Copy(int64_t new_seed = -1) const final;
 
  public:

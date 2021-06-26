@@ -104,7 +104,7 @@ class ScheduleNode : public runtime::Object {
   /*! \return The internal state of scheduling */
   virtual ScheduleState state() const = 0;
   /*! \return The internally maintained trace of scheduling primitives applied */
-  virtual Trace trace() const = 0;
+  virtual Optional<Trace> trace() const = 0;
   /*!
    * \brief Returns a copy of the schedule, including both its state and its symbol table,
    * guaranteeing that

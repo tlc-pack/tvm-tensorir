@@ -16,13 +16,14 @@
 # under the License.
 """Test for traced schedule class"""
 # pylint: disable=missing-function-docstring
-from collections import defaultdict
+from typing import Union
 
-import pytest
 import tvm
 from tvm import tir
+from tvm.ir import IRModule
+from tvm.tir import PrimFunc
 from tvm.script import ty
-from tvm.tir.stmt import ForKind
+from tvm.tir.schedule import Trace
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 # fmt: off
@@ -381,6 +382,17 @@ def matmul_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 
 
+def _check_serialization(sch: tir.Schedule, mod: Union[PrimFunc, IRModule]) -> str:
+    record = sch._trace.as_json()
+    new_sch = tir.Schedule(mod=mod, traced=True)
+    Trace.apply_json_to_schedule(json=record, sch=new_sch)
+    assert tvm.ir.structural_equal(new_sch.mod, sch.mod)
+    py_repr = "\n".join(sch._trace.as_python())
+    new_py_repr = "\n".join(new_sch._trace.as_python())
+    assert py_repr == new_py_repr
+    return py_repr
+
+
 def test_traced_schedule_sample_perfect_tile():
     sch = tir.Schedule(matmul, traced=True)
     i, _, _ = sch.get_loops(sch.get_block("matmul"))
@@ -388,8 +400,7 @@ def test_traced_schedule_sample_perfect_tile():
     factors = [sch.get(i) for i in factors]
     prod = factors[0] * factors[1] * factors[2] * factors[3]
     assert prod == 1024
-    print(sch._trace)
-    # _check_serialization(sch, func=matmul)
+    _check_serialization(sch, mod=matmul)
 
 
 if __name__ == "__main__":

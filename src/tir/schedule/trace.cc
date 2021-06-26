@@ -335,7 +335,7 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
     InstKind kind{nullptr};
     Array<ObjectRef> inputs{nullptr};
     Array<ObjectRef> attrs{nullptr};
-    Array<String> outputs{nullptr};
+    Array<String> outputs{ObjectPtr<Object>{nullptr}};
     // Parse the entry
     try {
       const auto* arr = inst_entry.as<ArrayNode>();
