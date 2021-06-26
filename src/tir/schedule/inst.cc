@@ -17,6 +17,7 @@
  * under the License.
  */
 #include <tvm/tir/schedule/inst.h>
+#include <tvm/tir/stmt_functor.h>
 
 #include "../../node/attr_registry.h"
 
@@ -160,6 +161,45 @@ struct EnterPostProcTraits : public UnpackedInstTraits<EnterPostProcTraits> {
 };
 
 TVM_REGISTER_INST_KIND(EnterPostProcTraits);
+
+/**************** Repr ****************/
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<InstNode>([](const ObjectRef& obj, ReprPrinter* p) {
+      const auto* self = obj.as<InstNode>();
+      ICHECK_NOTNULL(self);
+      Array<ObjectRef> inputs;
+      inputs.reserve(self->inputs.size());
+      for (const ObjectRef& obj : self->inputs) {
+        if (!obj.defined()) {
+          inputs.push_back(String("None"));
+        } else if (obj->IsInstance<BlockRVNode>() || obj->IsInstance<LoopRVNode>()) {
+          inputs.push_back(String("_"));
+        } else if (const auto* str_obj = obj.as<StringObj>()) {
+          inputs.push_back(String('"' + std::string(str_obj->data) + '"'));
+        } else if (obj->IsInstance<IntImmNode>() || obj->IsInstance<FloatImmNode>()) {
+          inputs.push_back(obj);
+        } else if (const auto* expr = obj.as<PrimExprNode>()) {
+          PrimExpr new_expr =
+              Substitute(GetRef<PrimExpr>(expr), [](const Var& var) -> Optional<PrimExpr> {
+                ObjectPtr<VarNode> new_var = make_object<VarNode>(*var.get());
+                new_var->name_hint = "_";
+                return Var(new_var);
+              });
+          std::ostringstream os;
+          os << new_expr;
+          inputs.push_back(String(os.str()));
+        } else {
+          LOG(FATAL) << "TypeError: Stringifying is not supported for type: " << obj->GetTypeKey();
+          throw;
+        }
+      }
+      p->stream << self->kind->f_as_python(
+          /*inputs=*/inputs,
+          /*attrs=*/self->attrs,
+          /*decision=*/NullOpt,  //
+          /*outputs=*/Array<String>(self->outputs.size(), String("_")));
+    });
 
 /**************** FFI ****************/
 
