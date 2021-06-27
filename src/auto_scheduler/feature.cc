@@ -1865,17 +1865,17 @@ Array<NDArray> AdaptStatesToWorkloads(
 
 
 TVM_REGISTER_GLOBAL("auto_scheduler.AdaptStatesToWorkloads")
-    .set_body([](TVMArgs args, TVMRetValue* ret) {
-      SearchTask       task   = args[0];
-      Array<State>     states = args[1];
-      Array<FloatImm>  scores = args[2];
-      CHECK(IsDynTask(task))
-          << "Adaption only makes sense for dynamic workloads";
-      CHECK(states.size() == scores.size())
-          << "The number of states is not equal to the number of predicted scores";
-      // LOG(FATAL) << "Received scores=" << ArrayToString(scores);
-      *ret = AdaptStatesToWorkloads(task, states, scores);
-    });
+    .set_body_typed(
+      [](const SearchTask& task, const Array<State>& states,
+         const Array<FloatImm>& scores) -> Array<NDArray> {
+        CHECK(IsDynTask(task))
+            << "Adaption only makes sense for dynamic workloads";
+        CHECK(states.size() == scores.size())
+            << "The number of states is not equal to the number of predicted scores";
+        // LOG(FATAL) << "Received scores=" << ArrayToString(scores);
+        return AdaptStatesToWorkloads(task, states, scores);
+      }
+      );
 
 
 }  // namespace auto_scheduler

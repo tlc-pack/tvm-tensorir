@@ -612,9 +612,18 @@ def _timed_func(inp_serialized, build_func, verbose):
     args = []
 
     try:
-        sch, args = task.compute_dag.apply_steps_from_state(
-            inp.state, layout_rewrite=task.layout_rewrite_option
-        )
+        # <bojian/DietCode> 
+        # sch, args = task.compute_dag.apply_steps_from_state(
+        #     inp.state, layout_rewrite=task.layout_rewrite_option
+        # )
+        if task.shape_vars is not None:
+            # dynamic search task
+            sch, args = task.compute_dag.generate_synthetic_workload(
+                    inp.state, task.hardware_params)
+        else:
+            sch, args = task.compute_dag.apply_steps_from_state(
+                    inp.state, layout_rewrite=task.layout_rewrite_option
+                    )
     # pylint: disable=broad-except
     except Exception:
         error_no = MeasureErrorNo.INSTANTIATION_ERROR

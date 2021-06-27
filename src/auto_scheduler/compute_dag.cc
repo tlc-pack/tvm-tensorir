@@ -1861,6 +1861,21 @@ TVM_REGISTER_GLOBAL("auto_scheduler.ComputeDAG")
       return ComputeDAG(tensors.value());
     });
 
+
+// <bojian/DietCode>
+TVM_REGISTER_GLOBAL("auto_scheduler.GenerateSyntheticWorkload")
+    .set_body_typed(
+      [](const ComputeDAG& dag, State state,
+         const HardwareParams& hardware_params) -> Array<ObjectRef> {
+        te::Schedule sch;
+        Array<te::Tensor> synthetic_tensors;
+        std::tie(sch, synthetic_tensors) =
+            dag.GenerateSyntheticWorkloadAndApplySteps(&state, hardware_params);
+        return Array<ObjectRef>{sch, synthetic_tensors};
+      }
+      );
+
+
 TVM_REGISTER_GLOBAL("auto_scheduler.ComputeDAGApplyStepsFromState")
     .set_body_typed([](const ComputeDAG& dag, const State& state, int layout_rewrite) {
       te::Schedule sch;

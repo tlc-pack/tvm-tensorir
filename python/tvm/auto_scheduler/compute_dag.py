@@ -133,6 +133,11 @@ class ComputeDAG(Object):
         """
         return State(self.init_state, self)
 
+    # <bojian/DietCode> Generate synthetic workloads (for dynamic workloads only).
+    def generate_synthetic_workload(self, state):
+        state_obj = state if isinstance(state, StateObject) else state.state_object
+        return _ffi_api.GenerateSyntheticWorkload(self, state_obj)
+
     def apply_steps_from_state(self, state, layout_rewrite=LayoutRewriteOption.NO_REWRITE):
         """
         Apply the history transform steps from a State to get a TVM schedule.
