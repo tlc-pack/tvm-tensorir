@@ -116,16 +116,43 @@ def element_wise_128_n(a: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = B[vi, vj] + 1.0
 
 
+@tvm.script.tir
+def mem_copy(a: ty.handle, b: ty.handle, m: ty.int32, n: ty.int32) -> None:
+    A = tir.match_buffer(a, (m, n), "float32")
+    B = tir.match_buffer(b, (m, n), "float32")
+
+    with tir.block([m, n], "") as [vi, vj]:
+        B[vi, vj] = A[vi, vj]
+
+
+@tvm.script.tir
+def mem_copy_16_16(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), "float32")
+    B = tir.match_buffer(b, (16, 16), "float32")
+
+    with tir.block([16, 16], "") as [vi, vj]:
+        B[vi, vj] = A[vi, vj]
+
+
+@tvm.script.tir
+def mem_copy_m_16(a: ty.handle, b: ty.handle, m: ty.int32) -> None:
+    A = tir.match_buffer(a, (m, 16), "float32")
+    B = tir.match_buffer(b, (m, 16), "float32")
+
+    with tir.block([m, 16], "") as [vi, vj]:
+        B[vi, vj] = A[vi, vj]
+
+
 def test_tensor_dimension_invariant_code_matmul():
     a, _, _, n = matmul.params
     # fully specialized
-    func = matmul.specialize(a, tir.decl_buffer((128, 128)))
+    func = matmul.specialize({a: tir.decl_buffer((128, 128))})
     tvm.ir.assert_structural_equal(func, matmul_128)
     # partially specialized
-    func = matmul.specialize(n, 128)
+    func = matmul.specialize({n: 128})
     tvm.ir.assert_structural_equal(func, matmul_m_128)
     # symbolic specialized
-    func = matmul.specialize(n, tir.Var("x", "int32") * 8)
+    func = matmul.specialize({n: tir.Var("x", "int32") * 8})
     tvm.ir.assert_structural_equal(func, matmul_m_8x)
 
 
@@ -133,13 +160,26 @@ def test_tensor_dimension_invariant_code_elemwise():
     a, c = element_wise.params
     C = element_wise.buffer_map[c]
     # fully specialized
-    func = element_wise.specialize(a, tir.decl_buffer((128, 64)))
+    func = element_wise.specialize({a: tir.decl_buffer((128, 64))})
     tvm.ir.assert_structural_equal(func, element_wise_128_64)
     # partially specialized
-    func = element_wise.specialize(c, tir.decl_buffer((128, C.shape[1])))
+    func = element_wise.specialize({c: tir.decl_buffer((128, C.shape[1]))})
     tvm.ir.assert_structural_equal(func, element_wise_128_n)
+
+
+def test_tensor_dimension_invariant_code_mem_copy():
+    a, _, m, n = mem_copy.params
+    # fully specialized
+    func = mem_copy.specialize({a: tir.decl_buffer((16, 16))})
+    tvm.ir.assert_structural_equal(func, mem_copy_16_16)
+    func = mem_copy.specialize({n: 16, m: 16})
+    tvm.ir.assert_structural_equal(func, mem_copy_16_16)
+    # partially specialized
+    func = mem_copy.specialize({n: 16})
+    tvm.ir.assert_structural_equal(func, mem_copy_m_16)
 
 
 if __name__ == "__main__":
     test_tensor_dimension_invariant_code_matmul()
     test_tensor_dimension_invariant_code_elemwise()
+    test_tensor_dimension_invariant_code_mem_copy()

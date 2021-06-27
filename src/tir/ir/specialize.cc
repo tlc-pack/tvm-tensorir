@@ -46,7 +46,7 @@ inline bool IsParam(const PrimFunc& func, const Var& param) {
 /*! \brief Mutator to specialize function and remove const parameters */
 class PrimFuncSpecializer : public StmtExprMutator {
  public:
-  explicit PrimFuncSpecializer(const VarMap& var_map) : var_map_(var_map) {}
+  explicit PrimFuncSpecializer(VarMap var_map) : var_map_(var_map) {}
 
   static PrimFunc Specialize(PrimFunc f, const VarMap& var_map) {
     PrimFuncSpecializer specializer(var_map);
@@ -305,17 +305,21 @@ PrimFunc Specialize(PrimFunc func, const Var& param, const PrimExpr& specific_ex
 /**************** FFI ****************/
 
 TVM_REGISTER_GLOBAL("tir.Specialize")
-    .set_body_typed<PrimFunc(PrimFunc, Var, ObjectRef)>([](PrimFunc func, Var param,
-                                                           ObjectRef instance) {
-      if (instance->IsInstance<BufferNode>()) {
-        return Specialize(std::move(func), std::move(param), Downcast<Buffer>(instance));
-      } else if (instance->IsInstance<PrimExprNode>()) {
-        return Specialize(std::move(func), std::move(param), Downcast<PrimExpr>(instance));
-      } else {
-        LOG(FATAL) << "TypeError: specialize expected instance to be Buffer or PrimExpr, but got "
-                   << instance->GetTypeKey();
-        return PrimFunc();
+    .set_body_typed<PrimFunc(PrimFunc, Map<Var, ObjectRef>)>([](PrimFunc func,
+                                                                Map<Var, ObjectRef> param_map) {
+      for (const auto& kv : param_map) {
+        const Var& param = kv.first;
+        const ObjectRef& instance = kv.second;
+        if (instance->IsInstance<BufferNode>()) {
+          func = Specialize(std::move(func), param, Downcast<Buffer>(instance));
+        } else if (instance->IsInstance<PrimExprNode>()) {
+          func = Specialize(std::move(func), param, Downcast<PrimExpr>(instance));
+        } else {
+          LOG(FATAL) << "TypeError: specialize expected instance to be Buffer or PrimExpr, but got "
+                     << instance->GetTypeKey();
+        }
       }
+      return func;
     });
 
 }  // namespace tir

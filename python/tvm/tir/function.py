@@ -16,7 +16,7 @@
 # under the License.
 """Function data types."""
 
-from typing import Union
+from typing import Mapping, Union
 
 import tvm._ffi
 import tvm.runtime
@@ -88,17 +88,18 @@ class PrimFunc(BaseFunc):
         """
         return PrimFunc(self.params, new_body, self.ret_type, self.buffer_map, self.attrs, span)
 
-    def specialize(self, var: Var, instance: Union[PrimExpr, Buffer]):
+    def specialize(self, param_map: Mapping[Var, Union[PrimExpr, Buffer]]):
         """Metaprogramming usage: specialize parameters of PrimFunc
+
         Parameters
         ----------
-        var: Var
-            The var in function's params
-        instance : Union[PrimExpr, Buffer]
-            The instance we use to specialize the PrimFunc
+
+        param_map : Mapping[Var, Union[PrimExpr, Buffer]]
+            The mapping from function params to the instance
+
         Returns
         -------
-        new_func : PrimFunc
+        func : PrimFunc
             The new function with parameter specialized
         """
-        return _ffi_api.Specialize(self, var, tvm.runtime.convert(instance))
+        return _ffi_api.Specialize(self, param_map)
