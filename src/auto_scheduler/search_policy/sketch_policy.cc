@@ -258,6 +258,11 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
       results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
       ct += inputs.size();
 
+
+      // <bojian/DietCode>
+      LOG(FATAL) << "Measurements have been completed";
+
+
       // Check if reach the early stopping condition
       if (ct - measurer->best_ct[search_task->workload_key] > early_stopping &&
           measurer->has_valid.count(search_task->workload_key)) {
@@ -749,10 +754,6 @@ Array<MeasureInput> SketchPolicyNode::PickStatesWithEpsGreedy(const Array<State>
   int num_random =
       static_cast<int>(GetDoubleParam(params, SketchParamKey::eps_greedy) * num_measure_per_iter_);
   int num_good = num_measure_per_iter_ - num_random;
-
-
-  // <bojian/DietCode>
-  LOG(FATAL) << "Collecting the inputs used for measurements";
 
   Array<MeasureInput> inputs;
   size_t offset_best = 0, offset_random = 0;

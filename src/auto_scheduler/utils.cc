@@ -38,11 +38,14 @@ NullStream& NullStream::Global() {
 }
 
 
+extern bool enable_verbose_logging;
+
 std::unordered_map<size_t, size_t>
 TopKDispatcher::dispatch(const std::vector<float>& scores,
                          const size_t num_states) {
   const size_t num_instances = scores.size() / num_states;
-  float max_acc_score;
+  std::unordered_map<size_t, size_t> disp_map_to_ret;
+
   size_t k = 0;
   // instance dispatch initial status
   std::unordered_set<size_t> inst_disp_init_remainder;
@@ -61,9 +64,9 @@ TopKDispatcher::dispatch(const std::vector<float>& scores,
     return LHS.score > RHS.score;
   };
 
-  do {
-    max_acc_score = 1e-10;
+  while (true) {
     ++k;  // increment the number of candidates selected
+    disp_map_to_ret.clear();
 
     typedef std::vector<ScoreboardItem> Scoreboard;
     std::unordered_map<size_t, Scoreboard> inst_topK_candidates;
@@ -80,22 +83,32 @@ TopKDispatcher::dispatch(const std::vector<float>& scores,
           //                scoreboard_item_gt_cmp);
         } else {
           if (score > topK_candidates.front().score) {
+            if (enable_verbose_logging) {
+              LOG(INFO) << "min score before popping="
+                        << topK_candidates.front().score << " w/ "
+                           "state_id=" << topK_candidates.front().state_id;
+            }
             std::pop_heap(topK_candidates.begin(), topK_candidates.end(),
                           scoreboard_item_gt_cmp);
             topK_candidates.pop_back();
             topK_candidates.push_back({state_id, score});
             std::push_heap(topK_candidates.begin(), topK_candidates.end(),
                            scoreboard_item_gt_cmp);
-          }
-        }  // if (topK_candidates.size() < k)
-      }    // for (state_id ∈ range(num_states))
-    }      // for (inst_id ∈ range(num_instances))
+            if (enable_verbose_logging) {
+              LOG(INFO) << "min score after popping="
+                        << topK_candidates.front().score << " w/ "
+                           "state_id=" << topK_candidates.front().state_id;
+            }
+          }  // if (score > topK_candidates.front().score)
+        }    // if (topK_candidates.size() < k)
+      }      // for (state_id ∈ range(num_states))
+    }        // for (inst_id ∈ range(num_instances))
     // Now that all the instances have their most-preferred states ready, we now
     // choose the minimum set that could cover all the candidates.
     
     // make a copy of the dispatch status
     std::unordered_set<size_t> inst_disp_remainder(inst_disp_init_remainder);
-    std::unordered_set<size_t> selected_state;
+    std::unordered_set<size_t> selected_states;
 
     // keep iterating until all the iterators have been dispatched
     while (!inst_disp_remainder.empty()) {
@@ -114,29 +127,45 @@ TopKDispatcher::dispatch(const std::vector<float>& scores,
 
       // pick the state_id with the maximum accumulated score
       const auto& votes_max_it = 
-          std::max(votes.begin(), votes.end(),
-                   [](const std::pair<size_t, float>& LHS,
-                      const std::pair<size_t, float>& RHS) {
-                     return LHS.second < RHS.second;
-                   }
-                   );
-      selected_state.insert(votes_max_it->first);
+          std::max_element(votes.begin(), votes.end(),
+                           [](const std::pair<size_t, float>& LHS,
+                              const std::pair<size_t, float>& RHS)
+                             -> bool {
+                             return LHS.second < RHS.second;
+                           }
+                           );
+      selected_states.insert(votes_max_it->first);
 
       std::unordered_set<size_t> inst_disp_remainder_copy = inst_disp_remainder;
 
       for (const size_t inst_id : inst_disp_remainder) {
         Scoreboard& topK_candidates = inst_topK_candidates[inst_id];
-        auto topK_candidates_it =
-            std::find(topK_candidates.begin(), topK_candidates.end(),
-                      votes_max_it->first);
+
+        Scoreboard::iterator topK_candidates_it;
+        for (topK_candidates_it  = topK_candidates.begin();
+             topK_candidates_it != topK_candidates.end();
+             ++topK_candidates_it) {
+          if (topK_candidates_it->state_id == votes_max_it->first) {
+            break;
+          }
+        }
         if (topK_candidates_it != topK_candidates.end()) {
           inst_disp_remainder_copy.erase(inst_id);
+          disp_map_to_ret[inst_id] = votes_max_it->first;
         }
       }    // for (inst_id ∈ inst_disp_remainder)
       inst_disp_remainder = std::move(inst_disp_remainder_copy);
     }  // while (!inst_disp_remainder.empty())
-  } while (max_acc_score > 1e-10);
+
+    if (selected_states.size() > 128) {
+      LOG(WARNING) << "The number of selected states is greater than 128, "
+                      "hence is not valid";
+    } else {
+      break;
+    }
+  }
   LOG(INFO) << "k=" << k;
+  return disp_map_to_ret;
 }
 
 }  // namespace auto_scheduler
