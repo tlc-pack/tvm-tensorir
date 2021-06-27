@@ -431,7 +431,7 @@ class BlockMatchBufferRegion(SpecialStmt):
             strides=None,
             elem_offset=None,
             align=-1,
-            offset_factor=0,
+            offset_factor=1,
             span=None,
         ):
             assert self.context, "call 'exit_scope' before 'enter_scope'"
@@ -441,13 +441,7 @@ class BlockMatchBufferRegion(SpecialStmt):
                     + "e.g. A = match_buffer_region(...)",
                     self.node.span,
                 )
-
-            if strides is None:
-                strides = []
-            align = convert_to_int(align, "align", self.context.report_error, self.node.span)
-            offset_factor = convert_to_int(
-                offset_factor, "offset_factor", self.context.report_error, self.node.span
-            )
+            name: str = self.node.lhs.id.name
 
             if not isinstance(source, BufferSlice):
                 self.context.report_error(
@@ -455,11 +449,22 @@ class BlockMatchBufferRegion(SpecialStmt):
                     span=span,
                 )
             buffer_region = buffer_slice_to_region(source)
-            shape = [r.extent for r in buffer_region.region]
+
+            shape = [r.extent for r in buffer_region.region if r.extent > 1]
+
+            if strides is None:
+                strides = [
+                    tvm.tir.Var(name + ".strides_" + str(i), "int32") for i in range(len(shape))
+                ]
+
+            align = convert_to_int(align, "align", self.context.report_error, self.node.span)
+            offset_factor = convert_to_int(
+                offset_factor, "offset_factor", self.context.report_error, self.node.span
+            )
             buffer = tvm.tir.decl_buffer(
                 shape,
                 buffer_region.buffer.dtype,
-                self.node.lhs.id.name,
+                name,
                 data=None,
                 strides=strides,
                 elem_offset=elem_offset,

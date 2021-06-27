@@ -21,7 +21,6 @@
  * \file flatten_buffer.cc
  */
 
-#include <tvm/tir/builtin.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
