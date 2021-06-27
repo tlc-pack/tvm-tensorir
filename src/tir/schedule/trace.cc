@@ -225,11 +225,12 @@ Optional<Inst> TraceNode::Pop() {
 
 /**************** Interfacing with InstKind ****************/
 
-void TraceNode::ApplyToSchedule(const Schedule& sch, bool remove_postproc,
-                                std::function<ObjectRef(const Array<ObjectRef>& inputs,  //
-                                                        const Array<ObjectRef>& attrs,   //
-                                                        const ObjectRef& decision)>
-                                    decision_provider) const {
+void TraceNode::ApplyToSchedule(
+    const Schedule& sch, bool remove_postproc,
+    std::function<ObjectRef(const Inst& inst, const Array<ObjectRef>& inputs,  //
+                            const Array<ObjectRef>& attrs,                     //
+                            const ObjectRef& decision)>
+        decision_provider) const {
   std::unordered_map<const Object*, const Object*> rv_map;
   for (const Inst& inst : this->insts) {
     if (remove_postproc && IsPostproc(inst)) {
@@ -239,7 +240,7 @@ void TraceNode::ApplyToSchedule(const Schedule& sch, bool remove_postproc,
     Array<ObjectRef> attrs = inst->attrs;
     ObjectRef decision = this->decisions.Get(inst);
     if (decision_provider) {
-      decision = decision_provider(inputs, attrs, decision);
+      decision = decision_provider(inst, inputs, attrs, decision);
     }
     Array<ObjectRef> outputs = inst->kind->f_apply_to_schedule(sch, inputs, attrs, decision);
     TranslateAddOutputRVs(inst->outputs, outputs, &rv_map);

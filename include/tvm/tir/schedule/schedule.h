@@ -119,6 +119,8 @@ class ScheduleNode : public runtime::Object {
    * \param seed The new random seed, -1 if use device random, otherwise non-negative
    */
   virtual void Seed(int64_t seed = -1) = 0;
+  /*! \brief Fork the random state */
+  virtual int64_t ForkSeed() = 0;
 
  public:
   /******** Lookup/Remove random variables ********/

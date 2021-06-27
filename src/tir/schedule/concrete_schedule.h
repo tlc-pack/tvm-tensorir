@@ -67,6 +67,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   Optional<Trace> trace() const override { return NullOpt; }
   Schedule Copy(int64_t new_seed = -1) const override;
   void Seed(int64_t new_seed = -1) final { this->sampler_.Seed(new_seed); }
+  int64_t ForkSeed() final { return this->sampler_.ForkSeed(); }
 
  public:
   /******** Lookup random variables ********/

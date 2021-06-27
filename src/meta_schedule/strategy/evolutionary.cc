@@ -44,7 +44,7 @@ namespace meta_schedule {
 /*! \brief The postprocessed built of a trace */
 struct CachedTrace {
   /*! \brief The trace */
-  const TraceNode* trace;
+  const tir::TraceNode* trace;
   /*! \brief The schedule the trace creates */
   Schedule sch;
   /*! \brief The string representation of the schedule */
@@ -214,7 +214,7 @@ class EvolutionaryNode : public SearchStrategyNode {
     return result;
   }
 
-  static std::vector<tir::PrimFunc> ForkWorkload(int n, tir::PrimFunc& workload) {
+  static std::vector<tir::PrimFunc> ForkWorkload(int n, const tir::PrimFunc& workload) {
     std::vector<tir::PrimFunc> result;
     result.reserve(n);
     for (int i = 0; i < n; i++) {
@@ -233,8 +233,11 @@ class EvolutionaryNode : public SearchStrategyNode {
   static Optional<Schedule> ReplayTrace(const Trace& trace, const SearchTask& task,
                                         const SearchSpace& space, Sampler* sampler,
                                         const tir::PrimFunc& workload) {
-    Schedule sch(workload, sampler->ForkSeed());
-    trace->Apply(sch);
+    Schedule sch = Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), workload}}),
+                                    /*seed=*/sampler->ForkSeed(),
+                                    /*debug_mode=*/false,
+                                    /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
+    trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
     if (!space->Postprocess(task, sch, sampler)) {
       return NullOpt;
     }
@@ -494,7 +497,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
       Schedule sch = opt_sch.value();
       this->AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
     } else {
-      LOG(FATAL) << "ValueError: Cannot postprocess the trace:\n" << trace->Stringify();
+      LOG(FATAL) << "ValueError: Cannot postprocess the trace:\n" << trace;
       throw;
     }
   };
@@ -506,13 +509,14 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
                             &success_ct, thread_workloads](int thread_id, int i) -> void {
     Sampler* sampler = &thread_samplers[thread_id];
     for (;;) {
-      const Trace& support_trace = support[sampler->SampleInt(0, support.size())]->trace;
-      Map<Instruction, ObjectRef> decisions;
+      Trace support_trace = support[sampler->SampleInt(0, support.size())]->trace().value();
+      Map<Inst, ObjectRef> decisions;
       try {
         if (Optional<Schedule> opt_sch = ReplayTrace(Trace(support_trace->insts, decisions), task,
                                                      space, sampler, thread_workloads[thread_id])) {
           Schedule sch = opt_sch.value();
-          Trace trace(sch->trace->insts, sch->trace->decisions);
+          Trace old_trace = sch->trace().value();
+          Trace trace(old_trace->insts, old_trace->decisions);
           this->AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
           results[i] = std::move(trace);
           success_ct++;

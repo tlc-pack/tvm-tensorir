@@ -105,7 +105,10 @@ bool ScheduleFnNode::Postprocess(const SearchTask& task, const Schedule& sch, Sa
 }
 
 Schedule ScheduleFnNode::SampleSchedule(const SearchTask& task, Sampler* sampler) {
-  Schedule sch(task->workload, sampler->ForkSeed());
+  Schedule sch = Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), task->workload}}),
+                                  /*seed=*/sampler->ForkSeed(),
+                                  /*debug_mode=*/false,
+                                  /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
   this->sch_fn_(sch);
   return sch;
 }

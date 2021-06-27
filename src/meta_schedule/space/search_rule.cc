@@ -314,7 +314,7 @@ class RuleMultiLevelTiling {
     // 1) `must_cache_write = True`
     // 2) The elementwise-matched consumer doesn't exist
     // Fork a new schedule
-    state.sch = Downcast<Schedule>(state.sch->Copy(state.sch->sampler_.ForkSeed()));
+    state.sch = Downcast<Schedule>(state.sch->Copy(state.sch->ForkSeed()));
     // the copy block after calling cache write
     BlockRV write_cache = state.block_rv;
     // The original block to tiled
@@ -483,7 +483,7 @@ class RuleMultiLevelTiling {
     for (int level : fusion_levels) {
       const LoopRV& loop = state.tiles[level - 1].back();
       State new_state = state;
-      new_state.sch = Downcast<Schedule>(state.sch->Copy(sch->sampler_.ForkSeed()));
+      new_state.sch = Downcast<Schedule>(state.sch->Copy(sch->ForkSeed()));
       new_state.sch->ReverseComputeAt(consumer, loop, true);
       result.push_back(new_state);
     }
@@ -594,7 +594,7 @@ class RuleRandomComputeLocation {
         // ComputeAt fails, cleanup the following before re-try:
         // 1) trace: instruction & decisions
         // 2) sym_tab
-        sch->trace->Pop();
+        sch->trace().value()->Pop();
         sch->RemoveRV(compute_at_loc);
         continue;
       }
@@ -759,7 +759,7 @@ class RuleMarkTensorize {
     Optional<Schedule> next_sch = NullOpt;
     for (const tir::TensorIntrin& intrin : tensor_intrins) {
       if (!next_sch.defined()) {
-        next_sch = Downcast<Schedule>(sch->Copy(sch->sampler_.ForkSeed()));
+        next_sch = Downcast<Schedule>(sch->Copy(sch->ForkSeed()));
       }
       Schedule cur_sch = next_sch.value();
       if (Optional<TensorizeInfo> opt_tensorize_info =
@@ -977,7 +977,7 @@ class RuleAddRFactor {
     }
 
     // Make a copy of the original schedule.
-    Schedule ori_sch = Downcast<Schedule>(sch->Copy(sch->sampler_.ForkSeed()));
+    Schedule ori_sch = Downcast<Schedule>(sch->Copy(sch->ForkSeed()));
 
     // Reorder the loop axes if reduction loops are not innermost.
     // After the reordering, fuse all the reduction loops.
@@ -990,7 +990,7 @@ class RuleAddRFactor {
         sch->Split(fused_reduce_loop, AsOptArray<ExprRV, PrimExpr>(factors));
     Array<Schedule> res;
     for (const LoopRV& split_loop : split_res) {
-      Schedule sch_tmp = Downcast<Schedule>(sch->Copy(sch->sampler_.ForkSeed()));
+      Schedule sch_tmp = Downcast<Schedule>(sch->Copy(sch->ForkSeed()));
       const BlockRV& block_rf = sch_tmp->RFactor(split_loop, num_spatial_loops);
       Array<LoopRV> axes = sch_tmp->GetLoops(block_rf);
       CHECK_GT(static_cast<int>(axes.size()), num_spatial_loops);
@@ -1055,7 +1055,7 @@ class RuleCrossThreadReduction {
     }
 
     // Make a copy of the original schedule. The new copy is used for scheduling.
-    Schedule tmp_sch = Downcast<Schedule>(sch->Copy(sch->sampler_.ForkSeed()));
+    Schedule tmp_sch = Downcast<Schedule>(sch->Copy(sch->ForkSeed()));
     // Check the opportunity for kernel fusion. We say "fusible", if we can compute_at the block to
     // its consumer. We want to fuse as much as possible because it results in significantly faster
     // schedule.

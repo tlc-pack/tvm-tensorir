@@ -84,7 +84,7 @@ Array<MeasureResult> TuneContextNode::Measure(const Array<MeasureInput>& measure
     const MeasureResult& measure_result = measure_results[i];
     MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
     if (error_no == MeasureErrorNO::kNoError) {
-      db->Add(measure_input->sch->trace, Repr(measure_input->sch),
+      db->Add(measure_input->sch->trace().value(), Repr(measure_input->sch),
               AsVector<FloatImm, double>(measure_result->costs), measure_input->task);
     }
     for (const MeasureCallback& callback : this->measure_callbacks) {
@@ -114,8 +114,11 @@ Optional<Schedule> Autotune(SearchTask task,                           //
   if (!best.trace.defined()) {
     return NullOpt;
   }
-  Schedule sch(task->workload);
-  best.trace.value()->Apply(sch);
+  Schedule sch = Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), task->workload}}),  //
+                                  /*seed=*/-1,
+                                  /*debug_mode=*/false,
+                                  /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
+  best.trace.value()->ApplyToSchedule(sch, true);
   if (!tune_context->Postprocess(sch)) {
     LOG(FATAL) << "ValueError: The best schedule cannot be postprocessed all of a sudden";
   }

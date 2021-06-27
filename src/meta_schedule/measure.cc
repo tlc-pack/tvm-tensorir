@@ -215,8 +215,11 @@ Optional<Schedule> ProgramMeasurerNode::GetBest(const SearchTask& task) const {
   if (!trace.defined()) {
     return NullOpt;
   }
-  Schedule sch(task->workload);
-  trace.value()->Apply(sch);
+  Schedule sch = Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), task->workload}}),
+                                  /*seed=*/-1,
+                                  /*debug_mode=*/false,
+                                  /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
+  trace.value()->ApplyToSchedule(sch, /*remove_postproc=*/true);
   return sch;
 }
 
@@ -245,7 +248,7 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
       ++num_measures;
       if (error_no == MeasureErrorNO::kNoError) {
         double avg_time_cost = FloatArrayMean(measure_result->costs);
-        db->Add(measure_input->sch->trace, Repr(measure_input->sch),
+        db->Add(measure_input->sch->trace().value(), Repr(measure_input->sch),
                 AsVector<FloatImm, double>(measure_result->costs), measure_input->task);
         double best_time_cost = db->GetBest(measure_input->task).MeanTime();
         StdCout(verbose) << std::fixed << std::setprecision(4)  //
@@ -272,7 +275,7 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
                          << measure_result->error_msg << "\n"
                          << "The IR is:\n"
                          << Repr(measure_input->sch) << "\nSchedule is:\n"
-                         << measure_input->sch->trace->Stringify();
+                         << measure_input->sch->trace();
       }
     }
     measure_results.insert(measure_results.end(), batch_measure_results.begin(),
