@@ -134,9 +134,9 @@ class ComputeDAG(Object):
         return State(self.init_state, self)
 
     # <bojian/DietCode> Generate synthetic workloads (for dynamic workloads only).
-    def generate_synthetic_workload(self, state):
+    def generate_synthetic_workload(self, state, hardware_params):
         state_obj = state if isinstance(state, StateObject) else state.state_object
-        return _ffi_api.GenerateSyntheticWorkload(self, state_obj)
+        return _ffi_api.GenerateSyntheticWorkload(self, state_obj, hardware_params)
 
     def apply_steps_from_state(self, state, layout_rewrite=LayoutRewriteOption.NO_REWRITE):
         """
