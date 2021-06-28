@@ -309,6 +309,8 @@ std::pair<Array<MeasureInput>, Array<MeasureResult>> SketchPolicyNode::ContinueS
   PrintTitle("Measure", verbose);
   results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
 
+  LOG(FATAL) << "Measurements have been completed";
+
   // Update measured states throughputs. These states will join the EvolutionarySearch in later
   // search rounds.
   for (const auto& res : results) {

@@ -270,8 +270,9 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       } else {
 
         // <bojian/DietCode>
-        LOG(FATAL) << "Error encountered during measurements: "
-                   << result_batch[j];
+        LOG(WARNING) << "Error encountered during measurements: "
+                     << result_batch[j] << " on state "
+                     << input_batch[j]->state;
 
 
         flops = 0.0;

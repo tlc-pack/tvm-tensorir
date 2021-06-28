@@ -920,6 +920,9 @@ def _timed_eval_func(
             error_no = MeasureErrorNo.RUNTIME_DEVICE
             error_msg = make_traceback_info()
 
+            # <bojian/DietCode>
+            # assert False, "RUNTIME_DEVICE error found with msg={}".format(error_msg)
+
     shutil.rmtree(os.path.dirname(build_res.filename))
     toc = time.time()
     time.sleep(cooldown_interval)
@@ -1037,6 +1040,9 @@ def local_run(
                     time.time(),
                 )
 
+                # <bojian/DietCode>
+                # assert False, "RUNTIME_DEVICE error caught"
+
         measure_results.append(MeasureResult(*res))
 
     if verbose >= 1:
@@ -1132,7 +1138,14 @@ def _timed_rpc_run(
             dev.sync()
 
             # First run for check that the kernel is correct
+
+            # <bojian/DietCode>
+            # try:
             func.entry_func(*args)
+            # except Exception:
+            #     assert False, "Exception caught when executing func={} with args={}" \
+            #                   .format(func, args)
+
             dev.sync()
 
             costs = time_f(*args).results
@@ -1148,6 +1161,9 @@ def _timed_rpc_run(
             costs = (MAX_FLOAT,)
             error_no = MeasureErrorNo.RUNTIME_DEVICE
             error_msg = make_traceback_info()
+
+            # <bojian/DietCode>
+            # assert False, "RUNTIME_DEVICE error found with msg={}".format(error_msg)
 
     shutil.rmtree(os.path.dirname(build_res.filename))
     toc = time.time()
@@ -1206,6 +1222,9 @@ def _rpc_run_worker(args):
             build_res.time_cost + timeout,
             time.time(),
         )
+
+        # <bojian/DietCode>
+        # assert False, "RUNTIME_DEVICE error caught with msg={}".format(str(res))
 
     return res
 

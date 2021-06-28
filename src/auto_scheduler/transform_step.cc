@@ -1025,7 +1025,7 @@ SplitStep::SplitStep(dmlc::JSONReader* reader) {
   // reader->Read(&int_val);
   reader->Read(&extent_json_str);
   ObjectRef extent = LoadJSON(extent_json_str);
-  LOG(INFO) << "extent loaded from JSON file=" << extent;
+  // LOG(INFO) << "extent loaded from JSON file=" << extent;
   node->extent = Downcast<PrimExpr>(extent);
 
   s = reader->NextArrayItem();
