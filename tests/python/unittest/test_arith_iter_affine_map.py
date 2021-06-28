@@ -717,7 +717,7 @@ def test_normalize_iter_map_to_expr():
     tvm.ir.assert_structural_equal(tvm.arith.normalize_iter_map_to_expr(res[1]), flm(x[0], 5))
 
 
-def test_inverse_affine_iter_map_basic():
+def test_inverse_affine_iter_map():
     analyzer = tvm.arith.Analyzer()
     l0 = create_iter("l0", 64)
     l1 = create_iter("l1", 64)
@@ -775,12 +775,6 @@ def test_inverse_affine_iter_map_basic():
     l0_inverse = floormod(l1_inverse, 4) * 16 + floormod(floordiv(l1_inverse, 4), 16)
 
     assert analyzer.simplify(res[l0[0]] - l0_inverse) == 0
-
-
-def test_inverse_affine_iter_map_complex():
-    analyzer = tvm.arith.Analyzer()
-    l0 = create_iter("l0", 64)
-
 
 
 if __name__ == "__main__":
