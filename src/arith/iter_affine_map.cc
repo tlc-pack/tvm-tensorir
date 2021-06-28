@@ -1449,7 +1449,11 @@ class InverseAffineIterMapTransformer {
     }
 
     // Case 2: If the sum expression has multiple components, match the fuse pattern and then split
-    // the sum expression to get correponding components.
+    // the sum expression for each components.
+    // For example, consider the iterator i1[dom = (0, 16)], i2[dom = (0, 8)], fusing i1 and i2
+    // we will have i1_i2_fused[dom = (0, 64)]. During back propagation, we need to split the
+    // propagated value to get the corresponding components of i1 and i2, which are
+    // floormod(i1_i2_fused, 8) and floordiv(i1_i2_fused, 8), respectively.
     Array<IterSplitExpr> splits = MatchFusePattern(iter_map_expr);
     ICHECK(!splits.empty());
 
