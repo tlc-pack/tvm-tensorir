@@ -247,14 +247,22 @@ struct Handler<::tvm::auto_scheduler::SearchTaskNode> {
             reader->Read(&str_value);
             data->shape_vars =
                 Downcast<Array<String>>(::tvm::LoadJSON(str_value));
+            LOG(INFO) << "Deserialized shape_vars=" << data->shape_vars.value();
             ICHECK(s);
+            s = reader->NextArrayItem();
             reader->Read(&str_value);
             data->shape_freq =
                 Downcast<Map<Array<IntImm>, FloatImm>>(::tvm::LoadJSON(str_value));
+            LOG(INFO) << "Deserialized shape_freq=" << data->shape_freq.value();
+            s = reader->NextArrayItem();
           }
 
+          // <bojian/DietCode>
+          ICHECK(!s);
+
         }
-        ICHECK(!s);
+        // <bojian/DietCode>
+        // ICHECK(!s);
       }
     }
   }
