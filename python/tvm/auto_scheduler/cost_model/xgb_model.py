@@ -238,7 +238,10 @@ class XGBModel(PythonBasedModel):
             raw_preds = self.bst.predict(dtest)
             ret = predict_throughput_pack_sum(raw_preds, pack_ids)
         else:
-            ret = np.random.uniform(0, 1, (len(states),))
+            # <bojian/DietCode> Change the initial predicted scores from random
+            #                   values to all ones (to avoid any potential bias).
+            # ret = np.random.uniform(0, 1, (len(states),))
+            ret = np.ones(shape=(len(states),))
 
         # Predict -inf for invalid states that failed to be lowered.
         for idx, feature in enumerate(features):

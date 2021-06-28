@@ -1846,8 +1846,7 @@ Array<NDArray> AdaptStatesToWorkloads(
       [&states, &task, &scores, &shape_values, &occupancy_penalty,
        &padding_penalty, &adapted_scores]
       (const size_t i) {
-        size_t wkl_id   = i / task->shape_freq.value().size(),
-               state_id = i % task->shape_freq.value().size();
+        size_t wkl_id = i / states.size(), state_id = i % states.size();
         AdaptStateToWorkload(task, states[state_id], task->shape_vars.value(),
                              shape_values[wkl_id], scores[state_id],
                              &occupancy_penalty[i], &padding_penalty[i],
