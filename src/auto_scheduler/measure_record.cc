@@ -28,6 +28,9 @@
 #include <tvm/auto_scheduler/transform_step.h>
 #include <tvm/runtime/registry.h>
 
+// <bojian/DietCode>
+#include <tvm/node/serialization.h>
+
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -155,6 +158,16 @@ struct Handler<::tvm::auto_scheduler::HardwareParamsNode> {
   }
 };
 
+
+// <bojian/DietCode>
+using ::tvm::runtime::Array;
+using ::tvm::runtime::Map;
+using ::tvm::runtime::String;
+using ::tvm::runtime::Downcast;
+using ::tvm::IntImm;
+using ::tvm::FloatImm;
+
+
 template <>
 struct Handler<::tvm::auto_scheduler::SearchTaskNode> {
   inline static void Write(dmlc::JSONWriter* writer,
@@ -178,6 +191,14 @@ struct Handler<::tvm::auto_scheduler::SearchTaskNode> {
       writer->WriteArrayItem(std::string(i));
     }
     writer->EndArray();
+
+    // <bojian/DietCode>
+    if (data.shape_vars != nullptr) {
+      CHECK(data.shape_freq != nullptr);
+      writer->WriteArrayItem(::tvm::SaveJSON(data.shape_vars.value()));
+      writer->WriteArrayItem(::tvm::SaveJSON(data.shape_freq.value()));
+    }
+
     writer->EndArray();
   }
   inline static void Read(dmlc::JSONReader* reader, ::tvm::auto_scheduler::SearchTaskNode* data) {
@@ -220,6 +241,18 @@ struct Handler<::tvm::auto_scheduler::SearchTaskNode> {
           }
           // Process the end of array
           s = reader->NextArrayItem();
+
+          // <bojian/DietCode>
+          if (s) {
+            reader->Read(&str_value);
+            data->shape_vars =
+                Downcast<Array<String>>(::tvm::LoadJSON(str_value));
+            ICHECK(s);
+            reader->Read(&str_value);
+            data->shape_freq =
+                Downcast<Map<Array<IntImm>, FloatImm>>(::tvm::LoadJSON(str_value));
+          }
+
         }
         ICHECK(!s);
       }

@@ -260,10 +260,20 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       double flops;
 
       if (result_batch[j]->error_no == 0) {
+
+        LOG(INFO) << "Successfully completed the measurement";
+
+
         flops = task->compute_dag->flop_ct / FloatArrayMean(result_batch[j]->costs);
         error_ct = 0;
         has_valid.insert(workload_key);
       } else {
+
+        // <bojian/DietCode>
+        LOG(FATAL) << "Error encountered during measurements: "
+                   << result_batch[j];
+
+
         flops = 0.0;
         error_ct++;
       }
