@@ -1415,37 +1415,85 @@ class InverseAffineIterMapTransformer {
   Map<Var, PrimExpr> operator()(const Array<IterSumExpr>& iter_map,
                                 const Array<PrimExpr>& outputs) {
     ICHECK(iter_map.size() == outputs.size());
+    std::vector<const IterMapExprNode*> reverse_topo_order = ReverseTopologyOrder(iter_map);
 
+    // initialize back propagation accumulator
+    for (const IterMapExprNode* node: reverse_topo_order) {
+      backprop_.Set(GetRef<IterMapExpr>(node), Integer(0));
+    }
     for (size_t i = 0; i < iter_map.size(); i++) {
-      Visit_(iter_map[i], outputs[i]);
+      backprop_.Set(iter_map[i], outputs[i]);
+    }
+
+    // run back propagation
+    for (const IterMapExprNode* node: reverse_topo_order) {
+      if (node->IsInstance<IterSumExprNode>()) {
+        Visit_(Downcast<IterSumExpr>(GetRef<IterMapExpr>(node)));
+      } else {
+        ICHECK(node->IsInstance<IterSplitExprNode>());
+        Visit_(Downcast<IterSplitExpr>(GetRef<IterMapExpr>(node)));
+      }
     }
     return std::move(inverse_);
   }
 
  private:
-  void Visit_(const IterSumExpr& iter_map_expr, const PrimExpr& output) {
-    PrimExpr input = output - iter_map_expr->base;
+  void Visit_(const IterSumExpr& iter_map_expr) {
+    PrimExpr input = backprop_.at(iter_map_expr) - iter_map_expr->base;
 
-    Array<IterSplitExpr> splits = FindFuse(iter_map_expr);
-    ICHECK(!splits.empty());
-
+    // Case 1: Propagate to the input node directly when the sum expression has only one components
     if (iter_map_expr->args.size() == 1) {
-      Visit_(iter_map_expr->args[0], input);
+      const auto& source = iter_map_expr->args[0];
+      backprop_.Set(source, backprop_.at(source) + input);
       return;
     }
 
+    // Case 2: If the sum expression has multiple components, match the fuse pattern and then split
+    // the sum expression to get correponding components.
+    Array<IterSplitExpr> splits = MatchFusePattern(iter_map_expr);
+    ICHECK(!splits.empty());
+
     for (const IterSplitExpr& split : splits) {
-      Visit_(split, floormod(floordiv(input, split->scale), split->extent));
+      backprop_.Set(split, backprop_.at(split) + floormod(floordiv(input, split->scale), split->extent));
     }
   }
 
-  void Visit_(const IterSplitExpr& iter_map_expr, const PrimExpr& output) {
-    PrimExpr input = output;
-    input = input * iter_map_expr->lower_factor;
 
+  std::vector<const IterMapExprNode*> ReverseTopologyOrder(const Array<IterSumExpr>& iter_map) {
+    std::vector<const IterMapExprNode*> reverse_topo_order;
+    std::unordered_map<IterMapExpr, bool, ObjectPtrHash, ObjectPtrEqual> visited;
+
+    std::function<void(const IterMapExpr&)> fvisit = [&](const IterMapExpr& expr) {
+      if (visited[expr]) {
+        return;
+      }
+      visited[expr] = true;
+      if (const auto* sum_expr = expr.as<IterSumExprNode>()) {
+        for (const IterSplitExpr& child : sum_expr->args) {
+          fvisit(child);
+        }
+      } else {
+        const auto* split_expr = expr.as<IterSplitExprNode>();
+        ICHECK(split_expr);
+        if (const auto* source = split_expr->source->source.as<IterMapExprNode>()) {
+          fvisit(GetRef<IterMapExpr>(source));
+        }
+      }
+      reverse_topo_order.push_back(expr.get());
+    };
+    for (const IterSumExpr& expr : iter_map) {
+      fvisit(expr);
+    }
+    std::reverse(reverse_topo_order.begin(), reverse_topo_order.end());
+    return reverse_topo_order;
+  }
+
+  void Visit_(const IterSplitExpr& iter_map_expr) {
+    PrimExpr input = backprop_.at(iter_map_expr) * iter_map_expr->lower_factor;
     const IterMark& source = iter_map_expr->source;
-    if (source->source.as<arith::IterSumExprNode>()) {
-      Visit_(Downcast<IterSumExpr>(source->source), input);
+    if (source->source.as<IterSumExprNode>()) {
+      IterSumExpr source_expr = Downcast<IterSumExpr>(source->source);
+      backprop_.Set(source_expr, backprop_.at(source_expr) + input);
     } else {
       Var source_var = Downcast<Var>(source->source);
       if (inverse_.count(source_var)) {
@@ -1456,7 +1504,7 @@ class InverseAffineIterMapTransformer {
     }
   }
 
-  Array<IterSplitExpr> FindFuse(const IterSumExpr sum_expr) {
+  Array<IterSplitExpr> MatchFusePattern(const IterSumExpr sum_expr) {
     IntImm base_scale(nullptr);
     size_t base_index = 0;
     for (size_t i = 0; i < sum_expr->args.size(); ++i) {
@@ -1486,7 +1534,8 @@ class InverseAffineIterMapTransformer {
   }
 
   Analyzer* analyzer_;
-  Map<Var, PrimExpr> inverse_;
+  Map<IterMapExpr, PrimExpr> backprop_;  // the accumulator of backpropgation
+  Map<Var, PrimExpr> inverse_;  // the result of inverse transformation
 };
 
 Map<Var, PrimExpr> InverseAffineIterMap(const Array<IterSumExpr>& iter_map,
