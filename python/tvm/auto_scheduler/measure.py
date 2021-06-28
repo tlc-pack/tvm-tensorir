@@ -232,6 +232,12 @@ def recover_measure_input(inp, rebuild_state=False):
         hardware_params=task.hardware_params,
         layout_rewrite_option=task.layout_rewrite_option,
         task_inputs=list(task.task_input_names),
+
+        # <bojian/DietCode>
+        shape_vars=task.shape_vars,
+        shape_freq=task.shape_freq,
+        skip_dyn_args_init=True
+
     )
 
     if rebuild_state:

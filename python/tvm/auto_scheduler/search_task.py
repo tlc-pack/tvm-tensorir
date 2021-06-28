@@ -430,6 +430,7 @@ class SearchTask(Object):
         # <bojian/DietCode>
         shape_vars=None,
         shape_freq=None,
+        skip_dyn_args_init=False,
 
         compute_dag=None,
         workload_key=None,
@@ -447,9 +448,10 @@ class SearchTask(Object):
         ), "Either a workload generation function or a workload key should be provided"
 
         # <bojian/DietCode>
-        if shape_vars is not None:
+        if shape_vars is not None and not skip_dyn_args_init:
+            print("Initializing arguments ...")
             args = _ffi_api.InitializeDynamicArgs(args, shape_vars, shape_freq)
-            print("Initialized Arguments: {}".format(args))
+            print("Initialized arguments: {}".format(args))
 
         if func is not None:
             workload_key = make_workload_key(func, args)
