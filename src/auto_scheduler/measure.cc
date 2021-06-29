@@ -273,8 +273,8 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
         LOG(WARNING) << "Error encountered during measurements: "
                      << result_batch[j] << " on state "
                      << input_batch[j]->state;
-        LOG(FATAL) << "Factorization scheme="
-                   << MatrixToString(input_batch[j]->state.GetFactorizationScheme());
+        LOG(WARNING) << "Factorization scheme="
+                     << MatrixToString(input_batch[j]->state.GetFactorizationScheme());
 
         flops = 0.0;
         error_ct++;

@@ -369,9 +369,9 @@ inline std::string OptionalArrayToString(const Array<Optional<T>>& Arr) {
 template<typename T>
 inline std::string MatrixToString(const Array<Array<T>>& Mat) {
   std::ostringstream strout;
-  strout << "[" << std::endl;
+  strout << "[\n";
   for (const Array<T>& Arr : Mat) {
-    strout << "  " << ArrayToString(Arr) << std::endl;
+    strout << "  " << ArrayToString(Arr) << "\n";
   }
   strout << "]";
   return strout.str();
@@ -380,9 +380,9 @@ inline std::string MatrixToString(const Array<Array<T>>& Mat) {
 template<typename K, typename V>
 inline std::string MapToString(const Map<K, V>& Map) {
   std::ostringstream strout;
-  strout << "{" << std::endl;
+  strout << "{\n";
   for (const std::pair<K, V>& kv : Map) {
-    strout << "  " << kv.first << " : " << kv.second << std::endl;
+    strout << "  " << kv.first << " : " << kv.second << "\n";
   }
   strout << "}";
   return strout.str();
