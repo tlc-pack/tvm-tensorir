@@ -364,16 +364,10 @@ Array<Array<PrimExpr>> State::GetFactorizationScheme() const {
     if (StrEndsWith(stage->op->name, ".local")) {
       for (const Iterator& iter : stage->iters) {
         if (StrEndsWith(iter->name, ".0")) {
-
-          // LOG(FATAL) << "Iterator=" << iter << " caught";
-          LOG(INFO) << "iter=" << iter;
-
           Array<PrimExpr> split_steps;
-          split_steps.push_back(iter->range->extent);
           std::vector<Iterator> iters_w_same_prefix =
               GatherAllItersWithSamePrefix(stage->iters, iter);
           for (const Iterator& iter_w_same_prefix : iters_w_same_prefix) {
-            LOG(INFO) << "iter_w_same_prefix=" << iter_w_same_prefix;
             split_steps.push_back(iter_w_same_prefix->range->extent);
           }
           factorization_scheme.push_back(split_steps);
@@ -381,9 +375,6 @@ Array<Array<PrimExpr>> State::GetFactorizationScheme() const {
       }
     }
   }
-
-  LOG(INFO) << "factorization_scheme.size()=" << factorization_scheme.size();
-
   return factorization_scheme;
 }
 
