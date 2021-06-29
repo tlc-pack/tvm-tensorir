@@ -20,7 +20,7 @@ from typing import List
 import numpy as np
 
 from . import _ffi_api
-from .schedule import Schedule
+from ..tir.schedule import Schedule
 
 
 def per_block_feature(sch: Schedule, max_num_buffer_access_features: int = 5) -> np.ndarray:

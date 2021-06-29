@@ -385,12 +385,12 @@ def matmul_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 def _check_serialization(sch: tir.Schedule, mod: Union[PrimFunc, IRModule]) -> tir.Schedule:
-    record = sch._trace.as_json()
+    record = sch.trace.as_json()
     new_sch = tir.Schedule(mod=mod, traced=True)
     Trace.apply_json_to_schedule(json=record, sch=new_sch)
     assert tvm.ir.structural_equal(new_sch.mod, sch.mod)
-    py_repr = "\n".join(sch._trace.as_python())
-    new_py_repr = "\n".join(new_sch._trace.as_python())
+    py_repr = "\n".join(sch.trace.as_python())
+    new_py_repr = "\n".join(new_sch.trace.as_python())
     assert py_repr == new_py_repr
     # print(py_repr)
     return new_sch
@@ -465,8 +465,8 @@ def test_traced_schedule_sample_compute_location():
         loop = sch.get_sref(loop)
         counter[str(loop)] += 1
         new_sch = _check_serialization(sch, mod=matmul)
-        old_decision = int(sch._trace.decisions[sch._trace.insts[-1]])
-        new_decision = int(new_sch._trace.decisions[new_sch._trace.insts[-1]])
+        old_decision = int(sch.trace.decisions[sch.trace.insts[-1]])
+        new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]])
         assert old_decision == new_decision
     assert len(counter) == 5
     assert str(tir.schedule.StmtSRef.root_mark()) in counter

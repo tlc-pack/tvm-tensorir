@@ -39,10 +39,10 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Union
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from ..runtime import NDArray, Device, ndarray
+from ..runtime import Device, NDArray, ndarray
+from ..tir.schedule import Schedule
 from . import _ffi_api
 from .measure_record import BuildResult, MeasureInput, MeasureResult
-from .schedule import Schedule
 from .utils import check_remote_servers, cpu_count
 
 if TYPE_CHECKING:
@@ -451,8 +451,8 @@ class ProgramTester:
         _, remote = request_remote(self.rpc_key, self.rpc_host, self.rpc_port)
         remote.upload(filename)
         func = remote.load_module(os.path.split(filename)[1])
-        ctx = remote.context(dev_type=self.target.kind.name, dev_id=0)
-        args = [ndarray.array(arg, ctx=ctx) for arg in args]
+        ctx = remote.device(dev_type=self.target.kind.name, dev_id=0)
+        args = [ndarray.array(arg, device=ctx) for arg in args]
         func(*args)
         args = [arg.asnumpy() for arg in args]
         return args

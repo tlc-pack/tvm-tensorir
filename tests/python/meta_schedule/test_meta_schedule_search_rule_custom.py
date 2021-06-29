@@ -23,12 +23,12 @@ from tvm import tir
 
 
 @ms.rule.register_rule("do_nothing")
-def do_nothing(_task: ms.SearchTask, sch: ms.Schedule, _block: ms.BlockRV):
+def do_nothing(_task: ms.SearchTask, sch: tir.Schedule, _block: ms.BlockRV):
     return sch
 
 
 @ms.rule.register_rule("do_mlt")
-def do_mlt(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV):
+def do_mlt(_task: ms.SearchTask, sch: tir.Schedule, block: ms.BlockRV):
     TILING_FORMAT = "SSRSRS"  # pylint: disable=invalid-name
     spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
     reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
@@ -52,7 +52,7 @@ def do_mlt(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV):
 
 def test_meta_schedule_rule_do_nothing():
     task = ms.SearchTask(workload=matmul)
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     args = do_nothing(task, sch, sch.get_block("matmul"))
     assert len(args) == 1
     assert sch.same_as(args[0])
@@ -60,7 +60,7 @@ def test_meta_schedule_rule_do_nothing():
 
 def test_meta_schedule_rule_do_mlt():
     task = ms.SearchTask(workload=matmul)
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     args = do_mlt(task, sch, sch.get_block("matmul"))
     assert len(args) == 1
     sch = args[0]
@@ -81,7 +81,7 @@ def test_meta_schedule_rule_composite_0():
         ],
     )
     task = ms.SearchTask(workload=matmul)
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     args = rule(task, sch, sch.get_block("matmul"))
     assert len(args) == 1
     sch = args[0]
@@ -102,7 +102,7 @@ def test_meta_schedule_rule_composite_1():
         ],
     )
     task = ms.SearchTask(workload=matmul)
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     args = rule(task, sch, sch.get_block("matmul"))
     assert len(args) == 1
     sch = args[0]

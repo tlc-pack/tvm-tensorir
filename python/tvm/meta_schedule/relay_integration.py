@@ -22,14 +22,17 @@ Integrate meta schedule into relay. It implements the following items:
 2. Get scheduled function from dispatcher context for compile_engine.
 """
 
-import tvm
-from .search import SearchTask
-from .dispatcher import DispatchContext
-from tvm.ir.transform import PassContext
-from tvm import meta_schedule as ms
-from tvm import autotvm, transform
-from . import _ffi_api
 import threading
+
+import tvm
+from tvm import autotvm
+from tvm import meta_schedule as ms
+from tvm import transform
+from tvm.ir.transform import PassContext
+
+from . import _ffi_api
+from .dispatcher import DispatchContext
+from .search import SearchTask
 
 
 @tvm._ffi.register_func("meta_schedule.relay_integration.get_func_from_dispatcher")
@@ -58,7 +61,7 @@ def get_func_from_dispatcher(func):
         if trace is None:
             return None
         space = DispatchContext.current.space
-        new_func = _ffi_api.ApplyTrace(trace, task, space)
+        new_func = _ffi_api.ApplyTrace(trace, task, space)  # pylint: disable=no-member
         return new_func
     else:
         env.add_func(func)

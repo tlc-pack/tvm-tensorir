@@ -149,8 +149,7 @@ class Schedule(Object):
         return _ffi_api_schedule.ScheduleGetState(self)  # pylint: disable=no-member
 
     @property
-    def _trace(self) -> Trace:
-        # TODO
+    def trace(self) -> Trace:
         return _ffi_api_schedule.ScheduleGetTrace(self)  # pylint: disable=no-member
 
     def copy(self, seed: int = -1) -> "Schedule":

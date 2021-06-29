@@ -53,16 +53,12 @@ SPACE = ms.space.PostOrderApply(
 
 
 def _fix_sampling_tile_size(
-    sch: ms.Schedule,
+    sch: tir.Schedule,
     func: tir.PrimFunc,
     possible_decisions: List[List[List[int]]],
     expected: List[tir.PrimFunc],
 ):
-    insts = [
-        inst
-        for inst in sch.trace.insts
-        if isinstance(inst.inst_attrs, ms.instruction.SamplePerfectTileAttrs)
-    ]
+    insts = [inst for inst in sch.trace.insts if inst.kind.name == "SamplePerfectTile"]
     for decisions in possible_decisions:
         if len(insts) != len(decisions):
             continue
@@ -72,8 +68,8 @@ def _fix_sampling_tile_size(
         }
         for inst, decision in zip(insts, decisions):
             new_decisions[inst] = decision
-        trace = ms.Trace(sch.trace.insts, new_decisions)
-        new_sch = ms.Schedule(func)
+        trace = tir.schedule.Trace(sch.trace.insts, new_decisions)
+        new_sch = tir.Schedule(func, traced=True)
         trace.apply(new_sch)
         results = [tvm.ir.structural_equal(new_sch.mod["main"], i) for i in expected]
         if sum(results) >= 1:
@@ -92,7 +88,7 @@ def _get_support(func: tir.PrimFunc, task_name: str):
     )
 
 
-def _debug(support: List[ms.Schedule]):
+def _debug(support: List[tir.Schedule]):
     for i, sch in enumerate(support):
         print(f"###### {i}")
         print(tvm.script.asscript(sch.mod["main"]))

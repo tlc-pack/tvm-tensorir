@@ -20,7 +20,7 @@ import te_workload
 import tvm
 import tir_tensor_intrin  # pylint: disable=unused-import
 from tvm import meta_schedule as ms
-from tvm import te
+from tvm import te, tir
 
 TARGET = tvm.target.Target("nvidia/geforce-rtx-2080-ti")
 
@@ -29,7 +29,7 @@ def test_integration_matmul():
     workload = te_workload.matmul_fp16(n=512, m=512, k=512)
     workload = te.create_prim_func(workload)
 
-    def schedule(sch: ms.Schedule):
+    def schedule(sch: tir.Schedule):
         block = sch.get_block("C")
         i, j, k = sch.get_loops(block)
         # Step 1. Rule-Auto-Tensorize
@@ -116,7 +116,7 @@ def test_integration_matmul():
         loop = sch.get_loops(block_write_c)[-2]
         sch.tensorize(loop, "wmma_store")
 
-    sch = ms.Schedule(func=workload, seed=1024)
+    sch = tir.Schedule(mod=workload, seed=1024, traced=True)
     schedule(sch)
     print(tvm.script.asscript(sch.mod))
 
@@ -142,7 +142,7 @@ def test_integration_conv2d_nchwc():
     # assert list(workload.shape) == [1, 12, 96, 96, 16]
     workload = te.create_prim_func(workload)
 
-    def schedule(sch: ms.Schedule):
+    def schedule(sch: tir.Schedule):
         block = sch.get_block("conv2d_nchwc")
         # pylint: disable=invalid-name
         n, c0, h, w, c1, rc, rh, rw = sch.get_loops(block)
@@ -219,7 +219,7 @@ def test_integration_conv2d_nchwc():
         # sch.tensorize(i_tc, "test.tensorcore.wmma")
         print(tvm.script.asscript(sch.mod))
 
-    sch = ms.Schedule(func=workload)
+    sch = tir.Schedule(mod=workload, traced=True)
     schedule(sch)
 
 
