@@ -74,6 +74,9 @@ HardwareParams HardwareParamsNode::GetDefaultHardwareParams(const Target& target
     device_api->GetAttr(dev, tvm::runtime::DeviceAttrKind::kMaxSharedMemoryPerBlock, &ret);
     int max_shared_memory_per_block = ret;
 
+    LOG(INFO) << "Maximum shared memory per block: "
+              << max_shared_memory_per_block;
+
     // There is no explicit local memory limition in CUDA runtime,
     // so we can use INT32_MAX to disalbe the check on local_memory.
     // <bojian/DietCode> Since the current bound on local memory is not used, we

@@ -446,6 +446,10 @@ class State : public ObjectRef {
    */
   TVM_DLL int rfactor(int stage_id, const Iterator& it, int factor_iter_id, const ComputeDAG& dag);
 
+
+  // <bojian/DietCode>
+  Array<Array<PrimExpr>> GetFactorizationScheme() const;
+
   TVM_DEFINE_OBJECT_REF_METHODS(State, ObjectRef, StateNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(StateNode);
 };

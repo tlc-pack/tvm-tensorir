@@ -354,6 +354,37 @@ int State::rfactor(int stage_id, const Iterator& it, int factor_iter_id, const C
   return step->ApplyToState(this, dag);
 }
 
+
+// <bojian/DietCode>
+using ::tvm::Downcast;
+
+Array<Array<PrimExpr>> State::GetFactorizationScheme() const {
+  Array<Array<PrimExpr>> factorization_scheme;
+
+  for (int stage_id = (*this)->stages.size() - 1; stage_id >= 0; --stage_id) {
+    const Stage& stage = (*this)->stages[stage_id];
+    if (StrEndsWith(stage->op->name, ".local")) {
+      for (const Iterator& iter : stage->iters) {
+        if (StrEndsWith(iter->name, ".0")) {
+
+          // LOG(FATAL) << "Iterator=" << iter << " caught";
+
+          Array<PrimExpr> split_steps;
+          split_steps.push_back(iter->range->extent);
+          std::vector<Iterator> iters_w_same_prefix =
+              GatherAllItersWithSamePrefix(stage->iters, iter);
+          for (const Iterator& iter_w_same_prefix : iters_w_same_prefix) {
+            split_steps.push_back(iter_w_same_prefix->range->extent);
+          }
+          factorization_scheme.push_back(split_steps);
+        }
+      }
+    }
+  }
+  return factorization_scheme;
+}
+
+
 // Print stage to ostream
 void PrintStage(std::ostream* os, int stage_id, const State& state, size_t base_indent,
                 bool delete_trivial_loop) {
