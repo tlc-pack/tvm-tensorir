@@ -44,6 +44,8 @@
 // <bojian/DietCode>
 #include <tvm/auto_scheduler/transform_step.h>
 #include <tvm/runtime/ndarray.h>
+#include <tvm/te/operation.h>
+#include <tvm/tir/expr_functor.h>
 
 #include <sstream>
 
@@ -419,6 +421,139 @@ class TopKDispatcher : public Dispatcher {
   virtual std::unordered_map<size_t, size_t>
   dispatch(const std::vector<float>& scores, const size_t num_states) override final;
 };
+
+
+// <bojian/DietCode> Migrated from compute_dag.cc.
+
+using namespace ::tvm::tir;
+
+// Estimate the number of float operations in an expression
+class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
+ public:
+  double EstimateFlop(const Array<te::Operation>& ops) {
+    double ret = 0;
+    for (const auto& op : ops) {
+      if (auto pop = op.as<te::ComputeOpNode>()) {
+        if (pop->attrs.count("FLOP")) {
+          // Use user-provided FLOP
+          auto pint = pop->attrs["FLOP"].as<IntImmNode>();
+
+          // <bojian/DietCode>
+          // ICHECK(pint != nullptr);
+          if (pint == nullptr) {
+            LOG(WARNING) << "pint=" << pint << " is NOT an integer";
+          } else {
+            ret += pint->value;
+          }
+          
+          // ret += pint->value;
+        } else {
+          // Estimate by parsing the compute body
+          double num_element = AxisLengthProd(pop->axis);
+          if (num_element == -1) {
+            fail_ = true;
+            break;
+          }
+          cur_type_code_ = pop->output_dtype(0).code();
+          double op_per_element = 0;
+          for (const auto& x : pop->body) {
+            op_per_element += VisitExpr(x);
+          }
+          ret += num_element * op_per_element;
+        }
+      } else if (op->IsInstance<te::PlaceholderOpNode>()) {
+        {}  // do nothing
+      } else {
+        LOG(FATAL) << "Invalid op type " << op;
+      }
+    }
+
+    return fail_ ? -1 : ret;
+  }
+
+  double VisitExpr_(const ReduceNode* op) final {
+    uint64_t num_iter = 1;
+    for (const auto& x : op->axis) {
+      if (auto imm = x->dom->extent.as<IntImmNode>()) {
+        num_iter *= imm->value;
+      } else {
+        fail_ = true;
+        num_iter = -1;
+      }
+    }
+    double body_flop = 0;
+    for (size_t i = 0; i < op->combiner->result.size(); ++i) {
+      body_flop += VisitExpr(op->combiner->result[i]);
+      body_flop += VisitExpr(op->source[i]);
+    }
+    return num_iter * body_flop;
+  }
+
+  double VisitExpr_(const FloatImmNode* op) final { return 0.0; }
+  double VisitExpr_(const IntImmNode* op) final { return 0.0; }
+  double VisitExpr_(const ProducerLoadNode* op) final { return 0.0; }
+
+  double VisitExpr_(const CastNode* op) final { return VisitExpr(op->value); }
+  double VisitExpr_(const VarNode* op) final { return 0.0; }
+
+  double VisitExpr_(const SelectNode* op) final {
+    return VisitExpr(op->condition) +
+           std::max(VisitExpr(op->true_value), VisitExpr(op->false_value));
+  }
+
+#define VisitBinary(Node)                                         \
+  double VisitExpr_(const Node* op) final {                       \
+    double base = op->dtype.code() == cur_type_code_ ? 1.0 : 0.0; \
+    return base + VisitExpr(op->a) + VisitExpr(op->b);            \
+  }
+
+#define VisitUnary(Node)                                          \
+  double VisitExpr_(const Node* op) final {                       \
+    double base = op->dtype.code() == cur_type_code_ ? 1.0 : 0.0; \
+    return base + VisitExpr(op->a);                               \
+  }
+
+  VisitBinary(AddNode);
+  VisitBinary(SubNode);
+  VisitBinary(MulNode);
+  VisitBinary(DivNode);
+  VisitBinary(ModNode);
+  VisitBinary(FloorDivNode);
+  VisitBinary(FloorModNode);
+  VisitBinary(MaxNode);
+  VisitBinary(MinNode);
+  VisitBinary(EQNode);
+  VisitBinary(NENode);
+  VisitBinary(LTNode);
+  VisitBinary(LENode);
+  VisitBinary(GTNode);
+  VisitBinary(GENode);
+  VisitBinary(AndNode);
+  VisitBinary(OrNode);
+  VisitUnary(NotNode);
+
+  // undefine macros to avoid potential conflicts
+#undef VisitBinary
+#undef VisitUnary
+
+  double VisitExpr_(const CallNode* op) final {
+    double ret = 0.0;
+    for (const auto& x : op->args) {
+      ret += VisitExpr(x);
+    }
+    return ret;
+  }
+
+  double VisitExprDefault_(const Object* op) final {
+    fail_ = true;
+    return -1.0;
+  }
+
+ private:
+  bool fail_{false};
+  int cur_type_code_;
+};
+
 
 }  // namespace auto_scheduler
 }  // namespace tvm

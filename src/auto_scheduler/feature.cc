@@ -1709,14 +1709,14 @@ static inline size_t floor_by(const size_t a, const size_t b) {
   return (a + b - 1) / b * b;
 }
 
-static void AdaptStateToWorkload(const SearchTask& task, const State& state,
-                                 const Array<String>& shape_vars,
-                                 const Array<IntImm>& shape_values,
-                                 const FloatImm& score,
-                                 float* const occupancy_penalty,
-                                 float* const padding_penalty,
-                                 float* const adapted_score
-                                 ) {
+void AdaptStateToWorkload(const SearchTask& task, const State& state,
+                          const Array<String>& shape_vars,
+                          const Array<IntImm>& shape_values,
+                          const float& score,
+                          float* const occupancy_penalty,
+                          float* const padding_penalty,
+                          float* const adapted_score
+                          ) {
   Map<String, IntImm> shape_var_value_map;
   CHECK(shape_vars.size() == shape_values.size());
   for (size_t i = 0; i < shape_vars.size(); ++i) {
@@ -1817,7 +1817,7 @@ static void AdaptStateToWorkload(const SearchTask& task, const State& state,
   }
 
   // temporarily assign the occupancy penalty to be 1.0
-  *adapted_score = score->value * (*occupancy_penalty) * (*padding_penalty);
+  *adapted_score = score * (*occupancy_penalty) * (*padding_penalty);
 }
 
 
@@ -1837,7 +1837,7 @@ Array<NDArray> AdaptStatesToWorkloads(
 
   enable_verbose_logging = true;
   AdaptStateToWorkload(task, states[0], task->shape_vars.value(),
-                       shape_values[0], scores[0], &occupancy_penalty[0],
+                       shape_values[0], scores[0]->value, &occupancy_penalty[0],
                        &padding_penalty[0], &adapted_scores[0]);
   enable_verbose_logging = false;
 
@@ -1848,7 +1848,7 @@ Array<NDArray> AdaptStatesToWorkloads(
       (const size_t i) {
         size_t wkl_id = i / states.size(), state_id = i % states.size();
         AdaptStateToWorkload(task, states[state_id], task->shape_vars.value(),
-                             shape_values[wkl_id], scores[state_id],
+                             shape_values[wkl_id], scores[state_id]->value,
                              &occupancy_penalty[i], &padding_penalty[i],
                              &adapted_scores[i]);
       }

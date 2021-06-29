@@ -260,8 +260,7 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
 
 
       // <bojian/DietCode>
-      LOG(FATAL) << "Measurements have been completed, obtained results="
-                 << ArrayToString(results);
+      LOG(FATAL) << "Measurements have been completed";
 
 
       // Check if reach the early stopping condition

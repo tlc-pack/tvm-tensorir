@@ -257,24 +257,53 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     // update current best state according to the new measure result
     for (size_t j = 0; j < input_batch.size(); ++j) {
       const String& workload_key = input_batch[j]->task->workload_key;
-      double flops;
+
+      // <bojian/DietCode>
+      // double flops
+      double flop_ct, flops;
+      te::Schedule synthetic_sch;
+      Array<te::Tensor> synthetic_tensors;
+      Array<Array<PrimExpr>> factorization_scheme =
+          input_batch[j]->state.GetFactorizationScheme();
 
       if (result_batch[j]->error_no == 0) {
 
-        LOG(INFO) << "Successfully completed the measurement";
+        // <bojian/DietCode> Estimate the FLOPs for synthetic workloads.
+        if (IsDynTask(task)) {
+          State state_mutable_copy = input_batch[j]->state;
+          std::tie(synthetic_sch, synthetic_tensors) =
+              task->compute_dag.GenerateSyntheticWorkloadAndApplySteps(
+                &state_mutable_copy, task->hardware_params);
+          Array<te::Operation> synthetic_sch_ops;
+          for (const te::Stage& stage : synthetic_sch->stages) {
+            synthetic_sch_ops.push_back(stage->op);
+          }
+          flop_ct = FlopEstimator().EstimateFlop(synthetic_sch_ops);
+        } else {
+          flop_ct = task->compute_dag->flop_ct;
+        }
+        // make sure that the value for FLOPS is well defined
+        CHECK(flop_ct != -1);
 
 
-        flops = task->compute_dag->flop_ct / FloatArrayMean(result_batch[j]->costs);
+        flops = // <bojian/DietCode>
+                // task->compute_dag->flop_ct
+                flop_ct
+                / FloatArrayMean(result_batch[j]->costs);
+
+        LOG(INFO) << "Successfully completed the measurement on state with "
+                     "factorization scheme=" << MatrixToString(factorization_scheme) << ", "
+                     "avg_cost=" << FloatArrayMean(result_batch[j]->costs) << " "
+                     "flop_ct=" << flop_ct << " => flops=" << flops;
+
         error_ct = 0;
         has_valid.insert(workload_key);
       } else {
 
         // <bojian/DietCode>
-        LOG(WARNING) << "Error encountered during measurements: "
-                     << result_batch[j] << " on state "
-                     << input_batch[j]->state;
-        LOG(WARNING) << "Factorization scheme="
-                     << MatrixToString(input_batch[j]->state.GetFactorizationScheme());
+        LOG(WARNING) << "Error encountered on state "
+                     << input_batch[j]->state << " with factorization scheme="
+                     << MatrixToString(factorization_scheme);
 
         flops = 0.0;
         error_ct++;
