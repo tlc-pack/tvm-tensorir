@@ -19,9 +19,9 @@ from typing import Callable, Optional, Union
 
 from tvm.tir import PrimFunc
 
+from ..tir import Schedule
 from . import _ffi_api
 from .measure import ProgramMeasurer
-from .schedule import Schedule
 from .search import SearchSpace, SearchStrategy, SearchTask
 
 

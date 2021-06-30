@@ -104,7 +104,7 @@ class ScheduleNode : public runtime::Object {
   /*! \return The internal state of scheduling */
   virtual ScheduleState state() const = 0;
   /*! \return The internally maintained trace of scheduling primitives applied */
-  virtual Trace trace() const = 0;
+  virtual Optional<Trace> trace() const = 0;
   /*!
    * \brief Returns a copy of the schedule, including both its state and its symbol table,
    * guaranteeing that
@@ -119,6 +119,8 @@ class ScheduleNode : public runtime::Object {
    * \param seed The new random seed, -1 if use device random, otherwise non-negative
    */
   virtual void Seed(int64_t seed = -1) = 0;
+  /*! \brief Fork the random state */
+  virtual int64_t ForkSeed() = 0;
 
  public:
   /******** Lookup/Remove random variables ********/
@@ -455,17 +457,17 @@ class ScheduleNode : public runtime::Object {
    * \brief Mark a loop
    * \param loop The loop to be marked
    * \param ann_key The annotation key
-   * \param ann_val The annotation value
+   * \param ann_val The annotation value, a string or a ExprRV
    */
-  virtual void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const PrimExpr& ann_val) = 0;
+  virtual void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) = 0;
   /*!
    * \brief Mark a block
    * \param block The block to be marked
    * \param ann_key The annotation key
-   * \param ann_val The annotation value
+   * \param ann_val The annotation value, a string  or a ExprRV
    */
   virtual void MarkBlock(const BlockRV& block_rv, const String& ann_key,
-                         const PrimExpr& ann_val) = 0;
+                         const ObjectRef& ann_val) = 0;
   /*!
    * \brief Add a pragma annotation to a specific loop
    * \param loop_rv The loop to be annotated

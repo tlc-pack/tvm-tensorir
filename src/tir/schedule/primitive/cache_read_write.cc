@@ -635,9 +635,9 @@ struct CacheReadTraits : public UnpackedInstTraits<CacheReadTraits> {
                                  String storage_scope) {
     PythonAPICall py("cache_read");
     py.Input("block", block);
-    py.Attr("i", i->value);
-    py.Attr("storage_scope", storage_scope);
-    py.Output(outputs[0]);
+    py.Input("i", i->value);
+    py.Input("storage_scope", storage_scope);
+    py.SingleOutput(outputs);
     return py.Str();
   }
 
@@ -662,9 +662,9 @@ struct CacheWriteTraits : public UnpackedInstTraits<CacheWriteTraits> {
                                  String storage_scope) {
     PythonAPICall py("cache_write");
     py.Input("block", block);
-    py.Attr("i", i->value);
-    py.Attr("storage_scope", storage_scope);
-    py.Output(outputs[0]);
+    py.Input("i", i->value);
+    py.Input("storage_scope", storage_scope);
+    py.SingleOutput(outputs);
     return py.Str();
   }
 

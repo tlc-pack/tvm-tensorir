@@ -19,9 +19,9 @@ from typing import Callable, List, Optional
 
 from tvm._ffi import register_object
 
+from ..tir.schedule import Schedule
 from . import _ffi_api
 from .postproc import Postproc
-from .schedule import Schedule
 from .search import SearchSpace
 from .search_rule import SearchRule
 

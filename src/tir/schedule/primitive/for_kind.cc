@@ -546,7 +546,7 @@ struct BindTraits : public UnpackedInstTraits<BindTraits> {
   static String UnpackedAsPython(Array<String> outputs, String loop_rv, String thread) {
     PythonAPICall py("bind");
     py.Input("loop", loop_rv);
-    py.Attr("thread", thread);
+    py.Input("thread", thread);
     return py.Str();
   }
 
@@ -593,8 +593,8 @@ struct SetScopeTraits : public UnpackedInstTraits<SetScopeTraits> {
                                  String storage_scope) {
     PythonAPICall py("set_scope");
     py.Input("block", block_rv);
-    py.Attr("i", i->value);
-    py.Attr("storage_scope", storage_scope);
+    py.Input("i", i->value);
+    py.Input("storage_scope", storage_scope);
     return py.Str();
   }
 
@@ -620,10 +620,10 @@ struct StorageAlignTraits : public UnpackedInstTraits<StorageAlignTraits> {
                                  Integer axis, Integer factor, Integer offset) {
     PythonAPICall py("storage_align");
     py.Input("block", block_rv);
-    py.Attr("buffer_index", buffer_index->value);
-    py.Attr("axis", axis->value);
-    py.Attr("factor", factor->value);
-    py.Attr("offset", offset->value);
+    py.Input("buffer_index", buffer_index->value);
+    py.Input("axis", axis->value);
+    py.Input("factor", factor->value);
+    py.Input("offset", offset->value);
     return py.Str();
   }
 

@@ -19,13 +19,13 @@ from typing import Dict, List, Optional
 
 from tvm._ffi import register_object
 
+from ..tir.schedule import Trace
 from . import _ffi_api
 from .cost_model import CostModel
 from .measure import ProgramMeasurer
 from .measure_record import MeasureResult
 from .mutator import Mutator
 from .search import SearchSpace, SearchStrategy, SearchTask
-from .trace import Trace
 from .utils import cpu_count
 
 

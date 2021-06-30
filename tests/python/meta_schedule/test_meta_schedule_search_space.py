@@ -19,10 +19,11 @@
 
 from tir_workload import matmul
 from tvm import meta_schedule as ms
+from tvm import tir
 
 
 def test_meta_schedule_search_space_schedule_fn():
-    def schedule_matmul(sch: ms.Schedule):
+    def schedule_matmul(sch: tir.Schedule):
         block = sch.get_block("matmul")
         i, j, k = sch.get_loops(block=block)
         i_tiles = sch.sample_perfect_tile(i, n=4)
@@ -47,7 +48,7 @@ def test_meta_schedule_search_space_schedule_fn():
 
 def test_meta_schedule_search_space_post_order_apply():
     @ms.rule.register_rule("do_mlt")
-    def do_mlt(_task, sch: ms.Schedule, block: ms.BlockRV):
+    def do_mlt(_task, sch: tir.Schedule, block: ms.BlockRV):
         TILING_FORMAT = "SSRSRS"  # pylint: disable=invalid-name
         spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
         reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
