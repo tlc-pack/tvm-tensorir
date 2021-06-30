@@ -605,7 +605,7 @@ struct ComputeAtTraits : public UnpackedInstTraits<ComputeAtTraits> {
     PythonAPICall py("compute_at");
     py.Input("block", block_rv);
     py.Input("loop", loop_rv);
-    py.Attr("preserve_unit_loop", preserve_unit_loop.operator bool());
+    py.Input("preserve_unit_loop", preserve_unit_loop.operator bool());
     return py.Str();
   }
 
@@ -631,7 +631,7 @@ struct ReverseComputeAtTraits : public UnpackedInstTraits<ReverseComputeAtTraits
     PythonAPICall py("reverse_compute_at");
     py.Input("block", block_rv);
     py.Input("loop", loop_rv);
-    py.Attr("preserve_unit_loop", preserve_unit_loop.operator bool());
+    py.Input("preserve_unit_loop", preserve_unit_loop.operator bool());
     return py.Str();
   }
 

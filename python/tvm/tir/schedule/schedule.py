@@ -169,6 +169,7 @@ class Schedule(Object):
 
     def seed(self, seed: int) -> None:
         """Seed the randomness
+
         Parameters
         ----------
         seed : int
@@ -178,10 +179,12 @@ class Schedule(Object):
 
     def show(self, rand_var: RAND_VAR_TYPE) -> str:
         """Returns a string representation of the value that the random variable evaluates to
+
         Parameters
         ----------
         rand_var : Union[ExprRV, BlockRV, LoopRV]
             The random variable to be evaluated
+
         Returns
         ----------
         str_repr : str
@@ -201,10 +204,12 @@ class Schedule(Object):
         - the corresponding integer that a ExprRV evaluates to;
         - the corresponding Block that a block sref points to;
         - the corresponding For that a loop sref points to;
+
         Parameters
         ----------
         rand_var_or_sref : Union[ExprRV, BlockRV, LoopRV, StmtSRef]
             The random variable / sref to be evaluated
+
         Returns
         ----------
         result : Optional[Union[int, Block, For]]
@@ -223,10 +228,12 @@ class Schedule(Object):
         2) BlockRV
         3) Block
         4) For
+
         Parameters
         ----------
         rand_var_or_stmt : Union[BlockRV, LoopRV, Block, For]
             The random variable / sref to be evaluated
+
         Returns
         ----------
         result : Optional[StmtSRef]
@@ -238,6 +245,7 @@ class Schedule(Object):
 
     def remove_rv(self, rand_var: RAND_VAR_TYPE) -> None:
         """Remove a random variable from the symbol table
+
         Parameters
         ----------
         rand_var : Union[BlockRV, LoopRV, ExprRV]
@@ -254,12 +262,14 @@ class Schedule(Object):
         func_name: str = "main",
     ) -> BlockRV:
         """Retrieve a block in a specific function with its name
+
         Parameters
         ----------
         name : str
             The name of the block
         func_name : str = "main"
             The name of the function
+
         Returns
         ----------
         block : BlockRV
@@ -274,10 +284,12 @@ class Schedule(Object):
 
     def get_loops(self, block: BlockRV) -> List[LoopRV]:
         """Get the parent loops of the block in its scope, from outer to inner
+
         Parameters
         ----------
         block : BlockRV
             The query block
+
         Returns
         ----------
         loops : List[LoopRV]
@@ -479,6 +491,7 @@ class Schedule(Object):
         ann_val: str,
     ) -> None:
         """Mark a range of loops with the specific mark
+
         Parameters
         ----------
         loop: LoopRV
@@ -503,6 +516,7 @@ class Schedule(Object):
         ann_val: ExprRV,
     ) -> None:
         """Mark a block
+
         Parameters
         ----------
         block : BlockRV

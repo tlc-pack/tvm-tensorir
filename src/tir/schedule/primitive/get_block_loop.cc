@@ -121,9 +121,9 @@ struct GetBlockTraits : public UnpackedInstTraits<GetBlockTraits> {
 
   static String UnpackedAsPython(Array<String> outputs, String name, String func_name) {
     PythonAPICall py("get_block");
-    py.Attr("name", name);
-    py.Attr("func_name", func_name);
-    py.Output(outputs[0]);
+    py.Input("name", name);
+    py.Input("func_name", func_name);
+    py.SingleOutput(outputs);
     return py.Str();
   }
 
@@ -146,7 +146,7 @@ struct GetLoopsTraits : public UnpackedInstTraits<GetLoopsTraits> {
   static String UnpackedAsPython(Array<String> outputs, String block_rv) {
     PythonAPICall py("get_loops");
     py.Input("block", block_rv);
-    py.Outputs(outputs);
+    py.OutputList(outputs);
     return py.Str();
   }
 
@@ -175,8 +175,8 @@ struct GetChildBlocksTraits : public UnpackedInstTraits<GetChildBlocksTraits> {
 
   static String UnpackedAsPython(Array<String> outputs, String block_or_loop_rv) {
     PythonAPICall py("get_child_blocks");
-    py.Input("block_or_loop", block_or_loop_rv);
-    py.Outputs(outputs);
+    py.Input("", block_or_loop_rv);
+    py.OutputList(outputs);
     return py.Str();
   }
 
@@ -199,7 +199,7 @@ struct GetProducersTraits : public UnpackedInstTraits<GetProducersTraits> {
   static String UnpackedAsPython(Array<String> outputs, String block_rv) {
     PythonAPICall py("get_producers");
     py.Input("block", block_rv);
-    py.Outputs(outputs);
+    py.OutputList(outputs);
     return py.Str();
   }
 
@@ -222,7 +222,7 @@ struct GetConsumersTraits : public UnpackedInstTraits<GetConsumersTraits> {
   static String UnpackedAsPython(Array<String> outputs, String block_rv) {
     PythonAPICall py("get_consumers");
     py.Input("block", block_rv);
-    py.Outputs(outputs);
+    py.OutputList(outputs);
     return py.Str();
   }
 

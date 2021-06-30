@@ -335,7 +335,7 @@ struct FuseTraits : public UnpackedInstTraits<FuseTraits> {
     for (const String& loop_rv : loop_rvs) {
       py.Input("", loop_rv);
     }
-    py.Output(outputs[0]);
+    py.SingleOutput(outputs);
     return py.Str();
   }
 
@@ -367,11 +367,11 @@ struct SplitTraits : public UnpackedInstTraits<SplitTraits> {
     return sch->Split(loop_rv, factors);
   }
 
-  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Array<String> factors) {
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Array<ObjectRef> factors) {
     PythonAPICall py("split");
     py.Input("loop", loop_rv);
-    py.InputList("factors", factors);
-    py.Outputs(outputs);
+    py.Input("factors", factors);
+    py.OutputList(outputs);
     return py.Str();
   }
 

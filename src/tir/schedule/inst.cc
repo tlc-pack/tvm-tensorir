@@ -55,54 +55,76 @@ InstKindRegEntry& InstKindRegEntry::RegisterOrGet(const String& name) {
 
 /********** PythonAPICall **********/
 
+void AsPythonString(const ObjectRef& obj, std::ostringstream* _os) {
+  std::ostringstream& os = *_os;
+  if (const auto* str = obj.as<runtime::StringObj>()) {
+    os << str->data;
+  } else if (const auto* int_imm = obj.as<IntImmNode>()) {
+    os << int_imm->value;
+  } else if (const auto* float_imm = obj.as<FloatImmNode>()) {
+    os.precision(17);
+    os << float_imm->value;
+  } else if (const auto* array = obj.as<ArrayNode>()) {
+    os << '[';
+    bool is_first = true;
+    for (const ObjectRef& e : *array) {
+      if (is_first) {
+        is_first = false;
+      } else {
+        os << ", ";
+      }
+      AsPythonString(e, _os);
+    }
+    os << ']';
+  } else {
+    LOG(FATAL) << "ValueError: Cannot translate type '" << obj->GetTypeKey()
+               << "' to python. Its value is: " << obj;
+    throw;
+  }
+}
+
+void PythonAPICall::Input(String arg_name, int arg) {
+  arg_names_.emplace_back(std::move(arg_name));
+  args_.push_back(std::to_string(arg));
+}
+
+void PythonAPICall::Input(String arg_name, int64_t arg) {
+  arg_names_.emplace_back(std::move(arg_name));
+  args_.push_back(std::to_string(arg));
+}
+
+void PythonAPICall::Input(String arg_name, double arg) {
+  arg_names_.emplace_back(std::move(arg_name));
+  std::ostringstream os;
+  os.precision(17);
+  os << arg;
+  args_.push_back(os.str());
+}
+
 void PythonAPICall::Input(String arg_name, String arg) {
   arg_names_.emplace_back(std::move(arg_name));
   args_.emplace_back(std::move(arg));
 }
 
-void PythonAPICall::InputList(String arg_name, const Array<String>& arg) {
+void PythonAPICall::Input(String arg_name, ObjectRef arg) {
   arg_names_.emplace_back(std::move(arg_name));
   std::ostringstream os;
-  os << '[';
-  for (int i = 0, n = arg.size(); i < n; ++i) {
-    if (i > 0) {
-      os << ", ";
-    }
-    os << arg[i]->data;
-  }
-  os << ']';
+  AsPythonString(arg, &os);
   args_.push_back(os.str());
 }
 
-void PythonAPICall::Attr(String arg_name, int arg) {
-  arg_names_.emplace_back(std::move(arg_name));
-  args_.push_back(std::to_string(arg));
-}
-
-void PythonAPICall::Attr(String arg_name, int64_t arg) {
-  arg_names_.emplace_back(std::move(arg_name));
-  args_.push_back(std::to_string(arg));
-}
-
-void PythonAPICall::Attr(String arg_name, const ObjectRef& arg) {
-  arg_names_.emplace_back(std::move(arg_name));
-  std::ostringstream os;
-  os << arg;
-  args_.push_back(os.str());
-}
-
-void PythonAPICall::Decision(const Optional<ObjectRef>& decision) {
+void PythonAPICall::Decision(ObjectRef decision) {
   if (decision.defined()) {
-    arg_names_.push_back("decision");
-    std::ostringstream os;
-    os << decision;
-    args_.push_back(os.str());
+    this->Input("decision", decision);
   }
 }
 
-void PythonAPICall::Output(String single_output) { this->output_ = std::move(single_output); }
+void PythonAPICall::SingleOutput(Array<String> unit_array) {
+  ICHECK_EQ(unit_array.size(), 1);
+  this->output_ = unit_array[0];
+}
 
-void PythonAPICall::Outputs(const Array<String>& outputs) {
+void PythonAPICall::OutputList(Array<String> outputs) {
   if (outputs.empty()) {
     return;
   }

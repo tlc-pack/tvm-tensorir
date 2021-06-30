@@ -54,7 +54,7 @@ struct PragmaTraits : public UnpackedInstTraits<PragmaTraits> {
                                  String pragma_type) {
     PythonAPICall py("pragma");
     py.Input("loop", loop_rv);
-    py.Attr("pragma_type", pragma_type);
+    py.Input("pragma_type", pragma_type);
     py.Input("pragma_value", pragma_value);
     return py.Str();
   }
@@ -80,7 +80,7 @@ struct MarkLoopTraits : public UnpackedInstTraits<MarkLoopTraits> {
                                  String ann_key) {
     PythonAPICall py("mark_loop");
     py.Input("loop", loop_rv);
-    py.Attr("ann_key", ann_key);
+    py.Input("ann_key", ann_key);
     if (const auto* int_imm = ann_val.as<IntImmNode>()) {
       py.Input("ann_val", std::to_string(int_imm->value));
     } else if (const auto* str_imm = ann_val.as<StringObj>()) {
@@ -117,7 +117,7 @@ struct MarkBlockTraits : public UnpackedInstTraits<MarkBlockTraits> {
                                  String ann_key) {
     PythonAPICall py("mark_block");
     py.Input("block", block_rv);
-    py.Attr("ann_key", ann_key);
+    py.Input("ann_key", ann_key);
     if (const auto* int_imm = ann_val.as<IntImmNode>()) {
       py.Input("ann_val", std::to_string(int_imm->value));
     } else if (const auto* str_imm = ann_val.as<StringObj>()) {

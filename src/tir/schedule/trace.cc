@@ -286,9 +286,18 @@ Array<String> TraceNode::AsPython() const {
   Array<String> py_trace;
   py_trace.reserve(this->insts.size());
   for (const Inst& inst : this->insts) {
+    Array<ObjectRef> attrs;
+    attrs.reserve(inst->attrs.size());
+    for (const ObjectRef& obj : inst->attrs) {
+      if (const auto* str = obj.as<StringObj>()) {
+        attrs.push_back(String('"' + std::string(str->data) + '"'));
+      } else {
+        attrs.push_back(obj);
+      }
+    }
     py_trace.push_back(
         inst->kind->f_as_python(/*inputs=*/TranslateInputRVs(inst->inputs, rv_names),
-                                /*attrs=*/inst->attrs,
+                                /*attrs=*/attrs,
                                 /*decision=*/this->decisions.Get(inst),
                                 /*outputs=*/TranslateAddOutputRVs(inst->outputs, &rv_names)));
   }
