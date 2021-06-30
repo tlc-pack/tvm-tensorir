@@ -26,6 +26,7 @@ from tvm.tir import Block, For, IntImm, PrimFunc, IterVar, TensorIntrin
 
 from . import _ffi_api_schedule
 from .state import ScheduleState, StmtSRef
+from .trace import Trace
 
 
 @register_error
@@ -72,6 +73,7 @@ class Schedule(Object):
         seed: Optional[int] = None,
         debug_mode: Union[bool, int] = False,
         error_render_level: str = "detail",
+        traced: bool = False,
     ):
         """Construct a concrete TensorIR schedule from an IRModule or a PrimFunc
 
@@ -82,11 +84,15 @@ class Schedule(Object):
         debug_mode : Union[bool, int]
             Do extra correctness checking after the class creation and each time
             scheduling primitive
+        seed : Optional[int] = None
+            The seed for the random number generator
         error_render_level : str = "detail"
             The level of error rendering. Choices: "detail", "fast", "none".
             "detail": Render a detailed error message, with the TIR and error locations printed
             "fast: Show a simple error message without rendering or string manipulation
             "none": Do not show any error message.
+        traced : bool = False
+            Whether to create a traced schedule
 
         Note
         ----------
@@ -117,8 +123,13 @@ class Schedule(Object):
                 + f"{error_render_level}"
             )
         error_render_level = Schedule.ERROR_RENDER_LEVEL.get(error_render_level)
+        # preprocess `traced`
+        if traced:
+            f_constructor = _ffi_api_schedule.TracedSchedule  # pylint: disable=no-member
+        else:
+            f_constructor = _ffi_api_schedule.ConcreteSchedule  # pylint: disable=no-member
         self.__init_handle_by_constructor__(
-            _ffi_api_schedule.ConcreteSchedule,  # pylint: disable=no-member
+            f_constructor,
             mod,
             seed,
             debug_mode,
@@ -137,27 +148,28 @@ class Schedule(Object):
         """Returns the ScheduleState in the current schedule class"""
         return _ffi_api_schedule.ScheduleGetState(self)  # pylint: disable=no-member
 
-    # TODO
-    # @property
-    # def trace(self) -> "Trace":
-    #     return _ffi_api_schedule.ScheduleGetTrace(self)  # pylint: disable=no-member
+    @property
+    def trace(self) -> Optional[Trace]:
+        return _ffi_api_schedule.ScheduleGetTrace(self)  # pylint: disable=no-member
 
-    def copy(self) -> "Schedule":
+    def copy(self, seed: int = -1) -> "Schedule":
         """Returns a copy of the schedule, including both the state and the symbol table,
         * guaranteeing that
         * 1) SRef tree is completely reconstructed;
         * 2) The IRModule being scheduled is untouched;
         * 3) All the random variables are valid in the copy, pointing to the correpsonding sref
         * reconstructed
+
         Returns
         -------
         copy : Schedule
             A new copy of the schedule
         """
-        return _ffi_api_schedule.ScheduleCopy(self)  # pylint: disable=no-member
+        return _ffi_api_schedule.ScheduleCopy(self, seed)  # pylint: disable=no-member
 
     def seed(self, seed: int) -> None:
         """Seed the randomness
+
         Parameters
         ----------
         seed : int
@@ -167,10 +179,12 @@ class Schedule(Object):
 
     def show(self, rand_var: RAND_VAR_TYPE) -> str:
         """Returns a string representation of the value that the random variable evaluates to
+
         Parameters
         ----------
         rand_var : Union[ExprRV, BlockRV, LoopRV]
             The random variable to be evaluated
+
         Returns
         ----------
         str_repr : str
@@ -190,10 +204,12 @@ class Schedule(Object):
         - the corresponding integer that a ExprRV evaluates to;
         - the corresponding Block that a block sref points to;
         - the corresponding For that a loop sref points to;
+
         Parameters
         ----------
         rand_var_or_sref : Union[ExprRV, BlockRV, LoopRV, StmtSRef]
             The random variable / sref to be evaluated
+
         Returns
         ----------
         result : Optional[Union[int, Block, For]]
@@ -212,10 +228,12 @@ class Schedule(Object):
         2) BlockRV
         3) Block
         4) For
+
         Parameters
         ----------
         rand_var_or_stmt : Union[BlockRV, LoopRV, Block, For]
             The random variable / sref to be evaluated
+
         Returns
         ----------
         result : Optional[StmtSRef]
@@ -227,6 +245,7 @@ class Schedule(Object):
 
     def remove_rv(self, rand_var: RAND_VAR_TYPE) -> None:
         """Remove a random variable from the symbol table
+
         Parameters
         ----------
         rand_var : Union[BlockRV, LoopRV, ExprRV]
@@ -243,12 +262,14 @@ class Schedule(Object):
         func_name: str = "main",
     ) -> BlockRV:
         """Retrieve a block in a specific function with its name
+
         Parameters
         ----------
         name : str
             The name of the block
         func_name : str = "main"
             The name of the function
+
         Returns
         ----------
         block : BlockRV
@@ -263,10 +284,12 @@ class Schedule(Object):
 
     def get_loops(self, block: BlockRV) -> List[LoopRV]:
         """Get the parent loops of the block in its scope, from outer to inner
+
         Parameters
         ----------
         block : BlockRV
             The query block
+
         Returns
         ----------
         loops : List[LoopRV]
@@ -468,6 +491,7 @@ class Schedule(Object):
         ann_val: str,
     ) -> None:
         """Mark a range of loops with the specific mark
+
         Parameters
         ----------
         loop: LoopRV
@@ -492,6 +516,7 @@ class Schedule(Object):
         ann_val: ExprRV,
     ) -> None:
         """Mark a block
+
         Parameters
         ----------
         block : BlockRV
@@ -501,6 +526,10 @@ class Schedule(Object):
         ann_val : ExprRV
             The annotation value
         """
+        if isinstance(ann_val, str):
+            ann_val = String(ann_val)
+        elif isinstance(ann_val, int):
+            ann_val = IntImm("int64", ann_val)
         _ffi_api_schedule.ScheduleMarkBlock(  # pylint: disable=no-member
             self, block, ann_key, ann_val
         )
@@ -514,3 +543,8 @@ class Schedule(Object):
 @_register_object("tir.ConcreteSchedule")
 class ConcreteSchedule(Schedule):
     """A concrete schedule class of TensorIR. Do not use directly, use tvm.tir.Schedule instead."""
+
+
+@_register_object("tir.TracedSchedule")
+class TracedSchedule(Schedule):
+    """A traced schedule class of TensorIR. Do not use directly, use tvm.tir.Schedule instead."""

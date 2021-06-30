@@ -64,12 +64,10 @@ class ConcreteScheduleNode : public ScheduleNode {
 
  public:
   ScheduleState state() const final { return state_; }
-  Trace trace() const override {
-    LOG(FATAL) << "ValueError: ConcreteSchedule is not traced. Please use TracedSchedule instead";
-    throw;
-  }
+  Optional<Trace> trace() const override { return NullOpt; }
   Schedule Copy(int64_t new_seed = -1) const override;
   void Seed(int64_t new_seed = -1) final { this->sampler_.Seed(new_seed); }
+  int64_t ForkSeed() final { return this->sampler_.ForkSeed(); }
 
  public:
   /******** Lookup random variables ********/
@@ -144,8 +142,8 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   /******** Schedule: Annotation ********/
 
-  void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const PrimExpr& ann_val) override;
-  void MarkBlock(const BlockRV& block_rv, const String& ann_key, const PrimExpr& ann_val) override;
+  void MarkLoop(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
+  void MarkBlock(const BlockRV& block_rv, const String& ann_key, const ObjectRef& ann_val) override;
   void Pragma(const LoopRV& loop_rv, const String& pragma_type,
               const ExprRV& pragma_value) override;
 

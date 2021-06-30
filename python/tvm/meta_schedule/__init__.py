@@ -16,7 +16,7 @@
 # under the License.
 """ Meta Schedule """
 from ..tir.schedule import RAND_VAR_TYPE, BlockRV, ExprRV, LoopRV
-from . import analysis, feature, instruction, mutator
+from . import analysis, feature, mutator
 from . import search_rule as rule
 from . import space, strategy
 from .auto_tune import autotune
@@ -29,9 +29,7 @@ from .measure import (
     RecordToFile,
     RPCRunner,
 )
-from .schedule import Schedule
 from .search import SearchSpace, SearchStrategy, SearchTask
-from .trace import Trace
 from .xgb_model import XGBModel
 from .dispatcher import DispatchContext, ApplyHistoryBest
 from .relay_integration import is_meta_schedule_enabled, extract_tasks

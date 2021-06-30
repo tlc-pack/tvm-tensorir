@@ -106,10 +106,10 @@ class ApplyHistoryBest(DispatchContext):
             records = str(records)
 
         self.space = space
-        self.database = _ffi_api.GetInMemoryDB(records)
+        self.database = _ffi_api.GetInMemoryDB(records)  # pylint: disable=no-member
 
     def _query_inside(self, task):
-        return _ffi_api.GetBest(self.database, task)
+        return _ffi_api.GetBest(self.database, task)  # pylint: disable=no-member
 
 
 class FallbackContext(DispatchContext):

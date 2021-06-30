@@ -56,15 +56,14 @@ class MutatorTileSize {
    * \param trace The trace from which to find the instructions
    * \return All the candidate instructions
    */
-  std::vector<Instruction> FindCandidates(const Trace& trace) {
-    std::vector<Instruction> candidates;
+  std::vector<Inst> FindCandidates(const Trace& trace) {
+    static InstKind inst_sample_perfect_tile = InstKind::Get("SamplePerfectTile");
+    std::vector<Inst> candidates;
     candidates.reserve(trace->decisions.size());
     for (const auto& kv : trace->decisions) {
-      const Instruction& inst = kv.first;
-      if (const auto* attrs = inst->inst_attrs.as<SamplePerfectTileAttrs>()) {
-        if (attrs->n <= 1) {
-          continue;
-        }
+      const Inst& inst = kv.first;
+      if (inst->kind.same_as(inst_sample_perfect_tile) &&
+          Downcast<Integer>(inst->attrs[0])->value > 1) {
         std::vector<int> tiles = CastDecision(kv.second);
         int64_t prod = 1;
         for (int item : tiles) {
@@ -80,11 +79,11 @@ class MutatorTileSize {
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
     // Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
-    std::vector<Instruction> candidates = FindCandidates(trace);
+    std::vector<Inst> candidates = FindCandidates(trace);
     if (candidates.empty()) {
       return NullOpt;
     }
-    const Instruction& inst = candidates[sampler->SampleInt(0, candidates.size())];
+    const Inst& inst = candidates[sampler->SampleInt(0, candidates.size())];
     std::vector<int> tiles = CastDecision(trace->decisions.at(inst));
     int n_splits = tiles.size();
     // Choose two loops
@@ -123,7 +122,7 @@ class MutatorTileSize {
     } else {
       // Case 2. y is the innermost loop
       std::vector<int> len_y_space;
-      int limit = inst->inst_attrs.as<SamplePerfectTileAttrs>()->max_innermost_factor;
+      int limit = Downcast<Integer>(inst->attrs[1])->value;
       int prod = tiles[x] * tiles[y];
       for (len_y = 1; len_y <= limit; ++len_y) {
         if (len_y != tiles[y] && prod % len_y == 0) {
@@ -156,11 +155,11 @@ class MutatorComputeLocation {
  public:
   struct Candidate {
     /*! \brief The SampleComputeLocation instruction */
-    Instruction inst;
+    Inst inst;
     /*! \brief The candidate compute locations */
     std::vector<int> locs;
 
-    explicit Candidate(Instruction inst, std::vector<int> locs)
+    explicit Candidate(Inst inst, std::vector<int> locs)
         : inst(std::move(inst)), locs(std::move(locs)) {}
   };
 
@@ -171,13 +170,17 @@ class MutatorComputeLocation {
    * \return All the candidate instructions together with the candidate compute locations
    */
   std::vector<Candidate> FindCandidates(const Trace& trace, const tir::PrimFunc& workload) {
+    static InstKind inst_sample_compute_location = InstKind::Get("SampleComputeLocation");
+    Schedule sch = Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), workload}}),
+                                    /*seed=*/-1,
+                                    /*debug_mode=*/false,
+                                    /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
     std::vector<Candidate> candidates;
-    Schedule sch(workload);
-    auto f_provide_decision = [&trace, &candidates, &sch](
-                                  const Instruction& inst,
-                                  const Array<Optional<ObjectRef>>& inputs) -> Optional<ObjectRef> {
-      Optional<ObjectRef> decision = trace->decisions.Get(inst);
-      if (inst->inst_attrs->IsInstance<SampleComputeLocationAttrs>()) {
+    auto f_provide_decision = [&](const Inst& inst,
+                                  const Array<ObjectRef>& inputs,  //
+                                  const Array<ObjectRef>& attrs,
+                                  const ObjectRef& decision) -> ObjectRef {
+      if (inst->kind.same_as(inst_sample_compute_location)) {
         // The decision made
         int decided = Downcast<Integer>(decision)->value;
         // Extract the inputs
@@ -208,7 +211,7 @@ class MutatorComputeLocation {
       }
       return decision;
     };
-    trace->Apply(sch, f_provide_decision);
+    trace->ApplyToSchedule(sch, /*remove_postproc=*/true, f_provide_decision);
     return candidates;
   }
 
@@ -239,13 +242,13 @@ class MutatorAutoUnroll {
 
   struct Candidate {
     /*! \brief The SampleCategorical instruction */
-    Instruction inst;
+    Inst inst;
     /*! \brief The weights of the categorical distribution */
     std::vector<double> weights;
     /*! \brief The original decision */
     int ori_decision;
 
-    explicit Candidate(Instruction inst, std::vector<double> weights, int ori_decision)
+    explicit Candidate(Inst inst, std::vector<double> weights, int ori_decision)
         : inst(std::move(inst)), weights(std::move(weights)), ori_decision(ori_decision) {}
   };
 
@@ -255,41 +258,49 @@ class MutatorAutoUnroll {
    * \return All the candidate instructions
    */
   std::vector<Candidate> FindCandidates(const Trace& trace) {
+    static InstKind inst_mark_block = InstKind::Get("MarkBlock");
+    static InstKind inst_sample_categorical = InstKind::Get("SampleCategorical");
+
     std::vector<Candidate> candidates;
     for (int i = 0; i < static_cast<int>(trace->insts.size()); ++i) {
-      const Instruction& mark_inst = trace->insts[i];
+      const Inst& mark_inst = trace->insts[i];
       // Step 1. Find the `MarkBlockAttr` whose attr_key is `auto_unroll`
       //         and whose unroll depth is a `tir::VarNode`.
-      if (const auto* mark_attr = mark_inst->inst_attrs.as<MarkBlockAttrs>()) {
-        ICHECK_EQ(mark_inst->inputs.size(), 2);
-        if (mark_attr->ann_key != tir::attr::auto_unroll_explicit &&
-            mark_attr->ann_key != tir::attr::auto_unroll_implicit) {
+      if (mark_inst->kind.same_as(inst_mark_block)) {
+        continue;
+      }
+      ICHECK_EQ(mark_inst->inputs.size(), 2);
+      {
+        String ann_key = Downcast<String>(mark_inst->attrs[0]);
+        if (ann_key != tir::attr::auto_unroll_explicit &&
+            ann_key != tir::attr::auto_unroll_implicit) {
           continue;
         }
-        const auto* sample_output = mark_inst->inputs[1].as<tir::VarNode>();
-        if (!sample_output) {
-          continue;
-        }
-        // Step 2. Back to find the corresponding `SampleCategorical` instruction.
-        for (int j = i - 1; j >= 0; --j) {
-          const Instruction& sample_inst = trace->insts[j];
-          if (sample_inst->outputs.size() == 1 && sample_inst->outputs[0].get() == sample_output) {
-            const auto* sample_attr = sample_inst->inst_attrs.as<SampleCategoricalAttrs>();
-            if (!sample_attr) {
-              // The unroll depth is not created by a `SampleCategorical`. So skip.
-              break;
-            }
-            ICHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
-            int decision = Downcast<Integer>(trace->decisions.Get(sample_inst))->value;
-            // Step 3. Remove the current decision from the sampling candidates.
-            std::vector<double> weights = AsVector<FloatImm, double>(sample_attr->probs);
-            weights.erase(weights.begin() + decision);
-            // Step 4. Add a new candidate if `weights` is not empty.
-            if (!weights.empty()) {
-              candidates.emplace_back(sample_inst, weights, decision);
-            }
+      }
+      const auto* sample_output = mark_inst->inputs[1].as<tir::VarNode>();
+      if (!sample_output) {
+        continue;
+      }
+      // Step 2. Back to find the corresponding `SampleCategorical` instruction.
+      for (int j = i - 1; j >= 0; --j) {
+        const Inst& sample_inst = trace->insts[j];
+        if (sample_inst->outputs.size() == 1 && sample_inst->outputs[0].get() == sample_output) {
+          if (!sample_inst->kind.same_as(inst_sample_categorical)) {
+            // The unroll depth is not created by a `SampleCategorical`. So skip.
             break;
           }
+          Array<Integer> sample_candidates = Downcast<Array<Integer>>(sample_inst->attrs[0]);
+          Array<FloatImm> sample_probs = Downcast<Array<FloatImm>>(sample_inst->attrs[1]);
+          ICHECK_EQ(sample_candidates.size(), sample_probs.size());
+          int decision = Downcast<Integer>(trace->decisions.Get(sample_inst))->value;
+          // Step 3. Remove the current decision from the sampling candidates.
+          std::vector<double> weights = AsVector<FloatImm, double>(sample_probs);
+          weights.erase(weights.begin() + decision);
+          // Step 4. Add a new candidate if `weights` is not empty.
+          if (!weights.empty()) {
+            candidates.emplace_back(sample_inst, weights, decision);
+          }
+          break;
         }
       }
     }
@@ -334,11 +345,11 @@ class MutatorParallel {
 
   struct Candidate {
     /*! \brief The MarkBlock instruction */
-    Instruction inst;
+    Inst inst;
     /*! \brief The extent candidates */
     std::vector<int> extent_candidates;
 
-    explicit Candidate(Instruction inst, std::vector<int> extent_candidates)
+    explicit Candidate(Inst inst, std::vector<int> extent_candidates)
         : inst(std::move(inst)), extent_candidates(std::move(extent_candidates)) {}
   };
 
@@ -348,70 +359,77 @@ class MutatorParallel {
    * \return All the candidate instructions
    */
   Candidate FindCandidates(const Trace& trace, const tir::PrimFunc& workload,
-                           const int& max_extent) const {
-    Schedule sch(workload);
+                           int max_extent) const {
+    static InstKind inst_mark_block = InstKind::Get("MarkBlock");
+    Schedule sch = Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), workload}}),
+                                    /*seed=*/-1,
+                                    /*debug_mode=*/false,
+                                    /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
     std::set<int> extent_candidates;
     extent_candidates.insert(1);
     for (size_t i = 0; i < trace->insts.size(); i++) {
-      const Instruction& mark_inst = trace->insts[i];
+      const Inst& mark_inst = trace->insts[i];
+      if (!mark_inst->kind.same_as(inst_mark_block)) {
+        continue;
+      }
       // Step 1. Find the `MarkBlockAttr` whose ann_key is `auto_parallel_extent`
       //         and whose parallel extent is given by an integer.
-      if (const auto* mark_attr = mark_inst->inst_attrs.as<MarkBlockAttrs>()) {
-        ICHECK_EQ(mark_inst->inputs.size(), 2);
-        if (mark_attr->ann_key != tir::attr::auto_parallel_extent ||
-            !mark_inst->inputs[1]->IsInstance<IntImmNode>()) {
-          continue;
-        }
-        tir::StmtSRef root_sref = tir::GetBlocks(sch->state(), "root")[0];
-        // Step 2. For all the leaf blocks ,fetch the loops above it.
-        // Furthermore, get their loop types.
-        for (const auto& block_sref : tir::GetChildBlocks(sch->state(), root_sref)) {
-          Array<tir::StmtSRef> loop_srefs = tir::GetLoops(block_sref);
-          std::vector<int> loop_types;
-          for (const tir::StmtSRef& loop_sref : loop_srefs) {
-            loop_types.emplace_back(GetLoopIterType(sch->state(), loop_sref));
-          }
-          // Step 3. Get the original parallel extent.
-          int ori_extent = mark_inst->inputs[1].as<IntImmNode>()->value;
-          // Step 4. Find extent candidates.
-          int prod_extent = 1;
-          for (int i = 0; i < static_cast<int>(loop_srefs.size()) &&
-                          loop_types[i] == tir::IterVarType::kDataPar;
-               ++i) {
-            const tir::StmtSRef& loop_sref = loop_srefs[i];
-            if (HasAnyAnn(loop_sref)) {
-              break;
-            }
-            // Check if the loop extent is valid
-            int64_t extent = GetLoopIntExtent(loop_sref);
-            if (extent == -1) {
-              break;
-            }
-            // Then we can fuse it in. Moreover, if extent is not 1 and extent does not
-            // equal the original extent, then it is a valid candidate.
-            if (extent != 1) {
-              prod_extent *= extent;
-              if (prod_extent > max_extent) {
-                break;
-              }
-              if (prod_extent != ori_extent) {
-                extent_candidates.insert(prod_extent);
-              }
-            }
-            // Check if we need to break.
-            if (!HasSingleChild(loop_sref)) {
-              break;
-            }
-          }
-        }
-        return Candidate(mark_inst,
-                         std::vector<int>(extent_candidates.begin(), extent_candidates.end()));
+      ICHECK_EQ(mark_inst->inputs.size(), 2);
+      String ann_key = Downcast<String>(mark_inst->attrs[0]);
+      if (ann_key != tir::attr::auto_parallel_extent ||
+          !mark_inst->inputs[1]->IsInstance<IntImmNode>()) {
+        continue;
       }
+      tir::StmtSRef root_sref = tir::GetBlocks(sch->state(), "root")[0];
+      // Step 2. For all the leaf blocks ,fetch the loops above it.
+      // Furthermore, get their loop types.
+      for (const auto& block_sref : tir::GetChildBlocks(sch->state(), root_sref)) {
+        Array<tir::StmtSRef> loop_srefs = tir::GetLoops(block_sref);
+        std::vector<int> loop_types;
+        for (const tir::StmtSRef& loop_sref : loop_srefs) {
+          loop_types.emplace_back(GetLoopIterType(sch->state(), loop_sref));
+        }
+        // Step 3. Get the original parallel extent.
+        int ori_extent = mark_inst->inputs[1].as<IntImmNode>()->value;
+        // Step 4. Find extent candidates.
+        int prod_extent = 1;
+        for (int i = 0;
+             i < static_cast<int>(loop_srefs.size()) && loop_types[i] == tir::IterVarType::kDataPar;
+             ++i) {
+          const tir::StmtSRef& loop_sref = loop_srefs[i];
+          if (HasAnyAnn(loop_sref)) {
+            break;
+          }
+          // Check if the loop extent is valid
+          int64_t extent = GetLoopIntExtent(loop_sref);
+          if (extent == -1) {
+            break;
+          }
+          // Then we can fuse it in. Moreover, if extent is not 1 and extent does not
+          // equal the original extent, then it is a valid candidate.
+          if (extent != 1) {
+            prod_extent *= extent;
+            if (prod_extent > max_extent) {
+              break;
+            }
+            if (prod_extent != ori_extent) {
+              extent_candidates.insert(prod_extent);
+            }
+          }
+          // Check if we need to break.
+          if (!HasSingleChild(loop_sref)) {
+            break;
+          }
+        }
+      }
+      return Candidate(mark_inst,
+                       std::vector<int>(extent_candidates.begin(), extent_candidates.end()));
     }
-    return Candidate(Instruction({}, {}, InstAttrs()), {});
+    return Candidate(Inst{nullptr}, {});
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) const {
+    static InstKind inst_enter_postproc = InstKind::Get("EnterPostproc");
     int max_extent =
         GetTargetNumCores(task->target, &warned_num_cores_missing) * max_jobs_per_core - 1;
     Candidate candidate = FindCandidates(trace, task->workload, max_extent);
@@ -420,17 +438,22 @@ class MutatorParallel {
     }
     const BlockRV& block = Downcast<BlockRV>(candidate.inst->inputs[0]);
     const std::vector<int>& extent_candidates = candidate.extent_candidates;
-    const int& parallel_size = extent_candidates[sampler->SampleInt(0, extent_candidates.size())];
+    int parallel_size = extent_candidates[sampler->SampleInt(0, extent_candidates.size())];
 
-    std::vector<Instruction> new_insts;
-    for (int i = 0; i < static_cast<int>(trace->insts.size()) &&
-                    !trace->insts[i]->inst_attrs->IsInstance<EnterPostProcAttrs>();
-         ++i) {
-      new_insts.emplace_back(trace->insts[i]);
+    std::vector<Inst> new_insts;
+    for (const Inst& inst : trace->insts) {
+      if (!inst->kind.same_as(inst_enter_postproc)) {
+        new_insts.emplace_back(inst);
+      } else {
+        break;
+      }
     }
-    for (Instruction& new_inst : new_insts) {
+    for (Inst& new_inst : new_insts) {
       if (new_inst.same_as(candidate.inst)) {
-        new_inst = MarkBlockAttrs::Make(block, tir::attr::auto_parallel_extent, parallel_size);
+        new_inst = Inst(/*kind=*/candidate.inst->kind,
+                        /*inputs=*/{block, Integer(parallel_size)},
+                        /*attrs=*/{String(tir::attr::auto_parallel_extent)},
+                        /*outputs=*/{});
         break;
       }
     }

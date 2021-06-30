@@ -885,7 +885,7 @@ struct BlockizeTraits : public UnpackedInstTraits<BlockizeTraits> {
   static String UnpackedAsPython(Array<String> outputs, String loop_rv) {
     PythonAPICall py("blockize");
     py.Input("loop", loop_rv);
-    py.Output(outputs[0]);
+    py.SingleOutput(outputs);
     return py.Str();
   }
 
@@ -908,7 +908,7 @@ struct TensorizeTraits : public UnpackedInstTraits<TensorizeTraits> {
   static String UnpackedAsPython(Array<String> outputs, String loop_rv, String intrin_name) {
     PythonAPICall py("tensorize");
     py.Input("loop", loop_rv);
-    py.Attr("intrin_name", intrin_name);
+    py.Input("intrin", intrin_name);
     return py.Str();
   }
 

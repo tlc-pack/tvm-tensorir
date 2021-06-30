@@ -59,8 +59,8 @@ struct InlineArgumentTraits : public UnpackedInstTraits<InlineArgumentTraits> {
 
   static String UnpackedAsPython(Array<String> outputs, Integer i, String func_name) {
     PythonAPICall py("inline_argument");
-    py.Attr("i", i->value);
-    py.Attr("func_name", func_name);
+    py.Input("i", i->value);
+    py.Input("func_name", func_name);
     return py.Str();
   }
 

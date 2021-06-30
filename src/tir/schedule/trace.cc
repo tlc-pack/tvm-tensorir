@@ -66,9 +66,9 @@ Array<ObjectRef> TranslateInputRVs(const Array<ObjectRef>& inputs,
         input->IsInstance<IntImmNode>() ||    // constant: integer
         input->IsInstance<FloatImmNode>()) {  // constant: float
       result.push_back(input);
-    } else if (input->IsInstance<BlockNode>() ||   // RV: block
-               input->IsInstance<LoopRVNode>() ||  // RV: loop
-               input->IsInstance<VarNode>()) {     // RV: var
+    } else if (input->IsInstance<BlockRVNode>() ||  // RV: block
+               input->IsInstance<LoopRVNode>() ||   // RV: loop
+               input->IsInstance<VarNode>()) {      // RV: var
       auto it = rv_map.find(input.get());
       ICHECK(it != rv_map.end()) << "IndexError: Random variable doesn't exist: " << input;
       result.push_back(GetRef<ObjectRef>(it->second));
@@ -114,6 +114,10 @@ Array<ObjectRef> TranslateInputRVs(
     } else if (input->IsInstance<IntImmNode>() || input->IsInstance<FloatImmNode>()) {
       // Case 3. integer or floating-point number
       results.push_back(input);
+    } else if (input->IsInstance<BlockRVNode>() || inputs->IsInstance<LoopRVNode>() ||
+               inputs->IsInstance<VarNode>()) {
+      LOG(FATAL) << "IndexError: Random variable is not defined " << input;
+      throw;
     } else {
       LOG(FATAL) << "TypeError: Stringifying is not supported for type: " << input->GetTypeKey();
       throw;
@@ -225,11 +229,12 @@ Optional<Inst> TraceNode::Pop() {
 
 /**************** Interfacing with InstKind ****************/
 
-void TraceNode::ApplyToSchedule(const Schedule& sch, bool remove_postproc,
-                                std::function<ObjectRef(const Array<ObjectRef>& inputs,  //
-                                                        const Array<ObjectRef>& attrs,   //
-                                                        const ObjectRef& decision)>
-                                    decision_provider) const {
+void TraceNode::ApplyToSchedule(
+    const Schedule& sch, bool remove_postproc,
+    std::function<ObjectRef(const Inst& inst, const Array<ObjectRef>& inputs,  //
+                            const Array<ObjectRef>& attrs,                     //
+                            const ObjectRef& decision)>
+        decision_provider) const {
   std::unordered_map<const Object*, const Object*> rv_map;
   for (const Inst& inst : this->insts) {
     if (remove_postproc && IsPostproc(inst)) {
@@ -239,7 +244,7 @@ void TraceNode::ApplyToSchedule(const Schedule& sch, bool remove_postproc,
     Array<ObjectRef> attrs = inst->attrs;
     ObjectRef decision = this->decisions.Get(inst);
     if (decision_provider) {
-      decision = decision_provider(inputs, attrs, decision);
+      decision = decision_provider(inst, inputs, attrs, decision);
     }
     Array<ObjectRef> outputs = inst->kind->f_apply_to_schedule(sch, inputs, attrs, decision);
     TranslateAddOutputRVs(inst->outputs, outputs, &rv_map);
@@ -281,9 +286,18 @@ Array<String> TraceNode::AsPython() const {
   Array<String> py_trace;
   py_trace.reserve(this->insts.size());
   for (const Inst& inst : this->insts) {
+    Array<ObjectRef> attrs;
+    attrs.reserve(inst->attrs.size());
+    for (const ObjectRef& obj : inst->attrs) {
+      if (const auto* str = obj.as<StringObj>()) {
+        attrs.push_back(String('"' + std::string(str->data) + '"'));
+      } else {
+        attrs.push_back(obj);
+      }
+    }
     py_trace.push_back(
         inst->kind->f_as_python(/*inputs=*/TranslateInputRVs(inst->inputs, rv_names),
-                                /*attrs=*/inst->attrs,
+                                /*attrs=*/attrs,
                                 /*decision=*/this->decisions.Get(inst),
                                 /*outputs=*/TranslateAddOutputRVs(inst->outputs, &rv_names)));
   }
@@ -329,13 +343,13 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
     decisions[index] = std::move(decision);
   }
   // Parse `json_insts`
-  std::unordered_map<std::string, ObjectRef> named_rvs;
+  std::unordered_map<std::string, ObjectRef> named_rvs{{"None", ObjectRef{nullptr}}};
   int i = 0;
   for (const ObjectRef& inst_entry : json_insts) {
     InstKind kind{nullptr};
     Array<ObjectRef> inputs{nullptr};
     Array<ObjectRef> attrs{nullptr};
-    Array<String> outputs{nullptr};
+    Array<String> outputs{ObjectPtr<Object>{nullptr}};
     // Parse the entry
     try {
       const auto* arr = inst_entry.as<ArrayNode>();
@@ -397,7 +411,7 @@ Trace TraceNode::Simplified(bool remove_postproc) const {
     bool all_defs_dead = inst->kind->is_pure;
     if (all_defs_dead) {
       for (const ObjectRef& obj : inst->outputs) {
-        if (!used_rvs.count(obj.get())) {
+        if (used_rvs.count(obj.get())) {
           all_defs_dead = false;
           break;
         }
@@ -418,26 +432,45 @@ Trace TraceNode::Simplified(bool remove_postproc) const {
           obj->IsInstance<VarNode>()) {
         used_rvs.insert(obj.get());
         continue;
+      } else if (obj->IsInstance<PrimExprNode>()) {
+        PostOrderVisit(obj, [&used_rvs](const ObjectRef& obj) -> void {
+          if (obj->IsInstance<VarNode>()) {
+            used_rvs.insert(obj.get());
+          }
+        });
       }
-      PostOrderVisit(obj, [&used_rvs](const ObjectRef& obj) -> void {
-        if (obj->IsInstance<VarNode>()) {
-          used_rvs.insert(obj.get());
-        }
-      });
     }
   }
   return Trace(Array<Inst>(new_insts.rbegin(), new_insts.rend()),
                Map<Inst, ObjectRef>(new_decisions));
 }
 
+/**************** Repr ****************/
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<TraceNode>([](const ObjectRef& obj, ReprPrinter* p) {
+      const auto* self = obj.as<TraceNode>();
+      ICHECK_NOTNULL(self);
+      Array<String> repr = self->AsPython();
+      bool is_first = true;
+      for (const String& line : repr) {
+        if (is_first) {
+          is_first = false;
+        } else {
+          p->stream << std::endl;
+        }
+        p->stream << line;
+      }
+    });
+
 /**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(TraceNode);
-TVM_REGISTER_GLOBAL("tir.Trace")
+TVM_REGISTER_GLOBAL("tir.schedule.Trace")
     .set_body_typed([](Optional<Array<Inst>> insts, Optional<Map<Inst, ObjectRef>> decisions) {
       return Trace(insts.value_or(Array<Inst>()), decisions.value_or(Map<Inst, ObjectRef>()));
     });
-TVM_REGISTER_GLOBAL("tir.TraceAppend")
+TVM_REGISTER_GLOBAL("tir.schedule.TraceAppend")
     .set_body_typed([](Trace self, Inst inst, Optional<ObjectRef> decision) {
       if (decision.defined()) {
         return self->Append(inst, decision.value());
@@ -445,16 +478,18 @@ TVM_REGISTER_GLOBAL("tir.TraceAppend")
         return self->Append(inst);
       }
     });
-TVM_REGISTER_GLOBAL("tir.TracePop").set_body_method<Trace>(&TraceNode::Pop);
-TVM_REGISTER_GLOBAL("tir.TraceApplyToSchedule")
+TVM_REGISTER_GLOBAL("tir.schedule.TracePop").set_body_method<Trace>(&TraceNode::Pop);
+TVM_REGISTER_GLOBAL("tir.schedule.TraceApplyToSchedule")
     .set_body_typed([](Trace self, Schedule sch, bool remove_postproc) {
       return self->ApplyToSchedule(sch, remove_postproc, nullptr);
     });
-TVM_REGISTER_GLOBAL("tir.TraceAsJSON").set_body_method<Trace>(&TraceNode::AsJSON);
-TVM_REGISTER_GLOBAL("tir.TraceAsPython").set_body_method<Trace>(&TraceNode::AsPython);
-TVM_REGISTER_GLOBAL("tir.TraceWithDecision").set_body_method<Trace>(&TraceNode::WithDecision);
-TVM_REGISTER_GLOBAL("tir.TraceSimplified").set_body_method<Trace>(&TraceNode::Simplified);
-TVM_REGISTER_GLOBAL("tir.TraceApplyJSONToSchedule").set_body_typed(Trace::ApplyJSONToSchedule);
+TVM_REGISTER_GLOBAL("tir.schedule.TraceAsJSON").set_body_method<Trace>(&TraceNode::AsJSON);
+TVM_REGISTER_GLOBAL("tir.schedule.TraceAsPython").set_body_method<Trace>(&TraceNode::AsPython);
+TVM_REGISTER_GLOBAL("tir.schedule.TraceWithDecision")
+    .set_body_method<Trace>(&TraceNode::WithDecision);
+TVM_REGISTER_GLOBAL("tir.schedule.TraceSimplified").set_body_method<Trace>(&TraceNode::Simplified);
+TVM_REGISTER_GLOBAL("tir.schedule.TraceApplyJSONToSchedule")
+    .set_body_typed(Trace::ApplyJSONToSchedule);
 
 }  // namespace tir
 }  // namespace tvm

@@ -48,11 +48,11 @@ class TraceNode : public runtime::Object {
 
   Optional<Inst> Pop();
 
-  void ApplyToSchedule(const Schedule& sch, bool remove_postproc,
-                       std::function<ObjectRef(const Array<ObjectRef>& inputs,  //
-                                               const Array<ObjectRef>& attrs,   //
-                                               const ObjectRef& decision)>
-                           decision_provider = nullptr) const;
+  void ApplyToSchedule(
+      const Schedule& sch, bool remove_postproc,
+      std::function<ObjectRef(const Inst& inst, const Array<ObjectRef>& inputs,
+                              const Array<ObjectRef>& attrs, const ObjectRef& decision)>
+          decision_provider = nullptr) const;
 
   ObjectRef AsJSON() const;
 

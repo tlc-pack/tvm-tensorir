@@ -80,7 +80,7 @@ Optional<Array<ObjectRef>> LoadTuningRecords(const String& path) {
  * \param record_obj The tuning record
  * \param task The search task
  */
-Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask& task) {
+Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask* task) {
   const auto* record = record_obj.as<ArrayNode>();
   ICHECK_EQ(record->size(), 7);
   String task_name = Downcast<String>(record->at(0));
@@ -101,11 +101,13 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, SearchTask& task) {
     strm->Read(&parsed);
     orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
   }
-
-  task = SearchTask(orig_func, task_name, Target(target), Target(target_host), NullOpt);
-  Schedule sch(orig_func);
-  TraceNode::Deserialize(trace_obj, sch);
-  return Database::Entry{sch->trace, Repr(sch), AsVector<FloatImm, double>(times)};
+  Schedule sch = Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), orig_func}}),  //
+                                  /*seed=*/-1,
+                                  /*debug_mode=*/false,
+                                  /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
+  *task = SearchTask(orig_func, task_name, Target(target), Target(target_host), NullOpt);
+  Trace::ApplyJSONToSchedule(trace_obj, sch);
+  return Database::Entry{sch->trace().value(), Repr(sch), AsVector<FloatImm, double>(times)};
 }
 
 }  // namespace json_io
@@ -137,8 +139,8 @@ struct SearchTaskHasher {
 };
 struct SearchTaskEqual {
   TVM_DLL bool operator()(const SearchTask& task1, const SearchTask& task2) const {
-    return task1->task_name == task2->task_name && task1->target->str() == task2->target->str()
-           && StructuralEqual()(task1->workload,task2->workload);
+    return task1->task_name == task2->task_name && task1->target->str() == task2->target->str() &&
+           StructuralEqual()(task1->workload, task2->workload);
   }
 };
 
@@ -161,7 +163,7 @@ class InMemoryDBNode : public DatabaseNode {
       std::vector<SearchTask> tasks(n_loaded);
       auto worker = [&loaded, &records, &tasks](int thread_id, int i) -> void {
         const ObjectRef& record_obj = loaded[i];
-        records[i] = json_io::RecordToEntry(record_obj, tasks[i]);
+        records[i] = json_io::RecordToEntry(record_obj, &tasks[i]);
       };
       support::parallel_persist_for(0, n_loaded, worker);
       int total_valid = 0;
@@ -269,12 +271,11 @@ class InMemoryDBNode : public DatabaseNode {
  private:
   /*! \brief All the measured states, de-duplicated by the string repr */
   std::unordered_map<SearchTask, std::unordered_map<String, std::shared_ptr<Database::Entry>>,
-      SearchTaskHasher,
-                     SearchTaskEqual>
+                     SearchTaskHasher, SearchTaskEqual>
       entries_;
   /*! \brief All the measured states */
-  std::unordered_map<SearchTask, std::multiset<std::shared_ptr<Database::Entry>,
-                                               EntryPtrComparator>,
+  std::unordered_map<SearchTask,
+                     std::multiset<std::shared_ptr<Database::Entry>, EntryPtrComparator>,
                      SearchTaskHasher, SearchTaskEqual>
       sorted_;
 };
@@ -307,8 +308,11 @@ Database InitMemoryDB(String path) {
   return db;
 }
 tir::PrimFunc ApplyTrace(Trace trace, SearchTask task, SearchSpace space) {
-  Schedule sch(task->workload);
-  trace->Apply(sch);
+  Schedule sch = Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), task->workload}}),  //
+                                  /*seed=*/-1,
+                                  /*debug_mode=*/false,
+                                  /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
+  trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
   if (!space->Postprocess(task, sch, nullptr)) {
     LOG(FATAL) << "ValueError: The best schedule cannot be postprocessed all of a sudden";
   }

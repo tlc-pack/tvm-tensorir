@@ -305,7 +305,7 @@ def realize_arguments(
     for arg in func.params:
         if arg.dtype == "handle":
             buffer = func.buffer_map[arg]
-            array = ndarray.empty(shape=buffer.shape, dtype=buffer.dtype, ctx=ctx)
+            array = ndarray.empty(shape=buffer.shape, dtype=buffer.dtype, device=ctx)
             args.append(array)
             ndarrays.append(array)
         else:
@@ -631,7 +631,7 @@ def rpc_runner_worker(
                 _, remote = request_remote(key, host, port, priority, timeout)
                 remote.upload(build_result.filename)
                 func = remote.load_module(os.path.split(build_result.filename)[1])
-                ctx = remote.context(measure_input.task.target.kind.name, 0)
+                ctx = remote.device(measure_input.task.target.kind.name, 0)
                 time_f = func.time_evaluator(
                     func_name=func.entry_name,
                     ctx=ctx,

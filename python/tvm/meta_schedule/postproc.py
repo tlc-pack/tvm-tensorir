@@ -20,10 +20,9 @@ from typing import List, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
-from tvm.tir import TensorIntrin
+from tvm.tir import Schedule, TensorIntrin
 
 from . import _ffi_api_postproc
-from .schedule import Schedule
 from .search import SearchTask
 
 

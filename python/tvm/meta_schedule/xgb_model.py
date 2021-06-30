@@ -28,7 +28,7 @@ from ..autotvm.tuner.metric import max_curve
 from .cost_model import PyCostModel
 from .feature import per_block_feature_batched
 from .measure_record import MeasureInput, MeasureResult
-from .schedule import Schedule
+from ..tir import Schedule
 from .search import SearchTask
 from .utils import cpu_count
 

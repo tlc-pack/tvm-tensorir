@@ -101,28 +101,28 @@ def with_predicate(a: ty.handle, c: ty.handle) -> None:
 
 
 def test_meta_schedule_analysis_is_trivial_binding():
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     block = sch.get_block("matmul")
     assert ms.analysis.is_trivial_binding(sch.state, sch.get_sref(block))
-    sch = ms.Schedule(func=split_ewise)
+    sch = tir.Schedule(mod=split_ewise)
     block = sch.get_block("B")
     assert not ms.analysis.is_trivial_binding(sch.state, sch.get_sref(block))
 
 
 def test_meta_schedule_analysis_is_subroot_block():
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     block = sch.get_block("matmul")
     assert ms.analysis.is_subroot_block(sch.state, sch.get_sref(block))
 
 
 def test_meta_schedule_analysis_is_leaf_block():
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     block = sch.get_block("matmul")
     assert ms.analysis.is_leaf_block(sch.state, sch.get_sref(block))
 
 
 def test_meta_schedule_analysis_get_loop_iter_type():
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     block = sch.get_block("matmul")
     i, j, k = [sch.get_sref(loop) for loop in sch.get_loops(block)]
     i = ms.analysis.get_loop_iter_type(sch.state, i)
@@ -134,14 +134,14 @@ def test_meta_schedule_analysis_get_loop_iter_type():
 
 
 def test_meta_schedule_analysis_get_block_var_types():
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     block = sch.get_block("matmul")
     assert ms.analysis.get_block_var_types(sch.state, sch.get_sref(block)) == [
         "spatial",
         "spatial",
         "reduce",
     ]
-    sch = ms.Schedule(func=split_ewise)
+    sch = tir.Schedule(mod=split_ewise)
     block = sch.get_block("B")
     assert ms.analysis.get_block_var_types(sch.state, sch.get_sref(block)) == [
         "spatial",
@@ -150,52 +150,52 @@ def test_meta_schedule_analysis_get_block_var_types():
 
 
 def test_meta_schedule_analysis_is_spatial():
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     block = sch.get_block("matmul")
     assert not ms.analysis.is_spatial(sch.state, sch.get_sref(block))
-    sch = ms.Schedule(func=split_ewise)
+    sch = tir.Schedule(mod=split_ewise)
     block = sch.get_block("B")
     assert ms.analysis.is_spatial(sch.state, sch.get_sref(block))
-    sch = ms.Schedule(func=many_ewise)
+    sch = tir.Schedule(mod=many_ewise)
     block = sch.get_block("A")
     assert ms.analysis.is_spatial(sch.state, sch.get_sref(block))
     block = sch.get_block("Y")
     assert ms.analysis.is_spatial(sch.state, sch.get_sref(block))
-    sch = ms.Schedule(func=split_ewise_multiple)
+    sch = tir.Schedule(mod=split_ewise_multiple)
     block = sch.get_block("B")
     assert ms.analysis.is_spatial(sch.state, sch.get_sref(block))
 
 
 def test_meta_schedule_is_output_block():
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     block = sch.get_block("matmul")
     assert ms.analysis.is_output_block(sch.state, sch.get_sref(block))
-    sch = ms.Schedule(func=many_ewise)
+    sch = tir.Schedule(mod=many_ewise)
     block = sch.get_block("A")
     assert not ms.analysis.is_output_block(sch.state, sch.get_sref(block))
 
 
 def test_meta_schedule_analysis_count_op():
     exp = Op.get("tir.exp")
-    sch = ms.Schedule(func=apply_exp)
+    sch = tir.Schedule(mod=apply_exp)
     block = sch.get_block("B")
     assert ms.analysis.count_op(sch.state, sch.get_sref(block), exp) == 2
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     block = sch.get_block("matmul")
     assert ms.analysis.count_op(sch.state, sch.get_sref(block), exp) == 0
 
 
 def test_meta_schedule_analysis_has_branch():
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     block = sch.get_block("matmul")
     assert not ms.analysis.has_branch(sch.state, sch.get_sref(block))
-    sch = ms.Schedule(func=with_predicate)
+    sch = tir.Schedule(mod=with_predicate)
     block = sch.get_block("C")
     assert ms.analysis.has_branch(sch.state, sch.get_sref(block))
 
 
 def test_meta_schedule_is_elementwise_match():
-    sch = ms.Schedule(func=many_ewise)
+    sch = tir.Schedule(mod=many_ewise)
     block_a = sch.get_block("A")
     block_y = sch.get_block("Y")
     assert ms.analysis.is_elementwise_match(
@@ -206,25 +206,25 @@ def test_meta_schedule_is_elementwise_match():
 
 
 def test_meta_schedule_needs_multi_level_tiling():
-    sch = ms.Schedule(func=matmul)
+    sch = tir.Schedule(mod=matmul)
     block = sch.get_block("matmul")
     assert ms.analysis.needs_multi_level_tiling(sch.state, sch.get_sref(block))
-    sch = ms.Schedule(func=split_ewise)
+    sch = tir.Schedule(mod=split_ewise)
     block = sch.get_block("B")
     assert not ms.analysis.needs_multi_level_tiling(sch.state, sch.get_sref(block))
 
 
 def test_meta_schedule_is_strictly_inlineable():
-    sch = ms.Schedule(func=many_ewise)
+    sch = tir.Schedule(mod=many_ewise)
     block = sch.get_block("A")
     assert ms.analysis.is_strictly_inlineable(sch.state, sch.get_sref(block))
-    sch = ms.Schedule(func=with_predicate)
+    sch = tir.Schedule(mod=with_predicate)
     block = sch.get_block("C")
     assert not ms.analysis.is_strictly_inlineable(sch.state, sch.get_sref(block))
 
 
 def test_meta_schedule_get_tensorize_loop_mapping():
-    sch = ms.Schedule(batch_matmul)
+    sch = tir.Schedule(batch_matmul)
     block = sch.get_block(name="update")
     assert (
         ms.analysis.get_tensorize_loop_mapping(
@@ -232,7 +232,7 @@ def test_meta_schedule_get_tensorize_loop_mapping():
         )
         is not None
     )
-    sch = ms.Schedule(batch_matmul)
+    sch = tir.Schedule(batch_matmul)
     block = sch.get_block(name="update")
     assert (
         ms.analysis.get_tensorize_loop_mapping(

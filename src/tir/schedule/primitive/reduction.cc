@@ -690,8 +690,8 @@ struct RFactorTraits : public UnpackedInstTraits<RFactorTraits> {
   static String UnpackedAsPython(Array<String> outputs, String loop_rv, Integer factor_axis) {
     PythonAPICall py("rfactor");
     py.Input("loop", loop_rv);
-    py.Attr("factor_axis", factor_axis->value);
-    py.Output(outputs[0]);
+    py.Input("factor_axis", factor_axis->value);
+    py.SingleOutput(outputs);
     return py.Str();
   }
 
@@ -715,7 +715,7 @@ struct DecomposeReductionTraits : public UnpackedInstTraits<DecomposeReductionTr
     PythonAPICall py("decompose_reduction");
     py.Input("block", block_rv);
     py.Input("loop", loop_rv);
-    py.Output(outputs[0]);
+    py.SingleOutput(outputs);
     return py.Str();
   }
 
