@@ -610,7 +610,7 @@ inline int64_t GetLoopIntExtent(const ForNode* loop) {
 }
 
 inline int64_t GetLoopIntExtent(const StmtSRef& loop_sref) {
-  const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   return GetLoopIntExtent(loop);
 }
 

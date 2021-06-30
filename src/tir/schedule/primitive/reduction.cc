@@ -390,7 +390,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   std::unordered_map<const VarNode*, For> loop_vars;
   Array<StmtSRef> loops = GetLoops(block_sref);
   for (const StmtSRef& l_sref : loops) {
-    const auto* l = TVM_SREF_TO_FOR(l, l_sref);
+    const ForNode* l = TVM_SREF_TO_FOR(l, l_sref);
     if (l == loop) {
       CHECK(!data_par_iters.count(l->loop_var.get()))
           << "ValueError: The rfactor loop cannot be touched by data parallel block vars";
@@ -598,7 +598,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   // IR replacement later.
   Optional<StmtSRef> replace_top = NullOpt;
   for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
-    const auto* l = TVM_SREF_TO_FOR(l, loops[i]);
+    const ForNode* l = TVM_SREF_TO_FOR(l, loops[i]);
     if (l->body->IsInstance<SeqStmtNode>()) {
       ICHECK_NE(i, static_cast<int>(loops.size()) - 1)
           << "ValueError: The body of the innermost loop must not be a SeqStmt";

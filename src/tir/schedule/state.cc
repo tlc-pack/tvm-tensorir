@@ -1046,7 +1046,7 @@ void ScheduleStateNode::DebugVerify() const {
 /**************** BlockInfo-related ****************/
 
 BlockInfo ScheduleStateNode::GetBlockInfo(const StmtSRef& block_sref) const {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   auto it = this->block_info.find(block_sref);
   CHECK(it != this->block_info.end())
       << "IndexError: Cannot find the corresponding BlockScope to the block sref:\n"

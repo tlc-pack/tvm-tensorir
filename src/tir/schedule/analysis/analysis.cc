@@ -111,7 +111,7 @@ bool IsCompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
                      const StmtSRef& scope_root) {
   BlockScope scope = self->GetBlockScope(scope_root);
   // Cond 1. All block vars are data parallel
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   for (const IterVar& iter_var : block->iter_vars) {
     if (iter_var->iter_type != kDataPar) {
       return false;
@@ -307,7 +307,7 @@ bool RegionCoveredConsumer(const ScheduleState& self, const StmtSRef& consumer_b
   if (consumer_block_sref->parent == nullptr) {
     return true;
   }
-  const auto* consumer_block = TVM_SREF_TO_BLOCK(consumer_block, consumer_block_sref);
+  const BlockNode* consumer_block = TVM_SREF_TO_BLOCK(consumer_block, consumer_block_sref);
   BlockScope scope = self->GetBlockScope(scope_root);
   // Step 1. Gather all the producers
   struct Producer {
@@ -326,7 +326,7 @@ bool RegionCoveredConsumer(const ScheduleState& self, const StmtSRef& consumer_b
     // i.e. the RAW predecessor is producer
     if (edge->kind == DepKind::kRAW) {
       const StmtSRef& producer_block_sref = edge->src;
-      const auto* producer_block = TVM_SREF_TO_BLOCK(producer_block, producer_block_sref);
+      const BlockNode* producer_block = TVM_SREF_TO_BLOCK(producer_block, producer_block_sref);
       for (const BufferRegion& output_region : producer_block->writes) {
         const VarNode* buffer_var = output_region->buffer->data.get();
         buffer_producers[buffer_var].emplace_back(producer_block_sref, output_region);
@@ -600,7 +600,7 @@ bool CompleteBlock(const ScheduleState& self, const StmtSRef& block_sref,
                    const StmtSRef& scope_root) {
   BlockScope scope = self->GetBlockScope(scope_root);
   // Cond 2. Check if all the block vars are data parallel
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   for (const IterVar& iter_var : block->iter_vars) {
     if (iter_var->iter_type != kDataPar) {
       return false;
@@ -631,7 +631,7 @@ bool ReductionBlock(const ScheduleState& self, const StmtSRef& block_sref,
   //   return false;
   // }
   // Cond 4. Check whether the block body has the init statement.
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   if (!block->init.defined()) {
     return false;
   }
@@ -677,8 +677,8 @@ bool ReductionBlock(const ScheduleState& self, const StmtSRef& block_sref,
 bool CanMergeReduction(const ScheduleState& self, const StmtSRef& init_block_sref,
                        const StmtSRef& update_block_sref, const StmtSRef& scope_root) {
   BlockScope scope = self->GetBlockScope(scope_root);
-  const auto* init = TVM_SREF_TO_BLOCK(init, init_block_sref);
-  const auto* update = TVM_SREF_TO_BLOCK(update, update_block_sref);
+  const BlockNode* init = TVM_SREF_TO_BLOCK(init, init_block_sref);
+  const BlockNode* update = TVM_SREF_TO_BLOCK(update, update_block_sref);
   // Cond 1. Check the binding of update block is valid
   if (!self->IsAffineBlockBinding(update_block_sref)) {
     return false;
@@ -731,7 +731,7 @@ IterVarType GetLoopIterType(const ScheduleState& self, const StmtSRef& loop_sref
   int n_spatial = 0;
   int n_reduce = 0;
   int n_other = 0;
-  const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   const Var& loop_var = loop->loop_var;
   auto f_visit = [&loop_var, &n_spatial, &n_reduce, &n_other](const ObjectRef& obj) -> bool {
     if (const auto* realize = obj.as<BlockRealizeNode>()) {
@@ -785,7 +785,7 @@ Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef
   result.reserve(loop_srefs.size());
   bool visited_reduce = false;
   for (const StmtSRef& loop_sref : loop_srefs) {
-    const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     IterVarType iter_type = GetLoopIterType(self, loop_sref);
     if (iter_type == IterVarType::kDataPar) {
       if (visited_reduce) {
