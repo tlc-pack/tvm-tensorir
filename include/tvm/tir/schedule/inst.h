@@ -89,7 +89,10 @@ class InstKindNode : public runtime::Object {
   /*! \brief The functor to deserialize the attributes of an instruction */
   FAttrsFromJSON f_attrs_from_json{nullptr};
 
-  void VisitAttrs(tvm::AttrVisitor* v) {}
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("name", &name);
+    v->Visit("is_pure", &is_pure);
+  }
 
   static constexpr const char* _type_key = "tir.InstKind";
   TVM_DECLARE_FINAL_OBJECT_INFO(InstKindNode, runtime::Object);
@@ -111,7 +114,7 @@ class InstKindNode : public runtime::Object {
  */
 class InstKind : public runtime::ObjectRef {
  public:
-  static const InstKind& Get(const String& inst_kind_name);
+  static InstKind Get(const String& inst_kind_name);
   TVM_DEFINE_OBJECT_REF_METHODS(InstKind, runtime::ObjectRef, InstKindNode);
 };
 
@@ -264,8 +267,8 @@ class Inst : public runtime::ObjectRef {
  *      Optional<Array<Integer>> decision) {
  *     PythonAPICall py("sample_perfect_tile");
  *     py.Input("loop", loop_rv);
- *     py.Attr("n", n->value);
- *     py.Attr("max_innermost_factor", max_innermost_factor->value);
+ *     py.Input("n", n->value);
+ *     py.Input("max_innermost_factor", max_innermost_factor->value);
  *     py.Decision(decision);
  *     py.Outputs(outputs);
  *     return py.Str();
@@ -323,22 +326,22 @@ class PythonAPICall {
    */
   explicit PythonAPICall(String method_name)
       : method_name_(std::move(method_name)), output_(NullOpt) {}
+  /*! \brief Add an attribute */
+  void Input(String arg_name, int arg);
+  /*! \brief Add an attribute */
+  void Input(String arg_name, int64_t arg);
+  /*! \brief Add an attribute */
+  void Input(String arg_name, double arg);
   /*! \brief Add an input random variable */
   void Input(String arg_name, String arg);
-  /*! \brief Add a list of input random variables */
-  void InputList(String arg_name, const Array<String>& arg);
   /*! \brief Add an attribute */
-  void Attr(String arg_name, int arg);
-  /*! \brief Add an attribute */
-  void Attr(String arg_name, int64_t arg);
-  /*! \brief Add an attribute */
-  void Attr(String arg_name, const ObjectRef& arg);
+  void Input(String arg_name, ObjectRef arg);
   /*! \brief Add a decision */
-  void Decision(const Optional<ObjectRef>& decision);
+  void Decision(ObjectRef decision);
   /*! \brief Add a single output random variable */
-  void Output(String single_output);
+  void SingleOutput(Array<String> unit_array);
   /*! \brief Add a list of output random variables */
-  void Outputs(const Array<String>& outputs);
+  void OutputList(Array<String> outputs);
   /*! \returns The schedule API call in python syntax */
   String Str() const;
 
@@ -536,7 +539,8 @@ template <size_t delta>
 TVM_ALWAYS_INLINE void UnpackedInstTraits<TTraits>::_SetInputs(const runtime::TVMArgsSetter& setter,
                                                                const Array<ObjectRef>& inputs) {
   constexpr size_t kNumInputs = TTraits::kNumInputs;
-  ICHECK_EQ(kNumInputs, inputs.size());
+  ICHECK_EQ(kNumInputs, inputs.size())
+      << "ValueError: Incorrect kNumInputs for instruction: " << TTraits::kName;
   const ObjectRef* ptr = inputs.template as<ArrayNode>()->begin();
   for (size_t i = 0; i < kNumInputs; ++i) {
     setter(i + delta, *(ptr + i));
@@ -548,7 +552,8 @@ template <size_t delta>
 TVM_ALWAYS_INLINE void UnpackedInstTraits<TTraits>::_SetAttrs(const runtime::TVMArgsSetter& setter,
                                                               const Array<ObjectRef>& attrs) {
   constexpr size_t kNumAttrs = TTraits::kNumAttrs;
-  ICHECK_EQ(kNumAttrs, attrs.size());
+  ICHECK_EQ(kNumAttrs, attrs.size())
+      << "ValueError: Incorrect kNumAttrs for instruction: " << TTraits::kName;
   const ObjectRef* ptr = attrs.as<ArrayNode>()->begin();
   for (size_t i = 0; i < kNumAttrs; ++i) {
     setter(i + delta, *(ptr + i));

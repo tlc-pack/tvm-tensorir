@@ -36,8 +36,8 @@ from typing import List, Tuple
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
+from ..tir import Schedule
 from . import _ffi_api
-from .schedule import Schedule
 from .search import SearchTask
 
 

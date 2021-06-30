@@ -19,10 +19,9 @@ from typing import Any, Dict, List, Optional, Union
 from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.target import Target
-from tvm.tir import PrimFunc
+from tvm.tir import PrimFunc, Schedule
 
 from . import _ffi_api
-from .schedule import Schedule
 
 ########## SearchTask ##########
 

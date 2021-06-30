@@ -33,7 +33,7 @@ def _float_equal(a: float, b: float) -> bool:
 def test_meta_schedule_per_block_feature_cpu_matmul():
     def _create_schedule(n, m, k):
         func = te.create_prim_func(te_workload.matmul(n=n, m=m, k=k))
-        sch = ms.Schedule(func)
+        sch = tir.Schedule(func, traced=True)
         block = sch.get_block("C")
         i, j, k = sch.get_loops(block)
         i_o, i_i = sch.split(i, factors=[-1, 16])  # outer: 32
@@ -212,7 +212,7 @@ def test_meta_schedule_per_block_feature_cpu_fusion():
         b = te.compute((n, m), lambda i, j: a[i][j], name="B")
         c = te.compute((n, m), lambda i, j: b[i][j], name="C")
         func = te.create_prim_func([a, b, c])
-        sch = ms.Schedule(func)
+        sch = tir.Schedule(func, traced=True)
         block_b = sch.get_block("B")
         block_c = sch.get_block("C")
         _, j = sch.get_loops(block_c)
@@ -367,7 +367,7 @@ def test_meta_schedule_per_block_feature_cpu_fusion():
 def test_meta_schedule_per_block_feature_gpu():
     def _create_schedule(n, m, k):
         func = te.create_prim_func(te_workload.matmul(n=n, m=m, k=k))
-        sch = ms.Schedule(func)
+        sch = tir.Schedule(func, traced=True)
         c = sch.get_block("C")
         c_local = sch.cache_write(c, 0, "local")
         i, j, k = sch.get_loops(c_local)

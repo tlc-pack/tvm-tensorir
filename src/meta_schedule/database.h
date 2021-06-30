@@ -19,14 +19,16 @@
 #ifndef SRC_META_SCHEDULE_DATABASE_H_
 #define SRC_META_SCHEDULE_DATABASE_H_
 
+#include <tvm/tir/schedule/trace.h>
+
 #include <limits>
 #include <numeric>
 #include <vector>
 
-#include "./trace.h"
-
 namespace tvm {
 namespace meta_schedule {
+
+using tir::Trace;
 
 class SearchTask;
 class TuneContextNode;

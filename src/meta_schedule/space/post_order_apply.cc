@@ -148,7 +148,12 @@ class BlockCollector : public tir::StmtVisitor {
 
 Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* sampler) {
   using ScheduleAndUnvisitedBlocks = std::pair<Schedule, Array<tir::StmtSRef>>;
-  Array<Schedule> curr{Schedule(task->workload, sampler->ForkSeed())};
+
+  Array<Schedule> curr{
+      Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), task->workload}}),
+                       /*seed=*/sampler->ForkSeed(),
+                       /*debug_mode=*/false,
+                       /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail)};
   for (const SearchRule& rule : stages) {
     std::vector<ScheduleAndUnvisitedBlocks> stack;
     stack.reserve(curr.size());
@@ -193,9 +198,13 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
   Array<Schedule> result;
   result.reserve(curr.size());
   for (const Schedule& sch : curr) {
-    Trace trace = sch->trace->Simplified(/*remove_postproc=*/true);
-    Schedule new_sch{task->workload, sampler->ForkSeed()};
-    trace->Apply(new_sch);
+    Trace trace = sch->trace().value()->Simplified(/*remove_postproc=*/true);
+    Schedule new_sch =
+        Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), task->workload}}),
+                         /*seed=*/sampler->ForkSeed(),
+                         /*debug_mode=*/false,
+                         /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
+    trace->ApplyToSchedule(new_sch, /*remove_postproc=*/true);
     result.push_back(new_sch);
   }
   return result;

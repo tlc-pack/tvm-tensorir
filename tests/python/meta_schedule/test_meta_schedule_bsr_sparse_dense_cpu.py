@@ -63,7 +63,7 @@ _sparse_dense_implement_te = {
 
 
 def meta_schedule_sparse_dense_llvm(func, f_create_args):
-    def schedule_sparse_dense(s: ms.Schedule):
+    def schedule_sparse_dense(s: tir.Schedule):
         sparse_dense = s.get_block("sparse_dense")
         sparse_dense_local = s.cache_write(sparse_dense, 0, "local")
         i, j, offset, k = s.get_loops(sparse_dense_local)

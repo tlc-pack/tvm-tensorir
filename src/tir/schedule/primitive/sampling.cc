@@ -145,10 +145,10 @@ struct SamplePerfectTileTraits : public UnpackedInstTraits<SamplePerfectTileTrai
                                  Integer max_innermost_factor, Optional<Array<Integer>> decision) {
     PythonAPICall py("sample_perfect_tile");
     py.Input("loop", loop_rv);
-    py.Attr("n", n->value);
-    py.Attr("max_innermost_factor", max_innermost_factor->value);
+    py.Input("n", n->value);
+    py.Input("max_innermost_factor", max_innermost_factor->value);
     py.Decision(decision);
-    py.Outputs(outputs);
+    py.OutputList(outputs);
     return py.Str();
   }
 
@@ -176,10 +176,10 @@ struct SampleCategoricalTraits : public UnpackedInstTraits<SampleCategoricalTrai
                                  Array<FloatImm> probs,      //
                                  Optional<Integer> decision) {
     PythonAPICall py("sample_categorical");
-    py.Attr("candidates", candidates);
-    py.Attr("probs", probs);
+    py.Input("candidates", candidates);
+    py.Input("probs", probs);
     py.Decision(decision);
-    py.Output(outputs[0]);
+    py.SingleOutput(outputs);
     return py.Str();
   }
 
@@ -207,7 +207,7 @@ struct SampleComputeLocationTraits : public UnpackedInstTraits<SampleComputeLoca
     PythonAPICall py("sample_compute_location");
     py.Input("block", block_rv);
     py.Decision(decision);
-    py.Output(outputs[0]);
+    py.SingleOutput(outputs);
     return py.Str();
   }
 

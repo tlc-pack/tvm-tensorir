@@ -832,12 +832,15 @@ bool NeedsRFactorOrCrossThreadReduction(const tir::ScheduleState& self,
 }
 
 bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv, const int& i) {
-  for (const Instruction& inst : sch->trace->insts) {
-    if (const auto inst_attr = inst->inst_attrs.as<CacheWriteAttrs>()) {
+  static tir::InstKind cache_write = tir::InstKind::Get("CacheWrite");
+  for (const Inst& inst : sch->trace().value()->insts) {
+    if (inst->kind.same_as(cache_write)) {
       CHECK_EQ(inst->inputs.size(), 1);
       const BlockRV& input_rv = Downcast<BlockRV>(inst->inputs[0]);
-      if (block_rv.same_as(input_rv) && inst_attr->i == i) {
-        return true;
+      if (block_rv.same_as(input_rv)) {
+        if (Downcast<Integer>(inst->attrs[0])->value == i) {
+          return true;
+        }
       }
     }
   }

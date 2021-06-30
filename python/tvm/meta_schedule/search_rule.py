@@ -19,11 +19,10 @@ from typing import Callable, List, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
-from tvm.tir import TensorIntrin
+from tvm.tir import Schedule, TensorIntrin
+from tvm.tir.schedule import BlockRV
 
 from . import _ffi_api, _ffi_api_search_rule
-from .instruction import BlockRV
-from .schedule import Schedule
 from .search import SearchTask
 
 ########## SearchRule ##########
@@ -268,7 +267,7 @@ def mark_tensorize(tensor_intrins: List[TensorIntrin]) -> SearchRule:
 def simplify_compute_with_const_tensor(max_innermost_factor: int = 64) -> SearchRule:
     """Simplify compute with const tensor by unrolling indices of the const tensor.
 
-    Parameteters
+    Parameters
     ------------
     max_innermost_factor : int
         The maximum size of the innermost factor
@@ -278,9 +277,9 @@ def simplify_compute_with_const_tensor(max_innermost_factor: int = 64) -> Search
     rule: SearchRUle
         The rule created
     """
-    return _ffi_api_search_rule.SimplifyComputeWithConstTensor(
+    return _ffi_api_search_rule.SimplifyComputeWithConstTensor(  # pylint: disable=no-member
         max_innermost_factor
-    )  # pylint: disable=no-member
+    )
 
 
 def add_rfactor(
@@ -303,9 +302,9 @@ def add_rfactor(
     rule: SearchRule
         The rule created
     """
-    return _ffi_api_search_rule.AddRFactor(
+    return _ffi_api_search_rule.AddRFactor(  # pylint: disable=no-member
         max_jobs_per_core, max_innermost_factor
-    )  # pylint: disable=no-member
+    )
 
 
 def cross_thread_reduction() -> SearchRule:
@@ -320,8 +319,9 @@ def cross_thread_reduction() -> SearchRule:
 
 
 def special_compute_location_gpu():
-    """A rule that handles special cases in Winograd transformation for GPU. We need to change the compute
-     location of the producers of compute ops that perform "fake reduction" with const tensors.
+    """A rule that handles special cases in Winograd transformation for GPU. We need to change
+    the compute location of the producers of compute ops that perform "fake reduction" with
+    const tensors.
 
     Returns
     ----------

@@ -189,7 +189,7 @@ def test_matmul_schedule_fn():
 def test_matmul_relu_schedule_fn():
     os.environ["TVM_TRACKER_KEY"] = "local"
 
-    def schedule_matmul(sch: ms.Schedule):
+    def schedule_matmul(sch: tir.Schedule):
         matmul_block = sch.get_block(name="matmul")
         i, j, k = sch.get_loops(block=matmul_block)
         i_tiles = sch.sample_perfect_tile(i, n=4)
