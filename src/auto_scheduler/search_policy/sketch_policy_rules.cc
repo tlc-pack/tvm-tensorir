@@ -825,8 +825,7 @@ PopulationGenerationRule::ResultKind InitUnroll::Apply(SketchPolicyNode* policy,
       // <bojian/DietCode> Simplify the unrolling factor.
       // int value = auto_unroll_configs[(*rand_gen)() % auto_unroll_configs.size()];
       int value;
-      if (IsGPUTask(policy->search_task) &&
-          IsDynTask(policy->search_task)) {
+      if (IsGPUTask(policy->search_task) && IsDynTask(policy->search_task)) {
         // LOG(WARNING) << "Hard-coding the unrolling factor";
         value = auto_unroll_config_gpu_DietCode[(*rand_gen)() % auto_unroll_config_gpu_DietCode.size()];
       } else {
