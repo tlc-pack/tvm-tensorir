@@ -261,8 +261,6 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       // <bojian/DietCode>
       // double flops
       double flop_ct, flops;
-      te::Schedule synthetic_sch;
-      Array<te::Tensor> synthetic_tensors;
       Array<Array<PrimExpr>> factorization_scheme =
           input_batch[j]->state.GetFactorizationScheme();
 
@@ -270,21 +268,13 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
         // <bojian/DietCode> Estimate the FLOPs for synthetic workloads.
         if (IsDynTask(task)) {
-          State state_mutable_copy = input_batch[j]->state;
-          std::tie(synthetic_sch, synthetic_tensors) =
-              task->compute_dag.GenerateSyntheticWorkloadAndApplySteps(
-                &state_mutable_copy, task->hardware_params);
-          Array<te::Operation> synthetic_sch_ops;
-          for (const te::Stage& stage : synthetic_sch->stages) {
-            synthetic_sch_ops.push_back(stage->op);
-          }
-          flop_ct = FlopEstimator().EstimateFlop(synthetic_sch_ops);
+          flop_ct = 
+              GetSyntheticWorkloadFlopCtFromState(task, input_batch[j]->state);
         } else {
           flop_ct = task->compute_dag->flop_ct;
         }
         // make sure that the value for FLOPS is well defined
         CHECK(flop_ct != -1);
-
 
         flops = // <bojian/DietCode>
                 // task->compute_dag->flop_ct

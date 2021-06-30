@@ -42,6 +42,8 @@
 #include <vector>
 
 // <bojian/DietCode>
+#include <tvm/auto_scheduler/loop_state.h>
+#include <tvm/auto_scheduler/search_task.h>
 #include <tvm/auto_scheduler/transform_step.h>
 #include <tvm/runtime/ndarray.h>
 #include <tvm/te/operation.h>
@@ -554,6 +556,30 @@ class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
   int cur_type_code_;
 };
 
+
+void AdaptStateToWorkload(const SearchTask& task, const State& state,
+                          const Array<String>& shape_vars,
+                          const Array<IntImm>& shape_values,
+                          const float& score,
+                          float* const occupancy_penalty,
+                          float* const padding_penalty,
+                          float* const adapted_score
+                          );
+
+inline double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
+                                                  const State& state) {
+  State state_mutable_copy = state;
+  te::Schedule synthetic_sch;
+  Array<te::Tensor> synthetic_tensors;
+  std::tie(synthetic_sch, synthetic_tensors) =
+      task->compute_dag.GenerateSyntheticWorkloadAndApplySteps(
+        &state_mutable_copy, task->hardware_params);
+  Array<te::Operation> synthetic_sch_ops;
+  for (const te::Stage& stage : synthetic_sch->stages) {
+    synthetic_sch_ops.push_back(stage->op);
+  }
+  return FlopEstimator().EstimateFlop(synthetic_sch_ops);
+}
 
 }  // namespace auto_scheduler
 }  // namespace tvm

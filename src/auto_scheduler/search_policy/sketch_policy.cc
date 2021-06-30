@@ -273,9 +273,19 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
 
       // Update measured states throughputs. These states will join the EvolutionarySearch in later
       // search rounds.
-      for (const auto& res : results) {
-        measured_states_throughputs_.push_back(1.0 / FloatArrayMean(res->costs));
+
+      // <bojian/DietCode>
+      // for (const auto& res : results) {
+      //   measured_states_throughputs_.push_back(1.0 / FloatArrayMean(res->costs));
+      // }
+      CHECK(inputs.size() == results.size());
+      for (size_t input_id = 0; input_id < inputs.size(); ++input_id) {
+        measured_states_throughputs_.push_back(
+            GetSyntheticWorkloadFlopCtFromState(search_task, inputs[input_id]->state)
+            / FloatArrayMean(results[input_id]->costs)
+            );
       }
+
     }
     PrintTitle("Done", verbose);
 
