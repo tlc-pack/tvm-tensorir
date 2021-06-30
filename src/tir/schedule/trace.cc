@@ -66,9 +66,9 @@ Array<ObjectRef> TranslateInputRVs(const Array<ObjectRef>& inputs,
         input->IsInstance<IntImmNode>() ||    // constant: integer
         input->IsInstance<FloatImmNode>()) {  // constant: float
       result.push_back(input);
-    } else if (input->IsInstance<BlockNode>() ||   // RV: block
-               input->IsInstance<LoopRVNode>() ||  // RV: loop
-               input->IsInstance<VarNode>()) {     // RV: var
+    } else if (input->IsInstance<BlockRVNode>() ||  // RV: block
+               input->IsInstance<LoopRVNode>() ||   // RV: loop
+               input->IsInstance<VarNode>()) {      // RV: var
       auto it = rv_map.find(input.get());
       ICHECK(it != rv_map.end()) << "IndexError: Random variable doesn't exist: " << input;
       result.push_back(GetRef<ObjectRef>(it->second));
@@ -114,6 +114,10 @@ Array<ObjectRef> TranslateInputRVs(
     } else if (input->IsInstance<IntImmNode>() || input->IsInstance<FloatImmNode>()) {
       // Case 3. integer or floating-point number
       results.push_back(input);
+    } else if (input->IsInstance<BlockRVNode>() || inputs->IsInstance<LoopRVNode>() ||
+               inputs->IsInstance<VarNode>()) {
+      LOG(FATAL) << "IndexError: Random variable is not defined " << input;
+      throw;
     } else {
       LOG(FATAL) << "TypeError: Stringifying is not supported for type: " << input->GetTypeKey();
       throw;
@@ -398,7 +402,7 @@ Trace TraceNode::Simplified(bool remove_postproc) const {
     bool all_defs_dead = inst->kind->is_pure;
     if (all_defs_dead) {
       for (const ObjectRef& obj : inst->outputs) {
-        if (!used_rvs.count(obj.get())) {
+        if (used_rvs.count(obj.get())) {
           all_defs_dead = false;
           break;
         }

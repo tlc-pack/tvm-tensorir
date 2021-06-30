@@ -144,7 +144,7 @@ struct GetLoopsTraits : public UnpackedInstTraits<GetLoopsTraits> {
   }
 
   static String UnpackedAsPython(Array<String> outputs, String block_rv) {
-    PythonAPICall py("get_axes");
+    PythonAPICall py("get_loops");
     py.Input("block", block_rv);
     py.Outputs(outputs);
     return py.Str();
