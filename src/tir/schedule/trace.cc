@@ -432,12 +432,13 @@ Trace TraceNode::Simplified(bool remove_postproc) const {
           obj->IsInstance<VarNode>()) {
         used_rvs.insert(obj.get());
         continue;
+      } else if (obj->IsInstance<PrimExprNode>()) {
+        PostOrderVisit(obj, [&used_rvs](const ObjectRef& obj) -> void {
+          if (obj->IsInstance<VarNode>()) {
+            used_rvs.insert(obj.get());
+          }
+        });
       }
-      PostOrderVisit(obj, [&used_rvs](const ObjectRef& obj) -> void {
-        if (obj->IsInstance<VarNode>()) {
-          used_rvs.insert(obj.get());
-        }
-      });
     }
   }
   return Trace(Array<Inst>(new_insts.rbegin(), new_insts.rend()),

@@ -48,11 +48,7 @@ def _fix_sampling_tile_size(
     possible_decisions: List[List[List[int]]],
     expected: List[tir.PrimFunc],
 ):
-    insts = [
-        inst
-        for inst in sch.trace.insts
-        if isinstance(inst.inst_attrs, ms.instruction.SamplePerfectTileAttrs)
-    ]
+    insts = [inst for inst in sch.trace.insts if inst.kind.name == "SamplePerfectTile"]
     for decisions in possible_decisions:
         if len(insts) != len(decisions):
             continue
@@ -64,7 +60,7 @@ def _fix_sampling_tile_size(
             new_decisions[inst] = decision
         trace = tir.schedule.Trace(sch.trace.insts, new_decisions)
         new_sch = tir.Schedule(func, traced=True)
-        trace.apply(new_sch)
+        trace.apply_to_schedule(new_sch)
         results = [tvm.ir.structural_equal(new_sch.mod["main"], i) for i in expected]
         if sum(results) >= 1:
             return

@@ -16,10 +16,10 @@
 # under the License.
 """Integration test for CUDA with Tensor Core"""
 # pylint: disable=missing-function-docstring
+import pytest
 import te_workload
 import tvm
 import tir_tensor_intrin  # pylint: disable=unused-import
-from tvm import meta_schedule as ms
 from tvm import te, tir
 
 TARGET = tvm.target.Target("nvidia/geforce-rtx-2080-ti")
@@ -121,6 +121,7 @@ def test_integration_matmul():
     print(tvm.script.asscript(sch.mod))
 
 
+@pytest.mark.skip("fix later")
 def test_integration_conv2d_nchwc():
     # Input shape:
     #   image: [N=1, C=6, H=98, W=98, c=16]

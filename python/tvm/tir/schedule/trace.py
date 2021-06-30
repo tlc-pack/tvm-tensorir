@@ -56,7 +56,9 @@ class Trace(Object):
         return _ffi_api_schedule.TracePop(self)  # pylint: disable=no-member
 
     def apply_to_schedule(self, sch: "Schedule", remove_postproc: bool = True) -> None:
-        _ffi_api_schedule.TracePop(self, sch, remove_postproc)  # pylint: disable=no-member
+        _ffi_api_schedule.TraceApplyToSchedule(  # pylint: disable=no-member
+            self, sch, remove_postproc
+        )
 
     def as_json(self) -> Any:
         return _ffi_api_schedule.TraceAsJSON(self)  # pylint: disable=no-member
