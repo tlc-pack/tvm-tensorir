@@ -26,6 +26,10 @@
 namespace tvm {
 namespace meta_schedule {
 
+/**************** TIR Nodes ****************/
+using tir::ForNode;
+using tir::BlockNode;
+
 /********** Constructors **********/
 
 SearchRule::SearchRule(String name, SearchRuleNode::FApply apply) {
@@ -962,7 +966,7 @@ class RuleAddRFactor {
                         const BlockRV& block_rv) const {
     // Check the conditions of the rule.
     tir::StmtSRef block_sref = sch->GetSRef(block_rv);
-    const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+    const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
     if (HasAnyAnn(block_sref)) {
       return {sch};
     }
@@ -1041,7 +1045,7 @@ class RuleCrossThreadReduction {
 
     // Check the conditions of the rule.
     const tir::StmtSRef& block_sref = sch->GetSRef(block_rv);
-    const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+    const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
     if (HasAnyAnn(block_sref)) {
       return {sch};
     }

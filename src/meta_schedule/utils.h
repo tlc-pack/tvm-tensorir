@@ -42,6 +42,9 @@ using tir::AsArray;
 using tir::AsOptArray;
 using tir::AsVector;
 
+/**************** TIR Nodes ****************/
+using tir::ForNode;
+
 /*!
  * \brief Compute mean of a FloatImm array.
  * Taken from Ansor
@@ -179,7 +182,7 @@ inline Optional<tir::StmtSRef> FindBlockSRef(const tir::ScheduleState& sch, FPre
 /**************** TIR Annotation ****************/
 
 inline bool HasBinding(const tir::StmtSRef& loop_sref, const String& thread_tag) {
-  const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   if (!loop->thread_binding.defined()) {
     return false;
   }
@@ -191,7 +194,7 @@ inline bool HasBinding(const tir::StmtSRef& loop_sref, const String& thread_tag)
 }
 
 inline Optional<String> GetBinding(const tir::StmtSRef& loop_sref) {
-  const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   if (!loop->thread_binding.defined()) {
     return NullOpt;
   }
