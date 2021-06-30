@@ -173,7 +173,7 @@ BufferRegion SubstituteBufferRegion(const BufferRegion& buffer_region,
 }
 
 BlockRealize GetBlockRealize(const StmtSRef& block_sref) {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   // We cannot support getting the BlockRealize of the root block, since the parent sref of the root
   // block sref is `nullptr`.
   CHECK(block_sref->parent != nullptr)
@@ -443,7 +443,7 @@ void UpdateAffineFlag(ScheduleState self, const StmtSRef& block_sref) {
     return;
   }
   BlockRealize realize = GetBlockRealize(block_sref);
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   Map<Var, Range> loop_var_ranges;
   for (StmtSRefNode* loop_sref = block_sref->parent; loop_sref != nullptr;
        loop_sref = loop_sref->parent) {

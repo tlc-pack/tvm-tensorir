@@ -338,7 +338,7 @@ Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
   TVM_TIR_SCHEDULE_BEGIN();
   // Prepare for the splitting
   StmtSRef loop_sref = this->GetSRef(loop_rv);
-  const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   PrimExpr len = loop->extent;
   // Find out the None
   int n = factor_rvs.size();

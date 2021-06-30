@@ -26,8 +26,12 @@
 namespace tvm {
 namespace meta_schedule {
 
+/**************** TIR Nodes ****************/
+using tir::BlockNode;
+using tir::ForNode;
+
 bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
   Array<tir::StmtSRef> loops = tir::GetLoops(block_sref);
   const Array<PrimExpr>& bindings = realize->iter_values;
@@ -37,7 +41,7 @@ bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block
   int n = loops.size();
   for (int i = 0; i < n; ++i) {
     const PrimExpr& bind = bindings[i];
-    const auto* loop = TVM_SREF_TO_FOR(loop, loops[i]);
+    const ForNode* loop = TVM_SREF_TO_FOR(loop, loops[i]);
     if (bind.as<tir::VarNode>() != loop->loop_var.get()) {
       return false;
     }
@@ -51,7 +55,7 @@ bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_s
 }
 
 bool IsLeafBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   bool no_child = true;
   tir::PreOrderVisit(block->body, [&no_child](const ObjectRef& obj) -> bool {
     if (!no_child) {
@@ -67,7 +71,7 @@ bool IsLeafBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref
 }
 
 Array<Integer> GetBlockVarTypes(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   Array<Integer> result;
   for (const tir::IterVar& iter_var : block->iter_vars) {
     int iter_type = iter_var->iter_type;
@@ -77,7 +81,7 @@ Array<Integer> GetBlockVarTypes(const tir::ScheduleState& self, const tir::StmtS
 }
 
 bool IsSpatial(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   for (const tir::IterVar& iter_var : block->iter_vars) {
     if (iter_var->iter_type != tir::IterVarType::kDataPar) {
       return false;
@@ -88,8 +92,8 @@ bool IsSpatial(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) 
 
 bool IsOutputBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   tir::StmtSRef parent_sref = tir::GetScopeRoot(block_sref).value();
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  const auto* parent = TVM_SREF_TO_BLOCK(parent, parent_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* parent = TVM_SREF_TO_BLOCK(parent, parent_sref);
   if (parent_sref->parent == nullptr) {
     const tir::PrimFuncNode* func = tir::GetRootPrimFunc(self, parent_sref);
     for (const tir::BufferRegion& write : block->writes) {
@@ -112,7 +116,7 @@ bool IsOutputBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sr
 }
 
 int CountOp(const tir::ScheduleState& self, const tir::StmtSRef& block_sref, const Op& op) {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   int count = 0;
   tir::PostOrderVisit(block->body, [&count, &op](const ObjectRef& obj) {
     if (const auto* call = obj.as<tir::CallNode>()) {
@@ -125,7 +129,7 @@ int CountOp(const tir::ScheduleState& self, const tir::StmtSRef& block_sref, con
 }
 
 bool HasBranch(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   bool has_branch = false;
   arith::Analyzer analyzer;
   auto f_visit = [&has_branch, &analyzer](const ObjectRef& obj) -> bool {
@@ -214,8 +218,8 @@ bool IsElementWiseMatch(const tir::ScheduleState& self, const tir::StmtSRef& pro
                         const tir::StmtSRef& consumer_sref) {
   // Assume consumer is the only consumer of the producer
   tir::StmtSRef parent_sref = tir::GetScopeRoot(producer_sref).value();
-  const auto* producer = TVM_SREF_TO_BLOCK(producer, producer_sref);
-  const auto* consumer = TVM_SREF_TO_BLOCK(consumer, consumer_sref);
+  const BlockNode* producer = TVM_SREF_TO_BLOCK(producer, producer_sref);
+  const BlockNode* consumer = TVM_SREF_TO_BLOCK(consumer, consumer_sref);
   if (producer->writes.empty()) {
     return false;
   }
@@ -285,7 +289,7 @@ bool NeedsMultiLevelTiling(const tir::ScheduleState& self, const tir::StmtSRef& 
   if (!IsTrivialBinding(self, block_sref)) {
     return false;
   }
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   // Assume complete/reduction block
   if (block->writes.size() != 1) {
     return false;
@@ -333,7 +337,7 @@ bool NeedsMultiLevelTiling(const tir::ScheduleState& self, const tir::StmtSRef& 
 
 bool IsStrictlyInlineable(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   static const Op& op_tir_exp = Op::Get("tir.exp");
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   // Const tensors are strictly inlineable
   if (block->reads.empty()) {
     return true;
@@ -764,7 +768,7 @@ bool NeedsRFactorOrCrossThreadReduction(const tir::ScheduleState& self,
                                         const tir::StmtSRef& block_sref,
                                         int64_t max_parallel_extent,
                                         int64_t basic_parallel_extent) {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   Array<tir::StmtSRef> loops = tir::GetLoops(block_sref);
 
   // Cond 1. The block is a reduction block and has trivial binding.
@@ -791,9 +795,9 @@ bool NeedsRFactorOrCrossThreadReduction(const tir::ScheduleState& self,
     }
 
     // Cond 4.
-    const auto* loop_i = TVM_SREF_TO_FOR(loop_i, loops[i]);
+    const ForNode* loop_i = TVM_SREF_TO_FOR(loop_i, loops[i]);
     if (i < static_cast<int>(loops.size()) - 1) {
-      const auto* loop_i1 = TVM_SREF_TO_FOR(loop_i1, loops[i + 1]);
+      const ForNode* loop_i1 = TVM_SREF_TO_FOR(loop_i1, loops[i + 1]);
       if (loop_i->body.get() != loop_i1) {
         return false;
       }
