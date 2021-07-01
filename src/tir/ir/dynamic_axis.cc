@@ -78,10 +78,11 @@ Array<PrimExpr> InitializeDynamicArgs(Array<PrimExpr> args,
                                       Array<String> shape_vars,
                                       Map<Array<IntImm>, FloatImm> shape_freq) {
   std::unordered_map<std::string, std::set<int>> dyn_axes_info;
-  for (const std::pair<Array<IntImm>, FloatImm>& shape_freq_pair : shape_freq) {
-    CHECK(shape_vars.size() == shape_freq_pair.first.size());
+  for (const auto& shape_values_freq_pair : shape_freq) {
+    CHECK(shape_vars.size() == shape_values_freq_pair.first.size());
     for (size_t i = 0; i < shape_vars.size(); ++i) {
-      dyn_axes_info[std::string(shape_vars[i])].insert(shape_freq_pair.first[i]->value);
+      dyn_axes_info[std::string(shape_vars[i])].insert(
+          shape_values_freq_pair.first[i]->value);
     }
   }
   Array<PrimExpr> new_args;
