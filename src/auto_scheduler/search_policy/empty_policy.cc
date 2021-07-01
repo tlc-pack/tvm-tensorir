@@ -50,8 +50,11 @@ EmptyPolicy::EmptyPolicy(SearchTask task, Optional<Array<SearchCallback>> init_s
   data_ = std::move(node);
 }
 
-State EmptyPolicyNode::Search(int num_measure_trials, int early_stopping,
-                              int num_measures_per_round, ProgramMeasurer measurer) {
+// <bojian/DietCode>
+// State
+Array<State>
+EmptyPolicyNode::Search(int num_measure_trials, int early_stopping,
+                        int num_measures_per_round, ProgramMeasurer measurer) {
   // Basic design principe: `SearchOneRound()` several times to get candidate states,
   // measure them and return the best one
   // Measure is disabled if num_measure_trials <= 1
@@ -59,7 +62,10 @@ State EmptyPolicyNode::Search(int num_measure_trials, int early_stopping,
     const auto& res = SearchOneRound();
     ICHECK_GT(res.size(), 0);
 
-    return res[0];
+    // <bojian/DietCode>
+    // return res[0];
+    return res;
+
   } else {
     Array<MeasureInput> inputs;
     Array<MeasureResult> results;
@@ -82,7 +88,11 @@ State EmptyPolicyNode::Search(int num_measure_trials, int early_stopping,
     }
 
     // Return a state with best measured performance
-    return measurer->best_state[search_task->workload_key];
+
+    // <bojian/DietCode>
+    // return measurer->best_state[search_task->workload_key];
+    return measurer->best_states[search_task->workload_key];
+
   }
 }
 

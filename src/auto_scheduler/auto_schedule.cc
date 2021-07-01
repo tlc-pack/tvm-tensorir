@@ -55,7 +55,10 @@ std::pair<te::Schedule, Array<te::Tensor>> AutoSchedule(SearchPolicy search_poli
   // Search for the best schedule
   State state =
       search_policy->Search(tuning_options->num_measure_trials, tuning_options->early_stopping,
-                            tuning_options->num_measures_per_round, measurer);
+                            tuning_options->num_measures_per_round, measurer)
+                            // <bojian/DietCode>
+                            [0];
+
   if (state.defined()) {
     return search_policy->search_task->compute_dag.ApplySteps(state->transform_steps);
   } else {

@@ -222,9 +222,14 @@ ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
 
 void ProgramMeasurerNode::Reset() {
   ct = error_ct = 0;
-  best_flops.clear();
+  
+  // <bojian/DietCode>
+  // best_flops.clear();
+  // best_state.clear();
+  best_score.clear();
+  best_states.clear();
+  
   best_ct.clear();
-  best_state.clear();
   has_valid.clear();
 }
 
@@ -299,20 +304,33 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
         error_ct++;
       }
 
-      if (flops > best_flops[workload_key]) {
-        best_flops[workload_key] = flops;
-        best_state[workload_key] = input_batch[j]->state;
-        best_ct[workload_key] = ct;
-      }
+      // <bojian/DietCode>
+      if (IsDynTask(task)) {
+      } else {
+        if (flops > best_score[workload_key]) {
+          best_score[workload_key] = flops;
+          
+          // <bojian/DietCode>
+          // best_state[workload_key] = input_batch[j]->state;
+          best_states[workload_key] = {input_batch[j]->state};
+          
+          best_ct[workload_key] = ct;
+        }
+      }  // if (IsDynTask(task))
 
       ct++;
       StdCout(verbose, 2) << std::fixed << std::setprecision(2) << Chars('=', 50) << "\n"
                           << "No: " << ct << "\tGFLOPS: " << flops / 1e9 << " / "
-                          << best_flops[workload_key] / 1e9 << "\tresults: " << result_batch[j]
+                          
+                          // <bojian/DietCode>
+                          // << best_flops[workload_key] / 1e9 
+                          << best_score[workload_key] / 1e9
+                          
+                          << "\tresults: " << result_batch[j]
                           << "\n"
                           << Chars('=', 50) << "\n"
                           << input_batch[j]->state << "\n";
-    }
+    }  // for (j ∈ range(input_batch.size()))
 
     // Call callback functions
     if (callbacks) {

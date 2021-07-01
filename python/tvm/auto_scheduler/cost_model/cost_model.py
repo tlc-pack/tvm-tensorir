@@ -116,6 +116,40 @@ class PythonBasedModel(CostModel):
             occupancy_penalty_np_arr[:], padding_penalty_np_arr[:], \
                     scores_np_arr[:] = self.predict_for_all_instances(task, states)
 
+        # <bojian/DietCode>
+        def score_func(task, num_states, scores_ptr, weights_ptr,
+                       inst_disp_map, ret_score_ptr):
+            """
+            Parameters
+            ----------
+            task           : Search Task
+            num_states     : Number of States
+            scores_ptr     : A matrix of scores, each represents the compute
+                             throughput of each micro-kernel (i.e., state) on
+                             each workload iknstance.
+            weights_ptr    : The weight of each workload instance.
+            ret_scores_ptr : Weighted Score to Return (scalar)
+            """
+            scores_np = _wrap_ptr_as_np_array(
+                    scores_ptr, (len(task.shape_freq), num_states))
+            freq_np = []
+            for _, freq in task.shape_freq.items():
+                freq_np.append(freq)
+            freq_np = np.array(freq_np, dtype=np.float32)
+            weights_np = _wrap_ptr_as_np_array(
+                    weights_ptr, (len(task.shape_freq)))
+            weights_np = freq_np * weights_np
+            print("weights={}".format(weights_np))
+            ret_score_np =  _wrap_ptr_as_np_array(ret_score_ptr, (1,))
+
+            scores_by_inst = []
+            for inst_id in range(len(task.shape_freq)):
+                scores_by_inst.append(scores_np[inst_id, inst_disp_map[inst_id]])
+            scores_by_inst = np.array(scores_by_inst, dtype=np.float32)
+            print("scores_by_inst={}".format(scores_by_inst))
+
+            ret_score_np[:] = np.sum(scores_by_inst * weights_np, keepdims=True)
+
 
         def predict_stage_func(task, states, return_ptr):
             ret = self.predict_stages(task, states)
@@ -128,6 +162,7 @@ class PythonBasedModel(CostModel):
             
             # <bojian/DietCode>
             predict_for_all_instances_func,
+            score_func,
             
             predict_stage_func
         )
@@ -204,37 +239,3 @@ class PythonBasedModel(CostModel):
         into a single float array.
         """
         raise NotImplementedError
-
-
-# <bojian/DietCode> Add the scoring function for scoring a batch of states.
-@tvm._ffi.register_object("auto_scheduler.PythonBasedScoreFunc")
-class PythonBasedScoreFunc(Object):
-    def __init__(self):
-        def score_func(task, num_states, scores_ptr, weights_ptr):
-            """
-            Parameters
-            ----------
-            task        : Search Task
-            num_states  : Number of States
-            scores_ptr  : A matrix of scores, each represents the compute
-                          throughput of each micro-kernel (i.e., state) on each
-                          workload iknstance.
-            weights_ptr : The weight of each workload instance.
-            """
-            scores_np = _wrap_ptr_as_np_array(
-                    scores_ptr,
-                    (len(task.shape_freq), num_states))
-            freq_np = []
-            for _, freq in task.shape_freq.items():
-                freq_np.append(freq)
-            freq_np = np.array(freq_np)
-
-            weights_np = _wrap_ptr_as_np_array(
-                    weights_ptr,
-                    (len(task.shape_freq)))
-
-            return 1.
-
-        self.__init_handle_by_constructor__(
-                _ffi_api.PythonBasedScoreFunc, score_func
-                )

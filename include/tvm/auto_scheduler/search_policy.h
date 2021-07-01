@@ -150,8 +150,12 @@ class SearchPolicyNode : public Object {
    * \param measurer A ProgramMeasurer to build and measure programs
    * \return The best state found.
    */
-  virtual State Search(int num_measure_trials, int early_stopping, int num_measures_per_round,
-                       ProgramMeasurer measurer) = 0;
+  virtual
+  // <bojian/DietCode>
+  // State
+  Array<State>
+  Search(int num_measure_trials, int early_stopping, int num_measures_per_round,
+         ProgramMeasurer measurer) = 0;
 
   /*!
    * \brief Continue the search by doing an additional search round.

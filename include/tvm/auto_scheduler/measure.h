@@ -465,7 +465,7 @@ class ProgramMeasurerNode : public Object {
   // <bojian/DietCode> Change the best_flops/state to a single recording to
   //                   multiple ones.
   // std::unordered_map<std::string, double> best_flops;
-  std::unordered_map<std::string, std::vector<double>> best_flops;
+  std::unordered_map<std::string, double> best_score;
 
   /*! \brief Workload key to best state map. */
 

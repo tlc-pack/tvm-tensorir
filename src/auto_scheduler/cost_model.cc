@@ -63,6 +63,7 @@ PythonBasedModel::PythonBasedModel(PackedFunc update_func, PackedFunc predict_fu
 
                                    // <bojian/DietCode>
                                    PackedFunc predict_for_all_instances_func,
+                                   PackedFunc score_func,
 
                                    PackedFunc predict_stage_func) {
   auto node = make_object<PythonBasedModelNode>();
@@ -71,6 +72,7 @@ PythonBasedModel::PythonBasedModel(PackedFunc update_func, PackedFunc predict_fu
 
   // <bojian/DietCode>
   node->predict_for_all_instances_func = predict_for_all_instances_func;
+  node->score_func = score_func;
 
   node->predict_stage_func = std::move(predict_stage_func);
   data_ = std::move(node);
@@ -190,12 +192,14 @@ TVM_REGISTER_GLOBAL("auto_scheduler.PythonBasedModel")
 
                        // <bojian/DietCode>
                        PackedFunc predict_for_all_instances_func,
+                       PackedFunc score_func,
 
                        PackedFunc predict_stage_func) {
       return PythonBasedModel(update_func, predict_func,
       
                               // <bojian/DietCode>
                               predict_for_all_instances_func,
+                              score_func,
 
                               predict_stage_func);
     });

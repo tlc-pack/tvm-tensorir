@@ -147,6 +147,7 @@ class PythonBasedModelNode : public CostModelNode {
 
   // <bojian/DietCode>
   PackedFunc predict_for_all_instances_func;
+  PackedFunc score_func;
 
   /*! \brief Pointer to the predict funcion in python */
   PackedFunc predict_stage_func;
@@ -189,6 +190,7 @@ class PythonBasedModel : public CostModel {
 
                    // <bojian/DietCode>
                    PackedFunc predict_for_all_instances_func,
+                   PackedFunc score_func,
 
                    PackedFunc predict_stage_func);
 

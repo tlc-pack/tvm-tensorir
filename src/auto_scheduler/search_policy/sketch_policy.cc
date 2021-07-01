@@ -173,15 +173,22 @@ SketchPolicy::SketchPolicy(SearchTask task, CostModel program_cost_model,
   data_ = std::move(node);
 }
 
-State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_iter,
-                               ProgramMeasurer measurer) {
+// <bojian/DietCode>
+// State
+Array<State>
+SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_iter,
+                         ProgramMeasurer measurer) {
   num_measure_per_iter_ = num_measure_per_iter;
 
   if (n_trials <= 1) {
     // No measurement is allowed
     const Array<State>& best_states = SearchOneRound(0);
     ICHECK_GT(best_states.size(), 0);
-    return best_states[0];
+    
+    // <bojian/DietCode>
+    // return best_states[0];
+    return {best_states[0]};
+
   } else {
     int num_random =
         static_cast<int>(GetDoubleParam(params, SketchParamKey::eps_greedy) * num_measure_per_iter);
@@ -289,7 +296,10 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
     }  // while (ct < n_trials)
     PrintTitle("Done", verbose);
 
-    return measurer->best_state[search_task->workload_key];
+    // <bojian/DietCode>
+    // return measurer->best_state[search_task->workload_key];
+    return measurer->best_states[search_task->workload_key];
+
   }
 }
 
