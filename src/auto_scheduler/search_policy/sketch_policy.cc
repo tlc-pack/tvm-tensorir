@@ -284,9 +284,9 @@ State SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure
             GetSyntheticWorkloadFlopCtFromState(search_task, inputs[input_id]->state)
             / FloatArrayMean(results[input_id]->costs)
             );
-      }
+      }  // for (input_id ∈ inputs.size())
 
-    }
+    }  // while (ct < n_trials)
     PrintTitle("Done", verbose);
 
     return measurer->best_state[search_task->workload_key];
