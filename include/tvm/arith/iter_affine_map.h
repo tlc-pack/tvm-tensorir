@@ -284,6 +284,27 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
                                  arith::Analyzer* analyzer);
 
 /*!
+ * \brief Apply the inverse of the affine transformation to the outputs.
+ *
+ * Similar to the back-propagation, starting from the outputs, it visits the DAG of the expressions
+ * in reverse topology order and applies the inverse of the affine transformation until it reaches
+ * the input. The affine iter map is required to be bijective.
+ *
+ * For example, iter_map = [l0 // 16, l0 % 16], outputs = [output_0, output_1],
+ * the affine transformation specified by `iter_map` will be applied to `outputs` and the result 
+ * will be {l0: ((output_0*16) + output_1)}.
+ *
+ * \sa DetectIterMap
+ *
+ * \param iter_map The bijective affine iter map.
+ * \param outputs The outputs of the affine transformation.
+ *
+ * \return The map from the input to the transformed result.
+ */
+Map<Var, PrimExpr> InverseAffineIterMap(const Array<IterSumExpr>& iter_map,
+                                        const Array<PrimExpr> outputs);
+
+/*!
  * \brief Use IterVarMap detector to rewrite and simplify the bindings
  *
  * \param indices The indices to detect pattern for.
