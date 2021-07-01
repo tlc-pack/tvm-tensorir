@@ -1415,10 +1415,10 @@ class InverseAffineIterMapTransformer {
   Map<Var, PrimExpr> operator()(const Array<IterSumExpr>& iter_map,
                                 const Array<PrimExpr>& outputs) {
     ICHECK(iter_map.size() == outputs.size());
-    std::vector<const IterMapExprNode*> reverse_topo_order = ReverseTopologyOrder(iter_map);
+    std::vector<const IterMapExprNode*> post_dfs_order = ReverseTopologyOrder(iter_map);
 
     // initialize back propagation accumulator
-    for (const IterMapExprNode* node: reverse_topo_order) {
+    for (const IterMapExprNode* node: post_dfs_order) {
       backprop_.Set(GetRef<IterMapExpr>(node), Integer(0));
     }
     for (size_t i = 0; i < iter_map.size(); i++) {
@@ -1426,7 +1426,7 @@ class InverseAffineIterMapTransformer {
     }
 
     // run back propagation
-    for (const IterMapExprNode* node: reverse_topo_order) {
+    for (const IterMapExprNode* node: post_dfs_order) {
       if (node->IsInstance<IterSumExprNode>()) {
         Visit_(Downcast<IterSumExpr>(GetRef<IterMapExpr>(node)));
       } else {
@@ -1464,7 +1464,7 @@ class InverseAffineIterMapTransformer {
 
 
   std::vector<const IterMapExprNode*> ReverseTopologyOrder(const Array<IterSumExpr>& iter_map) {
-    std::vector<const IterMapExprNode*> reverse_topo_order;
+    std::vector<const IterMapExprNode*> post_dfs_order;
     std::unordered_map<IterMapExpr, bool, ObjectPtrHash, ObjectPtrEqual> visited;
 
     std::function<void(const IterMapExpr&)> fvisit = [&](const IterMapExpr& expr) {
@@ -1483,13 +1483,13 @@ class InverseAffineIterMapTransformer {
           fvisit(GetRef<IterMapExpr>(source));
         }
       }
-      reverse_topo_order.push_back(expr.get());
+      post_dfs_order.push_back(expr.get());
     };
     for (const IterSumExpr& expr : iter_map) {
       fvisit(expr);
     }
-    std::reverse(reverse_topo_order.begin(), reverse_topo_order.end());
-    return reverse_topo_order;
+    std::reverse(post_dfs_order.begin(), post_dfs_order.end());
+    return post_dfs_order;
   }
 
   void Visit_(const IterSplitExpr& iter_map_expr) {
@@ -1526,7 +1526,7 @@ class InverseAffineIterMapTransformer {
     for (size_t i = 0; i < sum_expr->args.size(); i++) {
       size_t j = i == 0 ? base_index : 0;
       for (; j < sum_expr->args.size(); ++j) {
-        if (!visited[j] && analyzer_->CanProve(sum_expr->args[j]->scale - expected_scale == 0))
+        if (!visited[j] && analyzer_->CanProveEqual(sum_expr->args[j]->scale, expected_scale))
           break;
       }
       ICHECK(j != sum_expr->args.size());
