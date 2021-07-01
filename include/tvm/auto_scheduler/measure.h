@@ -461,9 +461,17 @@ class ProgramMeasurerNode : public Object {
   /*! \brief Continuous error counter. */
   int error_ct;
   /*! \brief Workload key to best flops map. */
-  std::unordered_map<std::string, double> best_flops;
+
+  // <bojian/DietCode> Change the best_flops/state to a single recording to
+  //                   multiple ones.
+  // std::unordered_map<std::string, double> best_flops;
+  std::unordered_map<std::string, std::vector<double>> best_flops;
+
   /*! \brief Workload key to best state map. */
-  std::unordered_map<std::string, State> best_state;
+
+  // std::unordered_map<std::string, State> best_state;
+  std::unordered_map<std::string, std::vector<State>> best_states;
+
   /*! \brief Workload key to best state's count index map. */
   std::unordered_map<std::string, int> best_ct;
   /*! \brief The set of workloads that have at least one valid schedule */

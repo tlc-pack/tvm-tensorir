@@ -84,6 +84,12 @@ def random_fill_float(size, return_ptr):
     array_wrapper[:] = np.random.uniform(0, 1, (size,))
 
 
+def _wrap_ptr_as_np_array(ptr, shape):
+    ret_ptr = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_float))
+    np_arr_wrapper = np.ctypeslib.as_array(ret_ptr, shape=shape)
+    return np_arr_wrapper
+
+
 @tvm._ffi.register_object("auto_scheduler.PythonBasedModel")
 class PythonBasedModel(CostModel):
     """Base class for cost models implemented in python"""
@@ -100,18 +106,13 @@ class PythonBasedModel(CostModel):
         # <bojian/DietCode>
         def predict_for_all_instances_func(task, states, occupancy_penalty_ptr,
                                            padding_penalty_ptr, scores_ptr):
-            def wrap_as_np_array(ptr, shape):
-                ret_ptr = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_float))
-                np_arr_wrapper = np.ctypeslib.as_array(ret_ptr, shape=shape)
-                return np_arr_wrapper
-               
             scores_shape = (len(task.shape_freq), len(states))
             print("Shape output from cost model={}".format(scores_shape))
             occupancy_penalty_np_arr = \
-                    wrap_as_np_array(occupancy_penalty_ptr, scores_shape)
+                    _wrap_ptr_as_np_array(occupancy_penalty_ptr, scores_shape)
             padding_penalty_np_arr = \
-                    wrap_as_np_array(padding_penalty_ptr, scores_shape)
-            scores_np_arr = wrap_as_np_array(scores_ptr, scores_shape)
+                    _wrap_ptr_as_np_array(padding_penalty_ptr, scores_shape)
+            scores_np_arr = _wrap_ptr_as_np_array(scores_ptr, scores_shape)
             occupancy_penalty_np_arr[:], padding_penalty_np_arr[:], \
                     scores_np_arr[:] = self.predict_for_all_instances(task, states)
 
@@ -203,3 +204,37 @@ class PythonBasedModel(CostModel):
         into a single float array.
         """
         raise NotImplementedError
+
+
+# <bojian/DietCode> Add the scoring function for scoring a batch of states.
+@tvm._ffi.register_object("auto_scheduler.PythonBasedScoreFunc")
+class PythonBasedScoreFunc(Object):
+    def __init__(self):
+        def score_func(task, num_states, scores_ptr, weights_ptr):
+            """
+            Parameters
+            ----------
+            task        : Search Task
+            num_states  : Number of States
+            scores_ptr  : A matrix of scores, each represents the compute
+                          throughput of each micro-kernel (i.e., state) on each
+                          workload iknstance.
+            weights_ptr : The weight of each workload instance.
+            """
+            scores_np = _wrap_ptr_as_np_array(
+                    scores_ptr,
+                    (len(task.shape_freq), num_states))
+            freq_np = []
+            for _, freq in task.shape_freq.items():
+                freq_np.append(freq)
+            freq_np = np.array(freq_np)
+
+            weights_np = _wrap_ptr_as_np_array(
+                    weights_ptr,
+                    (len(task.shape_freq)))
+
+            return 1.
+
+        self.__init_handle_by_constructor__(
+                _ffi_api.PythonBasedScoreFunc, score_func
+                )
