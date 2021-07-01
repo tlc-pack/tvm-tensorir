@@ -18,6 +18,7 @@ import tvm
 import tvm.testing
 from tvm import te
 from tvm.tir import floormod, floordiv
+from tvm.topi.image.resize import resize_bilinear
 
 
 def convert_division(divisions):
