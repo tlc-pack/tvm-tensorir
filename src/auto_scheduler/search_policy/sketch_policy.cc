@@ -736,6 +736,9 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
 
     // Do mutation
     while (pnext->size() < population) {
+
+      // in addition to mutate the best states, 
+      // freq * weight / score
       State tmp_s = (*pnow)[RandomChoose(pop_selection_probs, &rand_gen)];
 
       if (dis(rand_gen) < mutation_prob) {

@@ -312,7 +312,9 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
         // <bojian/DietCode>
         LOG(WARNING) << "Error encountered on state "
                      << input_batch[j]->state << " with factorization scheme="
-                     << MatrixToString(factorization_scheme);
+                     << MatrixToString(factorization_scheme) << ", "
+                     << "error_msg=" << result_batch[j]->error_msg
+                     ;
 
         flops = 0.0;
         error_ct++;
