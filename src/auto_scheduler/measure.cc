@@ -25,6 +25,9 @@
 #include <tvm/auto_scheduler/measure.h>
 #include <tvm/runtime/registry.h>
 
+// <bojian/DietCode>
+#include <tvm/support/parallel_for.h>
+
 #include <algorithm>
 
 #include "search_policy/empty_policy.h"
@@ -242,6 +245,17 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
   Array<MeasureResult> results;
   results.reserve(inputs.size());
 
+  // <bojian/DietCode>
+  // make a copy of the current best states and their corresponding flops
+  std::vector<State> candidate_states;
+  std::vector<float> candidate_flops;
+
+  if (IsDynTask(task)) {
+    // copy the best states and flops out as candidates
+    candidate_states = std::move(best_states[task->workload_key]);
+    candidate_flops  = std::move(best_flops [task->workload_key]);
+  }
+
   if (batch_size == -1) {
     // set default batch size
     batch_size = builder->n_parallel * 2;
@@ -273,7 +287,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
         // <bojian/DietCode> Estimate the FLOPs for synthetic workloads.
         if (IsDynTask(task)) {
-          flop_ct = 
+          flop_ct =
               GetSyntheticWorkloadFlopCtFromState(task, input_batch[j]->state);
         } else {
           flop_ct = task->compute_dag->flop_ct;
@@ -306,6 +320,10 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
       // <bojian/DietCode>
       if (IsDynTask(task)) {
+        // record the measured throughputs
+        candidate_states.push_back(input_batch[j]->state);
+        candidate_flops .push_back(flops);
+
       } else {
         if (flops > best_score[workload_key]) {
           best_score[workload_key] = flops;
@@ -352,6 +370,69 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       verbose = old_verbosity;
     }
   }
+
+  // <bojian/DietCode>
+  if (IsDynTask(task)) {
+    Array<Array<IntImm>> shape_values;
+    for (const std::pair<Array<IntImm>, FloatImm>& kv :
+         task->shape_freq.value()) {
+      shape_values.push_back(kv.first);
+    }
+
+    // calculate the adapted score of each candidate state
+    float occupancy_penalty, padding_penalty;
+    std::vector<float> adapted_candidate_flops(candidate_states.size() *
+                                               task->shape_freq.value().size());
+
+    for (size_t state_id = 0; state_id < candidate_states.size(); ++state_id) {
+      for (size_t inst_id = 0; inst_id < shape_values.size(); ++inst_id) {
+        AdaptStateToWorkload(task, candidate_states[state_id],
+                             task->shape_vars.value(),
+                             shape_values[inst_id], candidate_flops[state_id],
+                             &occupancy_penalty, &padding_penalty,
+                             &adapted_candidate_flops[
+                               inst_id * candidate_states.size() + state_id]
+                             );
+      }
+    }  // for (state_id ∈ candidate_states.size())
+
+    // Top-K Dispatch
+    TopKDispatcher dispatcher;
+    std::unordered_map<size_t, size_t> raw_inst_disp_map =
+        dispatcher.dispatch(adapted_candidate_flops, candidate_states.size());
+    // record the selected candidate states
+    std::vector<size_t> selected_candidate_state_ids;
+    Map<IntImm, IntImm> inst_disp_map;
+
+    // gather all the non-duplicate state_ids
+    for (const std::pair<size_t, size_t>& inst_state_pair : raw_inst_disp_map) {
+      auto iter = std::find(selected_candidate_state_ids.begin(),
+                            selected_candidate_state_ids.end(),
+                            inst_state_pair.second);
+      if (iter != selected_candidate_state_ids.end()) {
+        inst_disp_map.Set(IntImm(DataType::Int(32), inst_state_pair.first),
+                          IntImm(DataType::Int(32),
+                                 std::distance(
+                                   selected_candidate_state_ids.begin(),
+                                   iter)));
+      } else {
+        inst_disp_map.Set(IntImm(DataType::Int(32), inst_state_pair.first),
+                          IntImm(DataType::Int(32),
+                                 selected_candidate_state_ids.size()));
+        selected_candidate_state_ids.push_back(inst_state_pair.second);
+      }
+    }
+
+    std::vector<State>  selected_candidate_states;
+    std::vector<float>  selected_candidate_flops;
+    for (const size_t state_id : selected_candidate_state_ids) {
+      selected_candidate_states.push_back(candidate_states[state_id]);
+      selected_candidate_flops .push_back(candidate_flops [state_id]);
+    }
+    best_states[task->workload_key] = std::move(selected_candidate_states);
+    best_flops [task->workload_key] = std::move(selected_candidate_flops);
+    best_inst_disp_map[task->workload_key] = std::move(inst_disp_map);
+  }  // IsDynTask(task)
 
   PrintTimeElapsed(t_begin, "measurement", verbose);
 

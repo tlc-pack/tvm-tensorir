@@ -470,7 +470,9 @@ class ProgramMeasurerNode : public Object {
   /*! \brief Workload key to best state map. */
 
   // std::unordered_map<std::string, State> best_state;
-  std::unordered_map<std::string, std::vector<State>> best_states;
+  std::unordered_map<std::string, std::vector<State>>  best_states;
+  std::unordered_map<std::string, std::vector<float>>  best_flops; 
+  std::unordered_map<std::string, Map<IntImm, IntImm>> best_inst_disp_map;
 
   /*! \brief Workload key to best state's count index map. */
   std::unordered_map<std::string, int> best_ct;
