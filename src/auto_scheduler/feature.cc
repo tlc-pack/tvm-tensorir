@@ -1743,6 +1743,7 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
   arith::Analyzer analyzer;
 
   size_t grid_size = 1;
+  *padding_penalty = 1.;
 
   for (int stage_id = state->stages.size() - 1; stage_id >= 0; --stage_id) {
     const Stage& stage = state->stages[stage_id];
@@ -1846,9 +1847,9 @@ Array<NDArray> AdaptStatesToWorkloads(
       [&states, &task, &scores, &shape_values, &occupancy_penalty,
        &padding_penalty, &adapted_scores]
       (const size_t i) {
-        size_t wkl_id = i / states.size(), state_id = i % states.size();
+        size_t inst_id = i / states.size(), state_id = i % states.size();
         AdaptStateToWorkload(task, states[state_id], task->shape_vars.value(),
-                             shape_values[wkl_id], scores[state_id]->value,
+                             shape_values[inst_id], scores[state_id]->value,
                              &occupancy_penalty[i], &padding_penalty[i],
                              &adapted_scores[i]);
       }
