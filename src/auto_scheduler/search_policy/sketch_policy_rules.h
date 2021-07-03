@@ -231,6 +231,7 @@ DEFINE_MUTATE_POPULATION_RULE(MutateTileSize);
 
 
 /// <bojian/DietCode> Add the rule for mutating only the innermost tile size.
+DEFINE_MUTATE_POPULATION_RULE(MutateAnotherRandomTileSize);
 DEFINE_MUTATE_POPULATION_RULE(MutateInnermostTileSize);
 
 

@@ -426,6 +426,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
         selected_candidate_state_ids.push_back(inst_state_pair.second);
       }
       inst_predicted_flops.push_back(
+          / 
           adapted_candidate_flops[
             inst_state_pair.first * candidate_states.size() +
             inst_state_pair.second]);

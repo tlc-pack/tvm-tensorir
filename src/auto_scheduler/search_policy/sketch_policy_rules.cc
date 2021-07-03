@@ -1121,7 +1121,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
                                std::mt19937* rand_gen) const {
   const int max_innermost_split_factor =
       GetIntParam(policy->params, SketchParamKey::max_innermost_split_factor);
-  // examine the best_states that are currently stashed in the measurer
+  // examine the predicted FLOPs
   
 
 
