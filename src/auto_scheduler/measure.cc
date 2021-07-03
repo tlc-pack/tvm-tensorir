@@ -376,22 +376,18 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
   // <bojian/DietCode>
   if (IsDynTask(task)) {
-    Array<Array<IntImm>> shape_values;
-    for (const std::pair<Array<IntImm>, FloatImm>& kv :
-         task->shape_freq.value()) {
-      shape_values.push_back(kv.first);
-    }
-
     // calculate the adapted score of each candidate state
     float occupancy_penalty, padding_penalty;
-    std::vector<float> adapted_candidate_flops(candidate_states.size() *
-                                               task->shape_freq.value().size());
+    std::vector<float> adapted_candidate_flops(
+        candidate_states.size() * task->shape_values.size());
 
     for (size_t state_id = 0; state_id < candidate_states.size(); ++state_id) {
-      for (size_t inst_id = 0; inst_id < shape_values.size(); ++inst_id) {
+      for (size_t inst_id = 0; inst_id < task->shape_values.size();
+           ++inst_id) {
         AdaptStateToWorkload(task, candidate_states[state_id],
                              task->shape_vars.value(),
-                             shape_values[inst_id], candidate_flops[state_id],
+                             task->shape_values[inst_id],
+                             candidate_flops[state_id],
                              &occupancy_penalty, &padding_penalty,
                              &adapted_candidate_flops[
                                inst_id * candidate_states.size() + state_id]
@@ -426,7 +422,6 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
         selected_candidate_state_ids.push_back(inst_state_pair.second);
       }
       inst_predicted_flops.push_back(
-          / 
           adapted_candidate_flops[
             inst_state_pair.first * candidate_states.size() +
             inst_state_pair.second]);

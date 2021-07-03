@@ -24,6 +24,10 @@
 
 #include <tvm/auto_scheduler/cost_model.h>
 
+// <bojian/DietCode>
+#include "./search_policy/utils.h"
+
+
 namespace tvm {
 namespace auto_scheduler {
 
@@ -96,8 +100,8 @@ void PythonBasedModelNode::PredictForAllInstances(
     std::vector<float>* const occupancy_penalty,
     std::vector<float>* const padding_penalty,
     std::vector<float>* const scores) {
-  CHECK(task->shape_freq != nullptr);
-  scores->assign(task->shape_freq.value().size() * states.size(), 0.);
+  CHECK(IsDynTask(task));
+  scores->assign(task->shape_values.size() * states.size(), 0.);
   occupancy_penalty->assign(scores->size(), 0.);
   padding_penalty->assign(scores->size(), 0.);
   predict_for_all_instances_func(

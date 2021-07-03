@@ -194,9 +194,8 @@ struct Handler<::tvm::auto_scheduler::SearchTaskNode> {
 
     // <bojian/DietCode>
     if (data.shape_vars != nullptr) {
-      CHECK(data.shape_freq != nullptr);
       writer->WriteArrayItem(::tvm::SaveJSON(data.shape_vars.value()));
-      writer->WriteArrayItem(::tvm::SaveJSON(data.shape_freq.value()));
+      writer->WriteArrayItem(::tvm::SaveJSON(data.shape_value_freq_pairs.value()));
     }
 
     writer->EndArray();
@@ -251,9 +250,17 @@ struct Handler<::tvm::auto_scheduler::SearchTaskNode> {
             ICHECK(s);
             s = reader->NextArrayItem();
             reader->Read(&str_value);
-            data->shape_freq =
+            data->shape_value_freq_pairs =
                 Downcast<Map<Array<IntImm>, FloatImm>>(::tvm::LoadJSON(str_value));
-            // LOG(INFO) << "Deserialized shape_freq=" << data->shape_freq.value();
+            std::vector<Array<IntImm>> shape_values;
+            std::vector<FloatImm> shape_freqs;
+            for (const std::pair<Array<IntImm>, FloatImm>& shape_value_freq_pair :
+                 data->shape_value_freq_pairs.value()) {
+              shape_values.push_back(shape_value_freq_pair.first);
+              shape_freqs .push_back(shape_value_freq_pair.second);
+            }
+            data->shape_values = std::move(Array<Array<IntImm>>(shape_values));
+            data->shape_freqs  = std::move(Array<FloatImm>(shape_freqs));
             s = reader->NextArrayItem();
           }
 

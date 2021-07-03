@@ -1443,7 +1443,7 @@ void GetPerStoreFeaturesFromFile(const std::string& filename, int max_lines, int
                         
                         // <bojian/DietCode>
                       , cur_inp->task->shape_vars
-                      , cur_inp->task->shape_freq
+                      , cur_inp->task->shape_value_freq_pairs
                         
                         );
       task_id = task_cache.size();
@@ -1522,7 +1522,7 @@ void GetPerStoreFeaturesFromMeasurePairs(const Array<MeasureInput>& inputs,
                          
                          // <bojian/DietCode>
                        , inputs[i]->task->shape_vars
-                       , inputs[i]->task->shape_freq
+                       , inputs[i]->task->shape_value_freq_pairs
                          
                          );
         } catch (std::exception& e) {
@@ -1826,37 +1826,32 @@ Array<NDArray> AdaptStatesToWorkloads(
     const SearchTask& task, const Array<State>& states,
     const Array<FloatImm>& scores) {
   std::vector<float> adapted_scores(
-      task->shape_freq.value().size() * states.size());
+      task->shape_values.size() * states.size());
   std::vector<float> occupancy_penalty(adapted_scores.size(), 1.f);
   std::vector<float> padding_penalty(adapted_scores.size(), 1.f);
 
-  Array<Array<IntImm>> shape_values;
-  for (const std::pair<Array<IntImm>, FloatImm>& kv :
-       task->shape_freq.value()) {
-    shape_values.push_back(kv.first);
-  }
-
   enable_verbose_logging = true;
   AdaptStateToWorkload(task, states[0], task->shape_vars.value(),
-                       shape_values[0], scores[0]->value, &occupancy_penalty[0],
-                       &padding_penalty[0], &adapted_scores[0]);
+                       task->shape_values[0], scores[0]->value,
+                       &occupancy_penalty[0], &padding_penalty[0],
+                       &adapted_scores[0]);
   enable_verbose_logging = false;
 
   support::parallel_for(
-      1, task->shape_freq.value().size() * states.size(),
-      [&states, &task, &scores, &shape_values, &occupancy_penalty,
+      1, task->shape_values.size() * states.size(),
+      [&states, &task, &scores, &occupancy_penalty,
        &padding_penalty, &adapted_scores]
       (const size_t i) {
         size_t inst_id = i / states.size(), state_id = i % states.size();
         AdaptStateToWorkload(task, states[state_id], task->shape_vars.value(),
-                             shape_values[inst_id], scores[state_id]->value,
-                             &occupancy_penalty[i], &padding_penalty[i],
-                             &adapted_scores[i]);
+                             task->shape_values[inst_id],
+                             scores[state_id]->value, &occupancy_penalty[i],
+                             &padding_penalty[i], &adapted_scores[i]);
       }
   );
   // LOG(FATAL) << "Finished computing the adaption penalty";
   std::vector<int64_t> ndarr_shape =
-      {static_cast<int64_t>(task->shape_freq.value().size()),
+      {static_cast<int64_t>(task->shape_values.size()),
        static_cast<int64_t>(states.size())};
   return Array<NDArray>{VecToNDArray(adapted_scores, ndarr_shape),
                         VecToNDArray(occupancy_penalty, ndarr_shape),

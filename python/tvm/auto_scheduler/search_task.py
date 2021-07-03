@@ -429,7 +429,7 @@ class SearchTask(Object):
         
         # <bojian/DietCode>
         shape_vars=None,
-        shape_freq=None,
+        shape_value_freq_pairs=None,
         skip_dyn_args_init=False,
 
         compute_dag=None,
@@ -450,7 +450,8 @@ class SearchTask(Object):
         # <bojian/DietCode>
         if shape_vars is not None and not skip_dyn_args_init:
             print("Initializing arguments ...")
-            args = _ffi_api.InitializeDynamicArgs(args, shape_vars, shape_freq)
+            args = _ffi_api.InitializeDynamicArgs(args, shape_vars,
+                                                  shape_value_freq_pairs)
             print("Initialized arguments: {}".format(args))
 
         if func is not None:
@@ -493,7 +494,7 @@ class SearchTask(Object):
 
             # <bojian/DietCode>
             shape_vars,
-            shape_freq
+            shape_value_freq_pairs
         )
 
     def tune(self, tuning_options, search_policy=None):

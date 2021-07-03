@@ -106,7 +106,7 @@ class PythonBasedModel(CostModel):
         # <bojian/DietCode>
         def predict_for_all_instances_func(task, states, occupancy_penalty_ptr,
                                            padding_penalty_ptr, scores_ptr):
-            scores_shape = (len(task.shape_freq), len(states))
+            scores_shape = (len(task.shape_values), len(states))
             print("Shape output from cost model={}".format(scores_shape))
             occupancy_penalty_np_arr = \
                     _wrap_ptr_as_np_array(occupancy_penalty_ptr, scores_shape)
@@ -131,19 +131,16 @@ class PythonBasedModel(CostModel):
             ret_scores_ptr : Weighted Score to Return (scalar)
             """
             scores_np = _wrap_ptr_as_np_array(
-                    scores_ptr, (len(task.shape_freq), num_states))
-            freq_np = []
-            for _, freq in task.shape_freq.items():
-                freq_np.append(freq)
-            freq_np = np.array(freq_np, dtype=np.float32)
+                    scores_ptr, (len(task.shape_values), num_states))
+            freq_np = np.array(list(task.shape_freqs), dtype=np.float32)
             weights_np = _wrap_ptr_as_np_array(
-                    weights_ptr, (len(task.shape_freq)))
+                    weights_ptr, (len(task.shape_values)))
             weights_np = freq_np * weights_np
             print("weights={}".format(weights_np))
             ret_score_np =  _wrap_ptr_as_np_array(ret_score_ptr, (1,))
 
             scores_by_inst = []
-            for inst_id in range(len(task.shape_freq)):
+            for inst_id in range(len(task.shape_values)):
                 scores_by_inst.append(scores_np[inst_id, inst_disp_map[inst_id]])
             scores_by_inst = np.array(scores_by_inst, dtype=np.float32)
             print("scores_by_inst={}".format(scores_by_inst))

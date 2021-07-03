@@ -235,7 +235,7 @@ def recover_measure_input(inp, rebuild_state=False):
 
         # <bojian/DietCode>
         shape_vars=task.shape_vars,
-        shape_freq=task.shape_freq,
+        shape_value_freq_pairs=task.shape_value_freq_pairs,
         skip_dyn_args_init=True
 
     )

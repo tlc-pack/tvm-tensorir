@@ -177,7 +177,10 @@ SearchTask::SearchTask(ComputeDAG compute_dag, String workload_key, Target targe
 
   // <bojian/DietCode>
   node->shape_vars = std::move(shape_vars);
-
+  if (shape_vars != nullptr) {
+    CHECK(shape_value_freq_pairs != nullptr)
+        << "Value and frequency information must be provided";
+  }
   std::vector<Array<IntImm>> shape_values;
   std::vector<FloatImm> shape_freqs;
   if (shape_value_freq_pairs != nullptr) {
@@ -187,6 +190,7 @@ SearchTask::SearchTask(ComputeDAG compute_dag, String workload_key, Target targe
       shape_freqs .push_back(shape_value_freq_pair.second);
     }
   }
+  node->shape_value_freq_pairs = std::move(shape_value_freq_pairs);
   node->shape_values = std::move(Array<Array<IntImm>>(shape_values));
   node->shape_freqs  = std::move(Array<FloatImm>(shape_freqs));
 
