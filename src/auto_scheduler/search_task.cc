@@ -157,7 +157,8 @@ SearchTask::SearchTask(ComputeDAG compute_dag, String workload_key, Target targe
                        
                        // <bojian/DietCode>
                      , Optional<Array<String>> shape_vars
-                     , Optional<Map<Array<IntImm>, FloatImm>> shape_freq
+                     , Optional<Map<Array<IntImm>, FloatImm>>
+                         shape_value_freq_pairs
                        
                        ) {
   auto node = make_object<SearchTaskNode>();
@@ -176,7 +177,18 @@ SearchTask::SearchTask(ComputeDAG compute_dag, String workload_key, Target targe
 
   // <bojian/DietCode>
   node->shape_vars = std::move(shape_vars);
-  node->shape_freq = std::move(shape_freq);
+
+  std::vector<Array<IntImm>> shape_values;
+  std::vector<FloatImm> shape_freqs;
+  if (shape_value_freq_pairs != nullptr) {
+    for (const std::pair<Array<IntImm>, FloatImm>& shape_value_freq_pair :
+         shape_value_freq_pairs.value()) {
+      shape_values.push_back(shape_value_freq_pair.first);
+      shape_freqs .push_back(shape_value_freq_pair.second);
+    }
+  }
+  node->shape_values = std::move(Array<Array<IntImm>>(shape_values));
+  node->shape_freqs  = std::move(Array<FloatImm>(shape_freqs));
 
   data_ = std::move(node);
 }
@@ -202,14 +214,15 @@ TVM_REGISTER_GLOBAL("auto_scheduler.SearchTask")
                      
                        // <bojian/DietCode>
                      , Optional<Array<String>> shape_vars
-                     , Optional<Map<Array<IntImm>, FloatImm>> shape_freq
+                     , Optional<Map<Array<IntImm>, FloatImm>>
+                         shape_value_freq_pairs
                        
                        ) {
       return SearchTask(compute_dag, workload_key, target, target_host, hardware_params,
                         LayoutRewriteOption(layout_rewrite_option), task_input_names
                         
                         // <bojian/DietCode>
-                      , shape_vars, shape_freq 
+                      , shape_vars, shape_value_freq_pairs
                         
                         );
     });

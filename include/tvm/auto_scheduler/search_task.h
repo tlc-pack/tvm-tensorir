@@ -128,7 +128,10 @@ class SearchTaskNode : public Object {
 
   // <bojian/DietCode> Add shape variables and frequency.
   Optional<Array<String>> shape_vars;
-  Optional<Map<Array<IntImm>, FloatImm>> shape_freq;
+  Optional<Map<Array<IntImm>, FloatImm>> shape_value_freq_pairs;
+  // uniquely determined by the above mapping
+  Array<Array<IntImm>> shape_values;
+  Array<FloatImm> shape_freqs;
 
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -143,7 +146,7 @@ class SearchTaskNode : public Object {
 
     // <bojian/DietCode>
     v->Visit("shape_vars", &shape_vars);
-    v->Visit("shape_freq", &shape_freq);
+    v->Visit("shape_value_freq_pairs", &shape_value_freq_pairs);
   }
 
   static constexpr const char* _type_key = "auto_scheduler.SearchTask";
@@ -171,9 +174,10 @@ class SearchTask : public ObjectRef {
              Optional<HardwareParams> hardware_params, LayoutRewriteOption layout_rewrite_option,
              Array<String> task_input_names
              
-             // <bojian/DietCode>
+             // <bojian/DietCode> Add the definition for shape variables, values
+             //                   and frequency.
            , Optional<Array<String>> shape_vars
-           , Optional<Map<Array<IntImm>, FloatImm>> shape_freq
+           , Optional<Map<Array<IntImm>, FloatImm>> shape_value_freq_pairs
            
              );
 
