@@ -229,6 +229,11 @@ class PopulationMutationRule : public PopulationGenerationRule {
     and multipling it to another tile size. */
 DEFINE_MUTATE_POPULATION_RULE(MutateTileSize);
 
+
+/// <bojian/DietCode> Add the rule for mutating only the innermost tile size.
+DEFINE_MUTATE_POPULATION_RULE(MutateInnermostTileSize);
+
+
 /*! \brief The rule that mutates the number of fused outer iterators annotated by parallel. */
 DEFINE_MUTATE_POPULATION_RULE(MutateParallel);
 
