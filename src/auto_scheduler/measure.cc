@@ -232,7 +232,7 @@ void ProgramMeasurerNode::Reset() {
   best_score.clear();
   best_states.clear();
   best_state_flops.clear();
-  inst_opt_priority.clear();
+  curr_inst_opt_prob.clear();
   best_inst_disp_map.clear();
   
   best_ct.clear();
@@ -406,6 +406,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     std::vector<size_t> selected_candidate_state_ids;
     std::vector<float>  inst_predicted_flops;
     std::vector<float>  inst_opt_priority;
+    std::vector<double> inst_opt_prob;
     Map<IntImm, IntImm> inst_disp_map;
 
     // gather all the non-duplicate state_ids
@@ -438,9 +439,9 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
           flops * task->shape_freqs[inst_state_pair.first]->value /
           inst_predicted_flops.back());
     }
-
+    ComputePrefixSumProb(inst_opt_priority, &inst_opt_prob);
     LOG(INFO) << "inst_predicted_flops=" << VectorToString(inst_predicted_flops)
-              << ", inst_opt_priority=" << VectorToString(inst_opt_priority);
+              << ", inst_opt_prob=" << VectorToString(inst_opt_prob);
 
     std::vector<State> selected_candidate_states;
     std::vector<float> selected_candidate_flops;
@@ -452,7 +453,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     best_inst_disp_map[task->workload_key] = std::move(inst_disp_map);
     best_states[task->workload_key] = std::move(selected_candidate_states);
     best_state_flops[task->workload_key] = std::move(selected_candidate_flops);
-    curr_inst_opt_priority[task->workload_key] = std::move(inst_opt_priority);
+    curr_inst_opt_prob[task->workload_key] = std::move(inst_opt_prob);
   }  // IsDynTask(task)
 
   PrintTimeElapsed(t_begin, "measurement", verbose);
