@@ -397,7 +397,7 @@ class CacheReadRewriter : public StmtExprMutator {
 
   PrimExpr VisitExpr_(const BufferLoadNode* load) override {
     if (load->buffer.same_as(info_->read_buffer)) {
-      ObjectPtr<BufferLoadNode> n = CopyOnWrite(load);
+      ObjectPtr<BufferLoadNode> n = make_object<BufferLoadNode>(*load);
       n->buffer = info_->write_buffer;
       return PrimExpr(n);
     }
@@ -492,7 +492,7 @@ class CacheWriteRewriter : public StmtExprMutator {
 
   PrimExpr VisitExpr_(const BufferLoadNode* load) final {
     if (load->buffer.same_as(info_->write_buffer)) {
-      auto n = CopyOnWrite(load);
+      auto n = make_object<BufferLoadNode>(*load);
       n->buffer = info_->read_buffer;
       return PrimExpr(n);
     }

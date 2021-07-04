@@ -25,7 +25,6 @@
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/stmt_functor.h>
-#include <tvm/tir/transform.h>
 
 #include <functional>
 
@@ -140,13 +139,11 @@ class PrimFuncSpecializer : public StmtExprMutator {
     op = expr.as<BufferLoadNode>();
     ICHECK(op != nullptr);
     auto it = buffer_map_.find(op->buffer);
-    Array<PrimExpr> indices = MutateArray(op->indices, fmutate);
-    if (it == buffer_map_.end() && indices.same_as(op->indices)) {
+    if (it == buffer_map_.end()) {
       return GetRef<BufferLoad>(op);
     } else {
       auto n = make_object<BufferLoadNode>(*op);
       n->buffer = it->second;
-      n->indices = std::move(indices);
       return PrimExpr(n);
     }
   }

@@ -976,6 +976,9 @@ struct MatmulAttrs : public tvm::AttrsNode<MatmulAttrs> {
   bool transpose_a;
   bool transpose_b;
   tvm::String auto_scheduler_rewritten_layout;  // The layout after auto-scheduler's layout rewrite
+  // The original shape of the weight matrix,
+  // used to recover the compute after transforming the input's layout .
+  Array<PrimExpr> meta_schedule_original_shape;
 
   TVM_DECLARE_ATTRS(MatmulAttrs, "relay.attrs.MatmulAttrs") {
     TVM_ATTR_FIELD(units).describe("Number of hidden units of the dense transformation.");

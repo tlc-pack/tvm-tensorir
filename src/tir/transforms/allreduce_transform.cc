@@ -415,8 +415,8 @@ class AllReduceTransformer : public StmtExprMutator {
         if (iter_var->iter_type == kCommReduce) {
           continue;
         }
-        ObjectPtr<IterVarNode> new_iter_var = CopyOnWrite(iter_var);
-        new_iter_var->var = Var(CopyOnWrite(iter_var->var.as<VarNode>()));
+        auto new_iter_var = make_object<IterVarNode>(*iter_var);
+        new_iter_var->var = Var(make_object<VarNode>(*iter_var->var.get()));
         iter_vars.emplace_back(IterVar(new_iter_var));
         iter_values.emplace_back(GetRef<PrimExpr>(value));
       }
@@ -495,8 +495,8 @@ class AllReduceTransformer : public StmtExprMutator {
         if (iter_var->iter_type == kCommReduce) {
           continue;
         }
-        ObjectPtr<IterVarNode> new_iter_var = CopyOnWrite(iter_var);
-        new_iter_var->var = Var(CopyOnWrite(iter_var->var.as<VarNode>()));
+        auto new_iter_var = make_object<IterVarNode>(*iter_var);
+        new_iter_var->var = Var(make_object<VarNode>(*iter_var->var.get()));
         iter_vars.emplace_back(IterVar(new_iter_var));
         iter_values.emplace_back(GetRef<PrimExpr>(value));
       }
@@ -533,7 +533,7 @@ class AllReduceTransformer : public StmtExprMutator {
   PrimExpr VisitExpr_(const BufferLoadNode* op) override {
     if (status == kMutatingBlock_nor_red) {
       // Mutate buffer and indices.
-      ObjectPtr<BufferLoadNode> n = CopyOnWrite(op);
+      ObjectPtr<BufferLoadNode> n = make_object<BufferLoadNode>(*op);
 
       if (op->buffer.same_as(write_buffer)) {
         n->buffer = normal_reduce.value();

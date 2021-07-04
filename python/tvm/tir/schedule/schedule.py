@@ -141,7 +141,7 @@ class Schedule(Object):
     @property
     def mod(self) -> IRModule:
         """Returns the AST of the module being scheduled"""
-        return _ffi_api_schedule.ScheduleModule(self)  # type: ignore # pylint: disable=no-member
+        return _ffi_api_schedule.ScheduleGetMod(self)  # type: ignore # pylint: disable=no-member
 
     @property
     def state(self) -> ScheduleState:
@@ -165,7 +165,7 @@ class Schedule(Object):
         copy : Schedule
             A new copy of the schedule
         """
-        return _ffi_api_schedule.ScheduleCopy(self)  # type: ignore # pylint: disable=no-member
+        return _ffi_api_schedule.ScheduleCopy(self, seed)  # type: ignore # pylint: disable=no-member
 
     def seed(self, seed: int) -> None:
         """Seed the randomness
@@ -253,7 +253,6 @@ class Schedule(Object):
         """
         return _ffi_api_schedule.ScheduleRemoveRV(self, rand_var)  # type: ignore # pylint: disable=no-member
 
-    ########## Block/Loop relation ##########
     ########## Block/Loop relation ##########
 
     def get_block(
@@ -399,100 +398,6 @@ class Schedule(Object):
         )
 
     def compute_inline(self, block: BlockRV) -> None:
-        _ffi_api_schedule.ScheduleComputeInline(self, block)  # pylint: disable=no-member
-
-    def reverse_compute_inline(self, block: BlockRV) -> None:
-        _ffi_api_schedule.ScheduleReverseComputeInline(self, block)  # pylint: disable=no-member
-
-    ########## Schedule: parallelize / annotate ##########
-
-    def vectorize(self, loop: LoopRV) -> None:
-        _ffi_api_schedule.ScheduleVectorize(self, loop)  # pylint: disable=no-member
-
-    def parallel(self, loop: LoopRV) -> None:
-        _ffi_api_schedule.ScheduleParallel(self, loop)  # pylint: disable=no-member
-
-    def unroll(self, loop: LoopRV) -> None:
-        _ffi_api_schedule.ScheduleUnroll(self, loop)  # pylint: disable=no-member
-
-    def bind(self, loop: LoopRV, thread: Union[str, IterVar]) -> None:
-        if isinstance(thread, str):
-            thread = String(thread)
-        _ffi_api_schedule.ScheduleBind(self, loop, thread)  # pylint: disable=no-member
-
-    def double_buffer(self, block: BlockRV) -> None:
-        _ffi_api_schedule.ScheduleDoubleBuffer(self, block)  # pylint: disable=no-member
-
-    def set_scope(self, block: BlockRV, i: int, storage_scope: str) -> None:
-        _ffi_api_schedule.ScheduleSetScope(  # pylint: disable=no-member
-            self, block, i, storage_scope
-        )
-
-    def pragma(self, loop: LoopRV, pragma_type: str, pragma_value: ExprRV) -> None:
-        if isinstance(pragma_value, bool):
-            pragma_value = IntImm("bool", pragma_value)
-        _ffi_api_schedule.SchedulePragma(  # pylint: disable=no-member
-            self, loop, pragma_type, pragma_value
-        )
-
-    def storage_align(
-        self,
-        block: BlockRV,
-        buffer_index: int,
-        axis: int,
-        factor: int,
-        offset: int,
-    ) -> None:
-        _ffi_api_schedule.ScheduleStorageAlign(  # pylint: disable=no-member
-            self, block, buffer_index, axis, factor, offset
-        )
-
-    ########## Schedule: cache read/write ##########
-
-    def cache_read(self, block: BlockRV, i: int, storage_scope: str) -> BlockRV:
-        return _ffi_api_schedule.ScheduleCacheRead(  # pylint: disable=no-member
-            self, block, i, storage_scope
-        )
-
-    def cache_write(self, block: BlockRV, i: int, storage_scope: str) -> BlockRV:
-        return _ffi_api_schedule.ScheduleCacheWrite(  # pylint: disable=no-member
-            self, block, i, storage_scope
-        )
-
-    ########## Schedule: reduction ##########
-
-    def rfactor(self, loop: LoopRV, factor: int) -> LoopRV:
-        return _ffi_api_schedule.ScheduleRFactor(self, loop, factor)  # pylint: disable=no-member
-
-    def decompose_reduction(self, block: BlockRV, loop: Optional[LoopRV]) -> BlockRV:
-        return _ffi_api_schedule.ScheduleDecomposeReduction(  # pylint: disable=no-member
-            self, block, loop
-        )
-
-    def merge_reduction(self, init: BlockRV, update: BlockRV) -> None:
-        _ffi_api_schedule.ScheduleMergeReduction(self, init, update)  # pylint: disable=no-member
-
-    ########## Schedule: blockize / tensorize ##########
-
-    def blockize(self, loop: LoopRV) -> BlockRV:
-        return _ffi_api_schedule.ScheduleBlockize(self, loop)  # pylint: disable=no-member
-
-    def get_loops(self, block: BlockRV) -> List[LoopRV]:
-        """Get the parent loops of the block in its scope, from outer to inner
-        Parameters
-        ----------
-        block : BlockRV
-            The query block
-        Returns
-        ----------
-        loops : List[LoopRV]
-            A list of loops above the given block in its scope, from outer to inner
-        """
-        return _ffi_api_schedule.ScheduleGetLoops(self, block)  # type: ignore # pylint: disable=no-member
-
-    ########## Schedule: loops manipulation ##########
-    ########## Schedule: compute location ##########
-    def compute_inline(self, block: BlockRV) -> None:
         """Inline a block into its consumer(s). It requires:
 
         1) The block is a complete non-root block, which only produces one buffer
@@ -609,10 +514,138 @@ class Schedule(Object):
         """
         _ffi_api_schedule.ScheduleReverseComputeInline(self, block)  # type: ignore # pylint: disable=no-member
 
-    ########## Schedule: loop binding/annotation ##########
+    ########## Schedule: parallelize / annotate ##########
+
+    def vectorize(self, loop: LoopRV) -> None:
+        _ffi_api_schedule.ScheduleVectorize(self, loop)  # pylint: disable=no-member
+
+    def parallel(self, loop: LoopRV) -> None:
+        _ffi_api_schedule.ScheduleParallel(self, loop)  # pylint: disable=no-member
+
+    def unroll(self, loop: LoopRV) -> None:
+        _ffi_api_schedule.ScheduleUnroll(self, loop)  # pylint: disable=no-member
+
+    def bind(self, loop: LoopRV, thread: Union[str, IterVar]) -> None:
+        if isinstance(thread, str):
+            thread = String(thread)
+        _ffi_api_schedule.ScheduleBind(self, loop, thread)  # pylint: disable=no-member
+
+    def double_buffer(self, block: BlockRV) -> None:
+        _ffi_api_schedule.ScheduleDoubleBuffer(self, block)  # pylint: disable=no-member
+
+    def set_scope(self, block: BlockRV, i: int, storage_scope: str) -> None:
+        _ffi_api_schedule.ScheduleSetScope(  # pylint: disable=no-member
+            self, block, i, storage_scope
+        )
+
+    def pragma(self, loop: LoopRV, pragma_type: str, pragma_value: ExprRV) -> None:
+        if isinstance(pragma_value, bool):
+            pragma_value = IntImm("bool", pragma_value)
+        _ffi_api_schedule.SchedulePragma(  # pylint: disable=no-member
+            self, loop, pragma_type, pragma_value
+        )
+
+    def storage_align(
+        self,
+        block: BlockRV,
+        buffer_index: int,
+        axis: int,
+        factor: int,
+        offset: int,
+    ) -> None:
+        _ffi_api_schedule.ScheduleStorageAlign(  # pylint: disable=no-member
+            self, block, buffer_index, axis, factor, offset
+        )
+
     ########## Schedule: cache read/write ##########
+
+    def cache_read(self, block: BlockRV, i: int, storage_scope: str) -> BlockRV:
+        return _ffi_api_schedule.ScheduleCacheRead(  # pylint: disable=no-member
+            self, block, i, storage_scope
+        )
+
+    def cache_write(self, block: BlockRV, i: int, storage_scope: str) -> BlockRV:
+        return _ffi_api_schedule.ScheduleCacheWrite(  # pylint: disable=no-member
+            self, block, i, storage_scope
+        )
+
     ########## Schedule: reduction ##########
-    ########## Schedule: blockize & tensorize ##########
+
+    def rfactor(self, loop: LoopRV, factor: int) -> LoopRV:
+        return _ffi_api_schedule.ScheduleRFactor(self, loop, factor)  # pylint: disable=no-member
+
+    def decompose_reduction(self, block: BlockRV, loop: Optional[LoopRV]) -> BlockRV:
+        return _ffi_api_schedule.ScheduleDecomposeReduction(  # pylint: disable=no-member
+            self, block, loop
+        )
+
+    def merge_reduction(self, init: BlockRV, update: BlockRV) -> None:
+        _ffi_api_schedule.ScheduleMergeReduction(self, init, update)  # pylint: disable=no-member
+
+    ########## Schedule: blockize / tensorize ##########
+
+    def blockize(self, loop: LoopRV) -> BlockRV:
+        return _ffi_api_schedule.ScheduleBlockize(self, loop)  # pylint: disable=no-member
+
+    def tensorize(self, loop: LoopRV, intrin: Union[str, TensorIntrin]) -> None:
+        if isinstance(intrin, str):
+            intrin = String(intrin)
+        _ffi_api_schedule.ScheduleTensorize(self, loop, intrin)  # pylint: disable=no-member
+
+    ########## Schedule: Marks and NO-OPs ##########
+
+    def mark_loop(
+        self,
+        loop: LoopRV,
+        ann_key: str,
+        ann_val: str,
+    ) -> None:
+        """Mark a range of loops with the specific mark
+        Parameters
+        ----------
+        loop: LoopRV
+            The loops to be marked
+        ann_key : str
+            The annotation key
+        ann_val : str
+            The annotation value
+        """
+        if isinstance(ann_val, str):
+            ann_val = String(ann_val)
+        elif isinstance(ann_val, int):
+            ann_val = IntImm("int64", ann_val)
+        _ffi_api_schedule.ScheduleMarkLoop(  # pylint: disable=no-member
+            self, loop, ann_key, ann_val
+        )
+
+    def mark_block(
+        self,
+        block: BlockRV,
+        ann_key: str,
+        ann_val: ExprRV,
+    ) -> None:
+        """Mark a block
+        Parameters
+        ----------
+        block : BlockRV
+            The block to be marked
+        ann_key : str
+            The annotation key
+        ann_val : ExprRV
+            The annotation value
+        """
+        if isinstance(ann_val, str):
+            ann_val = String(ann_val)
+        elif isinstance(ann_val, int):
+            ann_val = IntImm("int64", ann_val)
+        _ffi_api_schedule.ScheduleMarkBlock(  # pylint: disable=no-member
+            self, block, ann_key, ann_val
+        )
+
+    ########## Schedule: Misc ##########
+
+    def inline_argument(self, i: int, func_name: str = "main"):
+        _ffi_api_schedule.ScheduleInlineArgument(self, i, func_name)  # pylint: disable=no-member
 
 
 @_register_object("tir.ConcreteSchedule")

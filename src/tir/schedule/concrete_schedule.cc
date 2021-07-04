@@ -29,7 +29,10 @@ Schedule Schedule::Concrete(IRModule mod, int64_t seed, int debug_mode,
   n->state_ = ScheduleState(mod, debug_mode);
   n->error_render_level_ = error_render_level;
   n->sampler_.Seed(seed);
+  n->symbol_table_ = {};
+  n->analyzer_ = std::make_unique<arith::Analyzer>();
   return Schedule(std::move(n));
+}
 
 /******** Copy ********/
 
@@ -138,7 +141,6 @@ class ScheduleCopier {
       scope->src2deps = Copy(old_info.scope->src2deps);
       scope->dst2deps = Copy(old_info.scope->dst2deps);
       scope->buffer_writers = Copy(old_info.scope->buffer_writers);
-      scope->stage_pipeline = old_info.scope->stage_pipeline;
       new_info.scope = BlockScope(std::move(scope));
       result[Copy(old_sref)] = std::move(new_info);
     }
@@ -176,7 +178,6 @@ class ScheduleCopier {
 
 void ConcreteScheduleNode::Copy(ScheduleState* new_state, TSymbolTable* new_symbol_table) const {
   ScheduleCopier::Copy(this, new_state, new_symbol_table);
-  new_state->get()->DebugVerify();
 }
 
 Schedule ConcreteScheduleNode::Copy(int64_t new_seed) const {

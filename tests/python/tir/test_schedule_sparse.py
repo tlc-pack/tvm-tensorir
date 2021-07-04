@@ -180,9 +180,13 @@ def test_sparse_dense():
             with tvm.target.Target(device):
                 func = sparse_dense_bsr
                 x, data, _, _, _, N_blocks = func.params
-                func = func.specialize(x, tir.decl_buffer([M, K]))
-                func = func.specialize(data, tir.decl_buffer(W_data.shape))
-                func = func.specialize(N_blocks, N // BS_R).remove_const_param(N_blocks)
+                func = func.specialize(
+                    {
+                        x: tir.decl_buffer([M, K]),
+                        data: tir.decl_buffer(W_data.shape),
+                        N_blocks: N // BS_R,
+                    }
+                )
                 func = _sparse_dense_implement_tir[device](func)
                 func = tvm.build(func)
                 Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), device=ctx)

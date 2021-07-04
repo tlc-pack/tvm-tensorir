@@ -189,9 +189,11 @@ class StorageScopeMutator : StmtExprMutator {
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     PrimExpr res = ExprMutator::VisitExpr_(op);
+    op = res.as<BufferLoadNode>();
+    ICHECK(op);
     auto it = buffer_map_.find(op->buffer.get());
     if (it != buffer_map_.end()) {
-      ObjectPtr<BufferLoadNode> ptr = CopyOnWrite(res.as<BufferLoadNode>());
+      ObjectPtr<BufferLoadNode> ptr = make_object<BufferLoadNode>(*op);
       ptr->buffer = it->second;
       return PrimExpr(ptr);
     } else {
