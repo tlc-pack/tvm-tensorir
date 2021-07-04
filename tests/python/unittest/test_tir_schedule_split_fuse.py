@@ -69,6 +69,7 @@ def elementwise_with_anno(a: ty.handle, b: ty.handle) -> None:
                 tir.writes([B[vi, vj, vk]])
                 B[vi, vj, vk] = A[vi, vj, vk] * 2.0
 
+
 @tvm.script.tir
 def elementwise_with_starting_point(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128, 128))
@@ -82,6 +83,7 @@ def elementwise_with_starting_point(a: ty.handle, b: ty.handle) -> None:
                 tir.reads([A[vi, vj, vk]])
                 tir.writes([B[vi, vj, vk]])
                 B[vi, vj, vk] = A[vi, vj, vk] * 2.0
+
 
 @tvm.script.tir
 def elementwise_fused(a: ty.handle, b: ty.handle) -> None:
@@ -124,19 +126,26 @@ def elementwise_split_case1(a: ty.handle, b: ty.handle) -> None:
             tir.writes([B[vi, vj, vk]])
             B[vi, vj, vk] = A[vi, vj, vk] * 2.0
 
+
 @tvm.script.tir
 def elementwise_split_with_predicate(a: ty.handle, b: ty.handle) -> None:
     B = tir.match_buffer(b, [128, 128, 128])
     A = tir.match_buffer(a, [128, 128, 128])
     for i0, i1, i2, j0, j1, k0, k1 in tir.grid(43, 1, 3, 1, 129, 129, 1):
         with tir.block([128, 128, 128], "B") as [vi, vj, vk]:
-            tir.where(((((((i0 + i1)*3) + i2) < 128) and (((j0*129) + j1) < 128)) and ((k0 + k1) < 128)))
-            tir.bind(vi, ((i0*3) + i2))
-            tir.bind(vj, ((j0*127) + j1))
-            tir.bind(vk, ((k0*2) + k1))
+            tir.where(
+                (
+                    (((((i0 + i1) * 3) + i2) < 128) and (((j0 * 129) + j1) < 128))
+                    and ((k0 + k1) < 128)
+                )
+            )
+            tir.bind(vi, ((i0 * 3) + i2))
+            tir.bind(vj, ((j0 * 127) + j1))
+            tir.bind(vk, ((k0 * 2) + k1))
             tir.reads([A[vi, vj, vk]])
             tir.writes([B[vi, vj, vk]])
             B[vi, vj, vk] = A[vi, vj, vk] * 2.0
+
 
 # pylint: enable=no-member,invalid-name,unused-variable
 
@@ -159,13 +168,13 @@ def test_split():
     tvm.ir.assert_structural_equal(elementwise_split_case0, sch.mod["main"])
 
 
-def test_split_with_none_factor():
+def test_split_with_inferred_factor():
     sch = tir.Schedule(elementwise, debug_mode=True)
     block_b = sch.get_block("B")
     i, j, k = sch.get_loops(block_b)
     sch.split(i, factors=[None, 1, 64])
     sch.split(j, factors=[2, None, 64])
-    sch.split(k, factors=[2, 1, None])
+    sch.split(k, factors=[2, 1, -1])
     tvm.ir.assert_structural_equal(elementwise_split_case1, sch.mod["main"])
 
 
@@ -178,6 +187,7 @@ def test_split_with_predicate():
     sch.split(j, factor=129)
     sch.split(k, nparts=129)
     tvm.ir.assert_structural_equal(elementwise_split_with_predicate, sch.mod["main"])
+
 
 def test_fuse_fail_not_only_child():
     sch = tir.Schedule(elementwise_with_seq, debug_mode=True)
@@ -196,6 +206,7 @@ def test_fuse_split_fail_with_annotation():
     with pytest.raises(tvm.tir.ScheduleError):
         sch.split(k, factor=10)
 
+
 def test_fuse_split_fail_not_start_with_zero():
     sch = tir.Schedule(elementwise_with_anno, debug_mode=True)
     block_b = sch.get_block("B")
@@ -209,7 +220,7 @@ def test_fuse_split_fail_not_start_with_zero():
 if __name__ == "__main__":
     test_fuse()
     test_split()
-    test_split_with_none_factor()
+    test_split_with_inferred_factor()
     # test_split_with_predicate()
     test_fuse_fail_not_only_child()
     test_fuse_split_fail_with_annotation()

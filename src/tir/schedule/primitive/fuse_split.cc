@@ -35,7 +35,7 @@ class PredicateUpdater : public StmtMutator {
     n->predicate = n->predicate && predicate_;
     return BlockRealize(n);
   }
- 
+
  private:
   /*! \brief The predicate to be added */
   const PrimExpr& predicate_;
@@ -44,17 +44,17 @@ class PredicateUpdater : public StmtMutator {
 class BlockRealizeRewriter : public StmtExprMutator {
  public:
   explicit BlockRealizeRewriter(
-      const std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual>& loop_map){
+      const std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual>& loop_map) {
     loop_map_.insert(loop_map.begin(), loop_map.end());
   }
-  
+
   Stmt VisitStmt_(const ForNode* op) final {
     loop_map_[op->loop_var] = Range::FromMinExtent(op->min, op->extent);
     Stmt res = StmtMutator::VisitStmt_(op);
     loop_map_.erase(op->loop_var);
     return res;
   }
-  
+
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
     auto v = arith::IterMapSimplify(op->iter_values, loop_map_, op->predicate, false);
     if (v.same_as(op->iter_values)) {
@@ -65,7 +65,7 @@ class BlockRealizeRewriter : public StmtExprMutator {
       return Stmt(n);
     }
   }
- 
+
  private:
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map_;
 };
@@ -82,20 +82,20 @@ Stmt SimplifyBindings(const Stmt& stmt, const Array<StmtSRef>& loops) {
 
 class SplitNotLoopError : public ScheduleError {
  public:
-  explicit SplitNotLoopError(IRModule mod, String type): mod_(mod), type_(type){}
-  
+  explicit SplitNotLoopError(IRModule mod, String type): mod_(mod), type_(type) {}
+
   String FastErrorString() const final {
     return "ScheduleError: 'split' only operates on a loop";
   }
-  
+
   String DetailRenderTemplate() const final {
     return "'split' only operates on a loop, but the StmtSref passed in points to"
            "type: {0} ";
   }
-  
+
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {type_}; }
-  
+
   IRModule mod_;
   String type_;
 };
@@ -103,31 +103,31 @@ class SplitNotLoopError : public ScheduleError {
 class SplitHasAnnotationError : public ScheduleError {
  public:
   explicit SplitHasAnnotationError(IRModule mod, For loop): mod_(mod), loop_(loop) {}
-  
+
   String FastErrorString() const final {
     return "ScheduleError: The loop can't be split because it has annotation";
   }
-  
+
   String DetailRenderTemplate() const final {
     return "The loop {0} can't be split because it has annotation ";
   }
-  
+
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {loop_}; }
-  
+
   IRModule mod_;
   For loop_;
 };
 
 class FuseNotLoopError : public ScheduleError {
  public:
-  explicit FuseNotLoopError(IRModule mod, String type, bool inner): mod_(mod), type_(type),inner_
-                                                                     (inner){}
-  
+  explicit FuseNotLoopError(IRModule mod, String type, bool inner): mod_(mod), type_(type), inner_
+                                                                     (inner) {}
+
   String FastErrorString() const final {
     return "ScheduleError: 'fuse' only operates on loops";
   }
-  
+
   String DetailRenderTemplate() const final {
     if (inner_) {
       return "'fuse' only operates on loops, but the inner StmtSref passed in "
@@ -137,10 +137,10 @@ class FuseNotLoopError : public ScheduleError {
              "points to type: {0} ";
     }
   }
-  
+
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {type_}; }
-  
+
   IRModule mod_;
   String type_;
   bool inner_;
@@ -150,11 +150,11 @@ class FuseHasAnnotationError : public ScheduleError {
  public:
   explicit FuseHasAnnotationError(IRModule mod, For loop, bool inner): mod_(mod), loop_(loop),
                                                                         inner_(inner) {}
-  
+
   String FastErrorString() const final {
     return "ScheduleError: The loops can't be fused because one of the loops has annotation";
   }
-  
+
   String DetailRenderTemplate() const final {
     if (inner_) {
       return "The inner loop {0} can't be fused because it has annotation";
@@ -162,10 +162,10 @@ class FuseHasAnnotationError : public ScheduleError {
       return "The outer loop {0} can't be fused because it has annotation";
     }
   }
-  
+
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {loop_}; }
-  
+
   IRModule mod_;
   For loop_;
   bool inner_;
@@ -174,20 +174,20 @@ class FuseHasAnnotationError : public ScheduleError {
 class OuterNotInnerParent : public ScheduleError {
  public:
   explicit OuterNotInnerParent(IRModule mod, For outer, For inner): mod_(mod), outer_(outer),
-                                                                     inner_(inner){}
-  
+                                                                     inner_(inner) {}
+
   String FastErrorString() const final {
     return "ScheduleError: the outer loop is not the parent of the inner loop";
   }
-  
+
   String DetailRenderTemplate() const final {
     return "The loops can't be fused because the outer loop {0} is not the parent of the inner "
              "loop {1}";
   }
-  
+
   IRModule mod() const final { return mod_; }
-  Array<ObjectRef> LocationsOfInterest() const final { return {outer_,inner_}; }
-  
+  Array<ObjectRef> LocationsOfInterest() const final { return {outer_, inner_}; }
+
   IRModule mod_;
   For outer_;
   For inner_;
@@ -195,46 +195,44 @@ class OuterNotInnerParent : public ScheduleError {
 
 class NotOnlyChildError : public ScheduleError {
  public:
-  explicit NotOnlyChildError (IRModule mod, For outer, For inner):
-                           mod_(mod),outer_(outer),inner_(inner){}
-  
+  explicit NotOnlyChildError(IRModule mod, For outer, For inner):
+                           mod_(mod), outer_(outer), inner_(inner) {}
+
   String FastErrorString() const final {
     return "ScheduleError: the inner loop is not the only child of outer loop";
   }
-  
+
   String DetailRenderTemplate() const final {
     return "The loops can't be fused because the inner loop {1} is not the only child of outer "
            "loop {0}.";
   }
-  
+
   IRModule mod() const final { return mod_; }
-  Array<ObjectRef> LocationsOfInterest() const final { return {outer_,inner_}; }
-  
+  Array<ObjectRef> LocationsOfInterest() const final { return {outer_, inner_}; }
+
   IRModule mod_;
   For outer_;
   For inner_;
-
 };
 
 class LoopNotStartWithZeroError : public ScheduleError {
  public:
-  explicit LoopNotStartWithZeroError (IRModule mod, For loop):
-  mod_(mod),loop_(loop){}
-  
+  explicit LoopNotStartWithZeroError(IRModule mod, For loop):
+  mod_(mod), loop_(loop) {}
+
   String FastErrorString() const final {
     return "ScheduleError: the primitive only supports loop starting with 0";
   }
-  
+
   String DetailRenderTemplate() const final {
     return "The loop {0} does not start with 0, which is not supported";
   }
-  
+
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {loop_}; }
-  
+
   IRModule mod_;
   For loop_;
-  
 };
 
 Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimExpr& nparts,
@@ -247,11 +245,10 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimE
   if (loop == nullptr) {
     throw SplitNotLoopError(self->mod, loop_sref->stmt->GetTypeKey());
   }
-
-  // Currently, can not split Loops with annotations
   if (!loop->annotations.empty()) {
     throw SplitHasAnnotationError(self->mod, GetRef<For>(loop));
   }
+  // Currently, loops starting with 0 is not supported
   arith::Analyzer analyzer;
   if (!analyzer.CanProve(loop->min == 0)) {
     throw LoopNotStartWithZeroError(self->mod, GetRef<For>(loop));
@@ -291,7 +288,7 @@ StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef& in
   // - The total repeat number has not changed for each direct child block.
   // - The execution order has not changed. (The block executes with the same
   //   args and the same order with before.)
-  
+
   // Can only fuse neighbor loop without any extra branches.
   // Future enhancement: this condition can be eliminated by lifting all siblings of inner
   // as the children of the father of outer
@@ -345,5 +342,5 @@ StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef& in
   return self->stmt2ref.at(fused_loop.get());
 }
 
-}
-}
+}  // namespace tir
+}  // namespace tvm

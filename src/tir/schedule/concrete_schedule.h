@@ -160,7 +160,7 @@ inline PrimExpr ConcreteScheduleNode::Get(const IntRV& int_rv) const {
     }
     return Integer(int_imm->value);
   });
-  PrimExpr simplified=this->analyzer_->Simplify(transformed);
+  PrimExpr simplified = this->analyzer_->Simplify(transformed);
   if (!is_const_int(transformed)) {
     LOG(FATAL) << "ValueError: The IntRV does not have a specific value";
   }

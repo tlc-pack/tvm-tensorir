@@ -259,7 +259,7 @@ class Schedule(Object):
     ########## Schedule: loops manipulation ##########
     def fuse(self, *loops: List[LoopRV]) -> LoopRV:
         """
-        Fuse a list of neighbor loops. It requires:
+        Fuse a list of consecutive loops into one. It requires:
         1) The loops can't have annotations.
         2) The (i+1)-th loop must be the only child of the i-th loop.
         3) All loops must start with 0.
@@ -328,7 +328,7 @@ class Schedule(Object):
         If `nparts` or `factor` are specified, the loop will be split into 2 parts.
         If `factors` is specified, the loop will be split into several parts.
         Their extents will be `factors`.
-        In `factors`, we can have one factor as None, which will be automatically inferred.
+        In `factors`, one of the factors can be None or -1, which will be automatically inferred.
         Parameters
         ----------
         loop : LoopRV

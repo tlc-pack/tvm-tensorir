@@ -291,7 +291,7 @@ Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
   factors.reserve(n);
   int p = -1;
   for (int i = 0; i < n; ++i) {
-    PrimExpr factor = IntImm(DataType::Int(32),this->Get(factor_rvs[i].value_or(Integer(-1))));
+    PrimExpr factor = IntImm(DataType::Int(32), this->Get(factor_rvs[i].value_or(Integer(-1))));
     if (analyzer_->CanProve(factor == -1)) {
       CHECK_EQ(p, -1) << "ValueError: `split` requires at most one `None` factor, but gets: "
                       << factor_rvs;
