@@ -16,11 +16,17 @@ class DynamicAxisReplacer : public ExprMutator {
   std::function<PrimExpr(const DynamicAxisNode*)> freplace_expr_;
  protected:
   PrimExpr VisitExpr_(const DynamicAxisNode* op) override {
-    return freplace_expr_(op);
+    if (freplace_expr_ == nullptr) {
+      return GetRef<DynamicAxis>(op);
+    } else {
+      return freplace_expr_(op);
+    }
   }
  public:
-  DynamicAxisReplacer(std::function<PrimExpr(const DynamicAxisNode*)> freplace_expr)
+  explicit DynamicAxisReplacer(
+      std::function<PrimExpr(const DynamicAxisNode*)> freplace_expr)
       : freplace_expr_(freplace_expr) {}
+  bool is_defined() const { return freplace_expr_ != nullptr; }
 };
 
 /**
