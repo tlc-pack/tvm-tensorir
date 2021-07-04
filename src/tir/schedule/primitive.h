@@ -25,7 +25,30 @@ namespace tvm {
 namespace tir {
 
 /******** Schedule: loops manipulation ********/
-
+/*!
+ * Split a loop into 2 loops. It requires:
+ * 1) The loop can't have annotation.
+ * 2) The loop must start with 0.
+ * \param self The state of the schedule
+ * \param loop_sref The sref to the loop being split
+ * \param nparts The number of outer parts
+ * \param factor The number of inner parts
+ * \return An array of srefs to the loops after splitting
+ */
+TVM_DLL Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimExpr& nparts,
+                              const PrimExpr& factor);
+/*!
+ * \brief Fuse the outer loop and the inner loop. It requires:
+ * 1) The loops can't have annotations.
+ * 2) The inner loop must be the only child of the outer loop.
+ * 3) Both loops must start with 0.
+ * \param self The state of the schedule
+ * \param outer_sref The sref to the outer loop
+ * \param inner_sref The sref to the inner loop
+ * \return The sref to the fused loop
+ */
+TVM_DLL StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef&
+inner_sref);
 /******** Schedule: compute location ********/
 /*!
  * \brief Inline a block into its consumer(s). It requires:

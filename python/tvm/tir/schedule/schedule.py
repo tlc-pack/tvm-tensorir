@@ -16,7 +16,7 @@
 # under the License.
 # pylint: disable=unused-import
 """The TensorIR schedule class"""
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 
 from tvm._ffi import register_object as _register_object
 from tvm.error import TVMError, register_error
@@ -257,6 +257,143 @@ class Schedule(Object):
         return _ffi_api_schedule.ScheduleGetLoops(self, block)  # type: ignore # pylint: disable=no-member
 
     ########## Schedule: loops manipulation ##########
+    def fuse(self, *loops: List[LoopRV]) -> LoopRV:
+        """
+        Fuse a list of neighbor loops. It requires:
+        1) The loops can't have annotations.
+        2) The (i+1)-th loop must be the only child of the i-th loop.
+        3) All loops must start with 0.
+
+        Parameters
+        ----------
+        *loops : List[LoopRV]
+            The loops to be fused
+
+        Examples
+        --------
+
+        Before fuse, in TensorIR, the IR is:
+
+        .. code-block:: python
+
+            @tvm.script.tir
+            def before_fuse(a: ty.handle, b: ty.handle) -> None:
+                A = tir.match_buffer(a, (128, 128))
+                B = tir.match_buffer(b, (128, 128))
+                with tir.block([128, 128], "B") as [vi, vj]:
+                    B[vi, vj] = A[vi, vj] * 2.0
+
+        Create the schedule and do fuse:
+
+        .. code-block:: python
+
+            sch = tir.Schedule(before_fuse  , debug_mode=True)
+            i, j = sch.get_loops(sch.get_block("B"))
+            sch.fuse(i, j)
+            print(tvm.script.asscript(sch.mod["main"]))
+
+        After applying fuse, the IR becomes:
+
+        .. code-block:: python
+
+            @tvm.script.tir
+            def after_fuse(a: ty.handle, b: ty.handle) -> None:
+                A = tir.match_buffer(a, (128, 128))
+                B = tir.match_buffer(b, [128, 128])
+                for i0_i1_fused in tir.serial(0, 16384):
+                    with tir.block([128, 128], "B") as [vi, vj]:
+                        tir.bind(vi, tir.floordiv(i0_i1_fused, 128))
+                        tir.bind(vj, tir.floormod(i0_i1_fused, 128))
+                        tir.reads([A[vi, vj]])
+                        tir.writes([B[vi, vj]])
+                        B[vi, vj] = A[vi, vj] * 2.0
+
+        """
+        return _ffi_api_schedule.ScheduleFuse(self, loops)  # pylint: disable=no-member
+
+    def split(
+            self,
+            loop: LoopRV,
+            *,
+            nparts: Optional[IntRV] = None,
+            factor: Optional[IntRV] = None,
+            factors: Optional[List[IntRV]] = None,
+    ) -> Tuple[LoopRV, LoopRV]:
+        """
+        Split a loop into a list of neighbor loops. It requires:
+        1) The loop can't have annotation.
+        2) The loop must start with 0.
+        Predicates may be added to ensure the total loop numbers keeps unchanged.
+        Only one of `nparts`, `factor` and `factors` can be specified
+        If `nparts` or `factor` are specified, the loop will be split into 2 parts.
+        If `factors` is specified, the loop will be split into several parts.
+        Their extents will be `factors`.
+        In `factors`, we can have one factor as None, which will be automatically inferred.
+        Parameters
+        ----------
+        loop : LoopRV
+            The loop to be split
+
+        nparts: Optional[IntRV]
+            The number of outer parts
+
+        factor: Optional[IntRV]
+            The number of inner parts
+
+        factors: Optional[List[IntRV]]
+            The overall splitting factors
+
+        Examples
+        --------
+
+        Before split, in TensorIR, the IR is:
+
+        .. code-block:: python
+
+            @tvm.script.tir
+            def before_split(a: ty.handle, b: ty.handle) -> None:
+                A = tir.match_buffer(a, (128, 128))
+                B = tir.match_buffer(b, (128, 128))
+                with tir.block([128, 128], "B") as [vi, vj]:
+                    B[vi, vj] = A[vi, vj] * 2.0
+
+        Create the schedule and do fuse:
+
+        .. code-block:: python
+
+            sch = tir.Schedule(before_split, debug_mode=True)
+            i, j = sch.get_loops(sch.get_block("B"))
+            sch.split(i, factors=[2, 64])
+            print(tvm.script.asscript(sch.mod["main"]))
+
+        After applying split, the IR becomes:
+
+        .. code-block:: python
+
+            @tvm.script.tir
+            def after_split(a: ty.handle, b: ty.handle) -> None:
+                A = tir.match_buffer(a, (128, 128))
+                B = tir.match_buffer(b, [128, 128])
+                for i0_outer, i0_inner, i1 in tir.grid(2, 64, 128):
+                    with tir.block([128, 128], "B") as [vi, vj]:
+                        tir.bind(vi, ((i0_outer*64) + i0_inner))
+                        tir.bind(vj, i1)
+                        tir.reads([A[vi, vj]])
+                        tir.writes([B[vi, vj]])
+                        B[vi, vj] = A[vi, vj] * 2.0
+
+        """
+        if factors is not None:
+            if (nparts is not None) or (factor is not None):
+                raise ValueError("`nparts`/`factor` are not allowed when `factors` is specified")
+        elif (nparts is None) and (factor is None):
+            raise ValueError("None of the `nparts`, `factor` and `factors` are specified")
+        elif (nparts is not None) and (factor is not None):
+            raise ValueError("Only one of the `nparts`, `factor` are allowed to be specified")
+        else:
+            factors = [nparts, factor]
+        return _ffi_api_schedule.ScheduleSplit(self, loop, factors)  # pylint: disable=no-member
+
     ########## Schedule: compute location ##########
     def compute_inline(self, block: BlockRV) -> None:
         """Inline a block into its consumer(s). It requires:

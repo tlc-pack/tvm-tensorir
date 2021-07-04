@@ -431,7 +431,7 @@ class IterMapRewriter : public ExprMutator {
     }
     return Array<IterSplitExpr>(iters.rbegin(), iters.rend());
   }
-
+  
   /*!
    * \brief Normalize the left hand side of iter constraint(expr < predicate_induced_extent)
    * \param expr The left hand side of iter constraint.
@@ -1085,6 +1085,20 @@ PrimExpr NormalizeIterMapToExpr(const IterMapExpr& expr) {
 TVM_REGISTER_GLOBAL("arith.NormalizeIterMapToExpr").set_body_typed([](const IterMapExpr& expr) {
   return NormalizeIterMapToExpr(expr);
 });
+
+Array<PrimExpr> IterMapSimplify(const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
+                                const PrimExpr& input_pred, bool require_bijective) {
+  Analyzer analyzer;
+  auto rewrite = DetectIterMap(indices, input_iters, input_pred, require_bijective, &analyzer);
+  if (rewrite.empty()) {
+    return indices;
+  } else {
+    std::vector<PrimExpr> res;
+    IterMapToExprNormalizer converter(&analyzer);
+    for (const auto& expr : rewrite) res.push_back(converter.Convert(expr));
+    return res;
+  }
+}
 
 /*!
  * \brief Divider to divide the bindings into two sets of bindings(outer and inner)
