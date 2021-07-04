@@ -322,6 +322,7 @@ Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
     Array<StmtSRef> parts = tir::Split(state_,     //
                                        loop_sref,  //
                                        outer_len, inner_len);
+    this->state_->DebugVerify();
     ICHECK_EQ(parts.size(), 2);
     loop_sref = parts[0];
     results[i] = parts[1];
