@@ -431,7 +431,7 @@ class IterMapRewriter : public ExprMutator {
     }
     return Array<IterSplitExpr>(iters.rbegin(), iters.rend());
   }
-  
+
   /*!
    * \brief Normalize the left hand side of iter constraint(expr < predicate_induced_extent)
    * \param expr The left hand side of iter constraint.
