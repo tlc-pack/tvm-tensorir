@@ -471,8 +471,8 @@ class ProgramMeasurerNode : public Object {
 
   // std::unordered_map<std::string, State> best_state;
   std::unordered_map<std::string, std::vector<State>>  best_states;
-  std::unordered_map<std::string, std::vector<float>>  best_flops_by_states;
-  std::unordered_map<std::string, std::vector<float>>  best_flops_by_insts;
+  std::unordered_map<std::string, std::vector<float>>  best_state_flops;
+  std::unordered_map<std::string, std::vector<float>>  curr_inst_opt_priority;
   std::unordered_map<std::string, Map<IntImm, IntImm>> best_inst_disp_map;
 
   /*! \brief Workload key to best state's count index map. */

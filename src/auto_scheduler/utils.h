@@ -47,6 +47,7 @@
 #include <tvm/auto_scheduler/transform_step.h>
 #include <tvm/runtime/ndarray.h>
 #include <tvm/te/operation.h>
+#include <tvm/tir/dynamic_axis_functor.h>
 #include <tvm/tir/expr_functor.h>
 
 #include <sstream>
@@ -229,19 +230,6 @@ inline int64_t GetIntImm(const PrimExpr& expr) {
   auto pint = expr.as<IntImmNode>();
   ICHECK(pint != nullptr) << "Expect an IntImm but get " << expr;
   return pint->value;
-}
-
-/*! \brief Compute the product of the lengths of axes */
-inline int64_t AxisLengthProd(const Array<tir::IterVar>& axes) {
-  int64_t ret = 1.0;
-  for (const auto& x : axes) {
-    if (const IntImmNode* imm = x->dom->extent.as<IntImmNode>()) {
-      ret *= imm->value;
-    } else {
-      return -1.0;
-    }
-  }
-  return ret;
 }
 
 /*!
@@ -431,6 +419,33 @@ using namespace ::tvm::tir;
 
 // Estimate the number of float operations in an expression
 class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
+
+  // <bojian/DietCode> Integrate AxisLengthProd as part of the FlopEstimator and
+  //                   Add support for dynamic workloads.
+ public:
+  FlopEstimator(const DynamicAxisReplacer& replacer =
+                DynamicAxisReplacer(nullptr))
+      : replacer_(replacer) {}
+ private:
+  DynamicAxisReplacer replacer_;
+  int64_t AxisLengthProd(const Array<tir::IterVar>& axes) {
+    int64_t ret = 1.0;
+    for (const auto& x : axes) {
+      if (const IntImmNode* imm = x->dom->extent.as<IntImmNode>()) {
+        ret *= imm->value;
+      } else {
+        if (replacer_.is_defined()) {
+          if (const IntImmNode* const imm =
+              replacer_(x->dom->extent).as<IntImmNode>()) {
+            ret *= imm->value;
+          }
+        }
+        return -1.0;
+      }
+    }
+    return ret;
+  }
+
  public:
   double EstimateFlop(const Array<te::Operation>& ops) {
     double ret = 0;
@@ -443,11 +458,11 @@ class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
           // <bojian/DietCode>
           // ICHECK(pint != nullptr);
           if (pint == nullptr) {
-            LOG(FATAL) << "pint=" << pint << " is NOT an integer";
+            LOG(FATAL) << "pop->attrs[\"FLOP\"]=" << pop->attrs["FLOP"]
+                       << " is NOT an integer";
           } else {
             ret += pint->value;
           }
-          
           // ret += pint->value;
         } else {
           // Estimate by parsing the compute body
@@ -582,10 +597,36 @@ inline double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
 }
 
 
-inline void EstimateFLOPsForInst(const ComputeDAG& compute_dag,
-                                 const Array<String>& shape_vars,
-                                 const Array<IntImm>& shape_values) {
-  
+inline double EstimateFLOPsForInst(const ComputeDAG& compute_dag,
+                                   const Array<Step>& transform_steps,
+                                   const Array<String>& shape_vars,
+                                   const Array<IntImm>& shape_values) {
+  CHECK(shape_vars.size() == shape_values.size());
+  Map<String, IntImm> shape_var_value_map;
+  for (size_t i = 0; i < shape_vars.size(); ++i) {
+    shape_var_value_map.Set(shape_vars[i], shape_values[i]);
+  }
+  DynamicAxisReplacer replacer(
+      [&shape_var_value_map](const DynamicAxisNode* op) -> PrimExpr {
+        auto shape_var_value_map_iter =
+            shape_var_value_map.find(op->name_hint);
+        if (shape_var_value_map_iter != shape_var_value_map.end()) {
+          return (*shape_var_value_map_iter).second;
+        }
+        LOG(FATAL) << "Dynamic Axis Node " << GetRef<DynamicAxis>(op)
+                   << " has not been found in "
+                   << MapToString(shape_var_value_map);
+        return GetRef<DynamicAxis>(op);
+      }
+      );
+  te::Schedule sch;
+  Array<te::Tensor> tensors;
+  std::tie(sch, tensors) = compute_dag.ApplySteps(transform_steps);
+  Array<te::Operation> sch_ops;
+  for (const te::Stage& stage : sch->stages) {
+    sch_ops.push_back(stage->op);
+  }
+  return FlopEstimator(replacer).EstimateFlop(sch_ops);
 }
 
 
