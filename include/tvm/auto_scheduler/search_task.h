@@ -147,6 +147,8 @@ class SearchTaskNode : public Object {
     // <bojian/DietCode>
     v->Visit("shape_vars", &shape_vars);
     v->Visit("shape_value_freq_pairs", &shape_value_freq_pairs);
+    v->Visit("shape_values", &shape_values);
+    v->Visit("shape_freqs",  &shape_freqs);
   }
 
   static constexpr const char* _type_key = "auto_scheduler.SearchTask";

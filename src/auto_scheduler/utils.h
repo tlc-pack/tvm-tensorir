@@ -443,7 +443,7 @@ class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
           // <bojian/DietCode>
           // ICHECK(pint != nullptr);
           if (pint == nullptr) {
-            LOG(WARNING) << "pint=" << pint << " is NOT an integer";
+            LOG(FATAL) << "pint=" << pint << " is NOT an integer";
           } else {
             ret += pint->value;
           }
@@ -580,6 +580,14 @@ inline double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
   }
   return FlopEstimator().EstimateFlop(synthetic_sch_ops);
 }
+
+
+inline void EstimateFLOPsForInst(const ComputeDAG& compute_dag,
+                                 const Array<String>& shape_vars,
+                                 const Array<IntImm>& shape_values) {
+  
+}
+
 
 }  // namespace auto_scheduler
 }  // namespace tvm
