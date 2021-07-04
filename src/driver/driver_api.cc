@@ -218,6 +218,7 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition, bool for
     pass_list.push_back(tir::transform::InjectPrefetch());
     pass_list.push_back(tir::transform::StorageFlatten(64, instrument_bound_checkers));
   } else {
+    pass_list.push_back(tir::transform::AllreduceTransform());
     pass_list.push_back(tir::transform::LowerInitBlock());
     pass_list.push_back(tir::transform::PlanAndUpdateBufferAllocationLocation());
     pass_list.push_back(tir::transform::ConvertBlocksToOpaque());

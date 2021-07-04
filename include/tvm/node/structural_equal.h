@@ -28,6 +28,7 @@
 #include <tvm/runtime/data_type.h>
 
 #include <string>
+#include <unordered_map>
 
 namespace tvm {
 

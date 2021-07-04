@@ -17,6 +17,7 @@
  * under the License.
  */
 
+#include "../../../arith/pattern_match.h"
 #include "../utils.h"
 
 namespace tvm {

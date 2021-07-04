@@ -198,54 +198,6 @@ class ScheduleNode : public runtime::Object {
    * \return A list of loops above the given block in its scope, from outer to inner
    */
   virtual Array<LoopRV> GetLoops(const BlockRV& block_rv) = 0;
-  /******** Schedule: loops manipulation ********/
-  /*!
-   * \brief Fuse a list of consecutive loops into one. It requires:
-   * 1) The loops can't have annotations or thread bindings.
-   * 2) The (i+1)-th loop must be the only child of the i-th loop.
-   * 3) All loops must start with 0.
-   * \param loop_rvs The loops to be fused
-   * \return The new loop after fusion
-   */
-  virtual LoopRV Fuse(const Array<LoopRV>& loop_rvs) = 0;
-  /*!
-   * \brief Split a loop into a list of consecutive loops. It requires:
-   * 1) The loop can't have annotation or thread binding.
-   * 2) The loop must start with 0.
-   * \param loop_rv The loop to be split
-   * \param factors The tiling factors, and at most one of which is -1, which means that
-   * factor is inferred.
-   * \return The new loops after split
-   */
-  virtual Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) = 0;
-  /******** Schedule: compute location ********/
-  /*!
-   * \brief Inline a block into its consumer(s). It requires:
-   * 1) The block is a complete non-root block, which only produces one buffer
-   * 2) The block must not be the only leaf in the scope.
-   * 3) The body of the block must be a BufferStore statement in the form of,
-   *    A[i, j, k, ...] = ...
-   * where the indices of the LHS are all distinct atomic variables,
-   * and no variables other than those indexing variables are allowed in the statement.
-   * \param block The block to be inlined to its consumer(s)
-   */
-  virtual void ComputeInline(const BlockRV& block) = 0;
-  /*!
-   * \brief Inline a block into its only producer. It requires:
-   * 1) The block is a complete non-root block, which only produces and consumers one buffer
-   * 2) The block must not be the only leaf in the scope.
-   * 3) The only producer of the block is a read-after-write producer and a complete non-root block
-   * 4) The body of the block must be a BufferStore statement in the form of,
-   *    B[f(i, j, k, ...)] = g(i, j, k, A[i, j, k, ...] ...)
-   * where the indices of each `BufferLoad` on the RHS are all distinct atomic variables,
-   * and no variables other than those indexing variables are allowed in the statement.
-   * \param block The block to be inlined to its producer
-   */
-  virtual void ReverseComputeInline(const BlockRV& block) = 0;
-  /******** Schedule: loop binding/annotation ********/
-  /******** Schedule: cache read/write ********/
-  /******** Schedule: reduction ********/
-  /******** Schedule: blockize & tensorize ********/
   /*!
    * \brief Get the leaf blocks of a specific scope
    * \param block_rv The block where the scope is rooted
@@ -302,17 +254,22 @@ class ScheduleNode : public runtime::Object {
 
   /******** Schedule: Transform loops ********/
   /*!
-   * \brief Fuse consecutive loops into one.
-   * \param loop_rvs The loop random variables to be fused
-   * \return The fused loop
+   * \brief Fuse a list of consecutive loops into one. It requires:
+   * 1) The loops can't have annotations or thread bindings.
+   * 2) The (i+1)-th loop must be the only child of the i-th loop.
+   * 3) All loops must start with 0.
+   * \param loop_rvs The loops to be fused
+   * \return The new loop after fusion
    */
   virtual LoopRV Fuse(const Array<LoopRV>& loop_rvs) = 0;
   /*!
-   * \brief Split a specified loop into two or more with the specific factor.
+   * \brief Split a loop into a list of consecutive loops. It requires:
+   * 1) The loop can't have annotation or thread binding.
+   * 2) The loop must start with 0.
    * \param loop_rv The loop to be split
-   * \param factors The tiling factors, and at most one of which is NullOpt or -1, which means that
+   * \param factors The tiling factors, and at most one of which is -1, which means that
    * factor is inferred.
-   * \return The loops after splitting
+   * \return The new loops after split
    */
   virtual Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) = 0;
   /*!

@@ -657,7 +657,7 @@ class BufferReplacer : public StmtExprMutator {
     CHECK(op);
     auto it = buffer_map_.find(op->buffer);
     if (it != buffer_map_.end()) {
-      auto n = CopyOnWrite(op);
+      auto n = make_object<BufferLoadNode>(*op);
       n->buffer = it->second;
       auto it2 = buffer_indices_.find(n->buffer);
       CHECK(it2 != buffer_indices_.end());
@@ -727,7 +727,7 @@ class BufferReplacer : public StmtExprMutator {
     auto f_mutate = [this](const BufferRegion& buffer_region) {
       auto it = buffer_map_.find(buffer_region->buffer);
       if (it != buffer_map_.end()) {
-        auto n = CopyOnWrite(buffer_region.operator->());
+        auto n = make_object<BufferRegionNode>(*buffer_region.get());
         n->buffer = it->second;
         auto it2 = buffer_indices_.find(n->buffer);
         if (it2 != buffer_indices_.end()) {

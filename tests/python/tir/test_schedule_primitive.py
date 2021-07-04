@@ -654,8 +654,7 @@ def test_compute_inline():
     B = s.get_block("B")
     s.compute_inline(B)
 
-    inlined_func = inline_element_wise
-    tvm.ir.assert_structural_equal(inlined_func, s.mod["main"])
+    tvm.ir.assert_structural_equal(inline_element_wise, s.mod["main"])
 
 
 def test_reverse_compute_inline():
