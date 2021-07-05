@@ -426,18 +426,18 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
                                  selected_candidate_state_ids.size()));
         selected_candidate_state_ids.push_back(inst_state_pair.second);
       }
-      double flops = EstimateFLOPsForInst(
+      double flop = EstimateFlopForInst(
           task->compute_dag,
           candidate_states[inst_state_pair.second]->transform_steps,
           task->shape_vars.value(), task->shape_values[inst_state_pair.first]);
-      CHECK(flops > 0.);
+      CHECK(flop > 0.);
       inst_predicted_flops.push_back(
           adapted_candidate_flops[
             inst_state_pair.first * candidate_states.size() +
             inst_state_pair.second]
           );
       inst_opt_priority.push_back(
-          flops * task->shape_freqs[inst_state_pair.first]->value /
+          flop * task->shape_freqs[inst_state_pair.first]->value /
           inst_predicted_flops.back());
     }
     ComputePrefixSumProb(inst_opt_priority, &inst_opt_prob);
