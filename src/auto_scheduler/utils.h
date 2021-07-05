@@ -442,8 +442,8 @@ class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
         } else {
           LOG(WARNING) << "Unable to estimate the FLOPs for "
                        << x->dom->extent;
+          return -1.0;
         }
-        return -1.0;
       }
     }
     return ret;
