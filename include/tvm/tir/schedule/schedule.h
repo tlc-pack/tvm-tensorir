@@ -197,13 +197,18 @@ class ScheduleNode : public runtime::Object {
   virtual Array<LoopRV> GetLoops(const BlockRV& block_rv) = 0;
   /******** Schedule: loops manipulation ********/
   /*!
- * \brief Fuse consecutive loops into one.
- * \param loop_rvs The loop random variables to be fused
- * \return The fused loop
- */
+   * \brief Fuse consecutive loops into one. It requires:
+   * 1) The loops can't have annotations.
+   * 2) The (i+1)-th loop must be the only child of the i-th loop.
+   * 3) All loops must start with 0.
+   * \param loop_rvs The loops to be fused
+   * \return The fused loop
+   */
   virtual LoopRV Fuse(const Array<LoopRV>& loop_rvs) = 0;
   /*!
-   * \brief Split a specified loop into two or more with the specific factor.
+   * \brief Split a specified loop into two or more with the specific factor.It requires:
+   * 1) The loop can't have annotation.
+   * 2) The loop must start with 0.
    * \param loop_rv The loop to be split
    * \param factors The tiling factors, and at most one of which is NullOpt or -1, which means that
    * factor is inferred.

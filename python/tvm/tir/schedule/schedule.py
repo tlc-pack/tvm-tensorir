@@ -312,12 +312,12 @@ class Schedule(Object):
         return _ffi_api_schedule.ScheduleFuse(self, loops)  # pylint: disable=no-member
 
     def split(
-            self,
-            loop: LoopRV,
-            *,
-            nparts: Optional[IntRV] = None,
-            factor: Optional[IntRV] = None,
-            factors: Optional[List[IntRV]] = None,
+        self,
+        loop: LoopRV,
+        *,
+        nparts: Optional[IntRV] = None,
+        factor: Optional[IntRV] = None,
+        factors: Optional[List[IntRV]] = None,
     ) -> Tuple[LoopRV, LoopRV]:
         """
         Split a loop into a list of neighbor loops. It requires:

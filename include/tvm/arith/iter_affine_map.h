@@ -287,7 +287,7 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
  *
  * \param indices The indices to detect pattern for.
  * \param input_iters Map from variable to iterator's range.
- * \param predicate The predicate constraints on the input iterators
+ * \param input_pred The predicate constraints on the input iterators
  * \param require_bijective A boolean flag that indicates whether the mapping should be bijective.
  *
  * \return The bindings after rewrite
