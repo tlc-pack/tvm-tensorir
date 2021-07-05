@@ -427,6 +427,7 @@ class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
                 DynamicAxisReplacer(nullptr))
       : replacer_(replacer) {}
  private:
+  arith::Analyzer analyzer_;
   DynamicAxisReplacer replacer_;
   int64_t AxisLengthProd(const Array<tir::IterVar>& axes) {
     int64_t ret = 1.0;
@@ -434,11 +435,12 @@ class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
       if (const IntImmNode* imm = x->dom->extent.as<IntImmNode>()) {
         ret *= imm->value;
       } else {
-        if (replacer_.is_defined()) {
-          if (const IntImmNode* const imm =
-              replacer_(x->dom->extent).as<IntImmNode>()) {
-            ret *= imm->value;
-          }
+        if (const IntImmNode* const imm =
+            analyzer_.Simplify(replacer_(x->dom->extent)).as<IntImmNode>()) {
+          ret *= imm->value;
+        } else {
+          LOG(WARNING) << "Unable to estimate the FLOPs for "
+                       << x->dom->extent;
         }
         return -1.0;
       }
@@ -581,53 +583,13 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
                           float* const adapted_score
                           );
 
-inline double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
-                                                  const State& state) {
-  State state_mutable_copy = state;
-  te::Schedule synthetic_sch;
-  Array<te::Tensor> synthetic_tensors;
-  std::tie(synthetic_sch, synthetic_tensors) =
-      task->compute_dag.GenerateSyntheticWorkloadAndApplySteps(
-        &state_mutable_copy, task->hardware_params);
-  Array<te::Operation> synthetic_sch_ops;
-  for (const te::Stage& stage : synthetic_sch->stages) {
-    synthetic_sch_ops.push_back(stage->op);
-  }
-  return FlopEstimator().EstimateFlop(synthetic_sch_ops);
-}
+double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
+                                           const State& state);
 
-
-inline double EstimateFLOPsForInst(const ComputeDAG& compute_dag,
-                                   const Array<Step>& transform_steps,
-                                   const Array<String>& shape_vars,
-                                   const Array<IntImm>& shape_values) {
-  CHECK(shape_vars.size() == shape_values.size());
-  Map<String, IntImm> shape_var_value_map;
-  for (size_t i = 0; i < shape_vars.size(); ++i) {
-    shape_var_value_map.Set(shape_vars[i], shape_values[i]);
-  }
-  DynamicAxisReplacer replacer(
-      [&shape_var_value_map](const DynamicAxisNode* op) -> PrimExpr {
-        auto shape_var_value_map_iter =
-            shape_var_value_map.find(op->name_hint);
-        if (shape_var_value_map_iter != shape_var_value_map.end()) {
-          return (*shape_var_value_map_iter).second;
-        }
-        LOG(FATAL) << "Dynamic Axis Node " << GetRef<DynamicAxis>(op)
-                   << " has not been found in "
-                   << MapToString(shape_var_value_map);
-        return GetRef<DynamicAxis>(op);
-      }
-      );
-  te::Schedule sch;
-  Array<te::Tensor> tensors;
-  std::tie(sch, tensors) = compute_dag.ApplySteps(transform_steps);
-  Array<te::Operation> sch_ops;
-  for (const te::Stage& stage : sch->stages) {
-    sch_ops.push_back(stage->op);
-  }
-  return FlopEstimator(replacer).EstimateFlop(sch_ops);
-}
+double EstimateFLOPsForInst(const ComputeDAG& compute_dag,
+                            const Array<Step>& transform_steps,
+                            const Array<String>& shape_vars,
+                            const Array<IntImm>& shape_values);
 
 
 }  // namespace auto_scheduler

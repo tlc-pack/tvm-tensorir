@@ -26,7 +26,6 @@ class DynamicAxisReplacer : public ExprMutator {
   explicit DynamicAxisReplacer(
       std::function<PrimExpr(const DynamicAxisNode*)> freplace_expr)
       : freplace_expr_(freplace_expr) {}
-  bool is_defined() const { return freplace_expr_ != nullptr; }
 };
 
 /**

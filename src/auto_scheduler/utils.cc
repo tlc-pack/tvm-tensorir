@@ -168,5 +168,59 @@ TopKDispatcher::dispatch(const std::vector<float>& scores,
   return disp_map_to_ret;
 }
 
+
+double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
+                                           const State& state) {
+  State state_mutable_copy = state;
+  te::Schedule synthetic_sch;
+  Array<te::Tensor> synthetic_tensors;
+  std::tie(synthetic_sch, synthetic_tensors) =
+      task->compute_dag.GenerateSyntheticWorkloadAndApplySteps(
+        &state_mutable_copy, task->hardware_params);
+  Array<te::Operation> synthetic_sch_ops;
+  for (const te::Stage& stage : synthetic_sch->stages) {
+    synthetic_sch_ops.push_back(stage->op);
+  }
+  return FlopEstimator().EstimateFlop(synthetic_sch_ops);
+}
+
+
+double EstimateFLOPsForInst(const ComputeDAG& compute_dag,
+                            const Array<Step>& transform_steps,
+                            const Array<String>& shape_vars,
+                            const Array<IntImm>& shape_values) {
+  CHECK(shape_vars.size() == shape_values.size());
+  Map<String, IntImm> shape_var_value_map;
+  for (size_t i = 0; i < shape_vars.size(); ++i) {
+    shape_var_value_map.Set(shape_vars[i], shape_values[i]);
+  }
+
+  LOG(INFO) << "shape_vars=" << ArrayToString(shape_vars) << ", "
+               "shape_values=" << ArrayToString(shape_values);
+
+  DynamicAxisReplacer replacer(
+      [&shape_var_value_map](const DynamicAxisNode* op) -> PrimExpr {
+        auto shape_var_value_map_iter =
+            shape_var_value_map.find(op->name_hint);
+        if (shape_var_value_map_iter != shape_var_value_map.end()) {
+          return (*shape_var_value_map_iter).second;
+        }
+        LOG(FATAL) << "Dynamic Axis Node " << GetRef<DynamicAxis>(op)
+                   << " has not been found in "
+                   << MapToString(shape_var_value_map);
+        return GetRef<DynamicAxis>(op);
+      }
+      );
+  te::Schedule sch;
+  Array<te::Tensor> tensors;
+  std::tie(sch, tensors) = compute_dag.ApplySteps(transform_steps);
+  Array<te::Operation> sch_ops;
+  for (const te::Stage& stage : sch->stages) {
+    sch_ops.push_back(stage->op);
+  }
+  return FlopEstimator(replacer).EstimateFlop(sch_ops);
+}
+
+
 }  // namespace auto_scheduler
 }  // namespace tvm
