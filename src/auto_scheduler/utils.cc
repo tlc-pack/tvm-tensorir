@@ -195,9 +195,6 @@ double EstimateFLOPsForInst(const ComputeDAG& compute_dag,
     shape_var_value_map.Set(shape_vars[i], shape_values[i]);
   }
 
-  LOG(INFO) << "shape_vars=" << ArrayToString(shape_vars) << ", "
-               "shape_values=" << ArrayToString(shape_values);
-
   DynamicAxisReplacer replacer(
       [&shape_var_value_map](const DynamicAxisNode* op) -> PrimExpr {
         auto shape_var_value_map_iter =
@@ -218,9 +215,7 @@ double EstimateFLOPsForInst(const ComputeDAG& compute_dag,
   for (const te::Stage& stage : sch->stages) {
     sch_ops.push_back(stage->op);
   }
-  double flops = FlopEstimator(replacer).EstimateFlop(sch_ops);
-  LOG(INFO) << "FLOPs=" << flops;
-  return flops;
+  return FlopEstimator(replacer).EstimateFlop(sch_ops);
 }
 
 

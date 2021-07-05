@@ -596,10 +596,10 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
 double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
                                            const State& state);
 
-double EstimateFLOPsForInst(const ComputeDAG& compute_dag,
-                            const Array<Step>& transform_steps,
-                            const Array<String>& shape_vars,
-                            const Array<IntImm>& shape_values);
+double EstimateFlopForInst(const ComputeDAG& compute_dag,
+                           const Array<Step>& transform_steps,
+                           const Array<String>& shape_vars,
+                           const Array<IntImm>& shape_values);
 
 
 }  // namespace auto_scheduler
