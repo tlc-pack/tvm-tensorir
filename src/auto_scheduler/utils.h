@@ -438,6 +438,7 @@ class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
         if (const IntImmNode* const imm =
             analyzer_.Simplify(replacer_(x->dom->extent)).as<IntImmNode>()) {
           ret *= imm->value;
+          LOG(INFO) << "ret=" << ret;
         } else {
           LOG(WARNING) << "Unable to estimate the FLOPs for "
                        << x->dom->extent;
@@ -496,8 +497,17 @@ class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
       if (auto imm = x->dom->extent.as<IntImmNode>()) {
         num_iter *= imm->value;
       } else {
-        fail_ = true;
-        num_iter = -1;
+
+        // <bojian/DietCode>
+        if (const IntImmNode* const imm =
+            analyzer_.Simplify(replacer_(x->dom->extent)).as<IntImmNode>()) {
+          num_iter *= imm->value;
+        } else {
+
+          fail_ = true;
+          num_iter = -1;
+
+        }
       }
     }
     double body_flop = 0;

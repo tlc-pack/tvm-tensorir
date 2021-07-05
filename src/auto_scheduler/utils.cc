@@ -218,7 +218,9 @@ double EstimateFLOPsForInst(const ComputeDAG& compute_dag,
   for (const te::Stage& stage : sch->stages) {
     sch_ops.push_back(stage->op);
   }
-  return FlopEstimator(replacer).EstimateFlop(sch_ops);
+  double flops = FlopEstimator(replacer).EstimateFlop(sch_ops);
+  LOG(INFO) << "FLOPs=" << flops;
+  return flops;
 }
 
 
