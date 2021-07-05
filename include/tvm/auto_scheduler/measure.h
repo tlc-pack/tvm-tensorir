@@ -471,11 +471,12 @@ class ProgramMeasurerNode : public Object {
 
   // std::unordered_map<std::string, State> best_state;
   std::unordered_map<std::string, std::vector<State>>  best_states;
-  std::unordered_map<std::string, std::vector<float>>  best_state_flops;
-  // The probability for an instance to be targeted and optimized in the
-  // evolutionary search process.
-  std::unordered_map<std::string, std::vector<double>> curr_inst_opt_prob;
   std::unordered_map<std::string, Map<IntImm, IntImm>> best_inst_disp_map;
+  std::unordered_map<std::string, std::vector<float>>  best_state_flops;
+  std::unordered_map<std::string, std::vector<float>>  best_inst_flops;
+  // The probability for an instance to be targeted and optimized in the
+  // evolutionary search process (moved to the search policy).
+  // std::unordered_map<std::string, std::vector<double>> curr_inst_opt_prob;
 
   /*! \brief Workload key to best state's count index map. */
   std::unordered_map<std::string, int> best_ct;

@@ -185,10 +185,10 @@ double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
 }
 
 
-double EstimateFLOPsForInst(const ComputeDAG& compute_dag,
-                            const Array<Step>& transform_steps,
-                            const Array<String>& shape_vars,
-                            const Array<IntImm>& shape_values) {
+double EstimateFlopForInst(const ComputeDAG& compute_dag,
+                           const Array<Step>& transform_steps,
+                           const Array<String>& shape_vars,
+                           const Array<IntImm>& shape_values) {
   CHECK(shape_vars.size() == shape_values.size());
   Map<String, IntImm> shape_var_value_map;
   for (size_t i = 0; i < shape_vars.size(); ++i) {

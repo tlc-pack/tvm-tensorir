@@ -1119,10 +1119,16 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
 PopulationGenerationRule::ResultKind
 MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
                                std::mt19937* rand_gen) const {
+  CHECK(IsDynTask(policy->search_task));
   const int max_innermost_split_factor =
       GetIntParam(policy->params, SketchParamKey::max_innermost_split_factor);
-  // examine the predicted FLOPs
-  
+  // randomly choose an instance to optimize for, the probability, as is
+  // calcualted in measure.cc, is based on the formula:
+  //
+  // flop * freq / thruput
+  Array<IntImm> selected_inst =
+      policy->search_task->shape_values[
+        RandomChoose(policy->curr_inst_opt_prob, rand_gen)];
 
 
   return ResultKind::kInvalid;

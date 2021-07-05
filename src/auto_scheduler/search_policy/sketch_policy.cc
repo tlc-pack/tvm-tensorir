@@ -173,6 +173,35 @@ SketchPolicy::SketchPolicy(SearchTask task, CostModel program_cost_model,
   data_ = std::move(node);
 }
 
+
+// <bojian/DietCode>
+void SketchPolicyNode::CalculateInstOptProb(const ProgramMeasurer& measurer) {
+  CHECK(IsDynTask(search_task));
+  std::vector<float>  inst_opt_priority;
+  std::vector<double> inst_opt_prob;
+
+  const auto& best_states = measurer->best_states[search_task->workload_key];
+  const auto& best_inst_disp_map =
+      measurer->best_inst_disp_map[search_task->workload_key];
+  const auto& best_inst_flops =
+      measurer->best_inst_flops[search_task->workload_key];
+
+  for (size_t i = 0; i < search_task->shape_vars.value().size(); ++i) {
+    double flop = EstimateFlopForInst(
+        search_task->compute_dag,
+        best_states[best_inst_disp_map[IntImm(DataType::Int(32), i)]->value]
+          ->transform_steps,
+        search_task->shape_vars.value(), search_task->shape_values[i]);
+    CHECK(flop > 0.);
+    
+    inst_opt_priority.push_back(
+        flop * search_task->shape_freqs[i]->value / best_inst_flops[i]);
+  }
+  ComputePrefixSumProb(inst_opt_priority, &inst_opt_prob);
+  LOG(INFO) << "inst_opt_prob=" << VectorToString(inst_opt_prob);
+}
+
+
 // <bojian/DietCode>
 // State
 Array<State>
@@ -263,6 +292,10 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
       // Measure candidate states
       PrintTitle("Measure", verbose);
       results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
+
+      // <bojian/DietCode>
+      CalculateInstOptProb(measurer);
+
       ct += inputs.size();
 
 
@@ -327,6 +360,9 @@ std::pair<Array<MeasureInput>, Array<MeasureResult>> SketchPolicyNode::ContinueS
   // Measure candidate states
   PrintTitle("Measure", verbose);
   results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
+
+  // <bojian/DietCode>
+  CalculateInstOptProb(measurer);
 
   LOG(FATAL) << "Measurements have been completed";
 
