@@ -30,16 +30,10 @@ namespace meta_schedule {
 
 TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);
 
-TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyInitializeWithTuneContext")
-    .set_body_method<SearchStrategy>(&SearchStrategyNode::InitializeWithTuneContext);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyGenerateMeasureCandidates")
     .set_body_method<SearchStrategy>(&SearchStrategyNode::GenerateMeasureCandidates);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyNotifyMeasureResults")
-    .set_body_method<SearchStrategy>(&SearchStrategyNode::NotifyMeasureResults);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyPreTuning")
-    .set_body_method<SearchStrategy>(&SearchStrategyNode::PreTuning);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyPostTuning")
-    .set_body_method<SearchStrategy>(&SearchStrategyNode::PostTuning);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyGenerate")
+    .set_body_method<SearchStrategy>(&SearchStrategyNode::UpdateResults);
 
 }  // namespace meta_schedule
 

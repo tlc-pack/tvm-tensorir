@@ -33,35 +33,25 @@ namespace meta_schedule {
 
 class SearchStrategyNode : public runtime::Object {
  public:
-  using MeasureResult = ObjectRef;
-  using BuilderInput = ObjectRef;
-  using FInitializeWithTuneContext = void(const TuneContext&);
-  using FGenerateMeasureCandidates = Optional<runtime::Array<BuilderInput>>();
-  using FNotifyMeasureResults = void(const Array<MeasureResult>&);
-  using FPreTuning = void(const Array<Trace>&);
-  using FPostTuning = void();
+  using FGenerateMeasureCandidates = runtime::Array<ObjectRef>(const TuneContext&);
+  using FUpdateResults = void(const Array<ObjectRef>&);
 
   /*! \brief Virtual destructor */
   virtual ~SearchStrategyNode() = default;
 
-  /*! \brief Initialize the search strategy with TuneContext */
-  virtual void InitializeWithTuneContext(const TuneContext& context) = 0;
-
   /*!
    * \brief Generate the candidates from design space in tune context for measurement
+   * \param context The tune context of the given search strategy
    * \return The next batch of candidates for measurements generated from the design space
    */
-  virtual Optional<runtime::Array<BuilderInput>> GenerateMeasureCandidates() = 0;
+  // todo @ zxybazh: Change ObjectRef to the specific class
+  virtual runtime::Array<ObjectRef> GenerateMeasureCandidates(const TuneContext& context) = 0;
 
   /*!
    * \brief Update the search strategy with meansurement results from the runners
    * \param results The measurement results of candidates generated from the search strategy
    */
-  virtual void NotifyMeasureResults(const Array<MeasureResult>& results) = 0;
-
-  virtual void PreTuning(const Array<Trace>& design_spaces) = 0;
-
-  virtual void PostTuning() = 0;
+  virtual void UpdateResults(const Array<ObjectRef>& results) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SearchStrategy";
   TVM_DECLARE_BASE_OBJECT_INFO(SearchStrategyNode, Object);
@@ -75,14 +65,9 @@ class SearchStrategy : public runtime::ObjectRef {
  public:
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
   static SearchStrategy PySearchStrategy(
-      runtime::TypedPackedFunc<SearchStrategyNode::FInitializeWithTuneContext>
-          initialize_with_tune_context_func,
       runtime::TypedPackedFunc<SearchStrategyNode::FGenerateMeasureCandidates>
           generate_measure_candidates_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FNotifyMeasureResults>
-          notify_measure_results_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FPreTuning> pre_tuning_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FPostTuning> post_tuning_func);
+      runtime::TypedPackedFunc<SearchStrategyNode::FUpdateResults> update_results_func);
 };
 
 }  // namespace meta_schedule
