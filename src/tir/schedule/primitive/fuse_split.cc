@@ -82,11 +82,9 @@ Stmt SimplifyBindings(const Stmt& stmt, const Array<StmtSRef>& loops) {
 
 class SplitNotLoopError : public ScheduleError {
  public:
-  explicit SplitNotLoopError(IRModule mod, String type): mod_(mod), type_(type) {}
+  explicit SplitNotLoopError(IRModule mod, String type) : mod_(mod), type_(type) {}
 
-  String FastErrorString() const final {
-    return "ScheduleError: 'split' only operates on a loop";
-  }
+  String FastErrorString() const final { return "ScheduleError: 'split' only operates on a loop"; }
 
   String DetailRenderTemplate() const final {
     return "'split' only operates on a loop, but the StmtSref passed in points to"
@@ -102,7 +100,7 @@ class SplitNotLoopError : public ScheduleError {
 
 class SplitHasAnnotationError : public ScheduleError {
  public:
-  explicit SplitHasAnnotationError(IRModule mod, For loop): mod_(mod), loop_(loop) {}
+  explicit SplitHasAnnotationError(IRModule mod, For loop) : mod_(mod), loop_(loop) {}
 
   String FastErrorString() const final {
     return "ScheduleError: The loop can't be split because it has annotation";
@@ -121,12 +119,10 @@ class SplitHasAnnotationError : public ScheduleError {
 
 class FuseNotLoopError : public ScheduleError {
  public:
-  explicit FuseNotLoopError(IRModule mod, String type, bool inner): mod_(mod), type_(type), inner_
-                                                                     (inner) {}
+  explicit FuseNotLoopError(IRModule mod, String type, bool inner)
+      : mod_(mod), type_(type), inner_(inner) {}
 
-  String FastErrorString() const final {
-    return "ScheduleError: 'fuse' only operates on loops";
-  }
+  String FastErrorString() const final { return "ScheduleError: 'fuse' only operates on loops"; }
 
   String DetailRenderTemplate() const final {
     if (inner_) {
@@ -148,8 +144,8 @@ class FuseNotLoopError : public ScheduleError {
 
 class FuseHasAnnotationError : public ScheduleError {
  public:
-  explicit FuseHasAnnotationError(IRModule mod, For loop, bool inner): mod_(mod), loop_(loop),
-                                                                        inner_(inner) {}
+  explicit FuseHasAnnotationError(IRModule mod, For loop, bool inner)
+      : mod_(mod), loop_(loop), inner_(inner) {}
 
   String FastErrorString() const final {
     return "ScheduleError: The loops can't be fused because one of the loops has annotation";
@@ -173,8 +169,8 @@ class FuseHasAnnotationError : public ScheduleError {
 
 class OuterNotInnerParent : public ScheduleError {
  public:
-  explicit OuterNotInnerParent(IRModule mod, For outer, For inner): mod_(mod), outer_(outer),
-                                                                     inner_(inner) {}
+  explicit OuterNotInnerParent(IRModule mod, For outer, For inner)
+      : mod_(mod), outer_(outer), inner_(inner) {}
 
   String FastErrorString() const final {
     return "ScheduleError: the outer loop is not the parent of the inner loop";
@@ -182,7 +178,7 @@ class OuterNotInnerParent : public ScheduleError {
 
   String DetailRenderTemplate() const final {
     return "The loops can't be fused because the outer loop {0} is not the parent of the inner "
-             "loop {1}";
+           "loop {1}";
   }
 
   IRModule mod() const final { return mod_; }
@@ -195,8 +191,8 @@ class OuterNotInnerParent : public ScheduleError {
 
 class NotOnlyChildError : public ScheduleError {
  public:
-  explicit NotOnlyChildError(IRModule mod, For outer, For inner):
-                           mod_(mod), outer_(outer), inner_(inner) {}
+  explicit NotOnlyChildError(IRModule mod, For outer, For inner)
+      : mod_(mod), outer_(outer), inner_(inner) {}
 
   String FastErrorString() const final {
     return "ScheduleError: the inner loop is not the only child of outer loop";
@@ -217,8 +213,7 @@ class NotOnlyChildError : public ScheduleError {
 
 class LoopNotStartWithZeroError : public ScheduleError {
  public:
-  explicit LoopNotStartWithZeroError(IRModule mod, For loop):
-  mod_(mod), loop_(loop) {}
+  explicit LoopNotStartWithZeroError(IRModule mod, For loop) : mod_(mod), loop_(loop) {}
 
   String FastErrorString() const final {
     return "ScheduleError: the primitive only supports loop starting with 0";
