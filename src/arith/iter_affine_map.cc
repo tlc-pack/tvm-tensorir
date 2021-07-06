@@ -1089,11 +1089,12 @@ TVM_REGISTER_GLOBAL("arith.NormalizeIterMapToExpr").set_body_typed([](const Iter
 Array<PrimExpr> IterMapSimplify(const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
                                 const PrimExpr& input_pred, bool require_bijective) {
   Analyzer analyzer;
-  auto rewrite = DetectIterMap(indices, input_iters, input_pred, require_bijective, &analyzer);
+  Array<IterSumExpr> rewrite = DetectIterMap(indices, input_iters, input_pred, require_bijective, &analyzer);
   if (rewrite.empty()) {
     return indices;
   } else {
-    std::vector<PrimExpr> res;
+    Array<PrimExpr> res;
+    res.reserve(rewrite.size());
     IterMapToExprNormalizer converter(&analyzer);
     for (const auto& expr : rewrite) res.push_back(converter.Convert(expr));
     return res;

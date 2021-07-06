@@ -313,7 +313,7 @@ class Schedule(Object):
                         B[vi, vj] = A[vi, vj] * 2.0
 
         """
-        return _ffi_api_schedule.ScheduleFuse(self, loops)  # pylint: disable=no-member
+        return _ffi_api_schedule.ScheduleFuse(self, loops)  # type: ignore # pylint: disable=no-member
 
     def split(
         self,
@@ -400,7 +400,7 @@ class Schedule(Object):
             raise ValueError("Only one of the `nparts`, `factor` are allowed to be specified")
         else:
             factors = [nparts, factor]
-        return _ffi_api_schedule.ScheduleSplit(self, loop, factors)  # pylint: disable=no-member
+        return _ffi_api_schedule.ScheduleSplit(self, loop, factors)  # type: ignore # pylint: disable=no-member
 
     ########## Schedule: compute location ##########
     def compute_inline(self, block: BlockRV) -> None:
