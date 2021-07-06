@@ -527,6 +527,7 @@ std::vector<std::pair<State, int>> RuleCustomSketch::Apply(const SketchPolicyNod
 
 extern bool is_sample_init_population_1st_iter;
 extern bool enable_verbose_logging;
+extern bool simplify_sketch;
 
 PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* policy, State* state,
                                                              std::mt19937* rand_gen) const {
@@ -576,7 +577,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
     FactorizationScheme scheme;
     try {
       scheme = policy->dietcode_split_memo.SampleFactorizationSchemes(
-          split_steps_info, rand_gen, true /* simplify_schedule */);
+          split_steps_info, rand_gen, simplify_sketch);
     } catch(const std::out_of_range& e) {
       return ResultKind::kInvalid;
     }
@@ -1145,6 +1146,42 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     return ResultKind::kInvalid;
   }
 
+  struct SplitStepInfo {
+    size_t id;
+    size_t inner_extent;
+    bool is_spatial;
+  };
+  std::vector<SplitStepInfo> split_steps_info;
+
+  for (const size_t split_step_id : split_step_ids) {
+    const SplitStep& split_step =
+        Downcast<SplitStep>((*state)->transform_steps[split_step_id]);
+    if (split_step->lengths.size() != 4) {
+      CHECK(split_step->lengths.size() == 2);
+      split_steps_info.push_back(
+          SplitStepInfo{
+            split_step_id,
+            static_cast<size_t>(
+              GetIntImm(split_step->lengths[0].value()) * 
+              GetIntImm(split_step->lengths[1].value())),
+            false
+          }
+          );
+    } else {
+      split_steps_info.push_back(
+          SplitStepInfo{
+            split_step_id,
+            static_cast<size_t>(
+              GetIntImm(split_step->lengths[1].value()) *
+              GetIntImm(split_step->lengths[3].value())),
+            true
+          }
+          );
+    }
+  }  // for (split_step_id ∈ split_step_ids)
+  // consider all the inner extents within the range of
+  // [inner_extent / 2, 2 * inner_extent]
+  
 
   return ResultKind::kInvalid;
 }

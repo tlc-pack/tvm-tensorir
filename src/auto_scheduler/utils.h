@@ -438,10 +438,10 @@ class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
         if (const IntImmNode* const imm =
             analyzer_.Simplify(replacer_(x->dom->extent)).as<IntImmNode>()) {
           ret *= imm->value;
-          LOG(INFO) << "ret=" << ret;
+          // LOG(INFO) << "ret=" << ret;
         } else {
-          LOG(WARNING) << "Unable to estimate the FLOPs for "
-                       << x->dom->extent;
+          // LOG(WARNING) << "Unable to estimate the FLOPs for "
+          //              << x->dom->extent;
           return -1.0;
         }
       }

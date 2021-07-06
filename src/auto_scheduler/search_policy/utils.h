@@ -741,7 +741,7 @@ struct FactorizationScheme {
 
   // shared properties between all factorization scheme instances
   static std::vector<SplitStepInfo> split_steps_info;
-  static bool simplify_schedule;
+  static bool simplify_sketch;
   static size_t last_spatial_iter_id;
   static std::vector<std::vector<int>> factor_indices_to_incr;
 
@@ -751,7 +751,7 @@ struct FactorizationScheme {
    */
   explicit FactorizationScheme(
       const std::vector<SplitStepInfo>& split_steps_info,
-      const bool simplify_schedule,
+      const bool simplify_sketch,
       const bool init_static_members = false) {
     for (size_t i = 0; i < split_steps_info.size(); ++i) {
       split_factors.push_back(
@@ -759,14 +759,14 @@ struct FactorizationScheme {
     }
     if (init_static_members) {
       FactorizationScheme::split_steps_info = split_steps_info;
-      FactorizationScheme::simplify_schedule = simplify_schedule;
+      FactorizationScheme::simplify_sketch = simplify_sketch;
       last_spatial_iter_id = -1;
       for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
         if (split_steps_info[iter_id].is_spatial) {
           last_spatial_iter_id = iter_id;
         }
       }
-      if (simplify_schedule) {
+      if (simplify_sketch) {
         for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
           if (split_steps_info[iter_id].is_spatial) {
             if (iter_id == last_spatial_iter_id) {
@@ -781,7 +781,7 @@ struct FactorizationScheme {
       }
     } else {
       CHECK(FactorizationScheme::split_steps_info == split_steps_info);
-      CHECK(FactorizationScheme::simplify_schedule == simplify_schedule);
+      CHECK(FactorizationScheme::simplify_sketch == simplify_sketch);
     }
   }
 
@@ -813,7 +813,7 @@ struct FactorizationScheme {
     std::vector<std::vector<int>> split_factors_copy = split_factors;
     std::vector<FactorizationScheme> candidates;
 
-    if (simplify_schedule) {
+    if (simplify_sketch) {
       for (size_t iter_idx = 0; iter_idx < split_factors_copy.size();
            ++iter_idx) {
         for (const size_t factor_idx : factor_indices_to_incr[iter_idx]) {
@@ -886,7 +886,7 @@ class DietCodeSplitFactorizationMemo {
    */
   const std::vector<FactorizationScheme>&
   GetAllFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info,
-                             const bool simplify_schedule = true);
+                             const bool simplify_sketch = true);
   /**
    * \brief Randomly sample a legit factorization scheme. Note that due to the
    *        requirement for random number generation, this method has to be
@@ -895,7 +895,7 @@ class DietCodeSplitFactorizationMemo {
   FactorizationScheme
   SampleFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info,
                              std::mt19937* const rng,
-                             const bool simplify_schedule = true);
+                             const bool simplify_sketch = true);
 };
 
 

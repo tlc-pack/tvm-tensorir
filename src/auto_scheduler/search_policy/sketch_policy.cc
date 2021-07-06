@@ -186,10 +186,12 @@ void SketchPolicyNode::CalculateInstOptProb(const ProgramMeasurer& measurer) {
   const auto& best_inst_flops =
       measurer->best_inst_flops[search_task->workload_key];
 
-  for (size_t i = 0; i < search_task->shape_vars.value().size(); ++i) {
+  LOG(INFO) << "Finished obtaining the measurement results";
+
+  for (size_t i = 0; i < search_task->shape_values.size(); ++i) {
     double flop = EstimateFlopForInst(
         search_task->compute_dag,
-        best_states[best_inst_disp_map[IntImm(DataType::Int(32), i)]->value]
+        best_states.at(best_inst_disp_map.at(i))
           ->transform_steps,
         search_task->shape_vars.value(), search_task->shape_values[i]);
     CHECK(flop > 0.);
@@ -294,7 +296,9 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
       results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
 
       // <bojian/DietCode>
-      CalculateInstOptProb(measurer);
+      if (IsDynTask(search_task)) {
+        CalculateInstOptProb(measurer);
+      }
 
       ct += inputs.size();
 
@@ -362,7 +366,9 @@ std::pair<Array<MeasureInput>, Array<MeasureResult>> SketchPolicyNode::ContinueS
   results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
 
   // <bojian/DietCode>
-  CalculateInstOptProb(measurer);
+  if (IsDynTask(search_task)) {
+    CalculateInstOptProb(measurer);
+  }
 
   LOG(FATAL) << "Measurements have been completed";
 
@@ -490,6 +496,7 @@ Array<State> SketchPolicyNode::GenerateSketches() {
 // <bojian/DietCode>
 bool is_sample_init_population_1st_iter;
 bool enable_verbose_logging;
+bool simplify_sketch = true;
 
 
 Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches) {

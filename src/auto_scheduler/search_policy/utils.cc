@@ -529,7 +529,7 @@ const std::vector<int>& SplitFactorizationMemo::GetFactors(int n) {
 
 
 std::vector<SplitStepInfo> FactorizationScheme::split_steps_info;
-bool FactorizationScheme::simplify_schedule;
+bool FactorizationScheme::simplify_sketch;
 size_t FactorizationScheme::last_spatial_iter_id;
 std::vector<std::vector<int>> FactorizationScheme::factor_indices_to_incr;
 
@@ -675,7 +675,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   sample_factors(
       [&](const size_t iter_id) -> bool {
         return (!split_steps_info[iter_id].is_spatial) || 
-               (simplify_schedule && (iter_id != last_spatial_iter_id));
+               (simplify_sketch && (iter_id != last_spatial_iter_id));
       },
       [&](const size_t iter_id) -> size_t {
         size_t max_vthread_extent =
@@ -733,7 +733,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   }
   sample_factors(
       [&](const size_t iter_id) -> bool {
-        return (!split_steps_info[iter_id].is_spatial) || simplify_schedule;
+        return (!split_steps_info[iter_id].is_spatial) || simplify_sketch;
       },
       [&](const size_t iter_id) -> size_t {
         size_t max_2nd_innermost_extent =
@@ -796,7 +796,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   // ===========================================================================
   sample_factors(
       [&](const size_t iter_id) -> bool {
-        return split_steps_info[iter_id].is_spatial || simplify_schedule;
+        return split_steps_info[iter_id].is_spatial || simplify_sketch;
       },
       [&](const size_t iter_id) -> size_t {
         size_t max_2nd_innermost_extent =
@@ -917,14 +917,14 @@ void DietCodeSplitFactorizationMemo::BfsEnumerate() {
 const std::vector<FactorizationScheme>&
 DietCodeSplitFactorizationMemo::GetAllFactorizationSchemes(
     const std::vector<SplitStepInfo>& split_steps_info,
-    const bool simplify_schedule) {
+    const bool simplify_sketch) {
   if (!is_sample_init_population_1st_iter) {
     CHECK(FactorizationScheme::split_steps_info == split_steps_info);
-    CHECK(FactorizationScheme::simplify_schedule == simplify_schedule);
+    CHECK(FactorizationScheme::simplify_sketch == simplify_sketch);
     // return the cached factorization scheme
     return cache_;
   }
-  workstack_.emplace(split_steps_info, simplify_schedule,
+  workstack_.emplace(split_steps_info, simplify_sketch,
                      is_sample_init_population_1st_iter
                      /* initialize the static members */);
   examined_schemes_.insert(workstack_.front().toString());
@@ -939,8 +939,8 @@ FactorizationScheme
 DietCodeSplitFactorizationMemo::SampleFactorizationSchemes(
     const std::vector<SplitStepInfo>& split_steps_info,
     std::mt19937* const rng,
-    const bool simplify_schedule) {
-  FactorizationScheme scheme(split_steps_info, simplify_schedule,
+    const bool simplify_sketch) {
+  FactorizationScheme scheme(split_steps_info, simplify_sketch,
                              is_sample_init_population_1st_iter);
   scheme.RandomSample(hardware_params_, max_innermost_factor_, rng);
   

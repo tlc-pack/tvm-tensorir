@@ -405,7 +405,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     // record the selected candidate states
     std::vector<size_t> selected_candidate_state_ids;
     std::vector<float>  inst_predicted_flops;
-    Map<IntImm, IntImm> inst_disp_map;
+    std::unordered_map<size_t, size_t> inst_disp_map;
 
     // gather all the non-duplicate state_ids
     for (const std::pair<size_t, size_t>& inst_state_pair : raw_inst_disp_map) {
@@ -413,15 +413,11 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
                             selected_candidate_state_ids.end(),
                             inst_state_pair.second);
       if (iter != selected_candidate_state_ids.end()) {
-        inst_disp_map.Set(IntImm(DataType::Int(32), inst_state_pair.first),
-                          IntImm(DataType::Int(32),
-                                 std::distance(
-                                   selected_candidate_state_ids.begin(),
-                                   iter)));
+        inst_disp_map[inst_state_pair.first] =
+            std::distance(selected_candidate_state_ids.begin(), iter);
       } else {
-        inst_disp_map.Set(IntImm(DataType::Int(32), inst_state_pair.first),
-                          IntImm(DataType::Int(32),
-                                 selected_candidate_state_ids.size()));
+        inst_disp_map[inst_state_pair.first] =
+            selected_candidate_state_ids.size();
         selected_candidate_state_ids.push_back(inst_state_pair.second);
       }
       inst_predicted_flops.push_back(
@@ -440,8 +436,8 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       selected_candidate_states.push_back(candidate_states[state_id]);
       selected_candidate_flops .push_back(candidate_flops [state_id]);
     }
-    best_inst_disp_map[task->workload_key] = std::move(inst_disp_map);
     best_states[task->workload_key] = std::move(selected_candidate_states);
+    best_inst_disp_map[task->workload_key] = std::move(inst_disp_map);
     best_state_flops[task->workload_key] = std::move(selected_candidate_flops);
     best_inst_flops[task->workload_key] = std::move(inst_predicted_flops);
   }  // IsDynTask(task)
