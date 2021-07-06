@@ -258,8 +258,7 @@ class Schedule(Object):
 
     ########## Schedule: loops manipulation ##########
     def fuse(self, *loops: List[LoopRV]) -> LoopRV:
-        """
-        Fuse a list of consecutive loops into one. It requires:
+        """Fuse a list of consecutive loops into one. It requires:
         1) The loops can't have annotations.
         2) The (i+1)-th loop must be the only child of the i-th loop.
         3) All loops must start with 0.
@@ -268,6 +267,11 @@ class Schedule(Object):
         ----------
         *loops : List[LoopRV]
             The loops to be fused
+
+        Returns
+        ----------
+        fused_loop : LoopRV
+            The new loop after fusion
 
         Examples
         --------
@@ -287,7 +291,7 @@ class Schedule(Object):
 
         .. code-block:: python
 
-            sch = tir.Schedule(before_fuse  , debug_mode=True)
+            sch = tir.Schedule(before_fuse, debug_mode=True)
             i, j = sch.get_loops(sch.get_block("B"))
             sch.fuse(i, j)
             print(tvm.script.asscript(sch.mod["main"]))
@@ -318,9 +322,8 @@ class Schedule(Object):
         nparts: Optional[IntRV] = None,
         factor: Optional[IntRV] = None,
         factors: Optional[List[IntRV]] = None,
-    ) -> Tuple[LoopRV, LoopRV]:
-        """
-        Split a loop into a list of neighbor loops. It requires:
+    ) -> List[LoopRV]:
+        """Split a loop into a list of neighbor loops. It requires:
         1) The loop can't have annotation.
         2) The loop must start with 0.
         Predicates may be added to ensure the total loop numbers keeps unchanged.
@@ -342,6 +345,11 @@ class Schedule(Object):
 
         factors: Optional[List[IntRV]]
             The overall splitting factors
+
+        Returns
+        ----------
+        split_loops : List[LoopRV]
+            The new loops after split
 
         Examples
         --------
