@@ -194,7 +194,6 @@ double EstimateFlopForInst(const ComputeDAG& compute_dag,
   for (size_t i = 0; i < shape_vars.size(); ++i) {
     shape_var_value_map.Set(shape_vars[i], shape_values[i]);
   }
-
   DynamicAxisReplacer replacer(
       [&shape_var_value_map](const DynamicAxisNode* op) -> PrimExpr {
         auto shape_var_value_map_iter =

@@ -125,9 +125,11 @@ bool canProveForAllDynamicAxes(arith::Analyzer& analyzer, PrimExpr predicate) {
 }
 
 
-TVM_REGISTER_GLOBAL("auto_scheduler.InitializeDynamicArgs").set_body([](TVMArgs args, TVMRetValue* ret) {
-  *ret = InitializeDynamicArgs(args[0], args[1], args[2]);
-});
+TVM_REGISTER_GLOBAL("auto_scheduler.InitializeDynamicArgs").set_body(
+    [](TVMArgs args, TVMRetValue* ret) {
+      *ret = InitializeDynamicArgs(args[0], args[1], args[2]);
+    }
+    );
 
 
 }  // namespace tir

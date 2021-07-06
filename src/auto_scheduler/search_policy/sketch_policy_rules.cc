@@ -1129,6 +1129,21 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
   Array<IntImm> selected_inst =
       policy->search_task->shape_values[
         RandomChoose(policy->curr_inst_opt_prob, rand_gen)];
+  std::vector<size_t> split_step_ids;
+  // search for the vthread (2nd outermost) and innermost split step
+  for (size_t i = 0; i < (*state)->transform_steps.size(); ++i) {
+    if (const SplitStepNode* const split_step =
+        (*state)->transform_steps[i].as<SplitStepNode>()) {
+      if (!split_step->extent.defined()) {
+        continue;
+      }
+      split_step_ids.push_back(i);
+    }
+  }  // for (i ∈ (*state)->transform_steps)
+
+  if (split_step_ids.empty()) {
+    return ResultKind::kInvalid;
+  }
 
 
   return ResultKind::kInvalid;
