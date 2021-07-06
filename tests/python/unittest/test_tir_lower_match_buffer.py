@@ -94,6 +94,7 @@ def opaque_access(a: ty.handle, b: ty.handle) -> None:
                 )
             )
 
+
 @tvm.script.tir
 def transformed_opaque_access(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (32, 64, 128))
@@ -128,58 +129,6 @@ def transformed_opaque_access(a: ty.handle, b: ty.handle) -> None:
                     dtype="handle",
                 )
             )
-
-@tvm.script.tir
-def original_func() -> None:
-    A = tir.alloc_buffer((128, 128), "float32")
-    with tir.block([128, 128]) as [i, j]:
-        A[i, j] = tir.float32(0)
-    with tir.block([32, 32, tir.reduce_axis(0, 32)]) as [i, j, k]:
-        B = tir.alloc_buffer((128, 128), "float32")
-        C = tir.alloc_buffer((128, 128), "float32")
-        D = tir.alloc_buffer((128, 128), "float32")
-        if k == 0:
-            for ii, jj in tir.grid(4, 4):
-                B[i * 4 + ii, j * 4 + jj] = A[i * 4 + ii, j * 4 + jj]
-        for ii, jj in tir.grid(4, 4):
-            for kk in range(0, 4):
-                B[i * 4 + ii, j * 4 + jj] += C[i * 4 + ii, k * 4 + kk]
-            for kk in range(0, 4):
-                B[i * 4 + ii, j * 4 + jj] += D[j * 4 + jj, k * 4 + kk] * C[i * 4 + ii, k * 4 + kk]
-
-
-@tvm.script.tir
-def transformed_func() -> None:
-    A = tir.alloc_buffer([128, 128])
-    with tir.block([128, 128], "") as [i, j]:
-        A[i, j] = tir.float32(0)
-    with tir.block([32, 32, tir.reduce_axis(0, 32)], "") as [i, j, k]:
-        B = tir.alloc_buffer([128, 128])
-        if k == 0:
-            for ii, jj in tir.grid(4, 4):
-                B[i * 4 + ii, j * 4 + jj] = A[i * 4 + ii, j * 4 + jj]
-        for ii, jj in tir.grid(4, 4):
-            with tir.block([], ""):
-                tir.reads([B[((i * 4) + ii), ((j * 4) + jj)]])
-                tir.writes([B[((i * 4) + ii), ((j * 4) + jj)]])
-                C = tir.alloc_buffer([128, 128])
-                for kk in tir.serial(0, 4):
-                    B[((i * 4) + ii), ((j * 4) + jj)] = (
-                        B[((i * 4) + ii), ((j * 4) + jj)] + C[((i * 4) + ii), ((k * 4) + kk)]
-                    )
-                for kk in tir.serial(0, 4):
-                    with tir.block([], ""):
-                        tir.reads(
-                            [
-                                B[((i * 4) + ii), ((j * 4) + jj)],
-                                C[((i * 4) + ii), ((k * 4) + kk)],
-                            ]
-                        )
-                        tir.writes([B[((i * 4) + ii), ((j * 4) + jj)]])
-                        D = tir.alloc_buffer([128, 128])
-                        B[((i * 4) + ii), ((j * 4) + jj)] = B[((i * 4) + ii), ((j * 4) + jj)] + (
-                            D[((j * 4) + jj), ((k * 4) + kk)] * C[((i * 4) + ii), ((k * 4) + kk)]
-                        )
 
 
 def test_buffer_load_store():

@@ -219,7 +219,7 @@ class MatchBufferLower : public StmtExprMutator {
     }
   }
 
-  bool CheckMatchDimension(const MatchBufferRegion& match_buffer) {
+  bool static CheckMatchDimension(const MatchBufferRegion& match_buffer) {
     const Buffer& target = match_buffer->buffer;
     const BufferRegion& source = match_buffer->source;
     size_t num_unit_dim = 0;
@@ -279,7 +279,7 @@ class MatchBufferLower : public StmtExprMutator {
   }
 
  private:
-  /*! \brief Var mapping for buffer signature (data, strides, element_offset, etc.) */
+  /*! \brief Buffer region mapping. */
   std::unordered_map<Buffer, BufferRegion, ObjectHash, ObjectEqual> match_buffers_;
   /*! \brief Var mapping for buffer signature (data, strides, element_offset, etc.) */
   std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual> var_map_;
