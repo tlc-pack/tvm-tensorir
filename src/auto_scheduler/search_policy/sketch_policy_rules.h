@@ -230,8 +230,8 @@ class PopulationMutationRule : public PopulationGenerationRule {
 DEFINE_MUTATE_POPULATION_RULE(MutateTileSize);
 
 
-/// <bojian/DietCode> Add the rule for mutating only the innermost tile size.
-DEFINE_MUTATE_POPULATION_RULE(MutateAnotherRandomTileSize);
+// <bojian/DietCode> Add the rules for tile size mutation that target dynamic workloads.
+DEFINE_MUTATE_POPULATION_RULE(MutateRandomTileSize);
 DEFINE_MUTATE_POPULATION_RULE(MutateInnermostTileSize);
 
 

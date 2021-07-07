@@ -1121,15 +1121,7 @@ PopulationGenerationRule::ResultKind
 MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
                                std::mt19937* rand_gen) const {
   CHECK(IsDynTask(policy->search_task));
-  const int max_innermost_split_factor =
-      GetIntParam(policy->params, SketchParamKey::max_innermost_split_factor);
-  // randomly choose an instance to optimize for, the probability, as is
-  // calcualted in measure.cc, is based on the formula:
-  //
-  // flop * freq / thruput
-  Array<IntImm> selected_inst =
-      policy->search_task->shape_values[
-        RandomChoose(policy->curr_inst_opt_prob, rand_gen)];
+
   std::vector<size_t> split_step_ids;
   // search for the vthread (2nd outermost) and innermost split step
   for (size_t i = 0; i < (*state)->transform_steps.size(); ++i) {
@@ -1147,42 +1139,73 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
   }
 
   struct SplitStepInfo {
-    size_t id;
-    size_t inner_extent;
+    int64_t total_extent;
+    int64_t immutable_extent;
     bool is_spatial;
   };
-  std::vector<SplitStepInfo> split_steps_info;
+  std::unordered_map<size_t, SplitStepInfo> split_steps_info;
+
+  const int max_innermost_split_factor =
+      GetIntParam(policy->params, SketchParamKey::max_innermost_split_factor);
+  // randomly choose an instance to optimize for, the probability, as is
+  // calcualted in measure.cc, is based on the formula:
+  //
+  // flop * freq / thruput
+  Array<IntImm> selected_inst =
+      policy->search_task->shape_values[
+        RandomChoose(policy->curr_inst_opt_prob, rand_gen)];
+
+  arith::Analyzer analyzer;
+  Map<String, IntImm> shape_var_value_map;
+  CHECK(policy->search_task->shape_vars.value().size() == selected_inst.size());
+  for (size_t i = 0; i < policy->search_task->shape_vars.value().size(); ++i) {
+    shape_var_value_map.Set(policy->search_task->shape_vars.value()[i],
+                            selected_inst[i]);
+  }
+  DynamicAxisReplacer replacer(
+      [&shape_var_value_map](const DynamicAxisNode* op) -> PrimExpr {
+        auto shape_var_value_map_iter =
+            shape_var_value_map.find(op->name_hint);
+        if (shape_var_value_map_iter != shape_var_value_map.end()) {
+          return (*shape_var_value_map_iter).second;
+        }
+        LOG(FATAL) << "Dynamic Axis Node " << GetRef<DynamicAxis>(op)
+                   << " has not been found in "
+                   << MapToString(shape_var_value_map);
+        return GetRef<DynamicAxis>(op);
+      }
+      );
 
   for (const size_t split_step_id : split_step_ids) {
     const SplitStep& split_step =
         Downcast<SplitStep>((*state)->transform_steps[split_step_id]);
     if (split_step->lengths.size() != 4) {
       CHECK(split_step->lengths.size() == 2);
-      split_steps_info.push_back(
+      split_steps_info[split_step_id] =
           SplitStepInfo{
-            split_step_id,
-            static_cast<size_t>(
-              GetIntImm(split_step->lengths[0].value()) * 
-              GetIntImm(split_step->lengths[1].value())),
+            GetIntImm(analyzer.Simplify(replacer(split_step->extent.value()))),
+            1,
             false
           }
           );
     } else {
-      split_steps_info.push_back(
+      split_steps_info[split_step_id] =
           SplitStepInfo{
-            split_step_id,
-            static_cast<size_t>(
-              GetIntImm(split_step->lengths[1].value()) *
-              GetIntImm(split_step->lengths[3].value())),
+            GetIntImm(analyzer.Simplify(replacer(split_step->extent.value()))),
+            GetIntImm(ps->lengths[1].value()),
             true
           }
           );
     }
   }  // for (split_step_id ∈ split_step_ids)
-  // consider all the inner extents within the range of
-  // [inner_extent / 2, 2 * inner_extent]
-  
 
+  // Now that we have determined the optimization target, sample as if it is a
+  // static workload.
+  for (size_t retry_ct = 0; retry_ct < split_step_ids.size() << 2; ++retry_ct) {
+    for (const size_t split_step_id : split_step_ids) {
+
+    }
+  }
   return ResultKind::kInvalid;
 }
 
