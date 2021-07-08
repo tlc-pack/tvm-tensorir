@@ -1117,6 +1117,11 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
 
 
 // <bojian/DietCode>
+static inline int64_t floor_div(const int64_t a, const int64_t b) {
+  return (a + b - 1) / b;
+}
+
+
 PopulationGenerationRule::ResultKind
 MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
                                std::mt19937* rand_gen) const {
@@ -1138,11 +1143,6 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     return ResultKind::kInvalid;
   }
 
-  struct SplitStepInfo {
-    int64_t total_extent;
-    int64_t immutable_extent;
-    bool is_spatial;
-  };
   std::unordered_map<size_t, SplitStepInfo> split_steps_info;
 
   const int max_innermost_split_factor =
@@ -1183,29 +1183,31 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
       CHECK(split_step->lengths.size() == 2);
       split_steps_info[split_step_id] =
           SplitStepInfo{
-            GetIntImm(analyzer.Simplify(replacer(split_step->extent.value()))),
-            1,
-            false
-          }
-          );
+            false,
+            static_cast<size_t>(
+              GetIntImm(analyzer.Simplify(replacer(split_step->extent.value())))
+            )
+          };
     } else {
       split_steps_info[split_step_id] =
           SplitStepInfo{
-            GetIntImm(analyzer.Simplify(replacer(split_step->extent.value()))),
-            GetIntImm(ps->lengths[1].value()),
-            true
-          }
-          );
+            true,
+            static_cast<size_t>(
+              GetIntImm(analyzer.Simplify(replacer(split_step->extent.value())))
+            )
+          };
     }
   }  // for (split_step_id ∈ split_step_ids)
 
   // Now that we have determined the optimization target, sample as if it is a
   // static workload.
-  for (size_t retry_ct = 0; retry_ct < split_step_ids.size() << 2; ++retry_ct) {
-    for (const size_t split_step_id : split_step_ids) {
+  std::vector<float> adapted_score;
 
-    }
-  }
+  for (size_t retry_ct = 0; retry_ct < split_step_ids.size() << 2; ++retry_ct) {
+    // policy->dietcode_split_memo.SampleFactorizationSchemes(
+        
+    //     );
+  }  // for (retry_ct ∈ [0, split_step_ids.size() * 4))
   return ResultKind::kInvalid;
 }
 

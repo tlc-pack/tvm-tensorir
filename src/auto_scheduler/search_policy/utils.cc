@@ -533,6 +533,37 @@ bool FactorizationScheme::simplify_sketch;
 size_t FactorizationScheme::last_spatial_iter_id;
 std::vector<std::vector<int>> FactorizationScheme::factor_indices_to_incr;
 
+FactorizationScheme::FactorizationScheme(
+    const std::vector<SplitStepInfo>& split_steps_info,
+    const bool simplify_sketch, const bool init_static_members) {
+  for (size_t i = 0; i < split_steps_info.size(); ++i) {
+    split_factors.push_back(
+        std::vector<int>(GetSplitLengths(split_steps_info[i].is_spatial), 1));
+  }
+  if (init_static_members) {
+    FactorizationScheme::split_steps_info = split_steps_info;
+    FactorizationScheme::simplify_sketch = simplify_sketch;
+    last_spatial_iter_id = -1;
+    for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
+      if (split_steps_info[iter_id].is_spatial) {
+        last_spatial_iter_id = iter_id;
+      }
+    }
+    if (simplify_sketch) {
+      for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
+        if (split_steps_info[iter_id].is_spatial) {
+          if (iter_id == last_spatial_iter_id) {
+            factor_indices_to_incr.push_back({0, 1});
+          } else {
+            factor_indices_to_incr.push_back({1, 3});
+          }
+        } else {
+          factor_indices_to_incr.push_back({1});
+        }
+      }
+    }
+  }
+}
 
 void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
                                        const size_t max_innermost_factor,
