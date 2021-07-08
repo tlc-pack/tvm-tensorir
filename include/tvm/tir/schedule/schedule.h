@@ -463,6 +463,13 @@ class ScheduleNode : public runtime::Object {
                             int offset) = 0;
 
   virtual void InlineArgument(int i, const String& func_name) = 0;
+
+  /*!
+   * \brief Mark a loop for software pipelining execution
+   * \param loop_rv The loop for software pipelining
+   * \param num_stages The number of pipeline stages
+   */
+  virtual void SoftwarePipeline(const LoopRV& loop_rv, int num_stages) = 0;
 };
 
 /*!

@@ -741,6 +741,14 @@ void ConcreteScheduleNode::InlineArgument(int i, const String& func_name) {
   TVM_TIR_SCHEDULE_END("inline-argument", this->error_render_level_);
 }
 
+/******** Schedule: software pipelining ********/
+void ConcreteScheduleNode::SoftwarePipeline(const LoopRV& loop_rv, int num_stages) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::SoftwarePipeline(state_, this->GetSRef(loop_rv), num_stages);
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("software-pipeline", this->error_render_level_);
+}
+
 /******** FFI ********/
 
 TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);

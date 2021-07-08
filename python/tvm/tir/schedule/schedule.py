@@ -825,6 +825,8 @@ class ConcreteSchedule(Schedule):
     def inline_argument(self, i: int, func_name: str = "main"):
         _ffi_api_schedule.ScheduleInlineArgument(self, i, func_name)  # pylint: disable=no-member
 
+    def software_pipeline(self, loop: LoopRV, num_stages: int) -> None:
+        _ffi_api_schedule.ScheduleSoftwarePipeline(self, loop, num_stages)  # pylint: disable=no-member
 
 @_register_object("tir.ConcreteSchedule")
 class ConcreteSchedule(Schedule):

@@ -154,6 +154,7 @@ TVM_DLL void SetScope(ScheduleState self, const StmtSRef& block_sref, int i,
 TVM_DLL void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
                           int axis, int factor, int offset);
 TVM_DLL void InlineArgument(ScheduleState self, int i, const String& func_name);
+TVM_DLL void SoftwarePipeline(ScheduleState self, const StmtSRef& loop_sref, int num_stages);
 
 }  // namespace tir
 }  // namespace tvm

@@ -36,6 +36,14 @@ void MarkBlock(ScheduleState self, const StmtSRef& block_sref, const String& ann
   AddAnn(self, block_sref, ann_key, ann_val);
 }
 
+void SoftwarePipeline(ScheduleState self, const StmtSRef& loop_sref, int num_stages) {
+  const auto* loop = loop_sref->StmtAs<ForNode>();
+  CHECK(loop != nullptr) << "TypeError: 'software_pipeline' expects a loop as its first argument";
+  CHECK(!loop->thread_binding.defined())
+      << "ValueError: 'software_pipeline' does not work on a loop with thread bindings.";
+  AddAnn(self, loop_sref, tir::attr::pipeline_scope, IntImm(DataType::Int(32), num_stages));
+}
+
 struct PragmaTraits : public UnpackedInstTraits<PragmaTraits> {
   static constexpr const char* kName = "Pragma";
   static constexpr bool kIsPure = false;
@@ -136,9 +144,33 @@ struct MarkBlockTraits : public UnpackedInstTraits<MarkBlockTraits> {
   friend struct UnpackedInstTraits;
 };
 
+struct SoftwarePipelineTraits : public UnpackedInstTraits<SoftwarePipelineTraits> {
+  static constexpr const char* kName = "SoftwarePipeline";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;;
+  static constexpr size_t kNumAttrs = 1;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, Integer num_stages) {
+    return sch->SoftwarePipeline(loop_rv, num_stages->value);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Integer num_stages) {
+    PythonAPICall py("software_pipeline");
+    py.Input("loop", loop_rv);
+    py.Input("num_stages", std::to_string(num_stages->value));
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
 TVM_REGISTER_INST_KIND(PragmaTraits);
 TVM_REGISTER_INST_KIND(MarkLoopTraits);
 TVM_REGISTER_INST_KIND(MarkBlockTraits);
+TVM_REGISTER_INST_KIND(SoftwarePipelineTraits);
 
 }  // namespace tir
 }  // namespace tvm

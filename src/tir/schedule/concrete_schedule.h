@@ -156,6 +156,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
                     int offset) override;
   void InlineArgument(int i, const String& func_name) override;
+  void SoftwarePipeline(const LoopRV& loop_rv, int num_stages) override;
 
   /******** Utility functions ********/
  protected:
