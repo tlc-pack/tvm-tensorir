@@ -495,6 +495,7 @@ Array<State> SketchPolicyNode::GenerateSketches() {
 
 // <bojian/DietCode>
 bool is_sample_init_population_1st_iter;
+bool is_evolutionary_search;
 bool enable_verbose_logging;
 bool simplify_sketch = true;
 

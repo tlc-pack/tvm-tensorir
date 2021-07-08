@@ -570,76 +570,86 @@ FactorizationScheme::FactorizationScheme(
 
 void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
                                        const size_t max_innermost_factor,
-                                       std::mt19937* const rng) {
+                                       std::mt19937* const rng,
+                                       const bool freeze_num_threads,
+                                       const bool sample_perfect_tile_size) {
   // ===========================================================================
   // factor[1] (threadIdx.x)
   // ===========================================================================
-  std::uniform_int_distribution<> num_warps_dist(
-      1, hardware_params->max_threads_per_block / hardware_params->warp_size);
-  size_t num_threads_per_block = num_warps_dist(*rng) * hardware_params->warp_size;
-  // find all the possible factors of the number of threads per block
-  if (enable_verbose_logging) {
-    LOG(INFO) << "num_threads_per_block=" << num_threads_per_block;
-  }
-  size_t num_spatial_axes = 0;
-  for (const SplitStepInfo& info : split_steps_info) {
-    if (info.is_spatial) {
-      ++num_spatial_axes;
-    }
-  }
-  // if (enable_verbose_logging) {
-  //   LOG(INFO) << "num_spatial_axes=" << num_spatial_axes;
-  // }
+  size_t num_threads_per_block;
   SplitFactorizationMemo memo;
-  const Array<Array<Integer>>& num_threads_factor_schemes =
-      memo.GetFactorizationSchemes(num_threads_per_block, num_spatial_axes - 1);
-
-  // if (enable_verbose_logging) {
-  //   LOG(INFO) << "Sampled the factors out of num_threads_factor_schemes.size()="
-  //             << num_threads_factor_schemes.size();
-  // }
-  CHECK(num_threads_factor_schemes.size() != 0);
-  std::uniform_int_distribution<> num_threads_factor_schemes_dist(
-      0, num_threads_factor_schemes.size() - 1);
-
-  bool all_below_max_extents;
-  Array<Integer> num_threads_factor_scheme;
-  do {
-    all_below_max_extents = true;
-
-    num_threads_factor_scheme = num_threads_factor_schemes[num_threads_factor_schemes_dist(*rng)];
-    // if (enable_verbose_logging) {
-    //   LOG(INFO) << "Factorization Scheme: " << ArrayToString(num_threads_factor_scheme);
-    // }
-    int64_t factor_prod = 1;
-    for (const Integer& factor : num_threads_factor_scheme) {
-      factor_prod *= factor;
-    }
-    num_threads_factor_scheme.push_back(num_threads_per_block / factor_prod);
+  if (!freeze_num_threads) {
+    std::uniform_int_distribution<> num_warps_dist(
+        1, hardware_params->max_threads_per_block / hardware_params->warp_size);
+    num_threads_per_block = num_warps_dist(*rng) * hardware_params->warp_size;
+    // find all the possible factors of the number of threads per block
     if (enable_verbose_logging) {
-      LOG(INFO) << "Factorization Scheme: " << ArrayToString(num_threads_factor_scheme);
+      LOG(INFO) << "num_threads_per_block=" << num_threads_per_block;
     }
+    size_t num_spatial_axes = 0;
+    for (const SplitStepInfo& info : split_steps_info) {
+      if (info.is_spatial) {
+        ++num_spatial_axes;
+      }
+    }
+    // if (enable_verbose_logging) {
+    //   LOG(INFO) << "num_spatial_axes=" << num_spatial_axes;
+    // }
+    const Array<Array<Integer>>& num_threads_factor_schemes =
+        memo.GetFactorizationSchemes(num_threads_per_block, num_spatial_axes - 1);
+
+    // if (enable_verbose_logging) {
+    //   LOG(INFO) << "Sampled the factors out of num_threads_factor_schemes.size()="
+    //             << num_threads_factor_schemes.size();
+    // }
+    CHECK(num_threads_factor_schemes.size() != 0);
+    std::uniform_int_distribution<> num_threads_factor_schemes_dist(
+        0, num_threads_factor_schemes.size() - 1);
+
+    bool all_below_max_extents;
+    Array<Integer> num_threads_factor_scheme;
+    do {
+      all_below_max_extents = true;
+
+      num_threads_factor_scheme = num_threads_factor_schemes[num_threads_factor_schemes_dist(*rng)];
+      // if (enable_verbose_logging) {
+      //   LOG(INFO) << "Factorization Scheme: " << ArrayToString(num_threads_factor_scheme);
+      // }
+      int64_t factor_prod = 1;
+      for (const Integer& factor : num_threads_factor_scheme) {
+        factor_prod *= factor;
+      }
+      num_threads_factor_scheme.push_back(num_threads_per_block / factor_prod);
+      if (enable_verbose_logging) {
+        LOG(INFO) << "Factorization Scheme: " << ArrayToString(num_threads_factor_scheme);
+      }
+      for (size_t iter_id = 0, spatial_iter_id = 0;
+           iter_id < split_steps_info.size(); ++iter_id) {
+        if (split_steps_info[iter_id].is_spatial) {
+          if (static_cast<size_t>(
+                num_threads_factor_scheme[spatial_iter_id]->value) >
+              split_steps_info[iter_id].max_extent) {
+            all_below_max_extents = false;
+          }
+          ++spatial_iter_id;
+        }
+      }  // for (iter_id ∈ [0, split_steps_info.size()))
+    } while (!all_below_max_extents);
+    // do the looping again and assign the factors
     for (size_t iter_id = 0, spatial_iter_id = 0;
          iter_id < split_steps_info.size(); ++iter_id) {
       if (split_steps_info[iter_id].is_spatial) {
-        if (static_cast<size_t>(
-              num_threads_factor_scheme[spatial_iter_id]->value) >
-            split_steps_info[iter_id].max_extent) {
-          all_below_max_extents = false;
-        }
+        split_factors[iter_id][1] =
+            num_threads_factor_scheme[spatial_iter_id]->value;
         ++spatial_iter_id;
       }
-    }  // for (iter_id ∈ [0, split_steps_info.size()))
-  } while (!all_below_max_extents);
-  // do the looping again and assign the factors
-  for (size_t iter_id = 0, spatial_iter_id = 0;
-       iter_id < split_steps_info.size(); ++iter_id) {
-    if (split_steps_info[iter_id].is_spatial) {
-      split_factors[iter_id][1] =
-          num_threads_factor_scheme[spatial_iter_id]->value;
-      ++spatial_iter_id;
     }
-  }
+  } else {
+    num_threads_per_block = 1;
+    for (const std::vector<int>& split_factor : split_factors) {
+      num_threads_per_block *= split_factor[1];
+    }
+  }  // if (!freeze_num_threads)
   // ===========================================================================
   // factor[0] (vthread)
   // ===========================================================================
@@ -657,8 +667,20 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
           }
           size_t iter_max_extent = max_extent(iter_id);
           CHECK(iter_max_extent != 0) << "current scheme=" << toString();
-          std::uniform_int_distribution<> dist(1, iter_max_extent);
-          size_t factor_to_assign = dist(*rng);
+
+          size_t factor_to_assign;
+
+          if (sample_perfect_tile_size) {
+            std::uniform_int_distribution<> dist(1, iter_max_extent);
+            factor_to_assign = dist(*rng);
+          } else {
+            const std::vector<int>& iter_max_extent_factors =
+                memo.GetFactors(iter_max_extent);
+            std::uniform_int_distribution<> dist(
+                0, iter_max_extent_factors.size() - 1);
+            factor_to_assign =
+                static_cast<size_t>(iter_max_extent_factors[dist(*rng)]);
+          }
 
           if (split_steps_info[iter_id].is_spatial) {
             reg_usage *= factor_to_assign;
@@ -958,9 +980,7 @@ DietCodeSplitFactorizationMemo::GetAllFactorizationSchemes(
     // return the cached factorization scheme
     return cache_;
   }
-  workstack_.emplace(split_steps_info, simplify_sketch,
-                     is_sample_init_population_1st_iter
-                     /* initialize the static members */);
+  workstack_.emplace(split_steps_info, simplify_sketch, true);
   examined_schemes_.insert(workstack_.front().toString());
   BfsEnumerate();
   LOG(INFO) << "Total number of possible factorization schemes w/ the "
@@ -970,16 +990,34 @@ DietCodeSplitFactorizationMemo::GetAllFactorizationSchemes(
 
 
 FactorizationScheme
-DietCodeSplitFactorizationMemo::SampleFactorizationSchemes(
+DietCodeSplitFactorizationMemo::SampleFactorizationScheme(
     const std::vector<SplitStepInfo>& split_steps_info,
-    std::mt19937* const rng,
-    const bool simplify_sketch) {
+    std::mt19937* const rng, const bool simplify_sketch) {
   FactorizationScheme scheme(split_steps_info, simplify_sketch,
                              is_sample_init_population_1st_iter);
-  scheme.RandomSample(hardware_params_, max_innermost_factor_, rng);
+  scheme.RandomSample(hardware_params_, max_innermost_factor_, rng, false,
+                      false);
   
   if (enable_verbose_logging) {
     LOG(INFO) << "Randomly sampled factorization scheme=" << scheme.toString();
+  }
+  return scheme;
+}
+
+
+FactorizationScheme
+DietCodeSplitFactorizationMemo::MutateFactorizationScheme(
+    const std::vector<SplitStepInfo>& split_steps_info,
+    std::mt19937* const rng, const bool simplify_sketch,
+    const std::vector<std::vector<int>>& curr_split_factors,
+    const bool sample_perfect_tile_size) {
+  FactorizationScheme scheme(split_steps_info, simplify_sketch, true);
+  scheme.split_factors = curr_split_factors;
+  scheme.RandomSample(hardware_params_, max_innermost_factor_, rng, true,
+                      sample_perfect_tile_size);
+
+  if (enable_verbose_logging) {
+    LOG(INFO) << "Randomly mutated factorization scheme=" << scheme.toString();
   }
   return scheme;
 }

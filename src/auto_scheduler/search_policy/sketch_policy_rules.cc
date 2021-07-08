@@ -576,7 +576,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
     // const FactorizationScheme& scheme = cached_schemes[(*rand_gen)() % cached_schemes.size()];
     FactorizationScheme scheme;
     try {
-      scheme = policy->dietcode_split_memo.SampleFactorizationSchemes(
+      scheme = policy->dietcode_split_memo.SampleFactorizationScheme(
           split_steps_info, rand_gen, simplify_sketch);
     } catch(const std::out_of_range& e) {
       return ResultKind::kInvalid;
@@ -1128,7 +1128,8 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
   CHECK(IsDynTask(policy->search_task));
 
   std::vector<size_t> split_step_ids;
-  // search for the vthread (2nd outermost) and innermost split step
+  std::vector<std::vector<int>> curr_split_factors;
+
   for (size_t i = 0; i < (*state)->transform_steps.size(); ++i) {
     if (const SplitStepNode* const split_step =
         (*state)->transform_steps[i].as<SplitStepNode>()) {
@@ -1143,10 +1144,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     return ResultKind::kInvalid;
   }
 
-  std::unordered_map<size_t, SplitStepInfo> split_steps_info;
-
-  const int max_innermost_split_factor =
-      GetIntParam(policy->params, SketchParamKey::max_innermost_split_factor);
+  std::vector<SplitStepInfo> split_steps_info;
   // randomly choose an instance to optimize for, the probability, as is
   // calcualted in measure.cc, is based on the formula:
   //
@@ -1181,32 +1179,38 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
         Downcast<SplitStep>((*state)->transform_steps[split_step_id]);
     if (split_step->lengths.size() != 4) {
       CHECK(split_step->lengths.size() == 2);
-      split_steps_info[split_step_id] =
+      split_steps_info.push_back(
           SplitStepInfo{
             false,
             static_cast<size_t>(
               GetIntImm(analyzer.Simplify(replacer(split_step->extent.value())))
             )
-          };
+          }
+          );
     } else {
-      split_steps_info[split_step_id] =
+      split_steps_info.push_back(
           SplitStepInfo{
             true,
             static_cast<size_t>(
               GetIntImm(analyzer.Simplify(replacer(split_step->extent.value())))
             )
-          };
+          }
+          );
     }
   }  // for (split_step_id ∈ split_step_ids)
 
   // Now that we have determined the optimization target, sample as if it is a
   // static workload.
   std::vector<float> adapted_score;
+  std::uniform_real_distribution<> prob_dist(0., 1.);
 
   for (size_t retry_ct = 0; retry_ct < split_step_ids.size() << 2; ++retry_ct) {
-    // policy->dietcode_split_memo.SampleFactorizationSchemes(
-        
-    //     );
+    FactorizationScheme mutated_scheme =
+        policy->dietcode_split_memo.MutateFactorizationScheme(
+          split_steps_info, rand_gen, simplify_sketch, curr_split_factors,
+          prob_dist(*rand_gen) > 0.5
+        );
+    
   }  // for (retry_ct ∈ [0, split_step_ids.size() * 4))
   return ResultKind::kInvalid;
 }

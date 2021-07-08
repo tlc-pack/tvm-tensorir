@@ -757,8 +757,9 @@ struct FactorizationScheme {
    * \brief Random sample a factorization scheme.
    */
   void RandomSample(const HardwareParams& hardware_param,
-                    const size_t max_innermost_factor,
-                    std::mt19937* const rng);
+                    const size_t max_innermost_factor, std::mt19937* const rng,
+                    const bool freeze_num_threads,
+                    const bool sample_perfect_tile_size);
   /**
    * \brief Serialzie the factorization scheme to string.
    */
@@ -854,16 +855,22 @@ class DietCodeSplitFactorizationMemo {
    */
   const std::vector<FactorizationScheme>&
   GetAllFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info,
-                             const bool simplify_sketch = true);
+                             const bool simplify_sketch);
   /**
    * \brief Randomly sample a legit factorization scheme. Note that due to the
    *        requirement for random number generation, this method has to be
    *        invoked sequentially.
    */
   FactorizationScheme
-  SampleFactorizationSchemes(const std::vector<SplitStepInfo>& split_steps_info,
-                             std::mt19937* const rng,
-                             const bool simplify_sketch = true);
+  SampleFactorizationScheme(const std::vector<SplitStepInfo>& split_steps_info,
+                            std::mt19937* const rng, const bool simplify_sketch);
+
+  FactorizationScheme
+  MutateFactorizationScheme(
+      const std::vector<SplitStepInfo>& split_steps_info,
+      std::mt19937* const rng, const bool simplify_sketch,
+      const std::vector<std::vector<int>>& curr_split_factors,
+      const bool sample_perfect_tile_size);
 };
 
 
