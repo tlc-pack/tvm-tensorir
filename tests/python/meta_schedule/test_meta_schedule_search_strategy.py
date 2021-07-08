@@ -33,23 +33,28 @@ def test_meta_schedule_search_strategy():
         k_0, k_1 = sch.split(loop=k, factors=k_tiles)
         sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
 
-    trials = 100
-    batch_size = 30
-
     space_gen = ms.ScheduleFn(sch_fn=schedule_matmul)
-    replay = ms.ReplaySearchStrategy(trials, batch_size)
-    replay.pre_tuning(design_spaces=space_gen.generate(workload=matmul))
+
+    trails = 100
+    batch_size = 30
+    replay = ms.ReplaySearchStrategy(trails, batch_size)
 
     results = []
-    temp = replay.generate_measure_candidates()
-    while temp is not None:
+    temp = replay.generate_measure_candidates_sg(space_gen=space_gen, workload=matmul)
+    while len(temp) > 0:
         results += temp
-        assert len(temp) == batch_size or len(results) == trials
-        assert len(results) <= trials
-        replay.notify_measure_results(temp)
-        temp = replay.generate_measure_candidates()
+        assert len(temp) == batch_size or len(results) == trails
+        assert len(results) <= trails
+        replay.update_results(temp)
+        temp = replay.generate_measure_candidates_sg(space_gen=space_gen, workload=matmul)
 
-    assert len(results) == trials
+    for sch in results:
+        i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
+            sch.get_sref(i).stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
+        ]
+        assert i_0 * i_1 * i_2 * i_3 == 1024
+        assert j_0 * j_1 * j_2 * j_3 == 1024
+        assert k_0 * k_1 == 1024
 
 
 if __name__ == "__main__":

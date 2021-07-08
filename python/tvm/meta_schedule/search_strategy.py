@@ -16,15 +16,14 @@
 # under the License.
 """Space Generator"""
 
-import random
-
-from typing import List, TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Any
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
+from tvm.ir import IRModule
 
 from . import _ffi_api
-from .trace import Trace
+from .space_generator import SpaceGenerator
 
 if TYPE_CHECKING:
     from .tune_context import TuneContext
@@ -34,25 +33,19 @@ if TYPE_CHECKING:
 class SearchStrategy(Object):
     """Description and abstraction of a search strategy class."""
 
-    def initialize_with_tune_context(
+    def GenerateMeasureCandidates(  # pylint: disable=invalid-name
         self,
         context: "TuneContext",
-    ) -> None:
-        return _ffi_api.SearchStrategyInitializeWithTuneContext(  # pylint: disable=no-member
-            context
+    ) -> List[Object]:
+        return _ffi_api.SearchStrategyGenerateMeasureCandidates(  # pylint: disable=no-member
+            self, context
         )
 
-    def generate_measure_candidates(self) -> List["BuilderInput"]:
-        return _ffi_api.SearchStrategyGenerateMeasureCandidates()  # pylint: disable=no-member
+    def UpdateResults(self, results: List[Object]):  # pylint: disable=invalid-name
+        return _ffi_api.SearchStrategyGenerate(self, results)  # pylint: disable=no-member
 
-    def notify_measure_results(self, results: List["MeasureResult"]) -> None:
-        return _ffi_api.SearchStrategyNotifyMeasureResults(results)  # pylint: disable=no-member
-
-    def pre_tuning(self, design_spaces: List[Trace]) -> None:
-        return _ffi_api.SearchStrategyPreTuning(design_spaces)  # pylint: disable=no-member
-
-    def post_tuning_func(self) -> None:
-        return _ffi_api.SearchStrategyPostTuning()  # pylint: disable=no-member
+    def initialize(self, **kwargs):
+        raise NotImplementedError
 
 
 @register_object("meta_schedule.PySearchStrategy")
@@ -60,41 +53,19 @@ class PySearchStrategy(SearchStrategy):
     """Search strategy that is implemented in python"""
 
     def __init__(self):
-        def initialize_with_tune_context_func(context: "TuneContext") -> None:
-            self.initialize_with_tune_context(context)
+        def generate_measure_candidates_func(context: "TuneContext"):
+            return self.generate_measure_candidates(context)
 
-        def generate_measure_candidates_func() -> List["BuilderInput"]:
-            return self.generate_measure_candidates()
-
-        def notify_measure_results_func(results: List["MeasureResult"]) -> None:
-            self.notify_measure_results(results)
-
-        def pre_tuning_func(design_spaces: List[Trace]) -> None:
-            self.pre_tuning(design_spaces)
-
-        def post_tuning_func() -> None:
-            self.post_tuning()
+        def update_results_func(results: List[Object]):
+            self.update_results(results)
 
         self.__init_handle_by_constructor__(
-            _ffi_api.PySearchStrategy,  # pylint: disable=no-member
-            initialize_with_tune_context_func,
+            _ffi_api.PySearchStrategyNew,  # pylint: disable=no-member
             generate_measure_candidates_func,
-            notify_measure_results_func,
-            pre_tuning_func,
-            post_tuning_func,
+            update_results_func,
         )
 
-    def initialize_with_tune_context(self, context: "TuneContext") -> None:
-        """Initialize the search strategy with a given context
-
-        Parameters
-        ----------
-        context : TuneContext
-            The auto tuning context
-        """
-        raise NotImplementedError
-
-    def generate_measure_candidates(self) -> List["BuilderInput"]:
+    def generate_measure_candidates(self, context: "TuneContext") -> List[Object]:
         """generate candidates for autotuning measurement according to the tune context
 
         Parameters
@@ -104,7 +75,7 @@ class PySearchStrategy(SearchStrategy):
         """
         raise NotImplementedError
 
-    def notify_measure_results(self, results: List["MeasureResult"]) -> None:
+    def update_results(self, results: List[Object]):
         """Update the search srategy status accoding to the measurement results
 
         Returns
@@ -114,52 +85,51 @@ class PySearchStrategy(SearchStrategy):
         """
         raise NotImplementedError
 
-    def pre_tuning(self, design_spaces: List[Trace]) -> None:
-        """Initiate the search strategy status before tuning"""
-        raise NotImplementedError
 
-    def post_tuning(self) -> None:
-        """Finish the search strategy process after tuning"""
-        raise NotImplementedError
-
-
-class ReplaySearchStrategy(PySearchStrategy):
+class ReplaySearchStrategy(SearchStrategy):
     """Random search strategy"""
 
-    def __init__(self, trials, batch_size):
+    def __init__(self, trails, batch_size):
         super().__init__()
-        self.trials = trials
+        self.trails = trails
         self.batch_size = batch_size
-
-    def initialize_with_tune_context(self, context: "TuneContext") -> None:
-        pass
-
-    def pre_tuning(self, design_spaces: List["Trace"]) -> None:
-        self.design_spaces = design_spaces
         self.count = 0
 
-    def post_tuning(self) -> None:
-        pass
+    def generate_measure_candidates(self, context: "TuneContext") -> List[Any]:
+        """generate candidates for autotuning measurement according to the tune context
 
-    def generate_measure_candidates(self) -> List["BuilderInput"]:
-        """generate candidates for autotuning measurement according to the space generator"""
+        Parameters
+        ----------
+        context : TuneContext
+            The auto tuning context
+        """
+        raise NotImplementedError
 
-        if self.count >= self.trials:
-            return None
+    def generate_measure_candidates_sg(
+        self, space_gen: SpaceGenerator, workload: IRModule
+    ) -> List[Any]:
+        """generate candidates for autotuning measurement according to the space generator
+
+        Parameters
+        ----------
+        context : TuneContext
+            The auto tuning context
+        """
+        print(self.trails, self.batch_size, self.count)
+        if self.count >= self.trails:
+            return []
         candidates = []
-        for _ in range(self.count, min(self.count + self.batch_size, self.trials)):
-            trace = Trace(
-                random.choice(self.design_spaces).trace.insts  # clear the argument decisions
-            )
-            candidates.append(trace)
+        for _ in range(self.count, min(self.count + self.batch_size, self.trails)):
+            (sch,) = space_gen.generate(workload)
+            candidates.append(sch)
         return candidates
 
-    def notify_measure_results(self, results: List["MeasureResult"]) -> None:
-        """Update the search strategy status accoding to the measurement results
+    def update_results(self, results: List[Any]):
+        """Update the search srategy status accoding to the measurement results
 
         Returns
         -------
         results: List[Schedule]
             A list of schedules
         """
-        self.count += len(results)
+        self.count += results.size()
