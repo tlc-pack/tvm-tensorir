@@ -2826,11 +2826,11 @@ def match_buffer_region(a: ty.handle, b: ty.handle) -> None:
     B = tir.match_buffer(b, (1), "float32")
 
     with tir.block([16, 4]) as [vi, vj]:
-        C = tir.match_buffer_region(A[0:16, vi, vj * 4 : vj * 4 + 4])
+        C = tir.match_buffer(A[0:16, vi, vj * 4 : vj * 4 + 4], (16, 1, 4))
         with tir.block([4]) as [vii]:
-            D = tir.match_buffer_region(C[vii * 4 : vii * 4 + 4, 0:4])
+            D = tir.match_buffer(C[vii * 4 : vii * 4 + 4, 0, 0:4], (4, 1, 4))
             for i, j in tir.grid(4, 4):
-                B[0] += D[i, j]
+                B[0] += D[i, 0, j]
 
 
 def test_match_buffer_region():
@@ -2847,14 +2847,14 @@ def test_match_buffer_region():
     outer_block = root.body.body.body.block
     assert len(outer_block.match_buffers) == 1
     buffer_C = outer_block.match_buffers[0].buffer
-    tvm.ir.assert_structural_equal(buffer_C.shape, [16, 4])
+    tvm.ir.assert_structural_equal(buffer_C.shape, [16, 1, 4])
 
     assert isinstance(outer_block.body, tir.stmt.For)
     assert isinstance(outer_block.body.body, tir.stmt.BlockRealize)
     inner_block = outer_block.body.body.block
     assert len(inner_block.match_buffers) == 1
     buffer_D = inner_block.match_buffers[0].buffer
-    tvm.ir.assert_structural_equal(buffer_D.shape, [4, 4])
+    tvm.ir.assert_structural_equal(buffer_D.shape, [4, 1, 4])
 
 
 @tvm.script.tir
@@ -2869,7 +2869,7 @@ def block_elements(a: ty.handle, b: ty.handle) -> None:
         tir.writes(B[0, 0])
         tir.block_attr({"attr_key": "attr_value"})
         C = tir.alloc_buffer((4, 4), dtype="float32")
-        D = tir.match_buffer_region(A[0:4, 0])
+        D = tir.match_buffer(A[0:4, 0], (4, 1))
         with tir.init():
             B[0, 0] = tir.float32(0)
         B[0, 0] = A[0, 0] + B[0, 0] + C[1, 1] + D[2]
