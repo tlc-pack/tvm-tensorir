@@ -34,10 +34,14 @@ def buffer_load_store(a: ty.handle, c: ty.handle) -> None:
         with tir.block([]):
             tir.reads(C[i * 4 : i * 4 + 4, k * 2 : k * 2 + 2])
             tir.writes(A[i * 4 : i * 4 + 4, j, k * 2 : k * 2 + 2])
-            sub_A = tir.match_buffer_region(A[i * 4 : i * 4 + 4, j, k * 2 : k * 2 + 2])
-            sub_C = tir.match_buffer_region(C[i * 4 : i * 4 + 4, k * 2 : k * 2 + 2])
-            for ii, jj in tir.grid(4, 2):
-                sub_A[ii, jj] += sub_C[ii, jj]
+            sub_A = tir.match_buffer(
+                A[i * 4 : i * 4 + 4, j, k * 2 : k * 2 + 2], (4, 1, 2), offset_factor=1
+            )
+            sub_C = tir.match_buffer(
+                C[i * 4 : i * 4 + 4, k * 2 : k * 2 + 2], (4, 2), offset_factor=1
+            )
+            for ii, kk in tir.grid(4, 2):
+                sub_A[ii, 0, kk] += sub_C[ii, kk]
 
 
 @tvm.script.tir
@@ -48,8 +52,8 @@ def transformed_buffer_load_store(a: ty.handle, c: ty.handle) -> None:
         with tir.block([]):
             tir.reads(C[i * 4 : i * 4 + 4, k * 2 : k * 2 + 2])
             tir.writes(A[i * 4 : i * 4 + 4, j, k * 2 : k * 2 + 2])
-            for ii, jj in tir.grid(4, 2):
-                A[i * 4 + ii, j, k * 2 + jj] += C[i * 4 + ii, k * 2 + jj]
+            for ii, kk in tir.grid(4, 2):
+                A[i * 4 + ii, j, k * 2 + kk] += C[i * 4 + ii, k * 2 + kk]
 
 
 @tvm.ir.register_op_attr("tir.test_intrin", "")
@@ -65,7 +69,15 @@ def opaque_access(a: ty.handle, b: ty.handle) -> None:
         with tir.block([]):
             tir.reads([])
             tir.writes(A[i * 16 : i * 16 + 16, j, k * 16 : k * 16 + 16])
-            sub_A = tir.match_buffer_region(A[i * 16 : i * 16 + 16, j, k * 16 : k * 16 + 16])
+            As_0 = tir.var("int32")
+            As_1 = tir.var("int32")
+            As_2 = tir.var("int32")
+            sub_A = tir.match_buffer(
+                A[i * 16 : i * 16 + 16, j, k * 16 : k * 16 + 16],
+                (16, 1, 16),
+                strides=[As_0, As_1, As_2],
+                offset_factor=1,
+            )
             tir.evaluate(
                 tir.test_intrin(
                     sub_A.data,
@@ -79,9 +91,16 @@ def opaque_access(a: ty.handle, b: ty.handle) -> None:
             )
     for i, j, k in tir.grid(64, 2, 8):
         with tir.block([]):
+            Bs_0 = tir.var("int32")
+            Bs_1 = tir.var("int32")
             tir.reads([])
             tir.writes(B[i, j * 32 : j * 32 + 32, k * 8 : k * 8 + 8])
-            sub_B = tir.match_buffer_region(B[i, j * 32 : j * 32 + 32, k * 8 : k * 8 + 8])
+            sub_B = tir.match_buffer(
+                B[i, j * 32 : j * 32 + 32, k * 8 : k * 8 + 8],
+                (32, 8),
+                strides=[Bs_0, Bs_1],
+                offset_factor=1,
+            )
             tir.evaluate(
                 tir.test_intrin(
                     sub_B.data,
@@ -108,9 +127,9 @@ def transformed_opaque_access(a: ty.handle, b: ty.handle) -> None:
                     A.data,
                     i * 131072 + j * 128 + k * 16,
                     8192,
+                    128,
+                    16,
                     1,
-                    16,
-                    16,
                     dtype="handle",
                 )
             )

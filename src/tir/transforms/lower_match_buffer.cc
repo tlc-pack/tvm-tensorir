@@ -57,6 +57,11 @@ class MatchBufferLower : public StmtExprMutator {
     }
   }
 
+  Stmt VisitStmt_(const ForNode* op) final {
+    analyzer_.Bind(op->loop_var, Range::FromMinExtent(op->min, op->extent));
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
   PrimExpr VisitExpr_(const VarNode* op) final {
     Var v = GetRef<Var>(op);
     auto it = var_map_.find(v);
@@ -102,32 +107,15 @@ class MatchBufferLower : public StmtExprMutator {
     }
   }
 
-  BufferRegion VisitBufferRegion(const BufferRegion& buffer_region) const {
+  BufferRegion VisitBufferRegion(const BufferRegion& buffer_region) {
     const Buffer& buffer = buffer_region->buffer;
     auto it = match_buffers_.find(buffer);
     if (it == match_buffers_.end()) {
       return buffer_region;
     } else {
       const BufferRegion& source = it->second;
-
-      Region region;
-      region.reserve(source->region.size());
-      size_t target_cur_pos = 0;
-      for (const Range& source_range : source->region) {
-        if (is_one(source_range->extent)) {
-          // This dimesion is ignored by the target buffer
-          region.push_back(source_range);
-        } else {
-          // Check the current pos is less than the indices size.
-          ICHECK_LT(target_cur_pos, buffer_region->region.size());
-          const Range& target_range = buffer_region->region[target_cur_pos];
-          region.push_back(
-              Range::FromMinExtent(source_range->min + target_range->min, target_range->extent));
-        }
-      }
-      // Check the shape is exactly matched.
-      ICHECK_EQ(target_cur_pos, buffer_region->region.size());
-      return BufferRegion(buffer, region);
+      Region region = ConvertRegion(buffer_region->region, MatchBufferRegion(buffer, source));
+      return BufferRegion(buffer, std::move(region));
     }
   }
 
@@ -162,13 +150,6 @@ class MatchBufferLower : public StmtExprMutator {
     // Step.1.3. Check offset_factor
     // TODO(Siyuan): check offset_factor
 
-    // Step.1.4. Check dimension
-    // Note that matching from high-dimensional buffer to low-dimensional buffer is allowed.
-    // e.g. A(4, 4) = B[i: i + 4, j, k : k + 4]
-    ICHECK_EQ(source_buffer->shape.size(), source->region.size());
-    ICHECK(CheckMatchDimension(match_buffer))
-        << "The dimension mismatched in match buffer: " << match_buffer->buffer;
-
     // Step.2. Update
     match_buffers_[buffer] = source;
     // Step.2.1. Update buffer data
@@ -192,42 +173,20 @@ class MatchBufferLower : public StmtExprMutator {
     if (!buffer->strides.empty()) {
       ICHECK_EQ(buffer->strides.size(), buffer->shape.size());
       PrimExpr stride = make_const(DataType::Int(32), 1);
-      size_t dim = buffer->strides.size();
-      for (size_t i = source_buffer->shape.size(); i > 0; --i) {
+      for (size_t i = buffer->shape.size(); i > 0; --i) {
         const PrimExpr& shape = source_buffer->shape[i - 1];
-        const Range& range = source->region[i - 1];
-        if (!is_one(range->extent)) {
-          Bind(buffer->strides[dim - 1], stride,
-               buffer->name + ".strides_" + std::to_string(dim - 1));
-          ICHECK(dim-- > 0);
-        }
+        Bind(buffer->strides[i - 1], stride, buffer->name + ".strides_" + std::to_string(i - 1));
         stride *= shape;
       }
     }
 
     // Step 2.4. Check and update shape
-    {
-      size_t dim = buffer->shape.size();
-      for (size_t i = source_buffer->shape.size(); i > 0; --i) {
-        const Range& range = source->region[i - 1];
-        if (!is_one(range->extent)) {
-          Bind(buffer->shape[dim - 1], range->extent,
-               buffer->name + ".shape_" + std::to_string(dim - 1));
-          ICHECK(dim-- > 0);
-        }
-      }
+    ICHECK(source->region.size() >= buffer->shape.size());
+    size_t offset = source->region.size() - buffer->shape.size();
+    for (size_t i = 0; i < buffer->shape.size(); ++i) {
+      const Range& range = source->region[i + offset];
+      Bind(buffer->shape[i], range->extent, buffer->name + ".shape_" + std::to_string(i));
     }
-  }
-
-  bool static CheckMatchDimension(const MatchBufferRegion& match_buffer) {
-    const Buffer& target = match_buffer->buffer;
-    const BufferRegion& source = match_buffer->source;
-    size_t num_unit_dim = 0;
-    for (const Range& range : source->region) {
-      if (is_one(range->extent)) ++num_unit_dim;
-    }
-    // Check the shape is exactly matched.
-    return num_unit_dim + target->shape.size() == source->region.size();
   }
 
   Array<PrimExpr> ConvertIndices(const Array<PrimExpr> indices,
@@ -238,21 +197,41 @@ class MatchBufferLower : public StmtExprMutator {
 
     Array<PrimExpr> result;
     result.reserve(source->region.size());
-    size_t target_cur_pos = 0;
-    for (const Range& range : source->region) {
-      if (is_one(range->extent)) {
-        // This dimesion is ignored by the target buffer
-        result.push_back(range->min);
-      } else {
-        // Check the current pos is less than the indices size.
-        ICHECK_LT(target_cur_pos, indices.size());
-        const PrimExpr& index = indices[target_cur_pos];
-        result.push_back(range->min + index);
-        ++target_cur_pos;
-      }
+    size_t offset = source->region.size() - indices.size();
+    for (size_t i = 0; i < offset; ++i) {
+      const Range& range = source->region[i];
+      ICHECK(analyzer_.CanProve(range->extent == 1));
+      result.push_back(range->min);
     }
-    // Check the shape is exactly matched.
-    ICHECK_EQ(target_cur_pos, indices.size());
+    for (size_t i = 0; i < indices.size(); ++i) {
+      const Range& range = source->region[i + offset];
+      const PrimExpr& index = indices[i];
+      ICHECK(analyzer_.CanProve(range->extent > index));
+      result.push_back(range->min + index);
+    }
+    return result;
+  }
+
+  Region ConvertRegion(const Region region, const MatchBufferRegion& match_buffer) {
+    const Buffer& target = match_buffer->buffer;
+    const BufferRegion& source = match_buffer->source;
+    ICHECK_EQ(region.size(), target->shape.size());
+
+    Region result;
+    result.reserve(source->region.size());
+    size_t offset = source->region.size() - region.size();
+    for (size_t i = 0; i < offset; ++i) {
+      const Range& source_range = source->region[i];
+      ICHECK(analyzer_.CanProve(source_range->extent == 1));
+      result.push_back(Range::FromMinExtent(source_range->min, 1));
+    }
+    for (size_t i = 0; i < region.size(); ++i) {
+      const Range& source_range = source->region[i + offset];
+      const Range& target_range = region[i];
+      ICHECK(analyzer_.CanProve(source_range->extent >= target_range->min + target_range->extent));
+      result.push_back(
+          Range::FromMinExtent(source_range->min + target_range->min, target_range->extent));
+    }
     return result;
   }
 
@@ -266,16 +245,17 @@ class MatchBufferLower : public StmtExprMutator {
         var_map_[v] = value;
         analyzer_.Bind(v, value);
       } else {
-        AssertBinding(it->second == value, arg_name);
+        AssertBinding(it->second, value, arg_name);
       }
     } else {
-      AssertBinding(arg == value, arg_name);
+      AssertBinding(arg, value, arg_name);
     }
   }
 
-  void AssertBinding(const PrimExpr& cond, const std::string& arg_name = "argument") {
-    CHECK(analyzer_.CanProve(cond))
-        << "The buffer match constraint for " << arg_name << " unmet: " << cond;
+  void AssertBinding(const PrimExpr& lhs, const PrimExpr& rhs,
+                     const std::string& arg_name = "argument") {
+    CHECK(analyzer_.CanProve(lhs == rhs)) << "The buffer match constraint for " << arg_name
+                                          << " unmet: " << lhs << "==" << rhs << ".";
   }
 
  private:
