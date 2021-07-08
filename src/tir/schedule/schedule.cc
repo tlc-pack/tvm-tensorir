@@ -228,6 +228,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStorageAlign")
     .set_body_method<Schedule>(&ScheduleNode::StorageAlign);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleInlineArgument")
     .set_body_method<Schedule>(&ScheduleNode::InlineArgument);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSoftwarePipeline")
+    .set_body_method<Schedule>(&ScheduleNode::SoftwarePipeline);
 
 }  // namespace tir
 }  // namespace tvm

@@ -68,6 +68,7 @@ class CodeGenCUDA final : public CodeGenC {
   void VisitStmt_(const EvaluateNode* op) final;
   void VisitStmt_(const AllocateNode* op) final;
   void VisitStmt_(const AttrStmtNode* op) final;
+  void VisitStmt_(const LetStmtNode* op) final;
 
  protected:
   void PrintCallExtern(Type ret_type, String global_symbol, const Array<PrimExpr>& args,
@@ -98,6 +99,8 @@ class CodeGenCUDA final : public CodeGenC {
   bool need_math_constants_h_{false};
   // whether need mma.h
   bool need_mma_h_{false};
+  // whether need pipeline.h
+  bool need_pipeline_h_{false};
   // Op attribute map
   OpAttrMap<bool> op_need_warp_shuffle_ = Op::GetAttrMap<bool>("cuda.need_warp_shuffle");
 
