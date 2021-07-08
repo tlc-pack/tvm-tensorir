@@ -560,8 +560,11 @@ FactorizationScheme::FactorizationScheme(
         } else {
           factor_indices_to_incr.push_back({1});
         }
-      }
-    }
+      }  // for (iter_id ∈ split_steps_info.size())
+    }    // if (simplify_sketch)
+  } else {
+    CHECK(FactorizationScheme::split_steps_info == split_steps_info);
+    CHECK(FactorizationScheme::simplify_sketch == simplify_sketch);
   }
 }
 
