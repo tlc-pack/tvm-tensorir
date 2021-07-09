@@ -305,8 +305,8 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
         LOG(INFO) << "Successfully completed the measurement on state with "
                      "factorization scheme="
-                  << MatrixToString(factorization_scheme) << ", "
-                     "avg_cost=" << FloatArrayMean(result_batch[j]->costs)
+                  << MatrixToString(factorization_scheme)
+                  << ", avg_cost=" << FloatArrayMean(result_batch[j]->costs)
                   << " flop_ct=" << flop_ct << " => flops=" << flops;
 
         error_ct = 0;

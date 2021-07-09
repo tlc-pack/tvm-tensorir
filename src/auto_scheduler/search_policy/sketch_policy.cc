@@ -250,9 +250,9 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
       best_states = SearchOneRound(num_random * 3, &random_states);
 
       if (IsDynTask(this->search_task)) {
-        LOG(INFO) << "Number of states after pruning: "
-                     "best_states.size()=" << best_states.size() << ", "
-                     "random_states.size()=" << random_states.size();
+        LOG(INFO) << "Number of states after pruning: best_states.size()="
+                  << best_states.size() << ", random_states.size()="
+                  << random_states.size();
       }
 
       // Infer bound. This is necessary for computing the correct ToStr() for redundancy check

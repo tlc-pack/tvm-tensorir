@@ -1233,17 +1233,17 @@ inline std::string IterAnnotationToString(const IteratorAnnotation annotation) {
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<IteratorNode>([](const ObjectRef& ref, ReprPrinter* p) {
       auto* node = static_cast<const IteratorNode*>(ref.get());
-      p->stream << "IteratorNode(" << node->name << ", " << node->range << ", "
-                   "kind=" << IteratorKindToString(node->iter_kind) << ", "
-                   "annotation=" << IterAnnotationToString(node->annotation)
+      p->stream << "IteratorNode(" << node->name << ", " << node->range
+                << ", kind=" << IteratorKindToString(node->iter_kind)
+                << ", annotation=" << IterAnnotationToString(node->annotation)
                 << ")";
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<te::PlaceholderOpNode>([](const ObjectRef& ref, ReprPrinter* p) {
       auto* node = static_cast<const te::PlaceholderOpNode*>(ref.get());
-      p->stream << "PlaceholderOpNode(" << node->name << ", "
-                   "shape=" << ArrayToString(node->shape)
+      p->stream << "PlaceholderOpNode(" << node->name
+                << ", shape=" << ArrayToString(node->shape)
                 << ")";
     });
 
@@ -1358,9 +1358,10 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
   //           << ArrayToString(operator->()->tensors);
   if (enable_verbose_logging) {
     LOG(INFO) << "factorization scheme="
-              << MatrixToString(state_mutable_copy.GetFactorizationScheme()) << ", "
-                 "split_steps="
-              << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
+              << MatrixToString(state_mutable_copy.GetFactorizationScheme()) << ", 
+              << split_steps="
+              << OptionalMatrixToString(state_mutable_copy.GetSplitFactors())
+              << ", stages=";
   }
 
   Map<PrimExpr, IntImm> axes_to_extent;
@@ -1385,8 +1386,8 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
           Iterator init_iter =
               FindIterInInitState(operator->()->init_state, iter);
           if (enable_verbose_logging) {
-            LOG(INFO) << "iter=" << iter << " w/ extent=" << extent << ", "
-                         "init_iter=" << init_iter;
+            LOG(INFO) << "iter=" << iter << " w/ extent=" << extent
+                      << ", init_iter=" << init_iter;
           }
           if (iter->iter_kind == IteratorKind::kSpatial) {
             if (is_first_spatial_axis) {
