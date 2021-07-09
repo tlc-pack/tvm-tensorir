@@ -656,9 +656,10 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   size_t reg_usage = num_threads_per_block,
          shmem_usage = 0;
 
-  auto sample_factors = [&](std::function<  bool(const size_t)>  continue_predicate,
-                            std::function<size_t(const size_t)>  max_extent,
-                            std::function<  int&(const size_t)>  factor_to_assign) {
+  auto sample_factors = [&](std::function<  bool(const size_t)> continue_predicate,
+                            std::function<size_t(const size_t)> max_extent,
+                            std::function<  int&(const size_t)> factor_to_assign,
+                            std::function<size_t(const size_t)> extent_to_factor) {
         std::vector<size_t> iter_max_extents;
         std::vector<size_t> factors_to_assign;
         for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
@@ -671,15 +672,17 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
           size_t factor_to_assign;
 
           if (sample_perfect_tile_size) {
-            std::uniform_int_distribution<> dist(1, iter_max_extent);
-            factor_to_assign = dist(*rng);
-          } else {
             const std::vector<int>& iter_max_extent_factors =
-                memo.GetFactors(iter_max_extent);
+                memo.GetFactors(extent_to_factor(iter_id));
             std::uniform_int_distribution<> dist(
                 0, iter_max_extent_factors.size() - 1);
-            factor_to_assign =
-                static_cast<size_t>(iter_max_extent_factors[dist(*rng)]);
+            do {
+              factor_to_assign =
+                  static_cast<size_t>(iter_max_extent_factors[dist(*rng)]);
+            } while (factor_to_assign >= iter_max_extent);
+          } else {
+            std::uniform_int_distribution<> dist(1, iter_max_extent);
+            factor_to_assign = dist(*rng);
           }
 
           if (split_steps_info[iter_id].is_spatial) {
@@ -745,6 +748,9 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       },
       [&](const size_t iter_id) -> int& {
         return split_factors[iter_id][0];
+      },
+      [&](const size_t iter_id) -> size_t {
+        return split_steps_info[iter_id].max_extent;
       }
       );
 
@@ -773,6 +779,9 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       },
       [&](const size_t iter_id) -> int& {
         return split_factors[iter_id][3];
+      },
+      [&](const size_t iter_id) -> size_t {
+        return split_steps_info[iter_id].max_extent;
       }
       );
   if (enable_verbose_logging) {
@@ -802,6 +811,9 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       },
       [&](const size_t iter_id) -> int& {
         return split_factors[iter_id][2];
+      },
+      [&](const size_t iter_id) -> size_t {
+        return split_steps_info[iter_id].max_extent;
       }
       );
   if (enable_verbose_logging) {
@@ -841,6 +853,9 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       },
       [&](const size_t iter_id) -> int& {
         return split_factors[iter_id][1];
+      },
+      [&](const size_t iter_id) -> size_t {
+        return split_steps_info[iter_id].max_extent;
       }
       );
   if (enable_verbose_logging) {
@@ -863,8 +878,12 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       },
       [&](const size_t iter_id) -> int& {
         return split_factors[iter_id][0];
+      },
+      [&](const size_t iter_id) -> size_t {
+        return split_steps_info[iter_id].max_extent;
       }
       );
+
   if (enable_verbose_logging) {
     LOG(INFO) << "Finished sampling the 2nd innermost loop extent (reduction axis), "
                  "current scheme=" << toString();
