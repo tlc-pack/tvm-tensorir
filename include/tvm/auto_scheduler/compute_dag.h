@@ -283,7 +283,7 @@ class ComputeDAG : public ObjectRef {
   // <bojian/DietCode>
   std::pair<te::Schedule, Array<te::Tensor>>
   GenerateSyntheticWorkloadAndApplySteps(
-      State *const pstate, const HardwareParams& hardware_params,
+      const State& pstate, const HardwareParams& hardware_params,
       // const Array<Step>& transform_steps,
       Array<te::Stage>* stages = nullptr,
       StageToAxesMap* stage_to_axes = nullptr) const;

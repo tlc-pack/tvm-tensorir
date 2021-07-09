@@ -448,6 +448,7 @@ class State : public ObjectRef {
 
 
   // <bojian/DietCode>
+  Array<Array<Optional<Integer>>> GetSplitFactors() const;
   Array<Array<PrimExpr>> GetFactorizationScheme() const;
 
   TVM_DEFINE_OBJECT_REF_METHODS(State, ObjectRef, StateNode);

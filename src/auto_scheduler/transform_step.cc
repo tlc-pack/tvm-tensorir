@@ -913,6 +913,10 @@ Array<IterVar> ApplySplitToSchedule(Array<te::Stage>* stages, StageToAxesMap* st
 
   Array<IterVar> outs;
   if (inner_to_outer) {
+
+    // <bojian/DietCode>
+    // LOG(INFO) << "lengths=" << lengths;
+
     IterVar outer = axes[iter_id], inner;
     for (int i = static_cast<int>(lengths.size()) - 1; i >= 0; i--) {
       IterVar to_split = outer;
@@ -942,6 +946,9 @@ Array<IterVar> ApplySplitToSchedule(Array<te::Stage>* stages, StageToAxesMap* st
     }
   }
   new_axes.insert(new_axes.end(), axes.begin() + iter_id + 1, axes.end());
+
+  // <bojian/DietCode>
+  // LOG(INFO) << "new_axes=" << ArrayToString(new_axes);
 
   stage_to_axes->Set(stage, std::move(new_axes));
   stages->Set(stage_id, std::move(stage));

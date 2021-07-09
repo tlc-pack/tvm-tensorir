@@ -1279,10 +1279,9 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
   // sch = sch.normalize_for_feature_extraction();
   // auto bounds = te::InferBound(sch);
   if (IsDynTask(task)) {
-    State state_mutable_copy = state;
     std::tie(sch, tensors) =
         task->compute_dag.GenerateSyntheticWorkloadAndApplySteps(
-          &state_mutable_copy, task->hardware_params);
+          state, task->hardware_params);
   } else {
     std::tie(sch, tensors) =
         task->compute_dag.ApplySteps(state->transform_steps);

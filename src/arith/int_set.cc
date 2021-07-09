@@ -352,6 +352,16 @@ class IntervalSetEvaluator : public ExprFunctor<IntervalSet(const PrimExpr&)> {
   IntervalSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map, bool eval_vec = false)
       : analyzer_(analyzer), dom_map_(dom_map), eval_vec_(eval_vec) {}
 
+  // <bojian/DietCode>
+  // IntervalSet VisitExpr(const PrimExpr& expr) override {
+  //   IntervalSet ret =
+  //       ExprFunctor<IntervalSet(const PrimExpr&)>::VisitExpr(expr);
+  //   if (!ret->HasLowerBound() || !ret->HasUpperBound()) {
+  //     LOG(FATAL) << expr << " ∈ " << ret;
+  //   }
+  //   return ret;
+  // }
+
   IntervalSet Eval(const PrimExpr& val) { return this->VisitExpr(val); }
   // evaluate and relax the set
   IntervalSet Eval(IntervalSet val) {
@@ -390,10 +400,11 @@ class IntervalSetEvaluator : public ExprFunctor<IntervalSet(const PrimExpr&)> {
     if (op->possible_values.empty()) {
       LOG(WARNING) << dyn_axis << " does not have possible values specified";
       return IntervalSet::SinglePoint(dyn_axis);
+    } else if (op->possible_values.size() == 1) {
+      return IntervalSet::SinglePoint(op->possible_values[0]);
     }
-    IntervalSet res(op->possible_values[0],
-                    op->possible_values[op->possible_values.size() - 1]);
-    return Eval(res);
+    return IntervalSet(op->possible_values[0],
+                       op->possible_values[op->possible_values.size() - 1]);
   }
 
   IntervalSet VisitExpr_(const AddNode* op) final { return VisitBinaryExpr_<Add>(op); }

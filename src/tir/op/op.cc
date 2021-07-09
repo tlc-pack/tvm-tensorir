@@ -141,7 +141,10 @@ void BinaryOpMatchTypes(PrimExpr& lhs, PrimExpr& rhs, Span span) {  // NOLINT(*)
     lhs = SimpleCast(DataType::Int(bits, lhs.dtype().lanes()), lhs, span);
     rhs = SimpleCast(DataType::Int(bits, rhs.dtype().lanes()), rhs, span);
   } else {
-    LOG(FATAL) << "Cannot match type " << ltype << " vs " << rtype;
+    // <bojian/DietCode>
+    // LOG(FATAL) << "Cannot match type " << ltype << " vs " << rtype;
+    LOG(FATAL) << "Cannot match " << lhs << " of type (" << ltype << ") vs. "
+               << rhs << " of type (" << rtype << ")";
   }
 }
 

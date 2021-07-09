@@ -1057,6 +1057,8 @@ bool HasLayoutFreeTensors(const ComputeDAG& dag) {
   return false;
 }
 
+extern bool enable_verbose_logging;
+
 std::pair<te::Schedule, Array<te::Tensor>> ComputeDAG::ApplySteps(
     const Array<Step>& transform_steps, Array<te::Stage>* stages, StageToAxesMap* stage_to_axes,
     LayoutRewriteOption layout_rewrite) const {
@@ -1098,6 +1100,12 @@ std::pair<te::Schedule, Array<te::Tensor>> ComputeDAG::ApplySteps(
   for (const auto& step : transform_steps) {
     StepApplyToSchedule(step, stages, stage_to_axes, &schedule, transform_steps);
   }
+
+  // <bojian/DietCode>
+  // if (enable_verbose_logging) {
+  //   LOG(INFO) << "Schedule after ApplyStep="
+  //             << lower(schedule, operator->()->tensors, "main", {});
+  // }
 
   return std::make_pair(schedule, operator->()->tensors);
 }
@@ -1323,13 +1331,16 @@ class SyntheticExprReplacer : public StmtExprMutator {
   }
 };
 
-extern bool enable_verbose_logging;
+// <bojian/DietCode>
+// extern bool enable_verbose_logging;
 
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
-    State* const pstate, const HardwareParams& hardware_params,
+    const State& state, const HardwareParams& hardware_params,
     // const Array<Step>& transform_steps,
     Array<te::Stage>* stages, StageToAxesMap* stage_to_axes) const {
+  State state_mutable_copy = state;
+
   Array<te::Tensor> synthetic_tensors;
 
   Array<te::Stage> tmp_stages;
@@ -1341,20 +1352,23 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     stage_to_axes = &tmp_stage_to_axes;
   }
 
-  *pstate = InferBound(*pstate);
+  state_mutable_copy = InferBound(state_mutable_copy);
   // check all the tensors
   // LOG(INFO) << "ComputeDAG has tensors="
   //           << ArrayToString(operator->()->tensors);
   if (enable_verbose_logging) {
     LOG(INFO) << "factorization scheme="
-              << MatrixToString((*pstate).GetFactorizationScheme());
+              << MatrixToString(state_mutable_copy.GetFactorizationScheme()) << ", "
+                 "split_steps="
+              << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
   }
 
   Map<PrimExpr, IntImm> axes_to_extent;
   bool is_first_spatial_axis = true;
 
-  for (int stage_id = (*pstate)->stages.size() - 1; stage_id >= 0; --stage_id) {
-    const Stage& stage = (*pstate)->stages[stage_id];
+  for (int stage_id = state_mutable_copy->stages.size() - 1; stage_id >= 0;
+       --stage_id) {
+    const Stage& stage = state_mutable_copy->stages[stage_id];
 
     // LOG(INFO) << "stage->op->name=" << stage->op->name << ", "
     //              "stage->iters=" << ArrayToString(stage->iters);
@@ -1408,7 +1422,7 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
         }    // if (StrEndsWith(iter->name, ".0"))
       }      // for (iter ∈ stage->iters)
     }        // if (StrEndsWith(stage->op->name, ".local"))
-  }          // for (stage ∈ (*pstate)->stages)
+  }          // for (stage ∈ state_mutable_copy->stages)
 
   // for (const std::pair<PrimExpr, IntImm> axis_to_extent : axes_to_extent) {
   //   LOG(INFO) << "axis=" << axis_to_extent.first << " : "
@@ -1497,12 +1511,13 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
   }
 
   // LOG(INFO) << "Finished updating stages";
-  // LOG(INFO) << "transform_steps.size()=" << (*pstate)->transform_steps.size();
+  // LOG(INFO) << "transform_steps.size()="
+  //           << state_mutable_copy->transform_steps.size();
 
-  for (const Step& step : (*pstate)->transform_steps) {
+  for (const Step& step : state_mutable_copy->transform_steps) {
     // LOG(INFO) << "Applying step=" << step;
     StepApplyToSchedule(step, stages, stage_to_axes, &synthetic_sch,
-                        (*pstate)->transform_steps);
+                        state_mutable_copy->transform_steps);
   }
   // LOG(INFO) << "Finished applying the transformation steps";
   if (enable_verbose_logging) {
@@ -1540,7 +1555,7 @@ State ComputeDAG::InferBoundOnSyntheticWorkload(
             // << " transformation steps";
 
   std::tie(sch, tensors) =
-      GenerateSyntheticWorkloadAndApplySteps(&ret_state, hardware_params,
+      GenerateSyntheticWorkloadAndApplySteps(ret_state, hardware_params,
                                              // pstate->transform_steps,
                                              &stages, &stage_to_axes);
   return ret_state;
@@ -1603,6 +1618,10 @@ State ComputeDAG::InferBound(const State& state) const {
   sch = sch.normalize_for_feature_extraction();
   // Get bound information from TVM schedule
   Map<IterVar, Range> bounds = te::InferBound(sch);
+
+  if (enable_verbose_logging) {
+    LOG(INFO) << "bounds=" << MapToString(bounds);
+  }
 
   // Update the state bound information
   for (size_t i = 0; i < pstate->stages.size(); ++i) {
@@ -1754,12 +1773,12 @@ TVM_REGISTER_GLOBAL("auto_scheduler.ComputeDAG")
 // <bojian/DietCode>
 TVM_REGISTER_GLOBAL("auto_scheduler.GenerateSyntheticWorkload")
     .set_body_typed(
-      [](const ComputeDAG& dag, State state,
+      [](const ComputeDAG& dag, const State& state,
          const HardwareParams& hardware_params) -> Array<ObjectRef> {
         te::Schedule sch;
         Array<te::Tensor> synthetic_tensors;
         std::tie(sch, synthetic_tensors) =
-            dag.GenerateSyntheticWorkloadAndApplySteps(&state, hardware_params);
+            dag.GenerateSyntheticWorkloadAndApplySteps(state, hardware_params);
         return Array<ObjectRef>{sch, synthetic_tensors};
       }
       );

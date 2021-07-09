@@ -605,14 +605,14 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
         if (all_defined) {
           continue;
         }
-        Array<Optional<Integer>> factors;
+        Array<Optional<Integer>> split_factor;
         for (size_t i = 0; i < scheme.split_factors[iter_id].size(); ++i) {
-          factors.push_back(Integer(scheme.split_factors[iter_id][i]));
+          split_factor.push_back(Integer(scheme.split_factors[iter_id][i]));
         }
         pstate->transform_steps.Set(
             step_id,
             SplitStep(ps->stage_id, ps->iter_id, ps->extent,
-                      factors, ps->inner_to_outer));
+                      split_factor, ps->inner_to_outer));
         ++iter_id;
       }
     }
@@ -625,10 +625,13 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
         // LOG(INFO) << "extent=" << info.max_extent << ", "
         //              "n_lengths=" << (info.is_spatial ? 4 : 2);
         num_possible_factorization_schemes *=
-            policy->split_memo.GetFactorizationSchemes(info.max_extent, info.is_spatial ? 4 : 2).size();
-        LOG(INFO) << "num_possible_factorization_schemes -> " << num_possible_factorization_schemes;
+            policy->split_memo.GetFactorizationSchemes(
+              info.max_extent, info.is_spatial ? 4 : 2).size();
+        LOG(INFO) << "num_possible_factorization_schemes -> "
+                  << num_possible_factorization_schemes;
       }
-      LOG(INFO) << "Total number of possible factorization schemes w/ the largest static workload instance: "
+      LOG(INFO) << "Total number of possible factorization schemes w/ the "
+                   "largest static workload instance: "
                 << num_possible_factorization_schemes;
     }
     pstate->concrete = true;
@@ -1219,16 +1222,14 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
       const SplitStepNode* const split_step =
         (*state)->transform_steps[split_step_ids[i]].as<SplitStepNode>();
 
-      Array<Integer> new_split_factor;
+      Array<Optional<Integer>> new_split_factor;
       for (const int f : mutated_scheme.split_factors[i]) {
-        new_split_factor.push_back(f);
+        new_split_factor.push_back(Integer(f));
       }
       pstate->transform_steps.Set(
           split_step_ids[i],
           SplitStep(split_step->stage_id, split_step->iter_id,
-                    split_step->extent,
-                    Array<Optional<Integer>>(new_split_factor.begin(),
-                                             new_split_factor.end()),
+                    split_step->extent, new_split_factor,
                     split_step->inner_to_outer));
     }
     // evaluate the adapted score
@@ -1248,16 +1249,14 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     const SplitStepNode* const split_step =
       (*state)->transform_steps[split_step_ids[i]].as<SplitStepNode>();
 
-    Array<Integer> new_split_factor;
+    Array<Optional<Integer>> new_split_factor;
     for (const int f : opt_split_factors[i]) {
-      new_split_factor.push_back(f);
+      new_split_factor.push_back(Integer(f));
     }
     pstate->transform_steps.Set(
         split_step_ids[i],
         SplitStep(split_step->stage_id, split_step->iter_id,
-                  split_step->extent,
-                  Array<Optional<Integer>>(new_split_factor.begin(),
-                                           new_split_factor.end()),
+                  split_step->extent, new_split_factor,
                   split_step->inner_to_outer));
   }
   return ResultKind::kValid;

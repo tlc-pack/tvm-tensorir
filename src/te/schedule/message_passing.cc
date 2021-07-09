@@ -599,6 +599,8 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = analyzer.int_set(value, iset_dmap).max();
 
+      // LOG(INFO) << "vmax=" << vmax << " of value=" << value;
+
       bool can_ignore_bound_check =
           // analyzer.CanProve(vmax < dom->extent);
           canProveForAllDynamicAxes(analyzer, vmax < dom->extent);
@@ -650,6 +652,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       // }
       //   LOG(INFO) << "Neglecting the bound check (" << value << ">=" << "0)";
       // }
+      // LOG(INFO) << "vmin=" << vmin << ", vmax=" << vmax;
 
       bool can_ignore_upper_bound_check =
           // analyzer.CanProve(vmax < iv->dom->extent);

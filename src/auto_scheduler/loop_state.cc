@@ -356,6 +356,18 @@ int State::rfactor(int stage_id, const Iterator& it, int factor_iter_id, const C
 
 
 // <bojian/DietCode>
+Array<Array<Optional<Integer>>> State::GetSplitFactors() const {
+  Array<Array<Optional<Integer>>> split_factors;
+
+  for (const Step& step : (*this)->transform_steps) {
+    if (const SplitStepNode* const split_step = step.as<SplitStepNode>()) {
+      split_factors.push_back(split_step->lengths);
+    }
+  }
+  return split_factors;
+}
+
+
 Array<Array<PrimExpr>> State::GetFactorizationScheme() const {
   Array<Array<PrimExpr>> factorization_scheme;
 

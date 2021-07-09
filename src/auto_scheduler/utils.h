@@ -344,6 +344,17 @@ inline std::string ArrayToString(const Array<T>& Arr) {
 }
 
 template<typename T>
+inline std::string MatrixToString(const Array<Array<T>>& Mat) {
+  std::ostringstream strout;
+  strout << "[\n";
+  for (const Array<T>& Arr : Mat) {
+    strout << "  " << ArrayToString(Arr) << "\n";
+  }
+  strout << "]";
+  return strout.str();
+}
+
+template<typename T>
 inline std::string OptionalArrayToString(const Array<Optional<T>>& Arr) {
   std::ostringstream strout;
   strout << "[";
@@ -351,7 +362,7 @@ inline std::string OptionalArrayToString(const Array<Optional<T>>& Arr) {
     if (a == nullptr) {
       strout << "NULL, ";
     } else {
-      strout << a->value() << ", ";
+      strout << a.value() << ", ";
     }
   }
   strout << "]";
@@ -359,11 +370,11 @@ inline std::string OptionalArrayToString(const Array<Optional<T>>& Arr) {
 }
 
 template<typename T>
-inline std::string MatrixToString(const Array<Array<T>>& Mat) {
+inline std::string OptionalMatrixToString(const Array<Array<Optional<T>>>& Mat) {
   std::ostringstream strout;
   strout << "[\n";
-  for (const Array<T>& Arr : Mat) {
-    strout << "  " << ArrayToString(Arr) << "\n";
+  for (const Array<Optional<T>>& Arr : Mat) {
+    strout << "  " << OptionalArrayToString(Arr) << "\n";
   }
   strout << "]";
   return strout.str();
