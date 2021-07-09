@@ -1102,10 +1102,12 @@ std::pair<te::Schedule, Array<te::Tensor>> ComputeDAG::ApplySteps(
   }
 
   // <bojian/DietCode>
-  // if (enable_verbose_logging) {
-  //   LOG(INFO) << "Schedule after ApplyStep="
-  //             << lower(schedule, operator->()->tensors, "main", {});
-  // }
+  if (enable_verbose_logging) {
+    // LOG(INFO) << "Schedule after ApplyStep="
+    //           << lower(schedule, operator->()->tensors, "main", {});
+    // LOG(INFO) << "stages=" << ArrayToString(*stages)
+    // LOG(INFO) << "stages_to_axes=" << MapToString(*stage_to_axes);
+  }
 
   return std::make_pair(schedule, operator->()->tensors);
 }
@@ -1360,8 +1362,8 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     LOG(INFO) << "factorization scheme="
               << MatrixToString(state_mutable_copy.GetFactorizationScheme())
               << ", split_steps="
-              << OptionalMatrixToString(state_mutable_copy.GetSplitFactors())
-              << ", stages=";
+              << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
+              // << ", stages=" << state_mutable_copy->stages;
   }
 
   Map<PrimExpr, IntImm> axes_to_extent;
@@ -1374,6 +1376,9 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     // LOG(INFO) << "stage->op->name=" << stage->op->name << ", "
     //              "stage->iters=" << ArrayToString(stage->iters);
     if (StrEndsWith(stage->op->name, ".local")) {
+      // if (enable_verbose_logging) {
+      //   LOG(INFO) << "iterators=" << stage->iters;
+      // }
       for (const Iterator& iter : stage->iters) {
         if (StrEndsWith(iter->name, ".0")) {
           // gather all the iterators that start with the same prefix
@@ -1552,8 +1557,8 @@ State ComputeDAG::InferBoundOnSyntheticWorkload(
   Array<te::Tensor> tensors;
 
   // LOG(INFO) << "Generating synthetic workloads ...";
-            // << pstate->transform_steps.size()
-            // << " transformation steps";
+  //           << pstate->transform_steps.size()
+  //           << " transformation steps";
 
   std::tie(sch, tensors) =
       GenerateSyntheticWorkloadAndApplySteps(ret_state, hardware_params,
@@ -1618,11 +1623,13 @@ State ComputeDAG::InferBound(const State& state) const {
   std::tie(sch, tensors) = ApplySteps(pstate->transform_steps, &stages, &stage_to_axes);
   sch = sch.normalize_for_feature_extraction();
   // Get bound information from TVM schedule
-  Map<IterVar, Range> bounds = te::InferBound(sch);
 
-  if (enable_verbose_logging) {
-    LOG(INFO) << "bounds=" << MapToString(bounds);
-  }
+  // if (enable_verbose_logging) {
+  //   LOG(INFO) << "Schedule after ApplySteps="
+  //             << lower(sch, tensors, "main", {});
+  // }
+
+  Map<IterVar, Range> bounds = te::InferBound(sch);
 
   // Update the state bound information
   for (size_t i = 0; i < pstate->stages.size(); ++i) {
@@ -1651,6 +1658,10 @@ State ComputeDAG::InferBound(const State& state) const {
 
     pstate->stages.Set(
         i, Stage(stage->op, stage->op_type, new_iters, stage->compute_at, stage->attrs));
+    
+    // if (enable_verbose_logging) {
+    //   LOG(INFO) << "new_iters=" << ArrayToString(new_iters);
+    // }
   }
 
   return ret_state;
