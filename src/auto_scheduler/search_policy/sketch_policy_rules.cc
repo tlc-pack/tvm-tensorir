@@ -1201,18 +1201,66 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
 
   // Now that we have determined the optimization target, sample as if it is a
   // static workload.
-  std::vector<float> adapted_score;
+  float max_adapted_score = 0.;
+  std::vector<std::vector<int>> opt_split_factors;
   std::uniform_real_distribution<> prob_dist(0., 1.);
 
   for (size_t retry_ct = 0; retry_ct < split_step_ids.size() << 2; ++retry_ct) {
+    StateNode* pstate = state->CopyOnWrite();
     FactorizationScheme mutated_scheme =
         policy->dietcode_split_memo.MutateFactorizationScheme(
           split_steps_info, rand_gen, simplify_sketch, curr_split_factors,
           prob_dist(*rand_gen) > 0.5
         );
-    
+    LOG(INFO) << "Mutated factorization scheme=" << mutated_scheme.toString();
+
+    CHECK(mutated_scheme.split_factors.size() == split_step_ids.size());
+    for (size_t i = 0; i < split_step_ids.size(); ++i) {
+      const SplitStepNode* const split_step =
+        (*state)->transform_steps[split_step_ids[i]].as<SplitStepNode>();
+
+      Array<Integer> new_split_factor;
+      for (const int f : mutated_scheme.split_factors[i]) {
+        new_split_factor.push_back(f);
+      }
+      pstate->transform_steps.Set(
+          split_step_ids[i],
+          SplitStep(split_step->stage_id, split_step->iter_id,
+                    split_step->extent,
+                    Array<Optional<Integer>>(new_split_factor.begin(),
+                                             new_split_factor.end()),
+                    split_step->inner_to_outer));
+    }
+    // evaluate the adapted score
+    float base_score = 1., occupancy_penalty, padding_penalty, adapted_score;
+
+    AdaptStateToWorkload(policy->search_task, GetRef<State>(pstate),
+                         policy->search_task->shape_vars.value(), selected_inst,
+                         base_score, &occupancy_penalty, &padding_penalty,
+                         &adapted_score);
+    if (adapted_score > max_adapted_score) {
+      max_adapted_score = adapted_score;
+      opt_split_factors = mutated_scheme.split_factors;
+    }
   }  // for (retry_ct ∈ [0, split_step_ids.size() * 4))
-  return ResultKind::kInvalid;
+  StateNode* pstate = state->CopyOnWrite();
+  for (size_t i = 0; i < split_step_ids.size(); ++i) {
+    const SplitStepNode* const split_step =
+      (*state)->transform_steps[split_step_ids[i]].as<SplitStepNode>();
+
+    Array<Integer> new_split_factor;
+    for (const int f : opt_split_factors[i]) {
+      new_split_factor.push_back(f);
+    }
+    pstate->transform_steps.Set(
+        split_step_ids[i],
+        SplitStep(split_step->stage_id, split_step->iter_id,
+                  split_step->extent,
+                  Array<Optional<Integer>>(new_split_factor.begin(),
+                                           new_split_factor.end()),
+                  split_step->inner_to_outer));
+  }
+  return ResultKind::kValid;
 }
 
 

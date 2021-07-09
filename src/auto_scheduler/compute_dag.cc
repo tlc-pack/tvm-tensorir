@@ -1345,6 +1345,10 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
   // check all the tensors
   // LOG(INFO) << "ComputeDAG has tensors="
   //           << ArrayToString(operator->()->tensors);
+  if (enable_verbose_logging) {
+    LOG(INFO) << "factorization scheme="
+              << MatrixToString((*pstate).GetFactorizationScheme());
+  }
 
   Map<PrimExpr, IntImm> axes_to_extent;
   bool is_first_spatial_axis = true;
@@ -1364,11 +1368,12 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
           for (const Iterator& iter : iters_w_same_prefix) {
             extent *= GetIntImm(iter->range->extent);
           }
-          // LOG(INFO) << "iter=" << iter << " w/ extent=" << extent;
-
           Iterator init_iter =
               FindIterInInitState(operator->()->init_state, iter);
-          // LOG(INFO) << "init_iter=" << init_iter;
+          if (enable_verbose_logging) {
+            LOG(INFO) << "iter=" << iter << " w/ extent=" << extent << ", "
+                         "init_iter=" << init_iter;
+          }
           if (iter->iter_kind == IteratorKind::kSpatial) {
             if (is_first_spatial_axis) {
               is_first_spatial_axis = false;
@@ -1380,6 +1385,11 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
               axes_to_extent.Set(init_iter->range->extent,
                                  IntImm(DataType::Int(32), extent));
             }
+
+            if (enable_verbose_logging) {
+              LOG(INFO) << init_iter->range->extent << " -> " << extent;
+            }
+
           } else if (iter->iter_kind == IteratorKind::kReduction) {
             arith::Analyzer analyzer;
             arith::IntSet s = analyzer.int_set(init_iter->range->extent, {});
