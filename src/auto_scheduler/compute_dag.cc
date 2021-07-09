@@ -1358,8 +1358,8 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
   //           << ArrayToString(operator->()->tensors);
   if (enable_verbose_logging) {
     LOG(INFO) << "factorization scheme="
-              << MatrixToString(state_mutable_copy.GetFactorizationScheme()) << ", 
-              << split_steps="
+              << MatrixToString(state_mutable_copy.GetFactorizationScheme())
+              << ", split_steps="
               << OptionalMatrixToString(state_mutable_copy.GetSplitFactors())
               << ", stages=";
   }
