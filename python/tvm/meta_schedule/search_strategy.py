@@ -36,12 +36,12 @@ class SearchStrategy(Object):
     def GenerateMeasureCandidates(  # pylint: disable=invalid-name
         self,
         context: "TuneContext",
-    ) -> List[Object]:
+    ) -> List[Any]:
         return _ffi_api.SearchStrategyGenerateMeasureCandidates(  # pylint: disable=no-member
             self, context
         )
 
-    def UpdateResults(self, results: List[Object]):  # pylint: disable=invalid-name
+    def UpdateResults(self, results: List[Any]):  # pylint: disable=invalid-name
         return _ffi_api.SearchStrategyGenerate(self, results)  # pylint: disable=no-member
 
     def initialize(self, **kwargs):
@@ -86,7 +86,7 @@ class PySearchStrategy(SearchStrategy):
         raise NotImplementedError
 
 
-class ReplaySearchStrategy(SearchStrategy):
+class ReplaySearchStrategy(PySearchStrategy):
     """Random search strategy"""
 
     def __init__(self, trails, batch_size):
@@ -115,7 +115,6 @@ class ReplaySearchStrategy(SearchStrategy):
         context : TuneContext
             The auto tuning context
         """
-        print(self.trails, self.batch_size, self.count)
         if self.count >= self.trails:
             return []
         candidates = []
@@ -132,4 +131,4 @@ class ReplaySearchStrategy(SearchStrategy):
         results: List[Schedule]
             A list of schedules
         """
-        self.count += results.size()
+        self.count += len(results)

@@ -55,6 +55,7 @@ def test_meta_schedule_search_strategy():
         assert i_0 * i_1 * i_2 * i_3 == 1024
         assert j_0 * j_1 * j_2 * j_3 == 1024
         assert k_0 * k_1 == 1024
+        break
 
 
 if __name__ == "__main__":
