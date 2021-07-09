@@ -263,16 +263,9 @@ LoopRV ConcreteScheduleNode::Fuse(const Array<LoopRV>& loop_rvs) {
   TVM_TIR_SCHEDULE_BEGIN();
   CHECK(!loop_rvs.empty()) << "ValueError: 'fuse' requires at least 1 loop(s)";
   Array<StmtSRef> loop_srefs = this->GetSRefs(loop_rvs);
-  while (loop_srefs.size() >= 2) {
-    StmtSRef inner_sref = loop_srefs.back();
-    loop_srefs.pop_back();
-    StmtSRef outer_sref = loop_srefs.back();
-    loop_srefs.pop_back();
-    StmtSRef fused = tir::Fuse(state_, outer_sref, inner_sref);
-    loop_srefs.push_back(fused);
-    this->state_->DebugVerify();
-  }
-  return CreateRV<LoopRV>(loop_srefs[0]);
+  StmtSRef fused_sref=tir::Fuse(state_,loop_srefs);
+  this->state_->DebugVerify();
+  return CreateRV<LoopRV>(fused_sref);
   TVM_TIR_SCHEDULE_END("fuse", this->error_render_level_);
   throw;
 }

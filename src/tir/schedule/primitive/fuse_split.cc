@@ -80,14 +80,15 @@ Stmt SimplifyBindings(const Stmt& stmt, const Array<StmtSRef>& loops) {
   return rewriter(stmt);
 }
 
-class SplitNotLoopError : public ScheduleError {
+class NotLoopError : public ScheduleError {
  public:
-  explicit SplitNotLoopError(IRModule mod, String type) : mod_(mod), type_(type) {}
+  explicit NotLoopError(IRModule mod, String type) : mod_(mod), type_(type) {}
 
-  String FastErrorString() const final { return "ScheduleError: 'split' only operates on a loop"; }
+  String FastErrorString() const final { return "ScheduleError: this primitive only operates on a "
+                                                "loop"; }
 
   String DetailRenderTemplate() const final {
-    return "'split' only operates on a loop, but the StmtSref passed in points to"
+    return "this primitive only operates on a loop, but the StmtSref passed in points to"
            "type: {0} ";
   }
 
@@ -98,16 +99,16 @@ class SplitNotLoopError : public ScheduleError {
   String type_;
 };
 
-class SplitHasAnnotationError : public ScheduleError {
+class HasAnnotationError : public ScheduleError {
  public:
-  explicit SplitHasAnnotationError(IRModule mod, For loop) : mod_(mod), loop_(loop) {}
+  explicit HasAnnotationError(IRModule mod, For loop) : mod_(mod), loop_(loop) {}
 
   String FastErrorString() const final {
-    return "ScheduleError: The loop can't be split because it has annotation";
+    return "ScheduleError: The primitive can't be applied because the loop has annotation";
   }
 
   String DetailRenderTemplate() const final {
-    return "The loop {0} can't be split because it has annotation ";
+    return "The primitive can't be applied because the loop {0} has annotation";
   }
 
   IRModule mod() const final { return mod_; }
@@ -117,55 +118,7 @@ class SplitHasAnnotationError : public ScheduleError {
   For loop_;
 };
 
-class FuseNotLoopError : public ScheduleError {
- public:
-  explicit FuseNotLoopError(IRModule mod, String type, bool inner)
-      : mod_(mod), type_(type), inner_(inner) {}
 
-  String FastErrorString() const final { return "ScheduleError: 'fuse' only operates on loops"; }
-
-  String DetailRenderTemplate() const final {
-    if (inner_) {
-      return "'fuse' only operates on loops, but the inner StmtSref passed in "
-             "points to type: {0} ";
-    } else {
-      return "'fuse' only operates on loops, but the outer StmtSref passed in "
-             "points to type: {0} ";
-    }
-  }
-
-  IRModule mod() const final { return mod_; }
-  Array<ObjectRef> LocationsOfInterest() const final { return {type_}; }
-
-  IRModule mod_;
-  String type_;
-  bool inner_;
-};
-
-class FuseHasAnnotationError : public ScheduleError {
- public:
-  explicit FuseHasAnnotationError(IRModule mod, For loop, bool inner)
-      : mod_(mod), loop_(loop), inner_(inner) {}
-
-  String FastErrorString() const final {
-    return "ScheduleError: The loops can't be fused because one of the loops has annotation";
-  }
-
-  String DetailRenderTemplate() const final {
-    if (inner_) {
-      return "The inner loop {0} can't be fused because it has annotation";
-    } else {
-      return "The outer loop {0} can't be fused because it has annotation";
-    }
-  }
-
-  IRModule mod() const final { return mod_; }
-  Array<ObjectRef> LocationsOfInterest() const final { return {loop_}; }
-
-  IRModule mod_;
-  For loop_;
-  bool inner_;
-};
 
 class OuterNotInnerParent : public ScheduleError {
  public:
@@ -238,10 +191,10 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimE
   // order with before.
   const auto* loop = loop_sref->StmtAs<ForNode>();
   if (loop == nullptr) {
-    throw SplitNotLoopError(self->mod, loop_sref->stmt->GetTypeKey());
+    throw NotLoopError(self->mod, loop_sref->stmt->GetTypeKey());
   }
   if (!loop->annotations.empty()) {
-    throw SplitHasAnnotationError(self->mod, GetRef<For>(loop));
+    throw HasAnnotationError(self->mod, GetRef<For>(loop));
   }
   // Currently, loops starting with 0 is not supported
   arith::Analyzer analyzer;
@@ -278,62 +231,74 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimE
   return {self->stmt2ref.at(outer_loop.get()), self->stmt2ref.at(outer_loop->body.get())};
 }
 
-StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef& inner_sref) {
-  // Equivalence
-  // - The total repeat number has not changed for each direct child block.
-  // - The execution order has not changed. (The block executes with the same
-  //   args and the same order with before.)
-
-  // Can only fuse neighbor loop without any extra branches.
-  // Future enhancement: this condition can be eliminated by lifting all siblings of inner
-  // as the children of the father of outer
-  const auto* outer = outer_sref->StmtAs<ForNode>();
-  const auto* inner = inner_sref->StmtAs<ForNode>();
-  if (outer == nullptr) {
-    throw FuseNotLoopError(self->mod, outer_sref->stmt->GetTypeKey(), false);
-  }
-  if (inner == nullptr) {
-    throw FuseNotLoopError(self->mod, inner_sref->stmt->GetTypeKey(), true);
-  }
-  if (!outer->annotations.empty()) {
-    throw FuseHasAnnotationError(self->mod, GetRef<For>(outer), false);
-  }
-  if (!inner->annotations.empty()) {
-    throw FuseHasAnnotationError(self->mod, GetRef<For>(inner), true);
-  }
-  // Step 1. Check `inner` is the only children of `outer` and they are in the same scope
-  if (inner_sref->parent != outer_sref.get()) {
-    throw OuterNotInnerParent(self->mod, GetRef<For>(outer), GetRef<For>(inner));
-  }
-  Array<Stmt> outer_children = GetChildren(GetRef<Stmt>(outer));
-  if (outer_children.size() != 1 || outer_children[0].get() != inner) {
-    throw NotOnlyChildError(self->mod, GetRef<For>(outer), GetRef<For>(inner));
-  }
-  // Step 2. Create fused loop var and replace the loop var used in inner and outer loop
+StmtSRef Fuse(ScheduleState self, Array<StmtSRef> loop_srefs) {
+  //     Invariance
+  //   - The total repeat number has not changed for each direct child block.
+  //   - The execution order has not changed. (The block executes with the same
+  //     args and the same order with before.)
+  std::vector<const ForNode*> loops;
+  loops.reserve(loop_srefs.size());
+  StmtSRef outer_sref{nullptr};
+  const ForNode* outer_loop = nullptr;
   arith::Analyzer analyzer;
-  if (!analyzer.CanProve(inner->min == 0)) {
-    throw LoopNotStartWithZeroError(self->mod, GetRef<For>(inner));
-  }
-  if (!analyzer.CanProve(outer->min == 0)) {
-    throw LoopNotStartWithZeroError(self->mod, GetRef<For>(outer));
-  }
-
-  Var fused_var = outer->loop_var.copy_with_suffix("_" + inner->loop_var->name_hint + "_fused");
-  Stmt new_loop_body = Substitute(inner->body, [&](const Var& v) -> PrimExpr {
-    if (v.same_as(outer->loop_var)) {
-      return floordiv(fused_var, inner->extent) + outer->min;
-    } else if (v.same_as(inner->loop_var)) {
-      return floormod(fused_var, inner->extent) + inner->min;
-    } else {
-      return PrimExpr{nullptr};
+  // Step 1. check correctness
+  for (const StmtSRef& sref : loop_srefs) {
+    const auto* loop = sref->StmtAs<ForNode>();
+    if (loop == nullptr) {
+      throw NotLoopError(self->mod, sref->stmt->GetTypeKey());
     }
+    if (!loop->annotations.empty()) {
+      throw HasAnnotationError(self->mod, GetRef<For>(loop));
+    }
+    if (outer_sref.defined()) {
+      if (sref->parent != outer_sref.get()) {
+        throw OuterNotInnerParent(self->mod, GetRef<For>(outer_loop), GetRef<For>(loop));
+      }
+      Array<Stmt> outer_children = GetChildren(GetRef<Stmt>(outer_loop));
+      if (outer_children.size() != 1 || outer_children[0].get() != loop) {
+        throw NotOnlyChildError(self->mod, GetRef<For>(outer_loop), GetRef<For>(loop));
+      }
+    }
+    outer_sref = sref;
+    outer_loop = loop;
+    if (!analyzer.CanProve(loop->min == 0)) {
+      throw LoopNotStartWithZeroError(self->mod, GetRef<For>(loop));
+    }
+    loops.push_back(loop);
+  }
+  // Step 2. Create fused loop var and replace the original loop vars
+  std::string suffix;
+  for (size_t i = 1; i < loops.size(); i++) {
+    suffix += "_" + loops[i]->loop_var->name_hint;
+  }
+  suffix += "_fused";
+  Var fused_var = loops[0]->loop_var.copy_with_suffix(suffix);
+  Array<PrimExpr> substitute_value;
+  substitute_value.resize(loops.size());
+  PrimExpr tot = fused_var;
+  for (int i = loops.size() - 1; i >= 0; i--) {
+    substitute_value.Set(i, floormod(tot, loops[i]->extent));
+    tot = floordiv(tot, loops[i]->extent);
+  }
+  Stmt loop_body = loops.back()->body;
+  Stmt new_loop_body = Substitute(loop_body, [&](const Var& v) -> PrimExpr {
+    for (size_t i = 0; i < loops.size(); i++) {
+      if (v.same_as(loops[i]->loop_var)) {
+        return substitute_value[i];
+      }
+    }
+    return PrimExpr{nullptr};
   });
-  // Step 3. Generate a loop to replace the original two nested loops
+  // Step 3. Generate a loop to replace the original  loops
   PrimExpr fused_min = 0;
-  PrimExpr fused_extent = analyzer.Simplify(outer->extent * inner->extent);
-  For fused_loop = For(fused_var, fused_min, fused_extent, outer->kind, new_loop_body);
-  fused_loop = Downcast<For>(SimplifyBindings(fused_loop, GetLoops(outer_sref)));
-  self->Replace(outer_sref, fused_loop, {});
+  PrimExpr fused_extent = 1;
+  for (size_t i = 0; i < loops.size(); i++) {
+    fused_extent *= loops[i]->extent;
+  }
+  fused_extent = analyzer.Simplify(fused_extent);
+  For fused_loop = For(fused_var, fused_min, fused_extent, loops[0]->kind, new_loop_body);
+  fused_loop = Downcast<For>(SimplifyBindings(fused_loop, GetLoops(loop_srefs[0])));
+  self->Replace(loop_srefs[0], fused_loop, {});
   return self->stmt2ref.at(fused_loop.get());
 }
 

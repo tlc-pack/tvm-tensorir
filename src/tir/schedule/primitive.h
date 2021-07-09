@@ -38,16 +38,15 @@ namespace tir {
 TVM_DLL Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimExpr& nparts,
                               const PrimExpr& factor);
 /*!
- * \brief Fuse the outer loop and the inner loop. It requires:
+ * \brief Fuse consecutive loops. It requires:
  * 1) The loops can't have annotations.
  * 2) The inner loop must be the only child of the outer loop.
- * 3) Both loops must start with 0.
+ * 3) All loops must start with 0.
  * \param self The state of the schedule
- * \param outer_sref The sref to the outer loop
- * \param inner_sref The sref to the inner loop
+ * \param loop_srefs An array of srefs to the loops to be fused
  * \return The sref to the fused loop
  */
-TVM_DLL StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef& inner_sref);
+TVM_DLL StmtSRef Fuse(ScheduleState self, Array<StmtSRef> loop_srefs);
 /******** Schedule: compute location ********/
 /*!
  * \brief Inline a block into its consumer(s). It requires:
