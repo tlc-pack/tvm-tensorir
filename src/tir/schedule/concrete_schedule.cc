@@ -275,67 +275,14 @@ Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
   TVM_TIR_SCHEDULE_BEGIN();
   // Prepare for the splitting
   StmtSRef loop_sref = this->GetSRef(loop_rv);
-  const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-  PrimExpr len = loop->extent;
-  // Find out the None
-  int n = factor_rvs.size();
-  CHECK_GE(n, 2) << "ValueError: `split` requires at least 2 parts";
-  std::vector<PrimExpr> factors;
-  factors.reserve(n);
-  int p = -1;
-  for (int i = 0; i < n; ++i) {
-    PrimExpr factor = IntImm(DataType::Int(32), this->Get(factor_rvs[i].value_or(Integer(-1))));
-    if (analyzer_->CanProve(factor == -1)) {
-      CHECK_EQ(p, -1) << "ValueError: `split` requires at most one `None` factor, but gets: "
-                      << factor_rvs;
-      p = i;
-      factors.emplace_back(Integer(-1));
-    } else {
-      factors.emplace_back(std::move(factor));
-    }
+  const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  Array<PrimExpr> factors;
+  factors.reserve(factor_rvs.size());
+  for (const Optional<IntRV> & factor_rv : factor_rvs) {
+    factors.push_back(IntImm(DataType::Int(32), this->Get(factor_rv.value_or(Integer(-1)))));
   }
-  if (p == -1) {
-    PrimExpr prod = factors[0];
-    for (int i = 1; i < n; ++i) {
-      prod = prod * factors[i];
-    }
-    if (analyzer_->CanProve(prod == len)) {
-      p = 0;
-      factors[0] = Integer(-1);
-    } else {
-      LOG(FATAL) << "ValueError: invalid extents for `split`, the loop extent is " << len
-                 << ", but extents are: " << Array<PrimExpr>{factors.begin(), factors.end()};
-    }
-  }
-  std::vector<StmtSRef> results(n, StmtSRef{nullptr});
-  // Split from right to left
-  for (int i = n - 1; i > p; --i) {
-    PrimExpr inner_len = factors[i];
-    PrimExpr outer_len = floordiv(len + inner_len - 1, inner_len);
-    Array<StmtSRef> parts = tir::Split(state_,     //
-                                       loop_sref,  //
-                                       outer_len, inner_len);
-    this->state_->DebugVerify();
-    ICHECK_EQ(parts.size(), 2);
-    loop_sref = parts[0];
-    results[i] = parts[1];
-    len = outer_len;
-  }
-  // Split from left to right
-  for (int i = 0; i < p; ++i) {
-    PrimExpr outer_len = factors[i];
-    PrimExpr inner_len = floordiv(len + outer_len - 1, outer_len);
-    Array<StmtSRef> parts = tir::Split(state_,     //
-                                       loop_sref,  //
-                                       outer_len, inner_len);
-    this->state_->DebugVerify();
-    ICHECK_EQ(parts.size(), 2);
-    results[i] = parts[0];
-    loop_sref = parts[1];
-    len = inner_len;
-  }
-  results[p] = loop_sref;
-  return CreateRV<LoopRV>(Array<StmtSRef>{results.begin(), results.end()});
+  Array<StmtSRef> results=tir::Split(state_,loop_sref,factors);
+  return CreateRV<LoopRV>(results);
   TVM_TIR_SCHEDULE_END("split", this->error_render_level_);
   throw;
 }

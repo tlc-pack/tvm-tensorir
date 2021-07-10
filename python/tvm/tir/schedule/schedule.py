@@ -318,33 +318,20 @@ class Schedule(Object):
     def split(
         self,
         loop: LoopRV,
-        *,
-        nparts: Optional[IntRV] = None,
-        factor: Optional[IntRV] = None,
         factors: Optional[List[IntRV]] = None,
     ) -> List[LoopRV]:
-        """Split a loop into a list of neighbor loops. It requires:
+        """Split a loop into a list of consecutive loops. It requires:
         1) The loop can't have annotation.
         2) The loop must start with 0.
         Predicates may be added to ensure the total loop numbers keeps unchanged.
-        Only one of `nparts`, `factor` and `factors` can be specified
-        If `nparts` or `factor` are specified, the loop will be split into 2 parts.
-        If `factors` is specified, the loop will be split into several parts.
-        Their extents will be `factors`.
-        In `factors`, one of the factors can be None or -1, which will be automatically inferred.
+        In `factors`, at most one of the factors can be None or -1, which will be automatically inferred.
         Parameters
         ----------
         loop : LoopRV
             The loop to be split
 
-        nparts: Optional[IntRV]
-            The number of outer parts
-
-        factor: Optional[IntRV]
-            The number of inner parts
-
-        factors: Optional[List[IntRV]]
-            The overall splitting factors
+        factors: List[IntRV]
+            The splitting factors
 
         Returns
         ----------
@@ -391,15 +378,6 @@ class Schedule(Object):
                         B[vi, vj] = A[vi, vj] * 2.0
 
         """
-        if factors is not None:
-            if (nparts is not None) or (factor is not None):
-                raise ValueError("`nparts`/`factor` are not allowed when `factors` is specified")
-        elif (nparts is None) and (factor is None):
-            raise ValueError("None of the `nparts`, `factor` and `factors` are specified")
-        elif (nparts is not None) and (factor is not None):
-            raise ValueError("Only one of the `nparts`, `factor` are allowed to be specified")
-        else:
-            factors = [nparts, factor]
         return _ffi_api_schedule.ScheduleSplit(self, loop, factors)  # type: ignore # pylint: disable=no-member
 
     ########## Schedule: compute location ##########

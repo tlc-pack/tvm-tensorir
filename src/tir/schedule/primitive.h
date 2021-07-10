@@ -26,17 +26,16 @@ namespace tir {
 
 /******** Schedule: loops manipulation ********/
 /*!
- * Split a loop into 2 loops. It requires:
+ * Split a loop into several consecutive loops. It requires:
  * 1) The loop can't have annotation.
  * 2) The loop must start with 0.
  * \param self The state of the schedule
  * \param loop_sref The sref to the loop being split
- * \param nparts The number of outer parts
- * \param factor The number of inner parts
+ * \param factors The splitting factors
  * \return An array of srefs to the loops after splitting
  */
-TVM_DLL Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimExpr& nparts,
-                              const PrimExpr& factor);
+TVM_DLL Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const Array<PrimExpr>&
+factors);
 /*!
  * \brief Fuse consecutive loops. It requires:
  * 1) The loops can't have annotations.
