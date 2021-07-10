@@ -34,8 +34,8 @@ namespace tir {
  * \param factors The splitting factors
  * \return An array of srefs to the loops after splitting
  */
-TVM_DLL Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const Array<PrimExpr>&
-factors);
+TVM_DLL Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
+                              const Array<PrimExpr>& factors);
 /*!
  * \brief Fuse consecutive loops. It requires:
  * 1) The loops can't have annotations.

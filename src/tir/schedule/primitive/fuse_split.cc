@@ -28,7 +28,7 @@ class PredicateUpdater : public StmtMutator {
    * \param predicate The predicate to be apppend to BlockRealizeNode
    */
   explicit PredicateUpdater(const PrimExpr& predicate) : predicate_(predicate) {}
-  
+
  private:
   // For each direct child of type BlockRealizeNode, append the predicate
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
@@ -37,7 +37,7 @@ class PredicateUpdater : public StmtMutator {
     n->predicate = n->predicate && predicate_;
     return BlockRealize(n);
   }
-  
+
   /*! \brief The predicate to be added */
   const PrimExpr& predicate_;
 };
@@ -49,7 +49,7 @@ class BlockRealizeRewriter : public StmtExprMutator {
       const std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual>& loop_map) {
     loop_map_.insert(loop_map.begin(), loop_map.end());
   }
-  
+
  private:
   Stmt VisitStmt_(const ForNode* op) final {
     loop_map_[op->loop_var] = Range::FromMinExtent(op->min, op->extent);
@@ -86,8 +86,10 @@ class NotLoopError : public ScheduleError {
  public:
   explicit NotLoopError(IRModule mod, String type) : mod_(mod), type_(type) {}
 
-  String FastErrorString() const final { return "ScheduleError: this primitive only operates on a "
-                                                "loop"; }
+  String FastErrorString() const final {
+    return "ScheduleError: this primitive only operates on a "
+           "loop";
+  }
 
   String DetailRenderTemplate() const final {
     return "this primitive only operates on a loop, but the StmtSref passed in points to"
@@ -119,8 +121,6 @@ class HasAnnotationError : public ScheduleError {
   IRModule mod_;
   For loop_;
 };
-
-
 
 class OuterNotInnerParent : public ScheduleError {
  public:
@@ -185,46 +185,45 @@ class LoopNotStartWithZeroError : public ScheduleError {
   For loop_;
 };
 
-class NotSingleInferFactorError :public ScheduleError {
+class NotSingleInferFactorError : public ScheduleError {
  public:
   explicit NotSingleInferFactorError(IRModule mod) : mod_(mod) {}
-  
+
   String FastErrorString() const final {
     return "ScheduleError: only one factor can be specified as -1 or none";
   }
-  
+
   String DetailRenderTemplate() const final {
     return "Only one factor can be specified as -1 or none";
   }
-  
+
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {}; }
-  
+
   IRModule mod_;
 };
 
-class WrongFactorProductError:public ScheduleError {
+class WrongFactorProductError : public ScheduleError {
  public:
-  explicit WrongFactorProductError(IRModule mod, For loop) : mod_(mod),loop_(loop) {}
-  
+  explicit WrongFactorProductError(IRModule mod, For loop) : mod_(mod), loop_(loop) {}
+
   String FastErrorString() const final {
     return "ScheduleError: The product of factors does not equal the extent of loop";
   }
-  
+
   String DetailRenderTemplate() const final {
     return "The product of factors does not equal the extent of loop {0}";
   }
-  
+
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {loop_}; }
-  
+
   IRModule mod_;
   For loop_;
 };
 
-
-Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const Array<PrimExpr>&
-    factors ) {
+Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
+                      const Array<PrimExpr>& factors) {
   // Invariance
   // - The total repeat number has not changed for each direct child block with updating predicate.
   // - The execution order has not changed. (The block executes with the same args and the same
@@ -242,24 +241,24 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const Array
   if (!analyzer.CanProve(loop->min == 0)) {
     throw LoopNotStartWithZeroError(self->mod, GetRef<For>(loop));
   }
-  PrimExpr tot_length=1;
-  int infer_index=-1;
+  PrimExpr tot_length = 1;
+  int infer_index = -1;
   for (size_t i = 0; i < factors.size(); i++) {
-    if (!analyzer.CanProve(factors[i]==-1)) {
-      tot_length*=factors[i];
+    if (!analyzer.CanProve(factors[i] == -1)) {
+      tot_length *= factors[i];
     } else {
       if (infer_index != -1) {
         throw NotSingleInferFactorError(self->mod);
       } else {
-        infer_index=i;
+        infer_index = i;
       }
     }
   }
   // Step 2. infer factors if needed
   Array<PrimExpr> inferred_factors(factors);
   if (infer_index != -1) {
-    inferred_factors.Set(infer_index,analyzer.Simplify(floordiv(loop->extent+tot_length-1,
-tot_length)));
+    inferred_factors.Set(infer_index,
+                         analyzer.Simplify(floordiv(loop->extent + tot_length - 1, tot_length)));
   } else {
     if (!analyzer.CanProve(tot_length == loop->extent)) {
       throw WrongFactorProductError(self->mod, GetRef<For>(loop));
@@ -269,12 +268,12 @@ tot_length)));
   std::vector<Var> new_loop_vars;
   new_loop_vars.reserve(inferred_factors.size());
   for (size_t i = 0; i < inferred_factors.size(); i++) {
-    new_loop_vars.push_back(loop->loop_var.copy_with_suffix("_"+std::to_string(i)));
+    new_loop_vars.push_back(loop->loop_var.copy_with_suffix("_" + std::to_string(i)));
   }
-  PrimExpr substitute_value=0;
-  for (size_t i = 0;i<inferred_factors.size();i++) {
-    substitute_value*=inferred_factors[i];
-    substitute_value+=new_loop_vars[i];
+  PrimExpr substitute_value = 0;
+  for (size_t i = 0; i < inferred_factors.size(); i++) {
+    substitute_value *= inferred_factors[i];
+    substitute_value += new_loop_vars[i];
   }
   Stmt new_loop_body = Substitute(loop->body, [&](const Var& v) -> PrimExpr {
     if (v.same_as(loop->loop_var)) {
@@ -284,24 +283,24 @@ tot_length)));
     }
   });
   for (size_t i = 0; i < inferred_factors.size(); i++) {
-    analyzer.Bind(new_loop_vars[i],Range::FromMinExtent(0,inferred_factors[i]));
+    analyzer.Bind(new_loop_vars[i], Range::FromMinExtent(0, inferred_factors[i]));
   }
   // Step 4. Update predicate to guard the loop
-  PrimExpr predicate=substitute_value<loop->extent;
+  PrimExpr predicate = substitute_value < loop->extent;
   if (!analyzer.CanProve(predicate)) {
     new_loop_body = PredicateUpdater(predicate)(new_loop_body);
   }
   // Step 5. Generate tnested loops to replace the original loop and simplify the binding
   Stmt outer_stmt = new_loop_body;
   for (int i = inferred_factors.size() - 1; i >= 0; i--) {
-    outer_stmt =For(new_loop_vars[i],0,inferred_factors[i],loop->kind, outer_stmt);
+    outer_stmt = For(new_loop_vars[i], 0, inferred_factors[i], loop->kind, outer_stmt);
   }
 
   outer_stmt = Downcast<For>(SimplifyBindings(outer_stmt, GetLoops(loop_sref)));
   self->Replace(loop_sref, outer_stmt, {});
   Array<StmtSRef> result_srefs;
   result_srefs.reserve(inferred_factors.size());
-  for(size_t i=0;i<inferred_factors.size();i++) {
+  for (size_t i = 0; i < inferred_factors.size(); i++) {
     result_srefs.push_back(self->stmt2ref.at(outer_stmt.get()));
     const ForNode* outer_loop = outer_stmt.as<ForNode>();
     ICHECK(outer_loop);

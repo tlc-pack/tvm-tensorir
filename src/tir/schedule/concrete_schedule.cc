@@ -263,7 +263,7 @@ LoopRV ConcreteScheduleNode::Fuse(const Array<LoopRV>& loop_rvs) {
   TVM_TIR_SCHEDULE_BEGIN();
   CHECK(!loop_rvs.empty()) << "ValueError: 'fuse' requires at least 1 loop(s)";
   Array<StmtSRef> loop_srefs = this->GetSRefs(loop_rvs);
-  StmtSRef fused_sref=tir::Fuse(state_,loop_srefs);
+  StmtSRef fused_sref = tir::Fuse(state_, loop_srefs);
   this->state_->DebugVerify();
   return CreateRV<LoopRV>(fused_sref);
   TVM_TIR_SCHEDULE_END("fuse", this->error_render_level_);
@@ -278,10 +278,10 @@ Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
   const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   Array<PrimExpr> factors;
   factors.reserve(factor_rvs.size());
-  for (const Optional<IntRV> & factor_rv : factor_rvs) {
+  for (const Optional<IntRV>& factor_rv : factor_rvs) {
     factors.push_back(IntImm(DataType::Int(32), this->Get(factor_rv.value_or(Integer(-1)))));
   }
-  Array<StmtSRef> results=tir::Split(state_,loop_sref,factors);
+  Array<StmtSRef> results = tir::Split(state_, loop_sref, factors);
   return CreateRV<LoopRV>(results);
   TVM_TIR_SCHEDULE_END("split", this->error_render_level_);
   throw;

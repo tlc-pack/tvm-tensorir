@@ -1089,7 +1089,8 @@ TVM_REGISTER_GLOBAL("arith.NormalizeIterMapToExpr").set_body_typed([](const Iter
 Array<PrimExpr> IterMapSimplify(const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
                                 const PrimExpr& input_pred, bool require_bijective) {
   Analyzer analyzer;
-  Array<IterSumExpr> rewrite = DetectIterMap(indices, input_iters, input_pred, require_bijective, &analyzer);
+  Array<IterSumExpr> rewrite =
+      DetectIterMap(indices, input_iters, input_pred, require_bijective, &analyzer);
   if (rewrite.empty()) {
     return indices;
   } else {

@@ -324,7 +324,8 @@ class Schedule(Object):
         1) The loop can't have annotation.
         2) The loop must start with 0.
         Predicates may be added to ensure the total loop numbers keeps unchanged.
-        In `factors`, at most one of the factors can be None or -1, which will be automatically inferred.
+        In `factors`, at most one of the factors can be None or -1,
+        which will be automatically inferred.
         Parameters
         ----------
         loop : LoopRV
