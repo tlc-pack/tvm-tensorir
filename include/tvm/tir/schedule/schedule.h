@@ -214,7 +214,7 @@ class ScheduleNode : public runtime::Object {
    * factor is inferred.
    * \return The loops after splitting
    */
-  virtual Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<IntRV>>& factors) = 0;
+  virtual Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) = 0;
   /******** Schedule: compute location ********/
   /*!
    * \brief Inline a block into its consumer(s). It requires:

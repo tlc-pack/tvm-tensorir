@@ -271,15 +271,15 @@ LoopRV ConcreteScheduleNode::Fuse(const Array<LoopRV>& loop_rvs) {
 }
 
 Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
-                                          const Array<Optional<IntRV>>& factor_rvs) {
+                                          const Array<Optional<ExprRV>>& factor_rvs) {
   TVM_TIR_SCHEDULE_BEGIN();
   // Prepare for the splitting
   StmtSRef loop_sref = this->GetSRef(loop_rv);
   const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   Array<PrimExpr> factors;
   factors.reserve(factor_rvs.size());
-  for (const Optional<IntRV>& factor_rv : factor_rvs) {
-    factors.push_back(IntImm(DataType::Int(32), this->Get(factor_rv.value_or(Integer(-1)))));
+  for (const Optional<ExprRV>& factor_rv : factor_rvs) {
+    factors.push_back(this->Get(factor_rv.value_or(Integer(-1))));
   }
   Array<StmtSRef> results = tir::Split(state_, loop_sref, factors);
   return CreateRV<LoopRV>(results);

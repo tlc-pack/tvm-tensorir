@@ -81,7 +81,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   Array<LoopRV> GetLoops(const BlockRV& block_rv) override;
   /******** Schedule: loops manipulation ********/
   LoopRV Fuse(const Array<LoopRV>& loop_rvs) override;
-  Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<IntRV>>& factors) override;
+  Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) override;
   /******** Schedule: compute location ********/
   void ComputeInline(const BlockRV& block) override;
   void ReverseComputeInline(const BlockRV& block) override;
@@ -146,23 +146,23 @@ inline For ConcreteScheduleNode::Get(const LoopRV& loop_rv) const {
   return GetRef<For>(loop);
 }
 
-inline PrimExpr ConcreteScheduleNode::Get(const IntRV& int_rv) const {
+inline PrimExpr ConcreteScheduleNode::Get(const ExprRV& int_rv) const {
   PrimExpr transformed = Substitute(int_rv, [this](const Var& var) -> Optional<PrimExpr> {
     auto it = this->symbol_table_.find(var);
     if (it == this->symbol_table_.end()) {
-      LOG(FATAL) << "IndexError: Cannot find corresponding IntRV: " << var;
+      LOG(FATAL) << "IndexError: Cannot find corresponding ExprRV: " << var;
     }
     const ObjectRef& obj = (*it).second;
     const auto* int_imm = obj.as<IntImmNode>();
     if (int_imm == nullptr) {
-      LOG(FATAL) << "ValueError: IntRV's corresponding type is invalid: "
+      LOG(FATAL) << "ValueError: ExprRV's corresponding type is invalid: "
                  << (obj.defined() ? obj->GetTypeKey() : "None");
     }
     return Integer(int_imm->value);
   });
   PrimExpr simplified = this->analyzer_->Simplify(transformed);
   if (!is_const_int(transformed)) {
-    LOG(FATAL) << "ValueError: The IntRV does not have a specific value";
+    LOG(FATAL) << "ValueError: The ExprRV does not have a specific value";
   }
   return simplified;
 }
