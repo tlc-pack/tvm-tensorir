@@ -68,12 +68,12 @@ class ConcreteScheduleNode : public ScheduleNode {
   inline PrimExpr Get(const ExprRV& expr_rv) const final;
   inline StmtSRef GetSRef(const BlockRV& block_rv) const final;
   inline StmtSRef GetSRef(const LoopRV& loop_rv) const final;
+  template <class T>
+  inline Array<StmtSRef> GetSRefs(const Array<T>& rvs) const;
   void RemoveRV(const BlockRV& block_rv) final { RemoveFromSymbolTable(block_rv); }
   void RemoveRV(const LoopRV& loop_rv) final { RemoveFromSymbolTable(loop_rv); }
   void RemoveRV(const ExprRV& expr_rv) final { RemoveFromSymbolTable(expr_rv); }
   using ScheduleNode::GetSRef;
-  template <class T>
-  inline Array<StmtSRef> GetSRefs(const Array<T>& rvs) const;
 
  public:
   /******** Block/Loop relation ********/

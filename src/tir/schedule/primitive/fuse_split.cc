@@ -20,7 +20,7 @@
 namespace tvm {
 namespace tir {
 
-/*! \brief Append a new predicate to the each children of type BlockRealize */
+/*! \brief Append a new predicate to the each children of type BlockRealize (not recursively) */
 class PredicateUpdater : public StmtMutator {
  public:
   /*!
@@ -28,26 +28,29 @@ class PredicateUpdater : public StmtMutator {
    * \param predicate The predicate to be apppend to BlockRealizeNode
    */
   explicit PredicateUpdater(const PrimExpr& predicate) : predicate_(predicate) {}
+  
+ private:
   // For each direct child of type BlockRealizeNode, append the predicate
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
     // We do not recursively do this
-    ObjectPtr<BlockRealizeNode> n = make_object<BlockRealizeNode>(*realize);
+    ObjectPtr<BlockRealizeNode> n = CopyOnWrite(realize);
     n->predicate = n->predicate && predicate_;
     return BlockRealize(n);
   }
-
- private:
+  
   /*! \brief The predicate to be added */
   const PrimExpr& predicate_;
 };
 
+/*! \brief Simplify the binding of block realize */
 class BlockRealizeRewriter : public StmtExprMutator {
  public:
   explicit BlockRealizeRewriter(
       const std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual>& loop_map) {
     loop_map_.insert(loop_map.begin(), loop_map.end());
   }
-
+  
+ private:
   Stmt VisitStmt_(const ForNode* op) final {
     loop_map_[op->loop_var] = Range::FromMinExtent(op->min, op->extent);
     Stmt res = StmtMutator::VisitStmt_(op);
@@ -65,14 +68,13 @@ class BlockRealizeRewriter : public StmtExprMutator {
       return Stmt(n);
     }
   }
-
- private:
+  /*! \brief The range of loops */
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map_;
 };
 
 Stmt SimplifyBindings(const Stmt& stmt, const Array<StmtSRef>& loops) {
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map;
-  for (const auto& sref : loops) {
+  for (const StmtSRef& sref : loops) {
     const auto* loop = sref->StmtAs<ForNode>();
     loop_map[loop->loop_var] = Range::FromMinExtent(loop->min, loop->extent);
   }
@@ -227,6 +229,7 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const Array
   // - The total repeat number has not changed for each direct child block with updating predicate.
   // - The execution order has not changed. (The block executes with the same args and the same
   // order with before.
+  // Step 1. Check correctness
   const auto* loop = loop_sref->StmtAs<ForNode>();
   if (loop == nullptr) {
     throw NotLoopError(self->mod, loop_sref->stmt->GetTypeKey());
@@ -252,6 +255,7 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const Array
       }
     }
   }
+  // Step 2. infer factors if needed
   Array<PrimExpr> inferred_factors(factors);
   if (infer_index != -1) {
     inferred_factors.Set(infer_index,analyzer.Simplify(floordiv(loop->extent+tot_length-1,
@@ -261,6 +265,7 @@ tot_length)));
       throw WrongFactorProductError(self->mod, GetRef<For>(loop));
     }
   }
+  // Step 3. Replace all occurrence of the original loop var with new variables
   std::vector<Var> new_loop_vars;
   new_loop_vars.reserve(inferred_factors.size());
   for (size_t i = 0; i < inferred_factors.size(); i++) {
@@ -281,12 +286,12 @@ tot_length)));
   for (size_t i = 0; i < inferred_factors.size(); i++) {
     analyzer.Bind(new_loop_vars[i],Range::FromMinExtent(0,inferred_factors[i]));
   }
+  // Step 4. Update predicate to guard the loop
   PrimExpr predicate=substitute_value<loop->extent;
   if (!analyzer.CanProve(predicate)) {
     new_loop_body = PredicateUpdater(predicate)(new_loop_body);
   }
-  // Step 3. Generate tnested loops to replace the original loop and simplify the binding
-  // created by replacement in Step 1
+  // Step 5. Generate tnested loops to replace the original loop and simplify the binding
   Stmt outer_stmt = new_loop_body;
   for (int i = inferred_factors.size() - 1; i >= 0; i--) {
     outer_stmt =For(new_loop_vars[i],0,inferred_factors[i],loop->kind, outer_stmt);
