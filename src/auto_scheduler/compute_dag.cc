@@ -1631,6 +1631,10 @@ State ComputeDAG::InferBound(const State& state) const {
 
   Map<IterVar, Range> bounds = te::InferBound(sch);
 
+  // if (enable_verbose_logging) {
+  //   LOG(INFO) << "bounds=" << MapToString(bounds);
+  // }
+
   // Update the state bound information
   for (size_t i = 0; i < pstate->stages.size(); ++i) {
     const Stage& stage = pstate->stages[i];

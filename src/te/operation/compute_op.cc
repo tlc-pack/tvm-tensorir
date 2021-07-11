@@ -40,11 +40,26 @@
 #include "op_utils.h"
 // <bojian/DietCode>
 #include "../DietCode_helper.h"
+// #include "../../auto_scheduler/utils.h"
 
 
 namespace tvm {
+
+
+// <bojian/DietCode>
+// namespace auto_scheduler {
+// extern bool enable_verbose_logging;
+// }
+
+
 namespace te {
 using namespace tir;
+
+
+// <bojian/DietCode>
+// using auto_scheduler::enable_verbose_logging;
+// using auto_scheduler::VectorToString;
+
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<ComputeOpNode>([](const ObjectRef& node, ReprPrinter* p) {
@@ -217,6 +232,13 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           // range expected by the tensor. However, intersection may result in overly complex
           // expressions, so we perform a more relaxed form of intersection.
           IntSet arg_intset = analyzer->int_set(pload->indices[i], ConvertDomMap(dom_map));
+
+          // <bojian/DietCode>
+          // if (enable_verbose_logging) {
+          //   LOG(INFO) << pload->indices[i] << " -> " << arg_intset;
+          //   LOG(INFO) << "ConvertedDomMap=" << ConvertDomMap(dom_map);
+          // }
+
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
           if (arg_interval) {
             PrimExpr shape_i_min_value = make_zero(t->shape[i].dtype());
@@ -254,10 +276,26 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
     Range r = arith::Union(tdom.data.at(i)).CoverRange(this->axis[i]->dom);
     ICHECK(!out_dom_map->count(this->axis[i]));
     (*out_dom_map)[this->axis[i]] = r;
+
+
+    // <bojian/DietCode>
+    // if (enable_verbose_logging) {
+    //   LOG(INFO) << axis[i] << " : ∪" << VectorToString(tdom.data.at(i))
+    //             << ".cover(" << axis[i]->dom << ")"
+    //             << " = " << r;
+    // }
+
   }
   for (size_t i = 0; i < this->reduce_axis.size(); ++i) {
     ICHECK(!out_dom_map->count(this->reduce_axis[i]));
     (*out_dom_map)[this->reduce_axis[i]] = this->reduce_axis[i]->dom;
+
+    // <bojian/DietCode>
+    // if (enable_verbose_logging) {
+    //   LOG(INFO) << reduce_axis[i] << " -> " << reduce_axis[i]->dom;
+    // }
+
+
   }
 }
 

@@ -359,8 +359,22 @@ PrimExpr operator/(PrimExpr a, PrimExpr b) { return div(a, b); }
 
 PrimExpr operator%(PrimExpr a, PrimExpr b) { return truncmod(a, b); }
 
+// namespace auto_scheduler {
+// extern bool enable_verbose_logging;
+// }
+
+// using auto_scheduler::enable_verbose_logging;
+
 // TODO(tqchen): switch to floordiv
-PrimExpr indexdiv(PrimExpr a, PrimExpr b, Span span) { return floordiv(a, b, span); }
+PrimExpr indexdiv(PrimExpr a, PrimExpr b, Span span) {
+
+  // if (enable_verbose_logging) {
+  //   LOG(INFO) << a << " / " << b << " = " << floordiv(a, b, span);
+  //   LOG(INFO) << "Call Stack=" << dmlc::StackTrace();
+  // }
+
+  return floordiv(a, b, span);
+}
 
 PrimExpr indexmod(PrimExpr a, PrimExpr b, Span span) { return floormod(a, b, span); }
 

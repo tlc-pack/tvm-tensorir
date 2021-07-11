@@ -177,13 +177,11 @@ inline IntervalSet Combine<tir::Mul>(Analyzer* analyzer, IntervalSet a, Interval
     }
   }
   // <bojian/DietCode> Add the handling where both a and b are greater than 0.
-  if (analyzer->CanProveGreaterEqual(a->min_value, 0) &&
-      analyzer->CanProveGreaterEqual(b->min_value, 0)) {
-    return IntervalSet(a->min_value * b->min_value, a->max_value * b->max_value);
-  }
+  return IntervalSet(a->min_value * b->min_value, a->max_value * b->max_value);
 
-  LOG(WARNING) << "Return Everything in CombineInterval Mul";
-  return IntervalSet::Everything();
+  // <bojian/DietCode>
+  // DLOG(WARNING) << "Return Everything in CombineInterval Mul";
+  // return IntervalSet::Everything();
 }
 
 template <>
@@ -215,8 +213,13 @@ inline IntervalSet Combine<tir::Div>(Analyzer* analyzer, IntervalSet a, Interval
       return IntervalSet(Select(sign, e1, e2), Select(sign, e2, e1));
     }
   }
-  DLOG(WARNING) << "Return Everything in CombineInterval Div";
-  return IntervalSet::Everything();
+
+  // <bojian/DietCode> Add the handling where both a and b are greater than 0.
+  return IntervalSet(a->min_value / b->max_value, a->max_value / b->min_value);
+
+  // <bojian/DietCode>
+  // DLOG(WARNING) << "Return Everything in CombineInterval Div";
+  // return IntervalSet::Everything();
 }
 
 template <>
@@ -276,8 +279,13 @@ inline IntervalSet Combine<tir::FloorDiv>(Analyzer* analyzer, IntervalSet a, Int
       return IntervalSet(Select(sign, e1, e2), Select(sign, e2, e1));
     }
   }
-  DLOG(WARNING) << "Return Everything in CombineInterval Div";
-  return IntervalSet::Everything();
+
+  // <bojian/DietCode> Add the handling where both a and b are greater than 0.
+  return IntervalSet(floordiv(a->min_value, b->max_value),
+                     floordiv(a->max_value, b->min_value));
+  // <bojian/DietCode>
+  // DLOG(WARNING) << "Return Everything in CombineInterval Div";
+  // return IntervalSet::Everything();
 }
 
 template <>

@@ -33,7 +33,18 @@
 #include <tvm/tir/expr_functor.h>
 
 namespace tvm {
+
+
+// <bojian/DietCode>
+// namespace auto_scheduler {
+// extern bool enable_verbose_logging;
+// }
+
+
 namespace te {
+
+// <bojian/DietCode>
+// using auto_scheduler::enable_verbose_logging;
 
 using namespace tir;
 
@@ -132,6 +143,14 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       // zero-sized dimension.  Split creates iv with a positive extent to avoid zero-extent
       // IterVar.  We don't touch it.
       auto resolve_min_extent_for_split = [&](const IterVar& iv, const PrimExpr& factor_or_nparts) {
+
+        // <bojian/DietCode>
+        // if (enable_verbose_logging) {
+        //   LOG(INFO) << "range_parent->extent=" << range_parent->extent << " -> "
+        //             << actx->Simplify(range_parent->extent);
+        // }
+
+
         return dominating_thread[iv] || allow_missing || is_zero(range_parent->extent)
                    ? factor_or_nparts
                    : minimum_or_later(range_parent->extent, factor_or_nparts);

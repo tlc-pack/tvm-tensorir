@@ -33,7 +33,16 @@
 #include "message_passing.h"
 
 namespace tvm {
+
+// <bojian/DietCode>
+// namespace auto_scheduler {
+// extern bool enable_verbose_logging;
+// }
+
 namespace te {
+
+// <bojian/DietCode>
+// using auto_scheduler::enable_verbose_logging;
 
 using runtime::StorageRank;
 using runtime::StorageScope;
@@ -100,6 +109,11 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       ICHECK(iv->dom.defined());
       ICHECK(!rmap->count(iv));
       (*rmap)[iv] = iv->dom;
+
+      // if (enable_verbose_logging) {
+      //   LOG(INFO) << iv << " -> " << iv->dom;
+      // }
+
     }
     return;
   }
@@ -145,6 +159,12 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       const Range& vrange = it->second;
       if (is_one(vrange->extent)) {
         up_state[iv] = IntSet::SinglePoint(vrange->min);
+
+        // <bojian/DietCode>
+        // if (enable_verbose_logging) {
+        //   LOG(INFO) << iv << " : " << up_state[iv];
+        // }
+
       } else if (!NeedRelax(iv, found_attach, ctx.bind_map, scope)) {
         ICHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                      << " call schedule.normalize to achieve this. ";
@@ -153,8 +173,20 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         } else {
           up_state[iv] = IntSet::SinglePoint(iv->var);
         }
+
+        // <bojian/DietCode>
+        // if (enable_verbose_logging) {
+        //   LOG(INFO) << "Does not need relaxing " << iv << " : " << up_state[iv];
+        // }
+
       } else {
         up_state[iv] = IntSet::FromRange(vrange);
+
+        // <bojian/DietCode>
+        // if (enable_verbose_logging) {
+        //   LOG(INFO) << iv << " : " << up_state[iv];
+        // }
+
       }
     }
     // Consumer's attach nest
@@ -187,15 +219,40 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       Range r;
       if (up_state.count(iv)) {
         r = up_state.at(iv).CoverRange(iv->dom);
+
+        // <bojian/DietCode>
+        // if (enable_verbose_logging) {
+        //   LOG(INFO) << "up_state: " << iv << "(" << up_state.at(iv) << ") + "
+        //             << iv->dom << " -> " << r;
+        // }
+
       } else {
         r = iv->dom;
+
+        // if (enable_verbose_logging) {
+        //   LOG(INFO) << "Non-up_state: " << iv->dom << " -> " << r;
+        // }
+
       }
       if (relax_set.size() != 0) {
         dom_map[iv->var.get()] =
             IntSet::Interval(analyzer.int_set(r->min, relax_set).min(),
                              analyzer.int_set(r->min + r->extent - 1, relax_set).max());
+
+        // <bojian/DietCode>
+        // if (enable_verbose_logging) {
+        //   LOG(INFO) << iv->var << " : " << r;
+        // }
+
+
       } else {
         dom_map[iv->var.get()] = IntSet::FromRange(r);
+
+        // <bojian/DietCode>
+        // if (enable_verbose_logging) {
+        //   LOG(INFO) << iv->var << " : " << r;
+        // }
+
       }
       analyzer.Bind(iv->var, r, true);
     }
