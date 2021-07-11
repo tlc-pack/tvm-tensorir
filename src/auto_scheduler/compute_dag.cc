@@ -1250,6 +1250,16 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     });
 
 
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<SplitStepNode>([](const ObjectRef& ref, ReprPrinter* p) {
+      auto* node = static_cast<const SplitStepNode*>(ref.get());
+      p->stream << "SplitStepNode(iter_id=" << node->iter_id << ", extent="
+                << (node->extent == nullptr ? node->extent
+                                            : node->extent.value())
+                << ", lengths=" << OptionalArrayToString(node->lengths) << ")";
+    });
+
+
 inline std::string GetIterNamePrefix(const Iterator& iter) {
   std::string iter_name = iter->name;
   size_t pos = iter_name.rfind(".");
@@ -1360,7 +1370,7 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
   //           << ArrayToString(operator->()->tensors);
   if (enable_verbose_logging) {
     LOG(INFO) << "factorization scheme="
-              << MatrixToString(state_mutable_copy.GetFactorizationScheme())
+              << OptionalMatrixToString(state_mutable_copy.GetSplitFactors())
               << ", split_steps="
               << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
               // << ", stages=" << state_mutable_copy->stages;
@@ -1369,6 +1379,15 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
   Map<PrimExpr, IntImm> axes_to_extent;
   bool is_first_spatial_axis = true;
 
+  for (const Step& step : state->transform_steps) {
+    if (const SplitStepNode* const split_step = step.as<SplitStepNode>()) {
+      LOG(INFO) << step << " of State="
+                << state->stages[split_step->stage_id];
+    }
+  }
+  LOG(FATAL) << "Finish logging the split steps";
+
+  /*
   for (int stage_id = state_mutable_copy->stages.size() - 1; stage_id >= 0;
        --stage_id) {
     const Stage& stage = state_mutable_copy->stages[stage_id];
@@ -1429,6 +1448,7 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
       }      // for (iter ∈ stage->iters)
     }        // if (StrEndsWith(stage->op->name, ".local"))
   }          // for (stage ∈ state_mutable_copy->stages)
+   */
 
   // for (const std::pair<PrimExpr, IntImm> axis_to_extent : axes_to_extent) {
   //   LOG(INFO) << "axis=" << axis_to_extent.first << " : "

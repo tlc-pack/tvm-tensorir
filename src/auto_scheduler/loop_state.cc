@@ -368,6 +368,7 @@ Array<Array<Optional<Integer>>> State::GetSplitFactors() const {
 }
 
 
+/*
 Array<Array<PrimExpr>> State::GetFactorizationScheme() const {
   Array<Array<PrimExpr>> factorization_scheme;
 
@@ -389,6 +390,7 @@ Array<Array<PrimExpr>> State::GetFactorizationScheme() const {
   }
   return factorization_scheme;
 }
+ */
 
 
 // Print stage to ostream

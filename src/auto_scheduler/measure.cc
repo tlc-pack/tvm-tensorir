@@ -283,8 +283,10 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       // <bojian/DietCode>
       // double flops
       double flop_ct, flops;
-      Array<Array<PrimExpr>> factorization_scheme =
-          input_batch[j]->state.GetFactorizationScheme();
+      // Array<Array<PrimExpr>> factorization_scheme =
+      //     input_batch[j]->state.GetFactorizationScheme();
+      Array<Array<Optional<Integer>>> split_factors =
+          input_batch[j]->state.GetSplitFactors();
 
       if (result_batch[j]->error_no == 0) {
 
@@ -305,7 +307,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
         LOG(INFO) << "Successfully completed the measurement on state with "
                      "factorization scheme="
-                  << MatrixToString(factorization_scheme)
+                  << OptionalMatrixToString(split_factors)
                   << ", avg_cost=" << FloatArrayMean(result_batch[j]->costs)
                   << " flop_ct=" << flop_ct << " => flops=" << flops;
 
@@ -316,9 +318,8 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
         // <bojian/DietCode>
         LOG(WARNING) << "Error encountered on state "
                      << input_batch[j]->state << " with factorization scheme="
-                     << MatrixToString(factorization_scheme) << ", "
-                     << "error_msg=" << result_batch[j]->error_msg
-                     ;
+                     << OptionalMatrixToString(split_factors) << ", "
+                     << "error_msg=" << result_batch[j]->error_msg;
 
         flops = 0.0;
         error_ct++;
