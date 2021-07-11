@@ -42,37 +42,38 @@ class PredicateUpdater : public StmtMutator {
   const PrimExpr& predicate_;
 };
 /*! \brief Substitute vars and collect the reuse mapping of opaque blocks */
-class IRSubstituteAndCollectOpaqueBlock : public StmtExprMutator{
+class IRSubstituteAndCollectOpaqueBlock : public StmtExprMutator {
  public:
   explicit IRSubstituteAndCollectOpaqueBlock(std::function<Optional<PrimExpr>(const Var&)> vmap,
-                                             Map<Block,Block>* opaque_blocks)
-      :vmap_(vmap), opaque_blocks_(opaque_blocks) {}
-  
+                                             Map<Block, Block>* opaque_blocks)
+      : vmap_(vmap), opaque_blocks_(opaque_blocks) {}
+
   PrimExpr VisitExpr_(const VarNode* op) final {
     Var var = GetRef<Var>(op);
     auto ret = vmap_(var);
     if (ret.defined()) return ret.value();
     return std::move(var);
   }
-  
-  Stmt VisitStmt_(const BlockRealizeNode* op) final{
+
+  Stmt VisitStmt_(const BlockRealizeNode* op) final {
     Stmt res = StmtMutator::VisitStmt_(op);
     if (op->block->iter_vars.empty()) {
-      const BlockRealizeNode* realize=res.as<BlockRealizeNode>();
-      opaque_blocks_->Set(op->block,realize->block);
+      const BlockRealizeNode* realize = res.as<BlockRealizeNode>();
+      opaque_blocks_->Set(op->block, realize->block);
     }
     return res;
   }
+
  private:
   /*! \brief The substitute function */
   std::function<Optional<PrimExpr>(const Var&)> vmap_;
   /*! \brief The reuse mapping */
-  Map<Block,Block>* opaque_blocks_;
+  Map<Block, Block>* opaque_blocks_;
 };
 
-Stmt SubstituteAndCollectOpaqueBlock(Stmt stmt,  Map<Block,Block>*
-    opaque_blocks, std::function<Optional<PrimExpr>(const Var&)> vmap) {
-  return IRSubstituteAndCollectOpaqueBlock(vmap,opaque_blocks)(std::move(stmt));
+Stmt SubstituteAndCollectOpaqueBlock(Stmt stmt, Map<Block, Block>* opaque_blocks,
+                                     std::function<Optional<PrimExpr>(const Var&)> vmap) {
+  return IRSubstituteAndCollectOpaqueBlock(vmap, opaque_blocks)(std::move(stmt));
 }
 
 /*! \brief Simplify the binding of block realize and update the opaque block reuse mapping*/
@@ -80,7 +81,8 @@ class BlockRealizeRewriter : public StmtExprMutator {
  public:
   explicit BlockRealizeRewriter(
       const std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual>& loop_map,
-      Map<Block,Block>* opaque_blocks): opaque_blocks_(opaque_blocks) {
+      Map<Block, Block>* opaque_blocks)
+      : opaque_blocks_(opaque_blocks) {
     loop_map_.insert(loop_map.begin(), loop_map.end());
   }
 
@@ -95,11 +97,11 @@ class BlockRealizeRewriter : public StmtExprMutator {
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
     // skip opaque block and update mapping
     if (op->iter_values.empty()) {
-      Stmt res= StmtMutator::VisitStmt_(op);
-      const BlockRealizeNode* realize=res.as<BlockRealizeNode>();
-      for (const std::pair<Block,Block> & entry : *opaque_blocks_) {
+      Stmt res = StmtMutator::VisitStmt_(op);
+      const BlockRealizeNode* realize = res.as<BlockRealizeNode>();
+      for (const std::pair<Block, Block>& entry : *opaque_blocks_) {
         if (entry.second.same_as(op->block)) {
-          opaque_blocks_->Set(entry.first,realize->block);
+          opaque_blocks_->Set(entry.first, realize->block);
           break;
         }
       }
@@ -117,16 +119,17 @@ class BlockRealizeRewriter : public StmtExprMutator {
   /*! \brief The range of loops */
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map_;
   /*! \brief The reuse mapping */
-  Map<Block,Block>* opaque_blocks_;
+  Map<Block, Block>* opaque_blocks_;
 };
 
-Stmt SimplifyBindings(const Stmt& stmt, const Array<StmtSRef>& loops, Map<Block,Block>* opaque_blocks) {
+Stmt SimplifyBindings(const Stmt& stmt, const Array<StmtSRef>& loops,
+                      Map<Block, Block>* opaque_blocks) {
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map;
   for (const StmtSRef& sref : loops) {
     const auto* loop = sref->StmtAs<ForNode>();
     loop_map[loop->loop_var] = Range::FromMinExtent(loop->min, loop->extent);
   }
-  BlockRealizeRewriter rewriter(loop_map,opaque_blocks);
+  BlockRealizeRewriter rewriter(loop_map, opaque_blocks);
   return rewriter(stmt);
 }
 
@@ -324,15 +327,14 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
     substitute_value += new_loop_vars[i];
   }
   Map<Block, Block> opaque_block_reuse;
-  Stmt new_loop_body = SubstituteAndCollectOpaqueBlock(loop->body, &opaque_block_reuse, [&](const
-                                                                                            Var& v) ->
-                   PrimExpr {
-    if (v.same_as(loop->loop_var)) {
-      return substitute_value;
-    } else {
-      return PrimExpr{nullptr};
-    }
-  });
+  Stmt new_loop_body = SubstituteAndCollectOpaqueBlock(loop->body, &opaque_block_reuse,
+                                                       [&](const Var& v) -> PrimExpr {
+                                                         if (v.same_as(loop->loop_var)) {
+                                                           return substitute_value;
+                                                         } else {
+                                                           return PrimExpr{nullptr};
+                                                         }
+                                                       });
   for (size_t i = 0; i < inferred_factors.size(); i++) {
     analyzer.Bind(new_loop_vars[i], Range::FromMinExtent(0, inferred_factors[i]));
   }
@@ -347,7 +349,8 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
     outer_stmt = For(new_loop_vars[i], 0, inferred_factors[i], loop->kind, outer_stmt);
   }
 
-  outer_stmt = Downcast<For>(SimplifyBindings(outer_stmt, GetLoops(loop_sref),&opaque_block_reuse));
+  outer_stmt =
+      Downcast<For>(SimplifyBindings(outer_stmt, GetLoops(loop_sref), &opaque_block_reuse));
   self->Replace(loop_sref, outer_stmt, opaque_block_reuse);
   Array<StmtSRef> result_srefs;
   result_srefs.reserve(inferred_factors.size());
@@ -411,15 +414,15 @@ StmtSRef Fuse(ScheduleState self, Array<StmtSRef> loop_srefs) {
   }
   Stmt loop_body = loops.back()->body;
   Map<Block, Block> opaque_block_reuse;
-  Stmt new_loop_body = SubstituteAndCollectOpaqueBlock(loop_body, &opaque_block_reuse, [&](const
-                                        Var& v) -> PrimExpr {
-    for (size_t i = 0; i < loops.size(); i++) {
-      if (v.same_as(loops[i]->loop_var)) {
-        return substitute_value[i];
-      }
-    }
-    return PrimExpr{nullptr};
-  });
+  Stmt new_loop_body = SubstituteAndCollectOpaqueBlock(loop_body, &opaque_block_reuse,
+                                                       [&](const Var& v) -> PrimExpr {
+                                                         for (size_t i = 0; i < loops.size(); i++) {
+                                                           if (v.same_as(loops[i]->loop_var)) {
+                                                             return substitute_value[i];
+                                                           }
+                                                         }
+                                                         return PrimExpr{nullptr};
+                                                       });
   // Step 3. Generate a loop to replace the original  loops
   PrimExpr fused_min = 0;
   PrimExpr fused_extent = 1;
@@ -428,7 +431,8 @@ StmtSRef Fuse(ScheduleState self, Array<StmtSRef> loop_srefs) {
   }
   fused_extent = analyzer.Simplify(fused_extent);
   For fused_loop = For(fused_var, fused_min, fused_extent, loops[0]->kind, new_loop_body);
-  fused_loop = Downcast<For>(SimplifyBindings(fused_loop, GetLoops(loop_srefs[0]),&opaque_block_reuse));
+  fused_loop =
+      Downcast<For>(SimplifyBindings(fused_loop, GetLoops(loop_srefs[0]), &opaque_block_reuse));
   self->Replace(loop_srefs[0], fused_loop, opaque_block_reuse);
   return self->stmt2ref.at(fused_loop.get());
 }
