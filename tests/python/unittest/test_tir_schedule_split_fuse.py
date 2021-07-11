@@ -86,6 +86,23 @@ def elementwise_with_starting_point(a: ty.handle, b: ty.handle) -> None:
 
 
 @tvm.script.tir
+def elementwise_with_opaque_block(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128, 128))
+    B = tir.match_buffer(b, (128, 128, 128))
+    for i, j, k in tir.grid(128, 128, 128):
+        with tir.block([], "opaque"):
+            tir.reads([A[i, j, k]])
+            tir.writes([B[i, j, k]])
+            with tir.block([128, 128, 128], "B") as [vi, vj, vk]:
+                tir.bind(vi, i)
+                tir.bind(vj, j)
+                tir.bind(vk, k)
+                tir.reads([A[vi, vj, vk]])
+                tir.writes([B[vi, vj, vk]])
+                B[vi, vj, vk] = A[vi, vj, vk] * 2.0
+
+
+@tvm.script.tir
 def elementwise_fused(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128, 128))
     B = tir.match_buffer(b, (128, 128, 128))
@@ -147,6 +164,115 @@ def elementwise_split_with_predicate(a: ty.handle, b: ty.handle) -> None:
             B[vi, vj, vk] = A[vi, vj, vk] * 2.0
 
 
+@tvm.script.tir
+def elementwise_fuse_with_opaque_block(a: ty.handle, b: ty.handle) -> None:
+    B = tir.match_buffer(b, [128, 128, 128])
+    A = tir.match_buffer(a, [128, 128, 128])
+    for i_j_k_fused in tir.serial(0, 2097152):
+        with tir.block([], "opaque"):
+            tir.reads(
+                [
+                    A[
+                        tir.floormod(tir.floordiv(tir.floordiv(i_j_k_fused, 128), 128), 128),
+                        tir.floormod(tir.floordiv(i_j_k_fused, 128), 128),
+                        tir.floormod(i_j_k_fused, 128),
+                    ]
+                ]
+            )
+            tir.writes(
+                [
+                    B[
+                        tir.floormod(tir.floordiv(tir.floordiv(i_j_k_fused, 128), 128), 128),
+                        tir.floormod(tir.floordiv(i_j_k_fused, 128), 128),
+                        tir.floormod(i_j_k_fused, 128),
+                    ]
+                ]
+            )
+            with tir.block([128, 128, 128], "B") as [vi, vj, vk]:
+                tir.bind(vi, tir.floordiv(i_j_k_fused, 16384))
+                tir.bind(vj, tir.floormod(tir.floordiv(i_j_k_fused, 128), 128))
+                tir.bind(vk, tir.floormod(i_j_k_fused, 128))
+                tir.reads([A[vi, vj, vk]])
+                tir.writes([B[vi, vj, vk]])
+                B[vi, vj, vk] = A[vi, vj, vk] * 2.0
+
+
+@tvm.script.tir
+def elementwise_split_with_opaque_block(a: ty.handle, b: ty.handle) -> None:
+    B = tir.match_buffer(b, [128, 128, 128])
+    A = tir.match_buffer(a, [128, 128, 128])
+
+    for i0, i1, j, k in tir.grid(8, 16, 128, 128):
+        with tir.block([], "opaque"):
+            tir.reads([A[i0 * 16 + i1, j, k]])
+            tir.writes([B[i0 * 16 + i1, j, k]])
+            with tir.block([128, 128, 128], "B") as [vi, vj, vk]:
+                tir.bind(vi, i0 * 16 + i1)
+                tir.bind(vj, j)
+                tir.bind(vk, k)
+                tir.reads([A[vi, vj, vk]])
+                tir.writes([B[vi, vj, vk]])
+                B[vi, vj, vk] = A[vi, vj, vk] * 2.0
+
+
+@tvm.script.tir
+def opaque_access(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, [16, 16], "float32")
+    B = tir.match_buffer(b, [16, 16], "float32")
+    with tir.block([16, 16], "A") as [vi, vj]:
+        tir.reads([])
+        tir.writes([A[0:16, 0:16]])
+        tir.store(A.data, vi * 16 + vj, 1)
+    with tir.block([16, 16], "B") as [vi, vj]:
+        tir.reads([])
+        tir.writes([B[0:16, 0:16]])
+        tir.evaluate(tir.tvm_fill_fragment(B.data, 16, 16, 16, 0, vi * 16 + vj, dtype="handle"))
+
+
+@tvm.script.tir
+def opaque_access_fused(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, [16, 16])
+    B = tir.match_buffer(b, [16, 16])
+    for i_j_fused in tir.serial(0, 256):
+        with tir.block([16, 16], "A") as [vi, vj]:
+            tir.bind(vi, tir.floordiv(i_j_fused, 16))
+            tir.bind(vj, tir.floormod(i_j_fused, 16))
+            tir.reads([])
+            tir.writes([A[0:16, 0:16]])
+            tir.store(A.data, ((vi * 16) + vj), 1, 1)
+    for i_j_fused in tir.serial(0, 256):
+        with tir.block([16, 16], "B") as [vi, vj]:
+            tir.bind(vi, tir.floordiv(i_j_fused, 16))
+            tir.bind(vj, tir.floormod(i_j_fused, 16))
+            tir.reads([])
+            tir.writes([B[0:16, 0:16]])
+            tir.evaluate(
+                tir.tvm_fill_fragment(B.data, 16, 16, 16, 0, ((vi * 16) + vj), dtype="handle")
+            )
+
+
+@tvm.script.tir
+def opaque_access_split(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16))
+    B = tir.match_buffer(b, (16, 16))
+    for i, j0, j1 in tir.grid(16, 4, 4):
+        with tir.block([16, 16], "A") as [vi, vj]:
+            tir.bind(vi, i)
+            tir.bind(vj, ((j0 * 4) + j1))
+            tir.reads([])
+            tir.writes([A[0:16, 0:16]])
+            tir.store(A.data, ((vi * 16) + vj), 1, 1)
+    for i, j0, j1 in tir.grid(16, 4, 4):
+        with tir.block([16, 16], "B") as [vi, vj]:
+            tir.bind(vi, i)
+            tir.bind(vj, ((j0 * 4) + j1))
+            tir.reads([])
+            tir.writes([B[0:16, 0:16]])
+            tir.evaluate(
+                tir.tvm_fill_fragment(B.data, 16, 16, 16, 0, ((vi * 16) + vj), dtype="handle")
+            )
+
+
 # pylint: enable=no-member,invalid-name,unused-variable
 
 
@@ -163,8 +289,8 @@ def test_split():
     block_b = sch.get_block("B")
     i, j, k = sch.get_loops(block_b)
     sch.split(i, factors=[2, 1, 64])
-    sch.split(j, factor=32)
-    sch.split(k, nparts=16)
+    sch.split(j, factors=[4, 32])
+    sch.split(k, factors=[16, 8])
     tvm.ir.assert_structural_equal(elementwise_split_case0, sch.mod["main"])
 
 
@@ -183,9 +309,9 @@ def test_split_with_predicate():
     sch = tir.Schedule(elementwise, debug_mode=True)
     block_b = sch.get_block("B")
     i, j, k = sch.get_loops(block_b)
-    sch.split(i, factors=[None, 1, 3])
-    sch.split(j, factor=129)
-    sch.split(k, nparts=129)
+    sch.split(i, factors=[None, 2, 3])
+    sch.split(j, factors=[None, 129])
+    sch.split(k, factors=[129, None])
     tvm.ir.assert_structural_equal(elementwise_split_with_predicate, sch.mod["main"])
 
 
@@ -204,7 +330,7 @@ def test_fuse_split_fail_with_annotation():
     with pytest.raises(tvm.tir.ScheduleError):
         sch.fuse(j, k)
     with pytest.raises(tvm.tir.ScheduleError):
-        sch.split(k, factor=10)
+        sch.split(k, factors=[None, 10])
 
 
 def test_fuse_split_fail_not_start_with_zero():
@@ -214,13 +340,55 @@ def test_fuse_split_fail_not_start_with_zero():
     with pytest.raises(tvm.tir.ScheduleError):
         sch.fuse(j, k)
     with pytest.raises(tvm.tir.ScheduleError):
-        sch.split(k, factor=10)
+        sch.split(k, factors=[None, 10])
+
+
+def test_fuse_with_opaque_block():
+    sch = tir.Schedule(elementwise_with_opaque_block, debug_mode=True)
+    block_opaque = sch.get_block("opaque")
+    i, j, k = sch.get_loops(block_opaque)
+    sch.fuse(i, j, k)
+    tvm.ir.assert_structural_equal(elementwise_fuse_with_opaque_block, sch.mod["main"])
+
+
+def test_fuse_with_opaque_access():
+    sch = tir.Schedule(opaque_access, debug_mode=True)
+    block_a = sch.get_block("A")
+    i, j = sch.get_loops(block_a)
+    sch.fuse(i, j)
+    block_b = sch.get_block("B")
+    i, j = sch.get_loops(block_b)
+    sch.fuse(i, j)
+    tvm.ir.assert_structural_equal(opaque_access_fused, sch.mod["main"])
+
+
+def test_split_with_opaque_block():
+    sch = tir.Schedule(elementwise_with_opaque_block, debug_mode=True)
+    block_opaque = sch.get_block("opaque")
+    i, j, k = sch.get_loops(block_opaque)
+    sch.split(i, factors=[None, 16])
+    tvm.ir.assert_structural_equal(elementwise_split_with_opaque_block, sch.mod["main"])
+
+
+def test_split_with_opaque_access():
+    sch = tir.Schedule(opaque_access, debug_mode=True)
+    block_a = sch.get_block("A")
+    i, j = sch.get_loops(block_a)
+    sch.split(j, factors=[None, 4])
+    block_b = sch.get_block("B")
+    i, j = sch.get_loops(block_b)
+    sch.split(j, factors=[None, 4])
+    tvm.ir.assert_structural_equal(opaque_access_split, sch.mod["main"])
 
 
 if __name__ == "__main__":
     test_fuse()
+    test_fuse_with_opaque_block()
+    test_fuse_with_opaque_access()
     test_split()
     test_split_with_inferred_factor()
+    test_split_with_opaque_block()
+    test_split_with_opaque_access()
     # test_split_with_predicate()
     test_fuse_fail_not_only_child()
     test_fuse_split_fail_with_annotation()
