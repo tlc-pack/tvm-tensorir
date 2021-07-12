@@ -146,8 +146,8 @@ inline For ConcreteScheduleNode::Get(const LoopRV& loop_rv) const {
   return GetRef<For>(loop);
 }
 
-inline PrimExpr ConcreteScheduleNode::Get(const ExprRV& int_rv) const {
-  PrimExpr transformed = Substitute(int_rv, [this](const Var& var) -> Optional<PrimExpr> {
+inline PrimExpr ConcreteScheduleNode::Get(const ExprRV& expr_rv) const {
+  PrimExpr transformed = Substitute(expr_rv, [this](const Var& var) -> Optional<PrimExpr> {
     auto it = this->symbol_table_.find(var);
     if (it == this->symbol_table_.end()) {
       LOG(FATAL) << "IndexError: Cannot find corresponding ExprRV: " << var;

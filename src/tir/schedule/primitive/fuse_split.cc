@@ -399,7 +399,7 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
   return result_srefs;
 }
 
-StmtSRef Fuse(ScheduleState self, Array<StmtSRef> loop_srefs) {
+StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
   //     Invariance
   //   - The total repeat number has not changed for each direct child block.
   //   - The execution order has not changed. (The block executes with the same

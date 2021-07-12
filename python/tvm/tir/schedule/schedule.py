@@ -318,7 +318,7 @@ class Schedule(Object):
     def split(
         self,
         loop: LoopRV,
-        factors: Optional[List[ExprRV]] = None,
+        factors: List[Optional[ExprRV]],
     ) -> List[LoopRV]:
         """Split a loop into a list of consecutive loops. It requires:
         1) The loop can't have annotation or thread binding.
@@ -331,7 +331,7 @@ class Schedule(Object):
         loop : LoopRV
             The loop to be split
 
-        factors: List[ExprRV]
+        factors: List[Optional[ExprRV]]
             The splitting factors
 
         Returns

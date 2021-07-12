@@ -45,7 +45,7 @@ TVM_DLL Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
  * \param loop_srefs An array of srefs to the loops to be fused
  * \return The sref to the fused loop
  */
-TVM_DLL StmtSRef Fuse(ScheduleState self, Array<StmtSRef> loop_srefs);
+TVM_DLL StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs);
 /******** Schedule: compute location ********/
 /*!
  * \brief Inline a block into its consumer(s). It requires:
