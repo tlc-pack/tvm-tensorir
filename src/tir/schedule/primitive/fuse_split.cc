@@ -50,9 +50,12 @@ class IRSubstituteAndCollectOpaqueBlock : public StmtExprMutator {
 
   PrimExpr VisitExpr_(const VarNode* op) final {
     Var var = GetRef<Var>(op);
-    auto ret = vmap_(var);
-    if (ret.defined()) return ret.value();
-    return std::move(var);
+    Optional<PrimExpr> ret = vmap_(var);
+    if (ret.defined()) {
+      return ret.value();
+    } else {
+      return std::move(var);
+    }
   }
 
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
@@ -173,6 +176,25 @@ class HasAnnotationError : public ScheduleError {
   For loop_;
 };
 
+class HasThreadBindingError : public ScheduleError {
+ public:
+  explicit HasThreadBindingError(IRModule mod, For loop) : mod_(mod), loop_(loop) {}
+  
+  String FastErrorString() const final {
+    return "ScheduleError: The primitive can't be applied because the loop has thread binding";
+  }
+  
+  String DetailRenderTemplate() const final {
+    return "The primitive can't be applied because the loop {0} has thread binding";
+  }
+  
+  IRModule mod() const final { return mod_; }
+  Array<ObjectRef> LocationsOfInterest() const final { return {loop_}; }
+  
+  IRModule mod_;
+  For loop_;
+};
+
 class OuterNotInnerParent : public ScheduleError {
  public:
   explicit OuterNotInnerParent(IRModule mod, For outer, For inner)
@@ -259,11 +281,12 @@ class WrongFactorProductError : public ScheduleError {
   explicit WrongFactorProductError(IRModule mod, For loop) : mod_(mod), loop_(loop) {}
 
   String FastErrorString() const final {
-    return "ScheduleError: The product of factors does not equal the extent of loop";
+    return "ScheduleError: The product of factors is not larger than or equal to the extent of "
+           "loop";
   }
 
   String DetailRenderTemplate() const final {
-    return "The product of factors does not equal the extent of loop {0}";
+    return "The product of factors is not larger than or equal to the extent of loop {0}";
   }
 
   IRModule mod() const final { return mod_; }
@@ -286,6 +309,9 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
   }
   if (!loop->annotations.empty()) {
     throw HasAnnotationError(self->mod, GetRef<For>(loop));
+  }
+  if (loop->thread_binding.defined()) {
+    throw HasThreadBindingError(self->mod, GetRef<For>(loop));
   }
   // Currently, loops starting with 0 is not supported
   arith::Analyzer analyzer;
@@ -311,7 +337,7 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
     inferred_factors.Set(infer_index,
                          analyzer.Simplify(floordiv(loop->extent + tot_length - 1, tot_length)));
   } else {
-    if (!analyzer.CanProve(tot_length == loop->extent)) {
+    if (!analyzer.CanProve(tot_length >= loop->extent)) {
       throw WrongFactorProductError(self->mod, GetRef<For>(loop));
     }
   }
@@ -327,14 +353,15 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
     substitute_value += new_loop_vars[i];
   }
   Map<Block, Block> opaque_block_reuse;
+  auto substitute_function=[&](const Var& v) -> Optional<PrimExpr> {
+    if (v.same_as(loop->loop_var)) {
+      return substitute_value;
+    } else {
+      return NullOpt;
+    }
+  };
   Stmt new_loop_body = SubstituteAndCollectOpaqueBlock(loop->body, &opaque_block_reuse,
-                                                       [&](const Var& v) -> PrimExpr {
-                                                         if (v.same_as(loop->loop_var)) {
-                                                           return substitute_value;
-                                                         } else {
-                                                           return PrimExpr{nullptr};
-                                                         }
-                                                       });
+                                                       substitute_function);
   for (size_t i = 0; i < inferred_factors.size(); i++) {
     analyzer.Bind(new_loop_vars[i], Range::FromMinExtent(0, inferred_factors[i]));
   }
@@ -382,6 +409,9 @@ StmtSRef Fuse(ScheduleState self, Array<StmtSRef> loop_srefs) {
     if (!loop->annotations.empty()) {
       throw HasAnnotationError(self->mod, GetRef<For>(loop));
     }
+    if (loop->thread_binding.defined()) {
+      throw HasThreadBindingError(self->mod, GetRef<For>(loop));
+    }
     if (outer_sref.defined()) {
       if (sref->parent != outer_sref.get()) {
         throw OuterNotInnerParent(self->mod, GetRef<For>(outer_loop), GetRef<For>(loop));
@@ -414,15 +444,16 @@ StmtSRef Fuse(ScheduleState self, Array<StmtSRef> loop_srefs) {
   }
   Stmt loop_body = loops.back()->body;
   Map<Block, Block> opaque_block_reuse;
+  auto substitute_function=[&](const Var& v) -> Optional<PrimExpr> {
+    for (size_t i = 0; i < loops.size(); i++) {
+      if (v.same_as(loops[i]->loop_var)) {
+        return substitute_value[i];
+      }
+    }
+    return NullOpt;
+  };
   Stmt new_loop_body = SubstituteAndCollectOpaqueBlock(loop_body, &opaque_block_reuse,
-                                                       [&](const Var& v) -> PrimExpr {
-                                                         for (size_t i = 0; i < loops.size(); i++) {
-                                                           if (v.same_as(loops[i]->loop_var)) {
-                                                             return substitute_value[i];
-                                                           }
-                                                         }
-                                                         return PrimExpr{nullptr};
-                                                       });
+                                                       substitute_function);
   // Step 3. Generate a loop to replace the original  loops
   PrimExpr fused_min = 0;
   PrimExpr fused_extent = 1;

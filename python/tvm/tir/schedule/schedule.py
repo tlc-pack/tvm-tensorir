@@ -259,7 +259,7 @@ class Schedule(Object):
     ########## Schedule: loops manipulation ##########
     def fuse(self, *loops: List[LoopRV]) -> LoopRV:
         """Fuse a list of consecutive loops into one. It requires:
-        1) The loops can't have annotations.
+        1) The loops can't have annotations or thread bindings.
         2) The (i+1)-th loop must be the only child of the i-th loop.
         3) All loops must start with 0.
 
@@ -321,7 +321,7 @@ class Schedule(Object):
         factors: Optional[List[ExprRV]] = None,
     ) -> List[LoopRV]:
         """Split a loop into a list of consecutive loops. It requires:
-        1) The loop can't have annotation.
+        1) The loop can't have annotation or thread binding.
         2) The loop must start with 0.
         Predicates may be added to ensure the total loop numbers keeps unchanged.
         In `factors`, at most one of the factors can be None or -1,

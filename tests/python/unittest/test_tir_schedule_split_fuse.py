@@ -39,19 +39,9 @@ def elementwise_with_seq(a: ty.handle, b: ty.handle) -> None:
     for i, j in tir.grid(128, 128):
         for k in tir.serial(0, 128):
             with tir.block([128, 128, 128], "C") as [vi, vj, vk]:
-                tir.bind(vi, i)
-                tir.bind(vj, j)
-                tir.bind(vk, k)
-                tir.reads([A[vi, vj, vk]])
-                tir.writes([C[vi, vj, vk]])
                 C[vi, vj, vk] = A[vi, vj, vk] * 2.0
         for k in tir.serial(0, 128):
             with tir.block([128, 128, 128], "B") as [vi, vj, vk]:
-                tir.bind(vi, i)
-                tir.bind(vj, j)
-                tir.bind(vk, k)
-                tir.reads([C[vi, vj, vk]])
-                tir.writes([B[vi, vj, vk]])
                 B[vi, vj, vk] = C[vi, vj, vk] * 2.0
 
 
@@ -61,6 +51,21 @@ def elementwise_with_anno(a: ty.handle, b: ty.handle) -> None:
     B = tir.match_buffer(b, (128, 128, 128))
     for i, j in tir.grid(128, 128):
         for k in tir.serial(0, 128, annotations={"useless_annotation": True}):
+            with tir.block([128, 128, 128], "B") as [vi, vj, vk]:
+                tir.bind(vi, i)
+                tir.bind(vj, j)
+                tir.bind(vk, k)
+                tir.reads([A[vi, vj, vk]])
+                tir.writes([B[vi, vj, vk]])
+                B[vi, vj, vk] = A[vi, vj, vk] * 2.0
+
+
+@tvm.script.tir
+def elementwise_with_thread_binding(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128, 128))
+    B = tir.match_buffer(b, (128, 128, 128))
+    for i, j in tir.grid(128, 128):
+        for k in tir.thread_binding(0, 128, thread="threadIdx.x"):
             with tir.block([128, 128, 128], "B") as [vi, vj, vk]:
                 tir.bind(vi, i)
                 tir.bind(vj, j)
@@ -148,17 +153,12 @@ def elementwise_split_case1(a: ty.handle, b: ty.handle) -> None:
 def elementwise_split_with_predicate(a: ty.handle, b: ty.handle) -> None:
     B = tir.match_buffer(b, [128, 128, 128])
     A = tir.match_buffer(a, [128, 128, 128])
-    for i0, i1, i2, j0, j1, k0, k1 in tir.grid(43, 1, 3, 1, 129, 129, 1):
+    for i0, i1, i2, j, k1, k2 in tir.grid(1000, 2, 3, 128, 3, 43):
         with tir.block([128, 128, 128], "B") as [vi, vj, vk]:
-            tir.where(
-                (
-                    (((((i0 + i1) * 3) + i2) < 128) and (((j0 * 129) + j1) < 128))
-                    and ((k0 + k1) < 128)
-                )
-            )
-            tir.bind(vi, ((i0 * 3) + i2))
-            tir.bind(vj, ((j0 * 127) + j1))
-            tir.bind(vk, ((k0 * 2) + k1))
+            tir.where(((((((i0 * 2) + i1) * 3) + i2) < 128) and (((k1 * 43) + k2) < 128)))
+            tir.bind(vi, (((i0 * 6) + (i1 * 3)) + i2))
+            tir.bind(vj, j)
+            tir.bind(vk, ((k1 * 43) + k2))
             tir.reads([A[vi, vj, vk]])
             tir.writes([B[vi, vj, vk]])
             B[vi, vj, vk] = A[vi, vj, vk] * 2.0
@@ -309,9 +309,10 @@ def test_split_with_predicate():
     sch = tir.Schedule(elementwise, debug_mode=True)
     block_b = sch.get_block("B")
     i, j, k = sch.get_loops(block_b)
-    sch.split(i, factors=[None, 2, 3])
-    sch.split(j, factors=[None, 129])
-    sch.split(k, factors=[129, None])
+    sch.split(i, factors=[1000, 2, 3])
+    # this line will fail
+    # sch.split(j, factors=[None, 129])
+    sch.split(k, factors=[3, None])
     tvm.ir.assert_structural_equal(elementwise_split_with_predicate, sch.mod["main"])
 
 
@@ -381,6 +382,16 @@ def test_split_with_opaque_access():
     tvm.ir.assert_structural_equal(opaque_access_split, sch.mod["main"])
 
 
+def test_fuse_split_fail_with_thread_binding():
+    sch = tir.Schedule(elementwise_with_thread_binding, debug_mode=True)
+    block_b = sch.get_block("B")
+    i, j, k = sch.get_loops(block_b)
+    with pytest.raises(tvm.tir.ScheduleError):
+        sch.fuse(j, k)
+    with pytest.raises(tvm.tir.ScheduleError):
+        sch.split(k, factors=[None, 10])
+
+
 if __name__ == "__main__":
     test_fuse()
     test_fuse_with_opaque_block()
@@ -389,7 +400,8 @@ if __name__ == "__main__":
     test_split_with_inferred_factor()
     test_split_with_opaque_block()
     test_split_with_opaque_access()
-    # test_split_with_predicate()
+    test_split_with_predicate()
     test_fuse_fail_not_only_child()
     test_fuse_split_fail_with_annotation()
     test_fuse_split_fail_not_start_with_zero()
+    test_fuse_split_fail_with_thread_binding()

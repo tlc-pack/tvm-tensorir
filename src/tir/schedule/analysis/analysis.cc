@@ -306,16 +306,18 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
   } else if (const auto* loop = stmt.as<ForNode>()) {
     body = loop->body;
   } else {
-    return Array<Stmt>();
+    LOG(FATAL) << "The Stmt can only be a Block or a For";
   }
   if (const auto* seq = body.as<SeqStmtNode>()) {
     Array<Stmt> ret;
-    for (const Stmt& child : seq->seq)
+    for (const Stmt& child : seq->seq) {
+      ICHECK(!child->IsInstance<SeqStmtNode>()) << "Nested SeqStmt is not allowed in schedule.";
       if (child->IsInstance<BlockRealizeNode>() && !keep_realize) {
         ret.push_back(child.as<BlockRealizeNode>()->block);
       } else {
         ret.push_back(child);
       }
+    }
     return ret;
   } else {
     if (body->IsInstance<BlockRealizeNode>() && !keep_realize) {
