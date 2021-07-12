@@ -179,18 +179,18 @@ class HasAnnotationError : public ScheduleError {
 class HasThreadBindingError : public ScheduleError {
  public:
   explicit HasThreadBindingError(IRModule mod, For loop) : mod_(mod), loop_(loop) {}
-  
+
   String FastErrorString() const final {
     return "ScheduleError: The primitive can't be applied because the loop has thread binding";
   }
-  
+
   String DetailRenderTemplate() const final {
     return "The primitive can't be applied because the loop {0} has thread binding";
   }
-  
+
   IRModule mod() const final { return mod_; }
   Array<ObjectRef> LocationsOfInterest() const final { return {loop_}; }
-  
+
   IRModule mod_;
   For loop_;
 };
@@ -353,15 +353,15 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
     substitute_value += new_loop_vars[i];
   }
   Map<Block, Block> opaque_block_reuse;
-  auto substitute_function=[&](const Var& v) -> Optional<PrimExpr> {
+  auto substitute_function = [&](const Var& v) -> Optional<PrimExpr> {
     if (v.same_as(loop->loop_var)) {
       return substitute_value;
     } else {
       return NullOpt;
     }
   };
-  Stmt new_loop_body = SubstituteAndCollectOpaqueBlock(loop->body, &opaque_block_reuse,
-                                                       substitute_function);
+  Stmt new_loop_body =
+      SubstituteAndCollectOpaqueBlock(loop->body, &opaque_block_reuse, substitute_function);
   for (size_t i = 0; i < inferred_factors.size(); i++) {
     analyzer.Bind(new_loop_vars[i], Range::FromMinExtent(0, inferred_factors[i]));
   }
@@ -444,7 +444,7 @@ StmtSRef Fuse(ScheduleState self, Array<StmtSRef> loop_srefs) {
   }
   Stmt loop_body = loops.back()->body;
   Map<Block, Block> opaque_block_reuse;
-  auto substitute_function=[&](const Var& v) -> Optional<PrimExpr> {
+  auto substitute_function = [&](const Var& v) -> Optional<PrimExpr> {
     for (size_t i = 0; i < loops.size(); i++) {
       if (v.same_as(loops[i]->loop_var)) {
         return substitute_value[i];
@@ -452,8 +452,8 @@ StmtSRef Fuse(ScheduleState self, Array<StmtSRef> loop_srefs) {
     }
     return NullOpt;
   };
-  Stmt new_loop_body = SubstituteAndCollectOpaqueBlock(loop_body, &opaque_block_reuse,
-                                                       substitute_function);
+  Stmt new_loop_body =
+      SubstituteAndCollectOpaqueBlock(loop_body, &opaque_block_reuse, substitute_function);
   // Step 3. Generate a loop to replace the original  loops
   PrimExpr fused_min = 0;
   PrimExpr fused_extent = 1;
