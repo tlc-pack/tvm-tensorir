@@ -1343,9 +1343,9 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
     mod = optimize(std::move(mod));
 
     // <bojian/DietCode>
-    if (enable_verbose_logging) {
-      LOG(INFO) << "Post-Optimization Module=" << mod;
-    }
+    // if (enable_verbose_logging) {
+    //   LOG(INFO) << "Post-Optimization Module=" << mod;
+    // }
 
     const auto& it = mod->functions.find(global_var);
     ICHECK(it != mod->functions.end());

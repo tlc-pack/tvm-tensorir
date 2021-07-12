@@ -1334,8 +1334,8 @@ class SyntheticExprReplacer : public StmtExprMutator {
       strout << kv.first;
       std::string k_str = strout.str();
       if (expr_str == k_str) {
-        LOG(WARNING) << "Despite not sharing the same address, expr=" << expr
-                     << " and key=" << k_str << " are still deemed equal";
+        // LOG(WARNING) << "Despite not sharing the same address, expr=" << expr
+        //              << " and key=" << k_str << " are still deemed equal";
         return kv.second;
       }
     }
@@ -1387,9 +1387,9 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
       int64_t extent = 1;
       for (const Optional<Integer>& split_length : split_step->lengths) {
         extent *= split_length.value()->value;
-        if (enable_verbose_logging) {
-          LOG(INFO) << "extent -> " << extent;
-        }
+        // if (enable_verbose_logging) {
+        //   LOG(INFO) << "extent -> " << extent;
+        // }
       }
       if (is_spatial_axis) {
         if (is_first_spatial_axis) {
@@ -1567,9 +1567,9 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
                         state_mutable_copy->transform_steps);
   }
   // LOG(INFO) << "Finished applying the transformation steps";
-  if (enable_verbose_logging) {
-    LOG(INFO) << lower(synthetic_sch, synthetic_tensors, "main", {});
-  }
+  // if (enable_verbose_logging) {
+  //   LOG(INFO) << lower(synthetic_sch, synthetic_tensors, "main", {});
+  // }
   // LOG(FATAL) << "Finished generating synthetic schedule";
   return std::make_pair(synthetic_sch, synthetic_tensors);
 }

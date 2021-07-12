@@ -627,8 +627,8 @@ def _timed_func(inp_serialized, build_func, verbose):
             sch, args = task.compute_dag.generate_synthetic_workload(
                     inp.state, task.hardware_params)
 
-            print("Generated synthetic workload={}"
-                  .format(tvm.lower(sch, args, simple_mode=True)))
+            # print("Generated synthetic workload={}"
+            #       .format(tvm.lower(sch, args, simple_mode=True)))
 
         else:
             sch, args = task.compute_dag.apply_steps_from_state(

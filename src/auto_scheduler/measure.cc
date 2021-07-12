@@ -305,8 +305,8 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
                 flop_ct
                 / FloatArrayMean(result_batch[j]->costs);
 
-        LOG(INFO) << "Successfully completed the measurement on state with "
-                     "factorization scheme="
+        LOG(INFO) << "Successfully completed the measurement on state w/ "
+                     "split factors="
                   << OptionalMatrixToString(split_factors)
                   << ", avg_cost=" << FloatArrayMean(result_batch[j]->costs)
                   << " flop_ct=" << flop_ct << " => flops=" << flops;
@@ -316,10 +316,10 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       } else {
 
         // <bojian/DietCode>
-        LOG(WARNING) << "Error encountered on state "
-                     << input_batch[j]->state << " with factorization scheme="
-                     << OptionalMatrixToString(split_factors) << ", "
-                     << "error_msg=" << result_batch[j]->error_msg;
+        // LOG(WARNING) << "Error encountered on state "
+        //              << input_batch[j]->state << " w/ split factors="
+        //              << OptionalMatrixToString(split_factors) << ", "
+        //              << "error_msg=" << result_batch[j]->error_msg;
 
         flops = 0.0;
         error_ct++;
