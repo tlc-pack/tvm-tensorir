@@ -27,19 +27,30 @@ class PredicateUpdater : public StmtMutator {
    * \brief Constructor
    * \param predicate The predicate to be apppend to BlockRealizeNode
    */
-  explicit PredicateUpdater(const PrimExpr& predicate) : predicate_(predicate) {}
+  explicit PredicateUpdater(const PrimExpr& predicate, arith::Analyzer* ana)
+      : predicate_(predicate) {
+    if (!ana->CanProve(predicate)) {
+      add_predicate_=true;
+    }
+  }
 
  private:
   // For each direct child of type BlockRealizeNode, append the predicate
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
     // We do not recursively do this
-    ObjectPtr<BlockRealizeNode> n = CopyOnWrite(realize);
-    n->predicate = n->predicate && predicate_;
-    return BlockRealize(n);
+    if(add_predicate_) {
+      ObjectPtr<BlockRealizeNode> n = CopyOnWrite(realize);
+      n->predicate = n->predicate && predicate_;
+      return BlockRealize(n);
+    } else {
+      return GetRef<BlockRealize>(realize);
+    }
   }
 
   /*! \brief The predicate to be added */
   const PrimExpr& predicate_;
+  /*! \brief whether to add predicate */
+  bool add_predicate_;
 };
 /*! \brief Substitute vars and collect the reuse mapping of opaque blocks */
 class IRSubstituteAndCollectOpaqueBlock : public StmtExprMutator {
@@ -367,9 +378,7 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
   }
   // Step 4. Update predicate to guard the loop
   PrimExpr predicate = substitute_value < loop->extent;
-  if (!analyzer.CanProve(predicate)) {
-    new_loop_body = PredicateUpdater(predicate)(new_loop_body);
-  }
+  new_loop_body = PredicateUpdater(predicate, &analyzer)(new_loop_body);
   // Step 5. Generate tnested loops to replace the original loop and simplify the binding
   Stmt outer_stmt = new_loop_body;
   for (int i = inferred_factors.size() - 1; i >= 0; i--) {

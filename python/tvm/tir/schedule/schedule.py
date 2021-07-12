@@ -379,6 +379,9 @@ class Schedule(Object):
                         B[vi, vj] = A[vi, vj] * 2.0
 
         """
+        for i in range(len(factors)):
+            if factors[i] is None:
+                factors[i] = -1
         return _ffi_api_schedule.ScheduleSplit(self, loop, factors)  # type: ignore # pylint: disable=no-member
 
     ########## Schedule: compute location ##########

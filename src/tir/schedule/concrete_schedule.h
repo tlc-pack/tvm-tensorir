@@ -68,8 +68,8 @@ class ConcreteScheduleNode : public ScheduleNode {
   inline PrimExpr Get(const ExprRV& expr_rv) const final;
   inline StmtSRef GetSRef(const BlockRV& block_rv) const final;
   inline StmtSRef GetSRef(const LoopRV& loop_rv) const final;
-  template <class T>
-  inline Array<StmtSRef> GetSRefs(const Array<T>& rvs) const;
+  inline Array<StmtSRef> GetSRefs(const Array<BlockRV>& rvs) const final;
+  inline Array<StmtSRef> GetSRefs(const Array<LoopRV>& rvs) const final;
   void RemoveRV(const BlockRV& block_rv) final { RemoveFromSymbolTable(block_rv); }
   void RemoveRV(const LoopRV& loop_rv) final { RemoveFromSymbolTable(loop_rv); }
   void RemoveRV(const ExprRV& expr_rv) final { RemoveFromSymbolTable(expr_rv); }
@@ -81,7 +81,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   Array<LoopRV> GetLoops(const BlockRV& block_rv) override;
   /******** Schedule: loops manipulation ********/
   LoopRV Fuse(const Array<LoopRV>& loop_rvs) override;
-  Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) override;
+  Array<LoopRV> Split(const LoopRV& loop_rv, const Array<ExprRV>& factors) override;
   /******** Schedule: compute location ********/
   void ComputeInline(const BlockRV& block) override;
   void ReverseComputeInline(const BlockRV& block) override;
@@ -208,13 +208,21 @@ inline StmtSRef ConcreteScheduleNode::GetSRef(const LoopRV& loop_rv) const {
 }
 
 template <class T>
-inline Array<StmtSRef> ConcreteScheduleNode::GetSRefs(const Array<T>& rvs) const {
+inline Array<StmtSRef> GetSRefsHelper(const ConcreteScheduleNode* sch, const Array<T>& rvs)  {
   Array<StmtSRef> result;
   result.reserve(rvs.size());
   for (const T& rv : rvs) {
-    result.push_back(this->GetSRef(rv));
+    result.push_back(sch->GetSRef(rv));
   }
   return result;
+}
+
+inline Array<StmtSRef> ConcreteScheduleNode::GetSRefs(const Array<BlockRV>& rvs) const {
+  return GetSRefsHelper(this,rvs);
+}
+
+inline Array<StmtSRef> ConcreteScheduleNode::GetSRefs(const Array<LoopRV>& rvs) const {
+  return GetSRefsHelper(this,rvs);
 }
 
 /******** Adding/Removing elements in the symbol table ********/

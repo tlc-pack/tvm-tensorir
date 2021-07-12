@@ -153,15 +153,15 @@ def elementwise_split_case1(a: ty.handle, b: ty.handle) -> None:
 def elementwise_split_with_predicate(a: ty.handle, b: ty.handle) -> None:
     B = tir.match_buffer(b, [128, 128, 128])
     A = tir.match_buffer(a, [128, 128, 128])
-    for i0, i1, i2, j, k1, k2 in tir.grid(1000, 2, 3, 128, 3, 43):
+    for i0, i1, i2, j0, j1, k0, k1 in tir.grid(1000, 2, 3, 1, 129, 3, 43):
         with tir.block([128, 128, 128], "B") as [vi, vj, vk]:
-            tir.where(((((((i0 * 2) + i1) * 3) + i2) < 128) and (((k1 * 43) + k2) < 128)))
-            tir.bind(vi, (((i0 * 6) + (i1 * 3)) + i2))
-            tir.bind(vj, j)
-            tir.bind(vk, ((k1 * 43) + k2))
+            tir.where((((((((i0*2) + i1)*3) + i2) < 128) and (((j0*129) + j1) < 128)) and (((k0*43) + k1) < 128)))
+            tir.bind(vi, (((i0*6) + (i1*3)) + i2))
+            tir.bind(vj, j1)
+            tir.bind(vk, ((k0*43) + k1))
             tir.reads([A[vi, vj, vk]])
             tir.writes([B[vi, vj, vk]])
-            B[vi, vj, vk] = A[vi, vj, vk] * 2.0
+            B[vi, vj, vk] = A[vi, vj, vk]* 2.0
 
 
 @tvm.script.tir
@@ -304,14 +304,12 @@ def test_split_with_inferred_factor():
     tvm.ir.assert_structural_equal(elementwise_split_case1, sch.mod["main"])
 
 
-# this test fails because of a bug in iter_affine_map.cc
 def test_split_with_predicate():
     sch = tir.Schedule(elementwise, debug_mode=True)
     block_b = sch.get_block("B")
     i, j, k = sch.get_loops(block_b)
     sch.split(i, factors=[1000, 2, 3])
-    # this line will fail
-    # sch.split(j, factors=[None, 129])
+    sch.split(j, factors=[None, 129])
     sch.split(k, factors=[3, None])
     tvm.ir.assert_structural_equal(elementwise_split_with_predicate, sch.mod["main"])
 
