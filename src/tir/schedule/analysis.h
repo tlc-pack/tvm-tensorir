@@ -145,10 +145,9 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
 /*!
  * \brief Get the direct child Schedulable Stmt (Block and For)
  * \param stmt the parent stmt.
- * \param keep_realize if true, get block_realize for blocks
  * \return the list of child stmts
  */
-Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize = false);
+Array<Stmt> GetChildren(const Stmt& stmt);
 
 }  // namespace tir
 }  // namespace tvm

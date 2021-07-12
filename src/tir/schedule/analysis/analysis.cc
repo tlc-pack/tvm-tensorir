@@ -298,7 +298,7 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
   throw;
 }
 
-Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
+Array<Stmt> GetChildren(const Stmt& stmt) {
   /*! \note Nested SeqStmt is not allowed in schedule. */
   Stmt body;
   if (const auto* block = stmt.as<BlockNode>()) {
@@ -312,7 +312,7 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
     Array<Stmt> ret;
     for (const Stmt& child : seq->seq) {
       ICHECK(!child->IsInstance<SeqStmtNode>()) << "Nested SeqStmt is not allowed in schedule.";
-      if (child->IsInstance<BlockRealizeNode>() && !keep_realize) {
+      if (child->IsInstance<BlockRealizeNode>()) {
         ret.push_back(child.as<BlockRealizeNode>()->block);
       } else {
         ret.push_back(child);
@@ -320,7 +320,7 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
     }
     return ret;
   } else {
-    if (body->IsInstance<BlockRealizeNode>() && !keep_realize) {
+    if (body->IsInstance<BlockRealizeNode>()) {
       return Array<Stmt>{body.as<BlockRealizeNode>()->block};
     } else {
       return Array<Stmt>{body};

@@ -48,6 +48,7 @@ class IRSubstituteAndCollectOpaqueBlock : public StmtExprMutator {
                                              Map<Block, Block>* opaque_blocks)
       : vmap_(vmap), opaque_blocks_(opaque_blocks) {}
 
+ private:
   PrimExpr VisitExpr_(const VarNode* op) final {
     Var var = GetRef<Var>(op);
     Optional<PrimExpr> ret = vmap_(var);
@@ -66,8 +67,7 @@ class IRSubstituteAndCollectOpaqueBlock : public StmtExprMutator {
     }
     return res;
   }
-
- private:
+  
   /*! \brief The substitute function */
   std::function<Optional<PrimExpr>(const Var&)> vmap_;
   /*! \brief The reuse mapping */
@@ -454,7 +454,7 @@ StmtSRef Fuse(ScheduleState self, Array<StmtSRef> loop_srefs) {
   };
   Stmt new_loop_body =
       SubstituteAndCollectOpaqueBlock(loop_body, &opaque_block_reuse, substitute_function);
-  // Step 3. Generate a loop to replace the original  loops
+  // Step 3. Generate a loop to replace the original loops
   PrimExpr fused_min = 0;
   PrimExpr fused_extent = 1;
   for (size_t i = 0; i < loops.size(); i++) {
