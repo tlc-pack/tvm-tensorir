@@ -1744,6 +1744,24 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
   size_t grid_size = 1;
   *padding_penalty = 1.;
 
+
+  Map<PrimExpr, Integer> axes_to_split_lengths;
+
+  for (const Step& step : state->transform_steps) {
+    if (const SplitStepNode* const split_step = step.as<SplitStepNode>()) {
+      int64_t extent = 1;
+      for (const Optional<Integer>& split_length : split_step->lengths) {
+        extent *= split_length.value()->value;
+        // if (enable_verbose_logging) {
+        //   LOG(INFO) << "extent -> " << extent;
+        // }
+      }
+      axes_to_split_lengths.Set(split_step->extent.value(), Integer(extent));
+    }  // if (split_step = step.as<SplitStepNode>())
+  }    // for (step ∈ state->transform_steps)
+
+  SyntheticExprReplacer split_length_replacer(axes_to_split_lengths);
+
   for (int stage_id = state->stages.size() - 1; stage_id >= 0; --stage_id) {
     const Stage& stage = state->stages[stage_id];
 
@@ -1751,30 +1769,34 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
       for (const Iterator& iter : stage->iters) {
         if (StrEndsWith(iter->name, ".0")) {
           // gather all the iterators that start with the same prefix
-          std::vector<Iterator> iters_w_same_prefix =
-              GatherAllItersWithSamePrefix(stage->iters, iter);
-          size_t extent = 1;
-          for (const Iterator& iter : iters_w_same_prefix) {
-            extent *= GetIntImm(iter->range->extent);
-          }
-          if (enable_verbose_logging) {
-            LOG(INFO) << "extent=" << extent;
-          }
+          // std::vector<Iterator> iters_w_same_prefix =
+          //     GatherAllItersWithSamePrefix(stage->iters, iter);
+          // int64_t extent = 1;
+          // for (const Iterator& iter : iters_w_same_prefix) {
+          //   extent *= GetIntImm(iter->range->extent);
+          // }
+          // if (enable_verbose_logging) {
+          //   LOG(INFO) << "extent=" << extent;
+          // }
           Iterator init_iter =
-            FindIterInInitState(task->compute_dag->init_state, iter);
+              FindIterInInitState(task->compute_dag->init_state, iter);
+          int64_t split_length =
+              GetIntImm(split_length_replacer(init_iter->range->extent));
 
           if (iter->iter_kind == IteratorKind::kSpatial) {
             // 1. Compute the extent of the initial iterator.
-            size_t init_iter_extent =
-                static_cast<size_t>(GetIntImm(
-                  analyzer.Simplify(replacer(init_iter->range->extent))));
+            int64_t init_iter_extent =
+                GetIntImm(
+                  analyzer.Simplify(replacer(init_iter->range->extent))
+                );
             if (enable_verbose_logging) {
               LOG(INFO) << "init_iter_extent=" << init_iter_extent;
             }
 
             // 2. Compute the padding ratio and accumulate in the padding penalty.
             float padding_ratio =
-                init_iter_extent * 1. / floor_by(init_iter_extent, extent);
+                init_iter_extent * 1.
+                / floor_by(init_iter_extent, split_length);
             *padding_penalty *= padding_ratio;
             if (enable_verbose_logging) {
               LOG(INFO) << "padding_penalty *= " << padding_ratio
@@ -1782,7 +1804,8 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
             }
 
             // 3. Compute the grid dimension.
-            size_t extent_ratio = floor_by(init_iter_extent, extent) / extent;
+            size_t extent_ratio =
+                floor_by(init_iter_extent, split_length) / split_length;
             CHECK(extent_ratio >= 1);
             grid_size *= extent_ratio;
             if (enable_verbose_logging) {

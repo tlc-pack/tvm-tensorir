@@ -49,6 +49,7 @@
 #include <tvm/te/operation.h>
 #include <tvm/tir/dynamic_axis_functor.h>
 #include <tvm/tir/expr_functor.h>
+#include <tvm/tir/stmt_functor.h>
 
 #include <sstream>
 
@@ -407,10 +408,56 @@ inline NDArray VecToNDArray(const std::vector<float>& vec,
 }
 
 // The following functions are defined in compute_dag.cc.
+/*
 std::vector<Iterator> GatherAllItersWithSamePrefix(
     const Array<Iterator>& all_iters, const Iterator& iter_0);
-
+ */
 Iterator FindIterInInitState(const State& init_state, const Iterator& iter_0);
+
+
+class SyntheticExprReplacer : public tir::StmtExprMutator {
+ private:
+  Map<PrimExpr, Integer> expr_subst_map_;
+
+  PrimExpr VisitExpr_(const ProducerLoadNode* op) override {
+    auto producer_subst_map_it = producer_subst_map.find(op->producer);
+    if (producer_subst_map_it != producer_subst_map.end()) {
+      // LOG(INFO) << "Replacing " << op->producer << " w/ "
+      //           << (*producer_subst_map_it).second;
+      return ProducerLoad((*producer_subst_map_it).second,
+                          op->indices);
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
+ public:
+  Map<DataProducer, te::Tensor> producer_subst_map;
+
+  SyntheticExprReplacer(const Map<PrimExpr, Integer>& expr_subst_map)
+      : expr_subst_map_(expr_subst_map) {}
+  PrimExpr VisitExpr(const PrimExpr& expr) override {
+    auto expr_subst_map_it = expr_subst_map_.find(expr);
+    if (expr_subst_map_it != expr_subst_map_.end()) {
+      return (*expr_subst_map_it).second;
+    }
+    std::ostringstream strout;
+    strout << expr;
+    std::string expr_str = strout.str();
+    for (const std::pair<PrimExpr, Integer>& kv : expr_subst_map_) {
+      strout.str("");
+      strout.clear();
+      strout << kv.first;
+      std::string k_str = strout.str();
+      if (expr_str == k_str) {
+        // LOG(WARNING) << "Despite not sharing the same address, expr=" << expr
+        //              << " and key=" << k_str << " are still deemed equal";
+        return kv.second;
+      }
+    }
+    return StmtExprMutator::VisitExpr(expr);
+  }
+};
+
 
 // Dispatcher is used to dispatch workload instances to its best matching states.
 struct Dispatcher {
@@ -617,3 +664,4 @@ double EstimateFlopForInst(const ComputeDAG& compute_dag,
 }  // namespace tvm
 
 #endif  // TVM_AUTO_SCHEDULER_UTILS_H_
+

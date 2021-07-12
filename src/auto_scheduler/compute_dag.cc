@@ -26,9 +26,6 @@
 #include <tvm/auto_scheduler/loop_state.h>
 #include <tvm/auto_scheduler/search_policy.h>
 
-// <bojian/DietCode>
-#include <tvm/auto_scheduler/search_task.h>
-
 #include <tvm/auto_scheduler/transform_step.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/support/parallel_for.h>
@@ -52,6 +49,7 @@
 #include "utils.h"
 
 // <bojian/DietCode>
+#include <tvm/auto_scheduler/search_task.h>
 #include <tvm/driver/driver_api.h>
 #include <tvm/tir/dynamic_axis_functor.h>
 
@@ -1259,7 +1257,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
                 << ", lengths=" << OptionalArrayToString(node->lengths) << ")";
     });
 
-
+/*
 inline std::string GetIterNamePrefix(const Iterator& iter) {
   std::string iter_name = iter->name;
   size_t pos = iter_name.rfind(".");
@@ -1284,7 +1282,7 @@ std::vector<Iterator> GatherAllItersWithSamePrefix(
   }
   return ret_iters;
 }
-
+ */
 
 Iterator FindIterInInitState(const State& init_state, const Iterator& iter_0) {
   for (size_t stage_id = 0; stage_id < init_state->stages.size(); ++stage_id) {
@@ -1298,50 +1296,6 @@ Iterator FindIterInInitState(const State& init_state, const Iterator& iter_0) {
   }
   return iter_0;
 }
-
-
-class SyntheticExprReplacer : public StmtExprMutator {
- private:
-  Map<PrimExpr, Integer> expr_subst_map_;
-
-  PrimExpr VisitExpr_(const ProducerLoadNode* op) override {
-    auto producer_subst_map_it = producer_subst_map.find(op->producer);
-    if (producer_subst_map_it != producer_subst_map.end()) {
-      // LOG(INFO) << "Replacing " << op->producer << " w/ "
-      //           << (*producer_subst_map_it).second;
-      return ProducerLoad((*producer_subst_map_it).second,
-                          op->indices);
-    }
-    return StmtExprMutator::VisitExpr_(op);
-  }
-
- public:
-  Map<DataProducer, te::Tensor> producer_subst_map;
-
-  SyntheticExprReplacer(const Map<PrimExpr, Integer>& expr_subst_map)
-      : expr_subst_map_(expr_subst_map) {}
-  PrimExpr VisitExpr(const PrimExpr& expr) override {
-    auto expr_subst_map_it = expr_subst_map_.find(expr);
-    if (expr_subst_map_it != expr_subst_map_.end()) {
-      return (*expr_subst_map_it).second;
-    }
-    std::ostringstream strout;
-    strout << expr;
-    std::string expr_str = strout.str();
-    for (const std::pair<PrimExpr, Integer>& kv : expr_subst_map_) {
-      strout.str("");
-      strout.clear();
-      strout << kv.first;
-      std::string k_str = strout.str();
-      if (expr_str == k_str) {
-        // LOG(WARNING) << "Despite not sharing the same address, expr=" << expr
-        //              << " and key=" << k_str << " are still deemed equal";
-        return kv.second;
-      }
-    }
-    return StmtExprMutator::VisitExpr(expr);
-  }
-};
 
 // <bojian/DietCode>
 // extern bool enable_verbose_logging;
