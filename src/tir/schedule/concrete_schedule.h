@@ -208,7 +208,7 @@ inline StmtSRef ConcreteScheduleNode::GetSRef(const LoopRV& loop_rv) const {
 }
 
 template <class T>
-inline Array<StmtSRef> GetSRefsHelper(const ConcreteScheduleNode* sch, const Array<T>& rvs)  {
+inline Array<StmtSRef> GetSRefsHelper(const ConcreteScheduleNode* sch, const Array<T>& rvs) {
   Array<StmtSRef> result;
   result.reserve(rvs.size());
   for (const T& rv : rvs) {
@@ -218,11 +218,11 @@ inline Array<StmtSRef> GetSRefsHelper(const ConcreteScheduleNode* sch, const Arr
 }
 
 inline Array<StmtSRef> ConcreteScheduleNode::GetSRefs(const Array<BlockRV>& rvs) const {
-  return GetSRefsHelper(this,rvs);
+  return GetSRefsHelper(this, rvs);
 }
 
 inline Array<StmtSRef> ConcreteScheduleNode::GetSRefs(const Array<LoopRV>& rvs) const {
-  return GetSRefsHelper(this,rvs);
+  return GetSRefsHelper(this, rvs);
 }
 
 /******** Adding/Removing elements in the symbol table ********/

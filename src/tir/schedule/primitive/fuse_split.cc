@@ -30,7 +30,7 @@ class PredicateUpdater : public StmtMutator {
   explicit PredicateUpdater(const PrimExpr& predicate, arith::Analyzer* ana)
       : predicate_(predicate) {
     if (!ana->CanProve(predicate)) {
-      add_predicate_=true;
+      add_predicate_ = true;
     }
   }
 
@@ -38,7 +38,7 @@ class PredicateUpdater : public StmtMutator {
   // For each direct child of type BlockRealizeNode, append the predicate
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
     // We do not recursively do this
-    if(add_predicate_) {
+    if (add_predicate_) {
       ObjectPtr<BlockRealizeNode> n = CopyOnWrite(realize);
       n->predicate = n->predicate && predicate_;
       return BlockRealize(n);
@@ -78,7 +78,7 @@ class IRSubstituteAndCollectOpaqueBlock : public StmtExprMutator {
     }
     return res;
   }
-  
+
   /*! \brief The substitute function */
   std::function<Optional<PrimExpr>(const Var&)> vmap_;
   /*! \brief The reuse mapping */

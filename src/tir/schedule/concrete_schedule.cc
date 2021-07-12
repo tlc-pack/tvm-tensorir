@@ -270,8 +270,7 @@ LoopRV ConcreteScheduleNode::Fuse(const Array<LoopRV>& loop_rvs) {
   throw;
 }
 
-Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
-                                          const Array<ExprRV>& factor_rvs) {
+Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv, const Array<ExprRV>& factor_rvs) {
   TVM_TIR_SCHEDULE_BEGIN();
   // Prepare for the splitting
   StmtSRef loop_sref = this->GetSRef(loop_rv);
