@@ -164,7 +164,14 @@ SketchPolicy::SketchPolicy(SearchTask task, CostModel program_cost_model,
     }
 
     // Mutation Rules for Evolutionary Search
-    node->mutation_rules.push_back(std::make_shared<MutateTileSize>(0.90));
+
+    // <bojian/DietCode>
+    if (IsDynTask(node->search_task)) {
+      node->mutation_rules.push_back(
+          std::make_shared<MutateInnermostTileSize>(0.9));
+    } else {
+      node->mutation_rules.push_back(std::make_shared<MutateTileSize>(0.90));
+    }
     node->mutation_rules.push_back(std::make_shared<MutateAutoUnroll>(0.10));
   } else {
     LOG(FATAL) << "No default sketch rules for target: " << task->target;
