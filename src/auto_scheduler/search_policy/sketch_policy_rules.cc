@@ -1213,7 +1213,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     FactorizationScheme mutated_scheme =
         policy->dietcode_split_memo.MutateFactorizationScheme(
           split_steps_info, rand_gen, simplify_sketch, curr_split_factors,
-          prob_dist(*rand_gen) > 0.5
+          prob_dist(*rand_gen) > 0.8
         );
     LOG(INFO) << "Mutated factorization scheme=" << mutated_scheme.toString();
 
