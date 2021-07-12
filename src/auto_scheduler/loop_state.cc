@@ -361,6 +361,10 @@ Array<Array<Optional<Integer>>> State::GetSplitFactors() const {
 
   for (const Step& step : (*this)->transform_steps) {
     if (const SplitStepNode* const split_step = step.as<SplitStepNode>()) {
+      if (operator->()->stages[step->stage_id]->op->name.find(".shared") !=
+          std::string::npos) {
+        continue;
+      }
       split_factors.push_back(split_step->lengths);
     }
   }

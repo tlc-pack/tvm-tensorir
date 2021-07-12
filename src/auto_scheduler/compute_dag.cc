@@ -1302,7 +1302,7 @@ Iterator FindIterInInitState(const State& init_state, const Iterator& iter_0) {
 
 class SyntheticExprReplacer : public StmtExprMutator {
  private:
-  Map<PrimExpr, IntImm> expr_subst_map_;
+  Map<PrimExpr, Integer> expr_subst_map_;
 
   PrimExpr VisitExpr_(const ProducerLoadNode* op) override {
     auto producer_subst_map_it = producer_subst_map.find(op->producer);
@@ -1318,7 +1318,7 @@ class SyntheticExprReplacer : public StmtExprMutator {
  public:
   Map<DataProducer, te::Tensor> producer_subst_map;
 
-  SyntheticExprReplacer(const Map<PrimExpr, IntImm>& expr_subst_map)
+  SyntheticExprReplacer(const Map<PrimExpr, Integer>& expr_subst_map)
       : expr_subst_map_(expr_subst_map) {}
   PrimExpr VisitExpr(const PrimExpr& expr) override {
     auto expr_subst_map_it = expr_subst_map_.find(expr);
@@ -1328,7 +1328,7 @@ class SyntheticExprReplacer : public StmtExprMutator {
     std::ostringstream strout;
     strout << expr;
     std::string expr_str = strout.str();
-    for (const std::pair<PrimExpr, IntImm>& kv : expr_subst_map_) {
+    for (const std::pair<PrimExpr, Integer>& kv : expr_subst_map_) {
       strout.str("");
       strout.clear();
       strout << kv.first;
@@ -1369,23 +1369,45 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
   // LOG(INFO) << "ComputeDAG has tensors="
   //           << ArrayToString(operator->()->tensors);
   if (enable_verbose_logging) {
-    LOG(INFO) << "factorization scheme="
-              << OptionalMatrixToString(state_mutable_copy.GetSplitFactors())
-              << ", split_steps="
+    LOG(INFO) << "split_steps="
               << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
-              // << ", stages=" << state_mutable_copy->stages;
   }
 
-  Map<PrimExpr, IntImm> axes_to_extent;
+  Map<PrimExpr, Integer> axes_to_extents;
   bool is_first_spatial_axis = true;
 
   for (const Step& step : state->transform_steps) {
     if (const SplitStepNode* const split_step = step.as<SplitStepNode>()) {
-      LOG(INFO) << step << " of State="
-                << state->stages[split_step->stage_id];
-    }
-  }
-  LOG(FATAL) << "Finish logging the split steps";
+      if (state_mutable_copy->stages[step->stage_id]->op->name
+            .find(".shared") != std::string::npos) {
+        continue;
+      }
+      bool is_spatial_axis = (split_step->lengths.size() == 4);
+
+      int64_t extent = 1;
+      for (const Optional<Integer>& split_length : split_step->lengths) {
+        extent *= split_length.value()->value;
+        if (enable_verbose_logging) {
+          LOG(INFO) << "extent -> " << extent;
+        }
+      }
+      if (is_spatial_axis) {
+        if (is_first_spatial_axis) {
+          is_first_spatial_axis = false;
+          axes_to_extents.Set(split_step->extent.value(),
+                              Integer(2 * extent * hardware_params->num_cores));
+        } else {
+          axes_to_extents.Set(split_step->extent.value(), Integer(extent));
+        }
+      } else {
+        arith::Analyzer analyzer;
+        arith::IntSet s = analyzer.int_set(split_step->extent.value(), {});
+        int64_t synthetic_extent = GetIntImm(s.max()) / extent * extent;
+        axes_to_extents.Set(split_step->extent.value(),
+                            Integer(synthetic_extent));
+      }
+    }  // if (split_step = step.as<SplitStepNode>())
+  }    // for (step ∈ state->transform_steps)
 
   /*
   for (int stage_id = state_mutable_copy->stages.size() - 1; stage_id >= 0;
@@ -1403,7 +1425,7 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
           // gather all the iterators that start with the same prefix
           std::vector<Iterator> iters_w_same_prefix =
               GatherAllItersWithSamePrefix(stage->iters, iter);
-          size_t extent = 1;
+          int64_t extent = 1;
           for (const Iterator& iter : iters_w_same_prefix) {
             extent *= GetIntImm(iter->range->extent);
           }
@@ -1416,13 +1438,12 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
           if (iter->iter_kind == IteratorKind::kSpatial) {
             if (is_first_spatial_axis) {
               is_first_spatial_axis = false;
-              axes_to_extent.Set(init_iter->range->extent,
-                                 IntImm(DataType::Int(32),
-                                        2 * extent * hardware_params->num_cores)
-                                 );
+              axes_to_extents.Set(init_iter->range->extent,
+                                  Integer(
+                                    2 * extent * hardware_params->num_cores
+                                  ));
             } else {
-              axes_to_extent.Set(init_iter->range->extent,
-                                 IntImm(DataType::Int(32), extent));
+              axes_to_extents.Set(init_iter->range->extent, Integer(extent));
             }
 
             if (enable_verbose_logging) {
@@ -1432,15 +1453,14 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
           } else if (iter->iter_kind == IteratorKind::kReduction) {
             arith::Analyzer analyzer;
             arith::IntSet s = analyzer.int_set(init_iter->range->extent, {});
-            size_t synthetic_extent =
-                static_cast<size_t>(GetIntImm(s.max())) / extent * extent;
+            int64_t synthetic_extent = GetIntImm(s.max()) / extent * extent;
             CHECK(synthetic_extent >= extent);
             if (enable_verbose_logging) {
               LOG(INFO) << "Synthetic extent=" << synthetic_extent << " for "
                            "reduction axis " << init_iter->range->extent;
             }
-            axes_to_extent.Set(init_iter->range->extent,
-                               IntImm(DataType::Int(32), synthetic_extent));
+            axes_to_extents.Set(init_iter->range->extent,
+                                Integer(synthetic_extent));
           } else {
             LOG(FATAL) << "Not implemeted yet";
           }  // if (iter->iter_kind == IteratorKind::kSpatial)
@@ -1450,22 +1470,23 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
   }          // for (stage ∈ state_mutable_copy->stages)
    */
 
-  // for (const std::pair<PrimExpr, IntImm> axis_to_extent : axes_to_extent) {
-  //   LOG(INFO) << "axis=" << axis_to_extent.first << " : "
-  //                "extent=" << axis_to_extent.second;
-  // }
-  SyntheticExprReplacer synthetic_expr_replacer(axes_to_extent);
+  if (enable_verbose_logging) {
+    LOG(INFO) << "axes_to_extents=" << MapToString(axes_to_extents);
+  }
+
+  SyntheticExprReplacer synthetic_expr_replacer(axes_to_extents);
 
   for (const te::Tensor& t : operator->()->tensors) {
     // 1. Shape
     Array<PrimExpr> synthetic_shape;
     for (const PrimExpr& expr : t->shape) {
-      auto axes_to_extent_it = axes_to_extent.find(expr);
-      if (axes_to_extent_it != axes_to_extent.end()) {
-        synthetic_shape.push_back((*axes_to_extent_it).second);
-      } else {
-        synthetic_shape.push_back(expr);
-      }
+      // auto axes_to_extent_it = axes_to_extents.find(expr);
+      // if (axes_to_extent_it != axes_to_extents.end()) {
+      //   synthetic_shape.push_back((*axes_to_extent_it).second);
+      // } else {
+      //   synthetic_shape.push_back(expr);
+      // }
+      synthetic_shape.push_back(synthetic_expr_replacer(expr));
     }
     // LOG(INFO) << "Synthetic shape=" << ArrayToString(synthetic_shape);
     // 2. ComputeOp
