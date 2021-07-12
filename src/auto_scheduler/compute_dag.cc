@@ -1252,8 +1252,8 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<SplitStepNode>([](const ObjectRef& ref, ReprPrinter* p) {
       auto* node = static_cast<const SplitStepNode*>(ref.get());
       p->stream << "SplitStepNode(iter_id=" << node->iter_id << ", extent="
-                << (node->extent == nullptr ? node->extent
-                                            : node->extent.value())
+                << (node->extent == nullptr ?
+                    node->extent : node->extent.value())
                 << ", lengths=" << OptionalArrayToString(node->lengths) << ")";
     });
 
