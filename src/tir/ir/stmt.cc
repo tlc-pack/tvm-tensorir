@@ -634,8 +634,8 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 // BufferRegion
 BufferRegion::BufferRegion(Buffer buffer, Array<Range> region) {
   CHECK_EQ(buffer->shape.size(), region.size())
-      << "The dimension between buffer and region mismatched: " << buffer->shape.size() << " vs. "
-      << region.size() << ".";
+      << "The dimension between " << buffer << " and region " << region
+      << " mismatched, the buffer is " << buffer;
   ObjectPtr<BufferRegionNode> node = make_object<BufferRegionNode>();
   node->buffer = std::move(buffer);
   node->region = std::move(region);
@@ -694,7 +694,7 @@ MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source) {
       << source_buffer->dtype;
 
   // Check data_alignment
-  CHECK(buffer->data_alignment % source_buffer->data_alignment == 0)
+  CHECK(source_buffer->data_alignment % buffer->data_alignment == 0)
       << "Trying to match buffer to another one with lower alignment requirement "
       << " required_alignment=" << buffer->data_alignment
       << ", provided_alignment=" << source_buffer->data_alignment;

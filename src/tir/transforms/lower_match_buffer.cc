@@ -32,6 +32,14 @@
 namespace tvm {
 namespace tir {
 class MatchBufferLower : public StmtExprMutator {
+ public:
+  explicit MatchBufferLower(const PrimFunc& func) {
+    for (const Var& param : func->params) {
+      // Mark input var as const variable.
+      if (!param.dtype().is_handle()) var_map_[param] = param;
+    }
+  }
+
  private:
   Stmt VisitStmt_(const BlockNode* op) final {
     for (const MatchBufferRegion& match_buffer : op->match_buffers) {
@@ -115,7 +123,7 @@ class MatchBufferLower : public StmtExprMutator {
     } else {
       const BufferRegion& source = it->second;
       Region region = ConvertRegion(buffer_region->region, MatchBufferRegion(buffer, source));
-      return BufferRegion(buffer, std::move(region));
+      return BufferRegion(source->buffer, std::move(region));
     }
   }
 
@@ -123,7 +131,7 @@ class MatchBufferLower : public StmtExprMutator {
   void CheckAndUpdateVarMap(const MatchBufferRegion& match_buffer) {
     // Step.1. Check
     const Buffer& buffer = match_buffer->buffer;
-    const BufferRegion& source = match_buffer->source;
+    const BufferRegion& source = VisitBufferRegion(match_buffer->source);
     const Buffer& source_buffer = source->buffer;
 
     // Step.1.1. Check scope & dtype
@@ -147,9 +155,6 @@ class MatchBufferLower : public StmtExprMutator {
           << ", provided elem_offset=" << source_buffer->elem_offset;
     }
 
-    // Step.1.3. Check offset_factor
-    // TODO(Siyuan): check offset_factor
-
     // Step.2. Update
     match_buffers_[buffer] = source;
     // Step.2.1. Update buffer data
@@ -166,6 +171,9 @@ class MatchBufferLower : public StmtExprMutator {
 
       Load load = Downcast<Load>(source_buffer.vload(indices, source_buffer->dtype));
       Bind(buffer->elem_offset, load->index, buffer->name + ".elem_offset");
+      CHECK(analyzer_.CanProve(truncmod(buffer->elem_offset, buffer->offset_factor) == 0))
+          << "The source elem_offset " << buffer->elem_offset
+          << " does not satisfy the offset_factor " << buffer->offset_factor << ".";
     }
 
     // Step 2.3. Check and update strides
@@ -206,7 +214,6 @@ class MatchBufferLower : public StmtExprMutator {
     for (size_t i = 0; i < indices.size(); ++i) {
       const Range& range = source->region[i + offset];
       const PrimExpr& index = indices[i];
-      ICHECK(analyzer_.CanProve(range->extent > index));
       result.push_back(range->min + index);
     }
     return result;
@@ -235,9 +242,11 @@ class MatchBufferLower : public StmtExprMutator {
     return result;
   }
 
-  void Bind(const PrimExpr& arg, const PrimExpr& value, const std::string& arg_name = "argument") {
+  void Bind(const PrimExpr& arg, PrimExpr value, const std::string& arg_name = "argument") {
     CHECK_EQ(arg.dtype(), value.dtype())
         << "The data type mismatched: " << arg->dtype << " vs. " << value->dtype;
+    // Handle recursive case
+    value = Substitute(std::move(value), var_map_);
     if (arg->IsInstance<VarNode>()) {
       Var v = Downcast<Var>(arg);
       auto it = var_map_.find(v);
@@ -269,7 +278,7 @@ class MatchBufferLower : public StmtExprMutator {
 
 PrimFunc LowerMatchBuffer(PrimFunc func) {
   auto fptr = func.CopyOnWrite();
-  fptr->body = MatchBufferLower()(std::move(fptr->body));
+  fptr->body = MatchBufferLower(func)(std::move(fptr->body));
   return func;
 }
 
