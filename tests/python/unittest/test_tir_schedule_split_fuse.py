@@ -32,6 +32,44 @@ def elementwise(a: ty.handle, b: ty.handle) -> None:
 
 
 @tvm.script.tir
+def elementwise_symbolic(a: ty.handle, b: ty.handle, n: ty.int32) -> None:
+    A = tir.match_buffer(a, (128, 128, n))
+    B = tir.match_buffer(b, (128, 128, n))
+    for i, j, k in tir.grid(128, 128, n):
+        with tir.block([128, 128, n], "B") as [vi, vj, vk]:
+            B[vi, vj, vk] = A[vi, vj, vk] * 2.0
+
+
+@tvm.script.tir
+def elementwise_symbolic_fused(a: ty.handle, b: ty.handle, n: ty.int32) -> None:
+    A = tir.match_buffer(a, (128, 128, n))
+    B = tir.match_buffer(b, (128, 128, n))
+    for i_j_k_fused in tir.serial(0, (n * 16384)):
+        with tir.block([128, 128, n], "B") as [vi, vj, vk]:
+            tir.bind(vi, tir.floordiv(i_j_k_fused, (n * 128)))
+            tir.bind(vj, tir.floormod(tir.floordiv(i_j_k_fused, n), 128))
+            tir.bind(vk, tir.floormod(i_j_k_fused, n))
+            tir.reads([A[vi, vj, vk]])
+            tir.writes([B[vi, vj, vk]])
+            B[vi, vj, vk] = A[vi, vj, vk] * 2.0
+
+
+@tvm.script.tir
+def elementwise_symbolic_split(a: ty.handle, b: ty.handle, n: ty.int32) -> None:
+    A = tir.match_buffer(a, (128, 128, n))
+    B = tir.match_buffer(b, (128, 128, n))
+    for i, j, k0, k1 in tir.grid(128, 128, 10, tir.floordiv((n + 9), 10)):
+        with tir.block([128, 128, n], "B") as [vi, vj, vk]:
+            tir.where((((k0 * tir.floordiv((n + 9), 10)) + k1) < n))
+            tir.bind(vi, i)
+            tir.bind(vj, j)
+            tir.bind(vk, ((k0 * tir.floordiv((n + 9), 10)) + k1))
+            tir.reads([A[vi, vj, vk]])
+            tir.writes([B[vi, vj, vk]])
+            B[vi, vj, vk] = A[vi, vj, vk] * 2.0
+
+
+@tvm.script.tir
 def elementwise_with_seq(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128, 128))
     B = tir.match_buffer(b, (128, 128, 128))
@@ -155,13 +193,18 @@ def elementwise_split_with_predicate(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, [128, 128, 128])
     for i0, i1, i2, j0, j1, k0, k1 in tir.grid(1000, 2, 3, 1, 129, 3, 43):
         with tir.block([128, 128, 128], "B") as [vi, vj, vk]:
-            tir.where((((((((i0*2) + i1)*3) + i2) < 128) and (((j0*129) + j1) < 128)) and (((k0*43) + k1) < 128)))
-            tir.bind(vi, (((i0*6) + (i1*3)) + i2))
+            tir.where(
+                (
+                    ((((((i0 * 2) + i1) * 3) + i2) < 128) and (((j0 * 129) + j1) < 128))
+                    and (((k0 * 43) + k1) < 128)
+                )
+            )
+            tir.bind(vi, (((i0 * 6) + (i1 * 3)) + i2))
             tir.bind(vj, j1)
-            tir.bind(vk, ((k0*43) + k1))
+            tir.bind(vk, ((k0 * 43) + k1))
             tir.reads([A[vi, vj, vk]])
             tir.writes([B[vi, vj, vk]])
-            B[vi, vj, vk] = A[vi, vj, vk]* 2.0
+            B[vi, vj, vk] = A[vi, vj, vk] * 2.0
 
 
 @tvm.script.tir
@@ -390,15 +433,33 @@ def test_fuse_split_fail_with_thread_binding():
         sch.split(k, factors=[None, 10])
 
 
+def test_fuse_symbolic():
+    sch = tir.Schedule(elementwise_symbolic, debug_mode=True)
+    block_b = sch.get_block("B")
+    i, j, k = sch.get_loops(block_b)
+    sch.fuse(i, j, k)
+    tvm.ir.assert_structural_equal(elementwise_symbolic_fused, sch.mod["main"])
+
+
+def test_split_symbolic():
+    sch = tir.Schedule(elementwise_symbolic, debug_mode=True)
+    block_b = sch.get_block("B")
+    i, j, k = sch.get_loops(block_b)
+    sch.split(k, factors=[10, None])
+    tvm.ir.assert_structural_equal(elementwise_symbolic_split, sch.mod["main"])
+
+
 if __name__ == "__main__":
     test_fuse()
     test_fuse_with_opaque_block()
     test_fuse_with_opaque_access()
+    test_fuse_symbolic()
     test_split()
     test_split_with_inferred_factor()
     test_split_with_opaque_block()
     test_split_with_opaque_access()
     test_split_with_predicate()
+    test_split_symbolic()
     test_fuse_fail_not_only_child()
     test_fuse_split_fail_with_annotation()
     test_fuse_split_fail_not_start_with_zero()
