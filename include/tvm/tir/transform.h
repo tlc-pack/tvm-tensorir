@@ -533,6 +533,8 @@ TVM_DLL Pass FlattenBuffer();
  */
 TVM_DLL Pass UnifyThreadBinding();
 
+TVM_DLL Pass LowerLogicalLayout();
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm

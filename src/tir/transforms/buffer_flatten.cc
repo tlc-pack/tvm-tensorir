@@ -20,6 +20,7 @@
 /*!
  * \file buffer_flatten.cc
  */
+#include <tvm/arith/int_set.h>
 #include <tvm/tir/builtin.h>
 #include <tvm/tir/transform.h>
 
@@ -29,16 +30,13 @@
 namespace tvm {
 namespace tir {
 
+using namespace arith;
+
 template <class K, class V>
 using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
 template <class K>
 using SSet = std::unordered_set<K, ObjectPtrHash, ObjectPtrEqual>;
 
-using NDIntSet = std::vector<arith::IntSet>;
-
-// These functions are written in narrow_buffer_region.cc.
-arith::IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent);
-void NDIntSetUnionWith(NDIntSet* lhs, const NDIntSet& rhs);
 Array<Range> NDIntSet2Region(const NDIntSet& nd_int_set) {
   Integer one(1);
   Array<Range> result;
@@ -50,8 +48,7 @@ Array<Range> NDIntSet2Region(const NDIntSet& nd_int_set) {
   }
   return result;
 }
-NDIntSet NDIntSetFromShape(const Array<PrimExpr>& shape);
-NDIntSet NDIntSetEmpty(int ndim);
+
 bool IsThreadBound(const For& loop) {
   if (loop->kind != ForKind::kThreadBinding) {
     return false;

@@ -1,4 +1,4 @@
-# Licensed to the Apache Software Foundation (ASF) under one
+python/tvm/tir/transform/transform.py# Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
 # regarding copyright ownership.  The ASF licenses this file
@@ -801,3 +801,14 @@ def InjectSoftwarePipeline():
         The result pass
     """
     return _ffi_api.InjectSoftwarePipeline()
+
+
+def LowerLogicalLayout():
+    """Lower logical layout to physical layout
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.LowerLogicalLayout()

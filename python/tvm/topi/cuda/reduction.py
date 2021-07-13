@@ -52,6 +52,7 @@ def _schedule_reduce(op, sch, is_idx_reduce=False):
         thread_x = te.thread_axis((0, num_thread), "threadIdx.x")
 
     # Fuse and refactor the reduce axis
+
     fused_reduce = sch[data_out].fuse(
         *[sch[data_out].op.reduce_axis[i] for i in range(len(sch[data_out].op.reduce_axis))]
     )

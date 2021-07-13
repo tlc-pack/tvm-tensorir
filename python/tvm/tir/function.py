@@ -16,7 +16,9 @@
 # under the License.
 """Function data types."""
 
-from typing import Mapping, Union
+from typing import Callable, Mapping, Union
+
+import inspect
 
 import tvm._ffi
 import tvm.runtime
@@ -164,3 +166,17 @@ class TensorIntrin(Object):
     @staticmethod
     def get(name: str):
         return _ffi_api.TensorIntrinGet(name)  # pylint: disable=no-member
+
+@tvm._ffi.register_object("tir.LogicalLayout")
+class LogicalLayout(Object):
+    """A logical layout
+    """
+    def __init__(self, lowering_func: Callable, num_dims: int):
+        self.__init_handle_by_constructor__(_ffi_api.LogicalLayout, lowering_func, num_dims)
+
+    @staticmethod
+    def register(name: str, lowering_func: Callable):
+        num_dims = len(inspect.getargspec(lowering_func).args)
+        def wrapped(args):
+            return list(lowering_func(*args))
+        return _ffi_api.LogicalLayoutRegister(name, wrapped, num_dims)

@@ -36,62 +36,8 @@
 namespace tvm {
 namespace tir {
 
-using NDIntSet = std::vector<arith::IntSet>;
 
-arith::IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent) {
-  return arith::IntSet::FromRange(Range::FromMinExtent(min, extent));
-}
-
-NDIntSet NDIntSetFromRegion(const Region& region) {
-  NDIntSet result;
-  result.reserve(region.size());
-  for (const Range& range : region) {
-    result.push_back(arith::IntSet::FromRange(range));
-  }
-  return result;
-}
-
-NDIntSet NDIntSetFromShape(const Array<PrimExpr>& shape) {
-  PrimExpr zero = Integer(0);
-  NDIntSet result;
-  result.reserve(shape.size());
-  for (const PrimExpr& extent : shape) {
-    result.push_back(IntSetFromMinExtent(zero, extent));
-  }
-  return result;
-}
-
-NDIntSet NDIntSetFromPoint(const Array<PrimExpr>& indices) {
-  NDIntSet result;
-  result.reserve(indices.size());
-  for (const PrimExpr& index : indices) {
-    result.push_back(arith::IntSet::SinglePoint(index));
-  }
-  return result;
-}
-
-void NDIntSetUnionWith(NDIntSet* lhs, const NDIntSet& rhs) {
-  ICHECK_EQ(lhs->size(), rhs.size());
-  int ndim = rhs.size();
-  for (int i = 0; i < ndim; ++i) {
-    arith::IntSet& int_set = lhs->at(i);
-    int_set = arith::Union({int_set, rhs.at(i)});
-  }
-}
-
-NDIntSet NDIntSetEmpty(int ndim) {
-  return std::vector<arith::IntSet>(ndim, arith::IntSet::Nothing());
-}
-
-NDIntSet EvalNDIntSet(const NDIntSet& nd_int_set,
-                      const std::unordered_map<const VarNode*, arith::IntSet>& dom_map) {
-  NDIntSet ret;
-  ret.reserve(nd_int_set.size());
-  for (const arith::IntSet& s : nd_int_set) {
-    ret.push_back(arith::EvalSet(s, dom_map));
-  }
-  return ret;
-}
+using namespace arith;
 
 /*!
  * \brief return the region collected by NDIntSet. return the oroginal buffer shape if the

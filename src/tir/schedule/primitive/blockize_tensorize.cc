@@ -60,6 +60,7 @@ bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& oth
   const auto* rhs = other.as<BlockRealizeNode>();
   // Skip Compare binding values if the block is scope block (the outermost one).
   if (!is_scope_block) {
+    LOG(INFO) << "Compare not scope " << is_inner_block<<"\n"<<op->block<<"\n"<<other;
     size_t offset = op->iter_values.size() - rhs->iter_values.size();
     if (rhs->iter_values.size() > op->iter_values.size()) return false;
     if (is_inner_block) {
@@ -84,6 +85,7 @@ bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& oth
         std::tie(lhs_expr, lhs_iter) = detect(op->iter_values[i + offset]);
         std::tie(rhs_expr, rhs_iter) = detect(rhs->iter_values[i]);
         CHECK((lhs_iter && rhs_iter) || (!lhs_iter && !rhs_iter)) << "Incompatible binding";
+        LOG(INFO) << "lhs_expr = " << lhs_expr << " lhs_iter = " << lhs_iter << " rhs_expr = " << rhs_expr << " rhs_iter = " << rhs_iter;
         if (lhs_iter) VisitExpr(lhs_iter.value(), rhs_iter.value());
         if (is_zero(rhs_expr)) {
           CHECK(is_zero(lhs_expr)) << "Incompatible binding";
@@ -106,13 +108,14 @@ bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& oth
       for (size_t i = 0; i < rhs->iter_values.size(); ++i) {
         if (!VisitExpr(op->iter_values[i + offset], rhs->iter_values[i])) return false;
       }
+    }
       const Block& block = op->block;
       for (size_t i = 0; i < offset; ++i) {
         Var block_var = Downcast<Var>(op->iter_values[i]);
         auto it = equal_map_.find(block_var);
         equal_map_[block->iter_vars[i]->var] = (it == equal_map_.end() ? block_var : it->second);
+        LOG(INFO) << "Equal_map emplace " << block->iter_vars[i]->var << " " << equal_map_[block->iter_vars[i]->var];
       }
-    }
   }
 
   return VisitExpr(op->predicate, rhs->predicate) && VisitStmt(op->block, rhs->block);
@@ -266,7 +269,7 @@ bool TensorizeComparator::CompareBuffer(const Buffer& lhs, const Buffer& rhs) {
   if (equal) {
     rhs_buffer_map_[rhs] = lhs;
   } else if (assert_mode_) {
-    LOG(FATAL) << "Buffers are not matching between:" << lhs << " and " << rhs;
+    LOG(FATAL) << "Buffers are not matching between:" << lhs << " and " << rhs << " " << lhs->scope << " " << rhs->scope;
   }
   return equal;
 }
@@ -485,6 +488,31 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
       }
       inner_block_vars.push_back(iter_var);
       bv_iters[iter_var->var] = Range::FromMinExtent(base, division[i][1]->extent);
+    // bv_iters[iter_var->var] = Range::FromMinExtent(base, division[i][1]->extent);
+    // // if (division[i]->IsOuter()) {
+    // //   LOG(INFO) << "IsOuter " << iter_var;
+    // //   // extract this iter var to outer block directly
+    // //   outer_bindings.push_back(converter.Convert(division[i]->outer));
+    // //   outer_block_vars.push_back(iter_var);
+    // //   bv_iters[iter_var->var] = Range::FromMinExtent(iter_var->var, 1);
+    // // } else {
+    // const IterVar outer_var(Range::FromMinExtent(0, division[i]->outer_extent),
+    //                         iter_var->var.copy_with_suffix("o"), iter_var->iter_type);
+    // outer_bindings.push_back(converter.Convert(division[i]->outer));
+    // outer_block_vars.push_back(outer_var);
+    // // generate a new iter var for outer block
+    // PrimExpr base = division[i]->IsInner() ? 0 : outer_var * division[i]->inner_extent;
+    // LOG(INFO) << "Base " << base;
+    // if (const auto* op = division[i]->inner.as<arith::IterSumExprNode>()) {
+    //     LOG(INFO) << "Iter sum " << op->base << " args " << converter.Convert(arith::IterSumExpr(op->args, 0));
+    //   base = base + op->base;
+    //   inner_bindings.push_back(base + converter.Convert(arith::IterSumExpr(op->args, 0)));
+    // } else {
+    //     LOG(INFO) << "not Iter sum " <<  converter.Convert(division[i]->inner);
+    //   inner_bindings.push_back(base + converter.Convert(division[i]->inner));
+    // }
+    // inner_block_vars.push_back(iter_var);
+    // bv_iters[iter_var->var] = Range::FromMinExtent(base, division[i]->inner_extent);
     }
     block_var_no[iter_var->var] = i;
   }
@@ -707,6 +735,7 @@ class BufferReplacer : public StmtExprMutator {
     std::vector<IterVar> extra_block_var;
     std::unordered_map<const VarNode*, const PrimExprNode*> block_var_map;
     for (const auto& iter_var : extra_block_vars_) {
+      LOG(INFO) << "Extra_block_var " << iter_var;
       auto n = runtime::make_object<IterVarNode>(*(iter_var.get()));
       IterVar block_var(n);
       extra_block_var.push_back(block_var);
@@ -797,6 +826,7 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   const StmtSRef& block_sref = Blockize(self, loop_sref);
   const BlockRealize& block_realize = GetBlockRealize(block_sref);
 
+  LOG(INFO) << "BlockizeResult:\n" << block_realize;
   TensorizeComparator comparator;
   bool equal = comparator.VisitStmt(block_realize, GetRef<Stmt>(desc_block_realize));
   CHECK(equal) << "The AST subtree does not match intrinsic description";
@@ -824,6 +854,7 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   // Mutate implementation function
   Stmt new_stmt = BufferReplacer(buffer_map, var_map, std::move(comparator.extra_block_vars_),
                                  comparator.buffer_indices_)(impl_block_realize->block);
+  LOG(INFO) << "BufferReplacer:\n" << new_stmt;
   const auto* block_node = new_stmt.as<BlockNode>();
   std::unordered_map<const VarNode*, PrimExpr> element_offset;
   auto get_element_offset = [&element_offset](const Array<BufferRegion>& old_regions,
@@ -839,6 +870,7 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
       if (const auto* var = new_region->buffer->elem_offset.as<VarNode>()) {
         PrimExpr call = Call(DataType::Int(32), builtin::get_elem_offset(),
                              {BufferLoad(old_region->buffer, indices)});
+        LOG(INFO) << "Get elem offset " << call;
         auto it = element_offset.find(var);
         if (it != element_offset.end()) {
           CHECK(ExprDeepEqual()(it->second, call));
@@ -854,8 +886,10 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   for (size_t i = 0; i < desc_block->iter_vars.size(); ++i) {
     auto it = comparator.equal_map_.find(desc_block->iter_vars[i]->var);
     if (it != comparator.equal_map_.end()) {
+      LOG(INFO)<< "bv_map " << impl_block->iter_vars[i]->var << " -> " << it->second;
       bv_map[impl_block->iter_vars[i]->var] = Downcast<PrimExpr>(it->second);
     } else {
+      LOG(INFO)<< "bv_map " << impl_block->iter_vars[i]->var << " -> 0";
       bv_map[impl_block->iter_vars[i]->var] = 0;
     }
   }
