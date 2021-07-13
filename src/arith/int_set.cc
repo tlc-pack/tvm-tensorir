@@ -859,6 +859,61 @@ Optional<Array<arith::IntSet>> EstimateRegionLowerBound(const Array<Range>& regi
   return result;
 }
 
+IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent) {
+  return IntSet::FromRange(Range::FromMinExtent(min, extent));
+}
+
+NDIntSet NDIntSetFromRegion(const Region& region) {
+  NDIntSet result;
+  result.reserve(region.size());
+  for (const Range& range : region) {
+    result.push_back(IntSet::FromRange(range));
+  }
+  return result;
+}
+
+NDIntSet NDIntSetFromShape(const Array<PrimExpr>& shape) {
+  PrimExpr zero = Integer(0);
+  NDIntSet result;
+  result.reserve(shape.size());
+  for (const PrimExpr& extent : shape) {
+    result.push_back(IntSetFromMinExtent(zero, extent));
+  }
+  return result;
+}
+
+NDIntSet NDIntSetFromPoint(const Array<PrimExpr>& indices) {
+  NDIntSet result;
+  result.reserve(indices.size());
+  for (const PrimExpr& index : indices) {
+    result.push_back(IntSet::SinglePoint(index));
+  }
+  return result;
+}
+
+void NDIntSetUnionWith(NDIntSet* lhs, const NDIntSet& rhs) {
+  ICHECK_EQ(lhs->size(), rhs.size());
+  int ndim = rhs.size();
+  for (int i = 0; i < ndim; ++i) {
+    IntSet& int_set = lhs->at(i);
+    int_set = Union({int_set, rhs.at(i)});
+  }
+}
+
+NDIntSet NDIntSetEmpty(int ndim) {
+  return std::vector<IntSet>(ndim, IntSet::Nothing());
+}
+
+NDIntSet EvalNDIntSet(const NDIntSet& nd_int_set,
+                      const std::unordered_map<const VarNode*, IntSet>& dom_map) {
+  NDIntSet ret;
+  ret.reserve(nd_int_set.size());
+  for (const IntSet& s : nd_int_set) {
+    ret.push_back(EvalSet(s, dom_map));
+  }
+  return ret;
+}
+
 TVM_REGISTER_NODE_TYPE(IntervalSetNode);
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
