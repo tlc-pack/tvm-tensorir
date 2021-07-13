@@ -182,6 +182,11 @@ class XGBModel(PythonBasedModel):
 
         # extract feature
         n_cached = len(self.inputs_feature_cache)
+
+        # <bojian/DietCode>
+        # Note that the throughputs are changed to the throughputs of the
+        # synthetic workloads and are no longer normalized.
+
         features, normalized_throughputs, task_ids = get_per_store_features_from_measure_pairs(
             self.inputs, self.results, skip_first_n_feature_extraction=n_cached
         )

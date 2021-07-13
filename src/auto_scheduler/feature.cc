@@ -1546,8 +1546,17 @@ void GetPerStoreFeaturesFromMeasurePairs(const Array<MeasureInput>& inputs,
     normalized_throughputs->push_back(cost);
   }
 
+  // <bojian/DietCode>
+  CHECK(inputs.size() == normalized_throughputs->size());
   for (size_t i = 0; i < normalized_throughputs->size(); ++i) {
-    (*normalized_throughputs)[i] = min_costs[(*task_ids)[i]] / (*normalized_throughputs)[i];
+    if (IsDynTask(inputs[i]->task)) {
+      (*normalized_throughputs)[i] =
+          GetSyntheticWorkloadFlopCtFromState(inputs[i]->task, inputs[i]->state)
+          / (*normalized_throughputs)[i];
+    } else {
+      (*normalized_throughputs)[i] =
+          min_costs[(*task_ids)[i]] / (*normalized_throughputs)[i];
+    }  // if (IsDynTask(inputs[i]->task))
   }
 
   GetPerStoreFeaturesFromStates(states, tasks, skip_first_n_feature_extraction, max_n_bufs,

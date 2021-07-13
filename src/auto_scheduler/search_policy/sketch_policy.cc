@@ -311,7 +311,7 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
 
 
       // <bojian/DietCode>
-      LOG(FATAL) << "Measurements have been completed";
+      // LOG(FATAL) << "Measurements have been completed";
 
 
       // Check if reach the early stopping condition
@@ -332,7 +332,8 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
       CHECK(inputs.size() == results.size());
       for (size_t input_id = 0; input_id < inputs.size(); ++input_id) {
         measured_states_throughputs_.push_back(
-            GetSyntheticWorkloadFlopCtFromState(search_task, inputs[input_id]->state)
+            GetSyntheticWorkloadFlopCtFromState(
+              search_task, inputs[input_id]->state)
             / FloatArrayMean(results[input_id]->costs)
             );
       }  // for (input_id ∈ inputs.size())
