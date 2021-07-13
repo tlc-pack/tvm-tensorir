@@ -318,9 +318,7 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
       }
 
       // <bojian/DietCode>
-      if (ct > 20) {
-        LOG(FATAL) << "Completed 20 trials";
-      }
+      LOG(INFO) << "Completed " << ct << " trials";
 
       // Update measured states throughputs. These states will join the EvolutionarySearch in later
       // search rounds.

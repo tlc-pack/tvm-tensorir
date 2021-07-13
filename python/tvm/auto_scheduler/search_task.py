@@ -511,7 +511,9 @@ class SearchTask(Object):
             cost_model = XGBModel()
             search_policy = SketchPolicy(self, cost_model)
 
-        _ffi_api.AutoSchedule(search_policy, tuning_options)
+        # <bojian/DietCode> Returning the generated schedule.
+        # _ffi_api.AutoSchedule(search_policy, tuning_options)
+        return _ffi_api.AutoSchedule(search_policy, tuning_options)
 
     def apply_best(self, log_file, include_compatible=False, layout_rewrite_option=None):
         """Apply the history best from a log file and return the schedule.
