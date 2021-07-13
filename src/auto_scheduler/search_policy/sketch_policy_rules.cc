@@ -564,7 +564,7 @@ PopulationGenerationRule::ResultKind InitFillTileSize::Apply(SketchPolicyNode* p
         }
         CHECK(ps->lengths.size() == 4 || ps->lengths.size() == 2);
         split_steps_info.push_back(SplitStepInfo{ps->lengths.size() == 4,
-                                                 static_cast<size_t>(GetIntImm(s.max()))
+                                                 GetIntImm(s.max())
                                                  });
       }
     }
@@ -1130,13 +1130,19 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
                                std::mt19937* rand_gen) const {
   CHECK(IsDynTask(policy->search_task));
 
+  if (policy->curr_inst_opt_prob.empty()) {
+    return ResultKind::kInvalid;
+  }
+
   std::vector<size_t> split_step_ids;
   std::vector<std::vector<int>> curr_split_factors;
 
   for (size_t i = 0; i < (*state)->transform_steps.size(); ++i) {
     if (const SplitStepNode* const split_step =
         (*state)->transform_steps[i].as<SplitStepNode>()) {
-      if (!split_step->extent.defined()) {
+      if (!split_step->extent.defined() ||
+          (*state)->stages[split_step->stage_id]->op->name.find(".shared") !=
+            std::string::npos) {
         continue;
       }
       split_step_ids.push_back(i);
@@ -1185,18 +1191,14 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
       split_steps_info.push_back(
           SplitStepInfo{
             false,
-            static_cast<size_t>(
-              GetIntImm(analyzer.Simplify(replacer(split_step->extent.value())))
-            )
+            GetIntImm(analyzer.Simplify(replacer(split_step->extent.value())))
           }
           );
     } else {
       split_steps_info.push_back(
           SplitStepInfo{
             true,
-            static_cast<size_t>(
-              GetIntImm(analyzer.Simplify(replacer(split_step->extent.value())))
-            )
+            GetIntImm(analyzer.Simplify(replacer(split_step->extent.value())))
           }
           );
     }

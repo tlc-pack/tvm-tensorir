@@ -710,7 +710,7 @@ class SplitFactorizationMemo {
 // <bojian/DietCode> shape-dependent memo -> architecture-dependent cache
 struct SplitStepInfo {
   bool    is_spatial;
-  size_t  max_extent;
+  int64_t max_extent;
 };
 
 inline bool operator==(const SplitStepInfo& LHS, const SplitStepInfo& RHS) {

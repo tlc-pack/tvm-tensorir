@@ -1552,7 +1552,7 @@ void GetPerStoreFeaturesFromMeasurePairs(const Array<MeasureInput>& inputs,
     if (IsDynTask(inputs[i]->task)) {
       (*normalized_throughputs)[i] =
           GetSyntheticWorkloadFlopCtFromState(inputs[i]->task, inputs[i]->state)
-          / (*normalized_throughputs)[i];
+          / (*normalized_throughputs)[i] / 1e12;
     } else {
       (*normalized_throughputs)[i] =
           min_costs[(*task_ids)[i]] / (*normalized_throughputs)[i];
@@ -1835,8 +1835,10 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
         grid_size < static_cast<size_t>(task->hardware_params->num_cores) ?
         1.433 : 2.14;
     *occupancy_penalty =
-        coeff * grid_size /
-        ((coeff - 1) * grid_size + floor_by(grid_size, task->hardware_params->num_cores));
+        coeff * grid_size
+        / ((coeff - 1) * grid_size +
+           floor_by(grid_size, task->hardware_params->num_cores)
+           );
     if (enable_verbose_logging) {
       LOG(INFO) << "occupancy_penalty=" << *occupancy_penalty;
     }

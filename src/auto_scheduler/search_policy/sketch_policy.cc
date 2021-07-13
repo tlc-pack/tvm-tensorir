@@ -309,17 +309,17 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
 
       ct += inputs.size();
 
-
-      // <bojian/DietCode>
-      // LOG(FATAL) << "Measurements have been completed";
-
-
       // Check if reach the early stopping condition
       if (ct - measurer->best_ct[search_task->workload_key] > early_stopping &&
           measurer->has_valid.count(search_task->workload_key)) {
         StdCout(verbose) << "Stop early since no performance improvement in the last "
                          << early_stopping << " measurements trials.\n";
         break;
+      }
+
+      // <bojian/DietCode>
+      if (ct > 20) {
+        LOG(FATAL) << "Completed 20 trials";
       }
 
       // Update measured states throughputs. These states will join the EvolutionarySearch in later
@@ -337,6 +337,9 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
             / FloatArrayMean(results[input_id]->costs)
             );
       }  // for (input_id ∈ inputs.size())
+
+
+
 
     }  // while (ct < n_trials)
     PrintTitle("Done", verbose);
@@ -611,18 +614,13 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
         cand_states =
             search_task->compute_dag.InferBoundOnSyntheticWorkload(
               cand_states, search_task->hardware_params);
+        PruneInvalidState(search_task, &cand_states);
+        program_cost_model->PredictForAllInstances(
+            search_task, cand_states, &occupancy_penalty, &padding_penalty,
+            &pop_scores);
       } else {
         cand_states = search_task->compute_dag.InferBound(cand_states);
-      }
-      
-      PruneInvalidState(search_task, &cand_states);
-
-      // <bojian/DietCode>
-      if (IsDynTask(search_task)) {
-        program_cost_model->PredictForAllInstances(search_task, cand_states,
-                                                   &occupancy_penalty,
-                                                   &padding_penalty, &pop_scores);
-      } else {
+        PruneInvalidState(search_task, &cand_states);
         program_cost_model->Predict(search_task, cand_states, &pop_scores);
       }
 
@@ -729,16 +727,23 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
   ComputePrefixSumProb(rule_weights, &rule_selection_probs);
 
   // <bojian/DietCode> Temporarily setting the number of iterations to 0.
-  LOG(WARNING) << "Setting the number of iterations during evolutionary search "
-                  "to be 1";
-  num_iters = -1;
+  // LOG(WARNING) << "Setting the number of iterations during evolutionary search "
+  //                 "to be 1";
+  // num_iters = -1;
 
   // Genetic Algorithm
   for (int k = 0; k < num_iters + 1; ++k) {
     // Maintain the heap
-    *pnow = search_task->compute_dag.InferBound(*pnow);
-    PruneInvalidState(search_task, pnow);
-    program_cost_model->Predict(search_task, *pnow, &pop_scores);
+    if (IsDynTask(search_task)) {
+      *pnow = search_task->compute_dag.InferBoundOnSyntheticWorkload(
+          *pnow, search_task->hardware_params);
+      PruneInvalidState(search_task, pnow);
+      program_cost_model->Predict(search_task, *pnow, &pop_scores);
+    } else {
+      *pnow = search_task->compute_dag.InferBound(*pnow);
+      PruneInvalidState(search_task, pnow);
+      program_cost_model->Predict(search_task, *pnow, &pop_scores);
+    }
 
     for (size_t i = 0; i < pnow->size(); ++i) {
       const State& state = (*pnow)[i];

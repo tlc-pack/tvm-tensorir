@@ -626,8 +626,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       for (size_t iter_id = 0, spatial_iter_id = 0;
            iter_id < split_steps_info.size(); ++iter_id) {
         if (split_steps_info[iter_id].is_spatial) {
-          if (static_cast<size_t>(
-                num_threads_factor_scheme[spatial_iter_id]->value) >
+          if (num_threads_factor_scheme[spatial_iter_id]->value >
               split_steps_info[iter_id].max_extent) {
             all_below_max_extents = false;
           }
@@ -738,7 +737,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       },
       [&](const size_t iter_id) -> size_t {
         size_t max_vthread_extent =
-            std::min(static_cast<size_t>(hardware_params->max_vthread_extent),
+            std::min(static_cast<int64_t>(hardware_params->max_vthread_extent),
                      split_steps_info[iter_id].max_extent /
                      split_factors[iter_id][1]); 
         max_vthread_extent =
@@ -768,7 +767,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       },
       [&](const size_t iter_id) -> size_t {
         size_t max_innermost_extent =
-            std::min(max_innermost_factor,
+            std::min(static_cast<int64_t>(max_innermost_factor),
                      split_steps_info[iter_id].max_extent /
                      split_factors[iter_id][0] / 
                      split_factors[iter_id][1]);
@@ -806,7 +805,9 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
                      split_factors[iter_id][0] /
                      split_factors[iter_id][1] /
                      split_factors[iter_id][3],
-                     hardware_params->max_local_memory_per_block / reg_usage);
+                     static_cast<int64_t>(
+                       hardware_params->max_local_memory_per_block / reg_usage
+                     ));
         return max_2nd_innermost_extent;
       },
       [&](const size_t iter_id) -> int& {
@@ -844,7 +845,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       },
       [&](const size_t iter_id) -> size_t {
         size_t max_innermost_extent =
-            std::min(max_innermost_factor,
+            std::min(static_cast<int64_t>(max_innermost_factor),
                      split_steps_info[iter_id].max_extent);
         max_innermost_extent =
             std::min(max_innermost_extent,
@@ -873,7 +874,10 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
         size_t max_2nd_innermost_extent =
             std::min(split_steps_info[iter_id].max_extent / 
                      split_factors[iter_id][1],
-                     hardware_params->max_shared_memory_per_block / sizeof(float) / shmem_usage);
+                     static_cast<int64_t>(
+                       hardware_params->max_shared_memory_per_block
+                       / sizeof(float) / shmem_usage
+                     ));
         return max_2nd_innermost_extent;
       },
       [&](const size_t iter_id) -> int& {
@@ -911,7 +915,8 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
       if (factors[3] > max_innermost_factor_) {
         return kOOB;
       }
-      size_t split_factors_prod = factors[0] * factors[1] * factors[2] * factors[3];
+      int64_t split_factors_prod =
+          factors[0] * factors[1] * factors[2] * factors[3];
       if (split_factors_prod > split_step_info.max_extent) {
         return kOOB;
       }
@@ -922,7 +927,7 @@ DietCodeSplitFactorizationMemo::IsLegit(const FactorizationScheme& scheme) {
       if (factors[1] > max_innermost_factor_) {
         return kOOB;
       }
-      size_t split_factors_prod = factors[0] * factors[1];
+      int64_t split_factors_prod = factors[0] * factors[1];
       if (split_factors_prod > split_step_info.max_extent) {
         return kOOB;
       }
