@@ -314,6 +314,7 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
   // - The execution order has not changed. (The block executes with the same args and the same
   // order with before.
   // Step 1. Check correctness
+  GetScopeRootAndCheckStagePipeline(self, loop_sref);
   const auto* loop = loop_sref->StmtAs<ForNode>();
   if (loop == nullptr) {
     throw NotLoopError(self->mod, loop_sref->stmt->GetTypeKey());
@@ -410,6 +411,7 @@ StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
   const ForNode* outer_loop = nullptr;
   arith::Analyzer analyzer;
   // Step 1. check correctness
+  GetScopeRootAndCheckStagePipeline(self, loop_srefs[0]);
   for (const StmtSRef& sref : loop_srefs) {
     const auto* loop = sref->StmtAs<ForNode>();
     if (loop == nullptr) {
