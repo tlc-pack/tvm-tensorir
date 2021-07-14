@@ -66,9 +66,7 @@ AutoSchedule(SearchPolicy search_policy, TuningOptions tuning_options) {
 
   // <bojian/DietCode>
   if (IsDynTask(search_policy->search_task)) {
-    return DynWklDispatcher(search_policy->search_task->compute_dag,
-                            search_policy->search_task->shape_vars.value(),
-                            search_policy->search_task->shape_values,
+    return DynWklDispatcher(search_policy->search_task,
                             states_and_inst_disp_map);
   } else {
     CHECK(states_and_inst_disp_map.size() == 1);
@@ -78,7 +76,7 @@ AutoSchedule(SearchPolicy search_policy, TuningOptions tuning_options) {
           search_policy->search_task->compute_dag.ApplySteps(
             state->transform_steps);
       return Array<ObjectRef>{
-               sch_and_tensors.first, sch_and_tensors.second
+               state, sch_and_tensors.first, sch_and_tensors.second
              };
     } else {
       StdCout(tuning_options->verbose)
@@ -86,6 +84,7 @@ AutoSchedule(SearchPolicy search_policy, TuningOptions tuning_options) {
           << "search space." << std::endl;
       // Return the default schedule
       return Array<ObjectRef>{
+               search_policy->search_task->compute_dag->init_state,
                te::Schedule(search_policy->search_task->compute_dag->ops),
                search_policy->search_task->compute_dag->tensors
              };
@@ -114,13 +113,10 @@ TVM_REGISTER_GLOBAL("auto_scheduler.AutoSchedule")
 
 
 DynWklDispatcher::DynWklDispatcher(
-    const ComputeDAG& compute_dag, const Array<String>& shape_vars,
-    const Array<Array<IntImm>>& shape_values,
+    const SearchTask& search_task,
     const Array<ObjectRef>& state_and_inst_disp_map) {
   ObjectPtr<DynWklDispatcherNode> node = make_object<DynWklDispatcherNode>();
-  node->compute_dag = compute_dag;
-  node->shape_vars = shape_vars;
-  node->shape_values = shape_values;
+  node->search_task = search_task;
 
   node->states = Array<State>();
   for (size_t i = 0; i < state_and_inst_disp_map.size() - 1; ++i) {
@@ -136,11 +132,12 @@ Array<ObjectRef>
 DynWklDispatcherNode::dispatch(const IntImm& shape_value_idx) const {
   dmlc::SetEnv("DIETCODE_SCHED_OPT", 1);
   std::pair<te::Schedule, Array<te::Tensor>> sch_and_tensors =
-      compute_dag.InstantiateAndApplySteps(
-        states[inst_disp_map[shape_value_idx]], shape_vars,
-        shape_values[shape_value_idx->value]);
+      search_task->compute_dag.InstantiateAndApplySteps(
+        states[inst_disp_map[shape_value_idx]], search_task->shape_vars.value(),
+        search_task->shape_values[shape_value_idx->value]);
   dmlc::SetEnv("DIETCODE_SCHED_OPT", 0);
-  return {sch_and_tensors.first, sch_and_tensors.second};
+  return {states[inst_disp_map[shape_value_idx]],
+          sch_and_tensors.first, sch_and_tensors.second};
 }
 
 

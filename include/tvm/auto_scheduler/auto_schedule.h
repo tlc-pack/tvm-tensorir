@@ -109,16 +109,12 @@ TVM_DLL ObjectRef AutoSchedule(SearchPolicy search_policy,
 // <bojian/DietCode>
 class DynWklDispatcherNode : public Object {
  public:
-  ComputeDAG compute_dag;
-  Array<String> shape_vars;
-  Array<Array<IntImm>> shape_values;
+  SearchTask search_task;
   Array<State> states;
   Map<Integer, Integer> inst_disp_map;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("compute_dag", &compute_dag);
-    v->Visit("shape_vars", &shape_vars);
-    v->Visit("shape_values", &shape_values);
+    v->Visit("search_task", &search_task);
     v->Visit("states", &states);
     v->Visit("inst_disp_map", &inst_disp_map);
   }
@@ -132,8 +128,7 @@ class DynWklDispatcherNode : public Object {
 class DynWklDispatcher : public ObjectRef {
  public:
   DynWklDispatcher(
-      const ComputeDAG& compute_dag, const Array<String>& shape_vars,
-      const Array<Array<IntImm>>& shape_values,
+      const SearchTask& search_task,
       const Array<ObjectRef>& states_and_inst_disp_map);
   TVM_DEFINE_OBJECT_REF_METHODS(DynWklDispatcher, ObjectRef,
                                 DynWklDispatcherNode);
