@@ -134,17 +134,19 @@ DynWklDispatcher::DynWklDispatcher(
 
 Array<ObjectRef>
 DynWklDispatcherNode::dispatch(const IntImm& shape_value_idx) const {
+  dmlc::SetEnv("DIETCODE_SCHED_OPT", 1);
   std::pair<te::Schedule, Array<te::Tensor>> sch_and_tensors =
       compute_dag.InstantiateAndApplySteps(
         states[inst_disp_map[shape_value_idx]], shape_vars,
         shape_values[shape_value_idx->value]);
+  dmlc::SetEnv("DIETCODE_SCHED_OPT", 0);
   return {sch_and_tensors.first, sch_and_tensors.second};
 }
 
 
 TVM_REGISTER_GLOBAL("auto_scheduler.Dispatch")
     .set_body_typed([](const DynWklDispatcher& dispatcher,
-                       const Integer& shape_value_idx) {
+                       const IntImm& shape_value_idx) {
       return dispatcher->dispatch(shape_value_idx);
     });
 

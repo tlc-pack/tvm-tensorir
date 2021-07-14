@@ -676,3 +676,15 @@ def auto_schedule(task, search_policy=None, tuning_options=TuningOptions()):
         'The API "auto_scheduler.create_task" is deprecated.'
         "See https://github.com/apache/tvm/pull/7028 for the upgrade guide."
     )
+
+
+
+# <bojian/DietCode>
+@tvm._ffi.register_object("auto_scheduler.DynWklDispatcher")
+class DynWklDispatcher(Object):
+
+    def __init__(self):
+        self.__init_handle_by_constructor__(_ffi_api.DynWklDispatcher)
+
+    def dispatch(self, shape_value_idx):
+        return _ffi_api.Dispatch(self, shape_value_idx)

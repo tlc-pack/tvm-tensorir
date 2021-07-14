@@ -50,7 +50,9 @@ from .relay_integration import (
     rewrite_compute_body,
     is_auto_scheduler_enabled,
 )
-from .search_task import SearchTask, TuningOptions, HardwareParams, create_task, auto_schedule
+from .search_task import SearchTask, TuningOptions, HardwareParams, create_task, auto_schedule, \
+                         DynWklDispatcher # <bojian/DietCode>
+
 from .search_policy import (
     EmptyPolicy,
     SketchPolicy,
