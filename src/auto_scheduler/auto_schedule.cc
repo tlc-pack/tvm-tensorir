@@ -26,6 +26,7 @@
 #include <tvm/runtime/registry.h>
 
 #include "utils.h"
+#include "search_policy/utils.h"
 
 namespace tvm {
 namespace auto_scheduler {
@@ -46,29 +47,50 @@ TuningOptions::TuningOptions(int num_measure_trials, int early_stopping, int num
   data_ = std::move(node);
 }
 
-std::pair<te::Schedule, Array<te::Tensor>> AutoSchedule(SearchPolicy search_policy,
-                                                        TuningOptions tuning_options) {
+// <bojian/DietCode>
+// std::pair<te::Schedule, Array<te::Tensor>>
+ObjectRef
+AutoSchedule(SearchPolicy search_policy, TuningOptions tuning_options) {
   // Create a ProgramMeasurer to handle the schedule build and performance measure
   ProgramMeasurer measurer =
       ProgramMeasurer(tuning_options->builder, tuning_options->runner,
                       tuning_options->measure_callbacks, tuning_options->verbose);
   // Search for the best schedule
-  State state =
-      search_policy->Search(tuning_options->num_measure_trials, tuning_options->early_stopping,
-                            tuning_options->num_measures_per_round, measurer)
+  Array<ObjectRef> states_and_inst_disp_map =
+      search_policy->Search(tuning_options->num_measure_trials,
+                            tuning_options->early_stopping,
+                            tuning_options->num_measures_per_round,
+                            measurer);
                             // <bojian/DietCode>
-                            [0];
+                            // [0];
 
-  if (state.defined()) {
-    return search_policy->search_task->compute_dag.ApplySteps(state->transform_steps);
+  // <bojian/DietCode>
+  if (IsDynTask(search_policy->search_task)) {
+    return DynWklDispatcher(search_policy->search_task->compute_dag,
+                            search_policy->search_task->shape_vars.value(),
+                            search_policy->search_task->shape_values,
+                            states_and_inst_disp_map);
   } else {
-    StdCout(tuning_options->verbose)
-        << "No valid state found in this search round. Check if it has traversed all of the "
-        << "search space." << std::endl;
-    // Return the default schedule
-    return {te::Schedule(search_policy->search_task->compute_dag->ops),
-            search_policy->search_task->compute_dag->tensors};
-  }
+    CHECK(states_and_inst_disp_map.size() == 1);
+    State state = Downcast<State>(states_and_inst_disp_map[0]);
+    if (state.defined()) {
+      std::pair<te::Schedule, Array<te::Tensor>> sch_and_tensors =
+          search_policy->search_task->compute_dag.ApplySteps(
+            state->transform_steps);
+      return Array<ObjectRef>{
+               sch_and_tensors.first, sch_and_tensors.second
+             };
+    } else {
+      StdCout(tuning_options->verbose)
+          << "No valid state found in this search round. Check if it has traversed all of the "
+          << "search space." << std::endl;
+      // Return the default schedule
+      return Array<ObjectRef>{
+               te::Schedule(search_policy->search_task->compute_dag->ops),
+               search_policy->search_task->compute_dag->tensors
+             };
+    }
+  }  // if (IsDynTask(search_policy->search_task))
 }
 
 TVM_REGISTER_GLOBAL("auto_scheduler.TuningOptions")
@@ -81,10 +103,51 @@ TVM_REGISTER_GLOBAL("auto_scheduler.TuningOptions")
 
 TVM_REGISTER_GLOBAL("auto_scheduler.AutoSchedule")
     .set_body_typed([](SearchPolicy search_policy, TuningOptions tuning_options) {
-      te::Schedule sch;
-      Array<te::Tensor> return_tensors;
-      std::tie(sch, return_tensors) = AutoSchedule(search_policy, tuning_options);
-      return Array<ObjectRef>{sch, return_tensors};
+      // <bojian/DietCode> Changed the AutoSchedule interface.
+      // te::Schedule sch;
+      // Array<te::Tensor> return_tensors;
+      // std::tie(sch, return_tensors) = AutoSchedule(search_policy, tuning_options);
+      // return Array<ObjectRef>{sch, return_tensors};
+      return AutoSchedule(search_policy, tuning_options);
     });
+
+
+
+DynWklDispatcher::DynWklDispatcher(
+    const ComputeDAG& compute_dag, const Array<String>& shape_vars,
+    const Array<Array<IntImm>>& shape_values,
+    const Array<ObjectRef>& state_and_inst_disp_map) {
+  ObjectPtr<DynWklDispatcherNode> node = make_object<DynWklDispatcherNode>();
+  node->compute_dag = compute_dag;
+  node->shape_vars = shape_vars;
+  node->shape_values = shape_values;
+
+  node->states = Array<State>();
+  for (size_t i = 0; i < state_and_inst_disp_map.size() - 1; ++i) {
+    node->states.push_back(Downcast<State>(state_and_inst_disp_map[i]));
+  }
+  node->inst_disp_map =
+      Downcast<Map<Integer, Integer>>(
+        state_and_inst_disp_map[state_and_inst_disp_map.size() - 1]);
+  data_ = std::move(node);
+}
+
+Array<ObjectRef>
+DynWklDispatcherNode::dispatch(const IntImm& shape_value_idx) const {
+  std::pair<te::Schedule, Array<te::Tensor>> sch_and_tensors =
+      compute_dag.InstantiateAndApplySteps(
+        states[inst_disp_map[shape_value_idx]], shape_vars,
+        shape_values[shape_value_idx->value]);
+  return {sch_and_tensors.first, sch_and_tensors.second};
+}
+
+
+TVM_REGISTER_GLOBAL("auto_scheduler.Dispatch")
+    .set_body_typed([](const DynWklDispatcher& dispatcher,
+                       const Integer& shape_value_idx) {
+      return dispatcher->dispatch(shape_value_idx);
+    });
+
+
 }  // namespace auto_scheduler
 }  // namespace tvm

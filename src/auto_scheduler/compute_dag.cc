@@ -1299,24 +1299,33 @@ Iterator FindIterInInitState(const State& init_state, const Iterator& iter_0) {
 
 // <bojian/DietCode>
 // extern bool enable_verbose_logging;
+std::pair<te::Schedule, Array<te::Tensor>>
+ComputeDAG::InstantiateAndApplySteps(
+    const State& state, const Array<String>& shape_vars,
+    const Array<IntImm>& shape_value) const {
+  State state_mutable_copy = state;
+
+  state_mutable_copy = InferBound(state_mutable_copy);
+  LOG(INFO) << "split_steps="
+            << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
+
+  Map<ObjectRef, IntImm> axes_to_extents;
+  for (size_t i = 0; i < shape_vars.size(); ++i) {
+    axes_to_extents.Set(shape_vars[i], shape_value[i]);
+  }
+  SyntheticExprReplacer synthetic_expr_replacer(axes_to_extents);
+
+  return InstantiateAndApplySteps(state_mutable_copy, synthetic_expr_replacer,
+                                  nullptr, nullptr);
+}
+
+
 
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     const State& state, const HardwareParams& hardware_params,
-    // const Array<Step>& transform_steps,
     Array<te::Stage>* stages, StageToAxesMap* stage_to_axes) const {
   State state_mutable_copy = state;
-
-  Array<te::Tensor> synthetic_tensors;
-
-  Array<te::Stage> tmp_stages;
-  StageToAxesMap   tmp_stage_to_axes;
-  if (stages == nullptr) {
-    stages = &tmp_stages;
-  }
-  if (stage_to_axes == nullptr) {
-    stage_to_axes = &tmp_stage_to_axes;
-  }
 
   state_mutable_copy = InferBound(state_mutable_copy);
   // check all the tensors
@@ -1327,7 +1336,7 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
               << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
   }
 
-  Map<PrimExpr, Integer> axes_to_extents;
+  Map<ObjectRef, IntImm> axes_to_extents;
   bool is_first_spatial_axis = true;
 
   for (const Step& step : state->transform_steps) {
@@ -1430,6 +1439,28 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
 
   SyntheticExprReplacer synthetic_expr_replacer(axes_to_extents);
 
+  return InstantiateAndApplySteps(state_mutable_copy, synthetic_expr_replacer,
+                                  stages, stage_to_axes);
+}
+
+
+std::pair<te::Schedule, Array<te::Tensor>>
+ComputeDAG::InstantiateAndApplySteps(
+    const State& state, SyntheticExprReplacer& replacer,
+    Array<te::Stage>* stages = nullptr,
+    StageToAxesMap* stage_to_axes = nullptr) const {
+  Array<te::Tensor> synthetic_tensors;
+
+  Array<te::Stage> tmp_stages;
+  StageToAxesMap   tmp_stage_to_axes;
+  if (stages == nullptr) {
+    stages = &tmp_stages;
+  }
+  if (stage_to_axes == nullptr) {
+    stage_to_axes = &tmp_stage_to_axes;
+  }
+
+
   for (const te::Tensor& t : operator->()->tensors) {
     // 1. Shape
     Array<PrimExpr> synthetic_shape;
@@ -1440,7 +1471,7 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
       // } else {
       //   synthetic_shape.push_back(expr);
       // }
-      synthetic_shape.push_back(synthetic_expr_replacer(expr));
+      synthetic_shape.push_back(replacer(expr));
     }
     // LOG(INFO) << "Synthetic shape=" << ArrayToString(synthetic_shape);
     // 2. ComputeOp
@@ -1455,15 +1486,15 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
       Map<String, ObjectRef> synthetic_attrs;
       for (const IterVar& iv : compute_op_node->axis) {
         synthetic_axis.push_back(
-            tir::IterVar(Range::FromMinExtent(synthetic_expr_replacer(iv->dom->min),
-                                              synthetic_expr_replacer(iv->dom->extent)),
+            tir::IterVar(Range::FromMinExtent(replacer(iv->dom->min),
+                                              replacer(iv->dom->extent)),
                          iv->var,
                          iv->iter_type,
                          iv->thread_tag
                          ));
       }
       for (const PrimExpr& expr : compute_op_node->body) {
-        synthetic_body.push_back(synthetic_expr_replacer(expr));
+        synthetic_body.push_back(replacer(expr));
       }
       // LOG(INFO) << "Synthetic axis=" << ArrayToString(synthetic_axis);
       // LOG(INFO) << "Synthetic body=" << ArrayToString(synthetic_body);
@@ -1482,7 +1513,7 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
     // LOG(INFO) << "Synthetic op=" << synthetic_op;
     synthetic_tensors.push_back(te::Tensor(synthetic_shape, t->dtype,
                                            synthetic_op, t->value_index));
-    synthetic_expr_replacer.producer_subst_map.Set(t, synthetic_tensors.back());
+    replacer.producer_subst_map.Set(t, synthetic_tensors.back());
   }
 
   AccessAnalyzer synthetic_access_analyzer = AccessAnalyzer(synthetic_tensors);
@@ -1515,10 +1546,10 @@ ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
   // LOG(INFO) << "transform_steps.size()="
   //           << state_mutable_copy->transform_steps.size();
 
-  for (const Step& step : state_mutable_copy->transform_steps) {
+  for (const Step& step : state->transform_steps) {
     // LOG(INFO) << "Applying step=" << step;
     StepApplyToSchedule(step, stages, stage_to_axes, &synthetic_sch,
-                        state_mutable_copy->transform_steps);
+                        state->transform_steps);
   }
   // LOG(INFO) << "Finished applying the transformation steps";
   // if (enable_verbose_logging) {

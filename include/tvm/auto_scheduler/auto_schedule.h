@@ -96,8 +96,50 @@ class TuningOptions : public ObjectRef {
  * \return A `te::schedule` and an Array of `te::Tensor` to be used in `tvm.lower` or
  * `tvm.build`.
  */
-TVM_DLL std::pair<te::Schedule, Array<te::Tensor>> AutoSchedule(SearchPolicy search_policy,
-                                                                TuningOptions tuning_options);
+
+// <bojian/DietCode> In the case of static workload, the auto-scheduler returns
+//                   the generated schedule and tensor, in the case of dynamic
+//                   workloads, a dispatcher object will be returned.
+// TVM_DLL std::pair<te::Schedule, Array<te::Tensor>> AutoSchedule(SearchPolicy search_policy,
+//                                                                 TuningOptions tuning_options);
+TVM_DLL ObjectRef AutoSchedule(SearchPolicy search_policy,
+                               TuningOptions tuning_options);
+
+
+// <bojian/DietCode>
+class DynWklDispatcherNode : public Object {
+ public:
+  ComputeDAG compute_dag;
+  Array<String> shape_vars;
+  Array<Array<IntImm>> shape_values;
+  Array<State> states;
+  Map<Integer, Integer> inst_disp_map;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("compute_dag", &compute_dag);
+    v->Visit("shape_vars", &shape_vars);
+    v->Visit("shape_values", &shape_values);
+    v->Visit("states", &states);
+    v->Visit("inst_disp_map", &inst_disp_map);
+  }
+
+  Array<ObjectRef> dispatch(const IntImm& shape_value_idx) const;
+
+  static constexpr const char* _type_key = "auto_scheduler.DynWklDispatcherNode";
+  TVM_DECLARE_FINAL_OBJECT_INFO(DynWklDispatcherNode, Object);
+};
+
+class DynWklDispatcher : public ObjectRef {
+ public:
+  DynWklDispatcher(
+      const ComputeDAG& compute_dag, const Array<String>& shape_vars,
+      const Array<Array<IntImm>>& shape_values,
+      const Array<ObjectRef>& states_and_inst_disp_map);
+  TVM_DEFINE_OBJECT_REF_METHODS(DynWklDispatcher, ObjectRef,
+                                DynWklDispatcherNode);
+};
+
+
 }  // namespace auto_scheduler
 }  // namespace tvm
 

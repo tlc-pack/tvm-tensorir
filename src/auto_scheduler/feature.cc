@@ -1754,7 +1754,7 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
   *padding_penalty = 1.;
 
 
-  Map<PrimExpr, Integer> axes_to_split_lengths;
+  Map<ObjectRef, IntImm> axes_to_split_lengths;
 
   for (const Step& step : state->transform_steps) {
     if (const SplitStepNode* const split_step = step.as<SplitStepNode>()) {

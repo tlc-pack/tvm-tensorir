@@ -417,7 +417,7 @@ Iterator FindIterInInitState(const State& init_state, const Iterator& iter_0);
 
 class SyntheticExprReplacer : public tir::StmtExprMutator {
  private:
-  Map<PrimExpr, Integer> expr_subst_map_;
+  Map<ObjectRef, IntImm> expr_subst_map_;
 
   PrimExpr VisitExpr_(const ProducerLoadNode* op) override {
     auto producer_subst_map_it = producer_subst_map.find(op->producer);
@@ -433,9 +433,19 @@ class SyntheticExprReplacer : public tir::StmtExprMutator {
  public:
   Map<DataProducer, te::Tensor> producer_subst_map;
 
-  SyntheticExprReplacer(const Map<PrimExpr, Integer>& expr_subst_map)
-      : expr_subst_map_(expr_subst_map) {}
-  PrimExpr VisitExpr(const PrimExpr& expr) override {
+  SyntheticExprReplacer(const Map<ObjectRef, IntImm>& expr_subst_map)
+      : expr_subst_map_(expr_subst_map) {
+  }
+
+  PrimExpr VisitExpr_(const DynamicAxisNode* op) override final {
+    auto expr_subst_map_it = expr_subst_map_.find(op->name_hint);
+    if (expr_subst_map_it != expr_subst_map_.end()) {
+      return (*expr_subst_map_it).second;
+    }
+    return tir::StmtExprMutator::VisitExpr_(op);
+  }
+
+  PrimExpr VisitExpr(const PrimExpr& expr) override final {
     auto expr_subst_map_it = expr_subst_map_.find(expr);
     if (expr_subst_map_it != expr_subst_map_.end()) {
       return (*expr_subst_map_it).second;
@@ -443,7 +453,7 @@ class SyntheticExprReplacer : public tir::StmtExprMutator {
     std::ostringstream strout;
     strout << expr;
     std::string expr_str = strout.str();
-    for (const std::pair<PrimExpr, Integer>& kv : expr_subst_map_) {
+    for (const std::pair<ObjectRef, Integer>& kv : expr_subst_map_) {
       strout.str("");
       strout.clear();
       strout << kv.first;

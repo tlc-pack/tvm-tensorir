@@ -221,6 +221,7 @@ enum class LayoutRewriteOption : int {
 
 // <bojian/DietCode>
 class HardwareParams;
+class SyntheticExprReplacer;
 
 
 /*!
@@ -280,13 +281,25 @@ class ComputeDAG : public ObjectRef {
    */
   String PrintDAG(bool simple_mode = false) const;
 
+ private:
+  // <bojian/DietCode>
+  std::pair<te::Schedule, Array<te::Tensor>>
+  InstantiateAndApplySteps(const State& state, SyntheticExprReplacer& replacer,
+                           Array<te::Stage>* stages,
+                           StageToAxesMap* stage_to_axes) const;
+
+ public:
   // <bojian/DietCode>
   std::pair<te::Schedule, Array<te::Tensor>>
   GenerateSyntheticWorkloadAndApplySteps(
       const State& pstate, const HardwareParams& hardware_params,
-      // const Array<Step>& transform_steps,
       Array<te::Stage>* stages = nullptr,
       StageToAxesMap* stage_to_axes = nullptr) const;
+
+  std::pair<te::Schedule, Array<te::Tensor>>
+  InstantiateAndApplySteps(const State& state, const Array<String>& shape_vars,
+                           const Array<IntImm>& shape_value) const;
+
   /**
    * \brief Infer bound on a synthetic workload.
    */
