@@ -43,7 +43,7 @@ class BlockRV(Object):
     """A random variable that refers to a block"""
 
 
-ExprRV = PrimExpr  #  A random variable that evaluates to an integer
+ExprRV = Union[PrimExpr]  #  A random variable that evaluates to an integer
 
 RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]  # type: ignore # pylint: disable=invalid-name
 
