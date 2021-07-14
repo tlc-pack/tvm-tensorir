@@ -16,14 +16,15 @@
 # under the License.
 """Space Generator"""
 
-from typing import List, TYPE_CHECKING, Any
+import random
+
+from typing import List, TYPE_CHECKING
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
-from tvm.ir import IRModule
 
 from . import _ffi_api
-from .space_generator import SpaceGenerator
+from .trace import Trace
 
 if TYPE_CHECKING:
     from .tune_context import TuneContext
@@ -33,19 +34,19 @@ if TYPE_CHECKING:
 class SearchStrategy(Object):
     """Description and abstraction of a search strategy class."""
 
-    def GenerateMeasureCandidates(  # pylint: disable=invalid-name
+    def initialize_with_tune_context(
         self,
         context: "TuneContext",
-    ) -> List[Any]:
-        return _ffi_api.SearchStrategyGenerateMeasureCandidates(  # pylint: disable=no-member
+    ) -> None:
+        return _ffi_api.SearchStrategyInitializeWithTuneContext(  # pylint: disable=no-member
             self, context
         )
 
-    def UpdateResults(self, results: List[Any]):  # pylint: disable=invalid-name
-        return _ffi_api.SearchStrategyGenerate(self, results)  # pylint: disable=no-member
+    def generate_measure_candidates(self) -> List["BuilderInput"]:
+        return _ffi_api.SearchStrategyGenerateMeasureCandidates(self)  # pylint: disable=no-member
 
-    def initialize(self, **kwargs):
-        raise NotImplementedError
+    def update_results(self, results: List["MeasureResult"]):
+        return _ffi_api.SearchStrategyGenerate(self, results)  # pylint: disable=no-member
 
 
 @register_object("meta_schedule.PySearchStrategy")
@@ -53,19 +54,33 @@ class PySearchStrategy(SearchStrategy):
     """Search strategy that is implemented in python"""
 
     def __init__(self):
-        def generate_measure_candidates_func(context: "TuneContext"):
-            return self.generate_measure_candidates(context)
+        def initialize_with_tune_context_func(self, context: "TuneContext"):
+            self.initialize_with_tune_context(context)
 
-        def update_results_func(results: List[Object]):
-            self.update_results(results)
+        def generate_measure_candidates_func():
+            return self.generate_measure_candidates()
+
+        def notify_measure_results_func(results: List["MeasureResult"]):
+            self.notify_measure_results(results)
 
         self.__init_handle_by_constructor__(
             _ffi_api.PySearchStrategyNew,  # pylint: disable=no-member
+            initialize_with_tune_context_func,
             generate_measure_candidates_func,
-            update_results_func,
+            notify_measure_results_func,
         )
 
-    def generate_measure_candidates(self, context: "TuneContext") -> List[Object]:
+    def init_with_tune_context(self, context: "TuneContext"):
+        """Initialize the search strategy with a given context
+
+        Parameters
+        ----------
+        context : TuneContext
+            The auto tuning context
+        """
+        raise NotImplementedError
+
+    def generate_measure_candidates(self) -> List["BuilderInput"]:
         """generate candidates for autotuning measurement according to the tune context
 
         Parameters
@@ -75,7 +90,7 @@ class PySearchStrategy(SearchStrategy):
         """
         raise NotImplementedError
 
-    def update_results(self, results: List[Object]):
+    def notify_measure_results(self, results: List[Object]):
         """Update the search srategy status accoding to the measurement results
 
         Returns
@@ -85,46 +100,46 @@ class PySearchStrategy(SearchStrategy):
         """
         raise NotImplementedError
 
+    def pretuning(self):
+        """Initiate the search strategy status before tuning"""
+        raise NotImplementedError
+
+    def postuning(self):
+        """Finish the search strategy process after tuning"""
+        raise NotImplementedError
+
 
 class ReplaySearchStrategy(PySearchStrategy):
     """Random search strategy"""
 
-    def __init__(self, trails, batch_size):
+    def __init__(self, trials, batch_size):
         super().__init__()
-        self.trails = trails
+        self.trials = trials
         self.batch_size = batch_size
-        self.count = 0
 
-    def generate_measure_candidates(self, context: "TuneContext") -> List[Any]:
-        """generate candidates for autotuning measurement according to the tune context
-
-        Parameters
-        ----------
-        context : TuneContext
-            The auto tuning context
-        """
+    def init_with_tune_context(self, context: "TuneContext"):
         raise NotImplementedError
 
-    def generate_measure_candidates_sg(
-        self, space_gen: SpaceGenerator, workload: IRModule
-    ) -> List[Any]:
-        """generate candidates for autotuning measurement according to the space generator
+    def pretuning(self, space: List["Trace"] = None):  # pylint: disable=arguments-differ
+        self.space = space
+        self.count = 0
 
-        Parameters
-        ----------
-        context : TuneContext
-            The auto tuning context
-        """
-        if self.count >= self.trails:
+    def postuning(self):
+        pass
+
+    def generate_measure_candidates(self) -> List["BuilderInput"]:
+        """generate candidates for autotuning measurement according to the space generator"""
+
+        if self.count >= self.trials:
             return []
         candidates = []
-        for _ in range(self.count, min(self.count + self.batch_size, self.trails)):
-            (sch,) = space_gen.generate(workload)
-            candidates.append(sch)
+        for _ in range(self.count, min(self.count + self.batch_size, self.trials)):
+            trace = Trace(random.choice(self.space).trace.insts)  # clear the argument decisions
+            candidates.append(trace)
         return candidates
 
-    def update_results(self, results: List[Any]):
-        """Update the search srategy status accoding to the measurement results
+    def notify_measure_results(self, results: List["MeasureResult"]):
+        """Update the search strategy status accoding to the measurement results
 
         Returns
         -------
