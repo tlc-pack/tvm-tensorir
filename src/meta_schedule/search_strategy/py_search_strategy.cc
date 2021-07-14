@@ -32,18 +32,24 @@ namespace meta_schedule {
 /*! \brief The cost model returning random value for all predictions */
 class PySearchStrategyNode : public SearchStrategyNode {
  public:
-  /*! \brief Pointer to the Init funcion in python */
+  /*! \brief Pointer to the TuneContext init funcion in python */
+  runtime::TypedPackedFunc<FInitWithTuneContext> init_with_tune_context_func;
+  /*! \brief Pointer to the funcion to generate measure candidates in python */
   runtime::TypedPackedFunc<FGenerateMeasureCandidates> generate_measure_candidates_func;
-  /*! \brief Pointer to the Generate funcion in python */
+  /*! \brief Pointer to the function to update results in python */
   runtime::TypedPackedFunc<FUpdateResults> update_results_func;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
-  runtime::Array<ObjectRef> GenerateMeasureCandidates(const TuneContext& context) override {
-    return this->generate_measure_candidates_func(context);
+  void InitializeWithTuneContext(const TuneContext& context) override {
+    this->init_with_tune_context_func(context);
   }
 
-  void UpdateResults(const Array<ObjectRef>& results) override {
+  runtime::Array<BuilderInput> GenerateMeasureCandidates() override {
+    return this->generate_measure_candidates_func();
+  }
+
+  void UpdateResults(const Array<MeasureResult>& results) override {
     this->update_results_func(results);
   }
 
@@ -58,10 +64,13 @@ class PySearchStrategyNode : public SearchStrategyNode {
 class PySearchStrategy : public SearchStrategy {
  public:
   explicit PySearchStrategy(
+      runtime::TypedPackedFunc<SearchStrategyNode::FInitWithTuneContext>
+          init_with_tune_context_func,
       runtime::TypedPackedFunc<SearchStrategyNode::FGenerateMeasureCandidates>
           generate_measure_candidates_func,
       runtime::TypedPackedFunc<SearchStrategyNode::FUpdateResults> update_results_func) {
     ObjectPtr<PySearchStrategyNode> n = make_object<PySearchStrategyNode>();
+    n->init_with_tune_context_func = std::move(init_with_tune_context_func);
     n->generate_measure_candidates_func = std::move(generate_measure_candidates_func);
     n->update_results_func = std::move(update_results_func);
     data_ = std::move(n);
@@ -72,10 +81,12 @@ class PySearchStrategy : public SearchStrategy {
 };
 
 SearchStrategy SearchStrategy::PySearchStrategy(
+    runtime::TypedPackedFunc<SearchStrategyNode::FInitWithTuneContext> init_with_tune_context_func,
     runtime::TypedPackedFunc<SearchStrategyNode::FGenerateMeasureCandidates>
         generate_measure_candidates_func,
     runtime::TypedPackedFunc<SearchStrategyNode::FUpdateResults> update_results_func) {
-  return meta_schedule::PySearchStrategy(generate_measure_candidates_func, update_results_func);
+  return meta_schedule::PySearchStrategy(init_with_tune_context_func,
+                                         generate_measure_candidates_func, update_results_func);
 }
 
 TVM_REGISTER_NODE_TYPE(PySearchStrategyNode);
