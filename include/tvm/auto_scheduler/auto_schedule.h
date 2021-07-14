@@ -121,7 +121,8 @@ class DynWklDispatcherNode : public Object {
 
   Array<ObjectRef> dispatch(const IntImm& shape_value_idx) const;
 
-  static constexpr const char* _type_key = "auto_scheduler.DynWklDispatcherNode";
+  static constexpr const char* _type_key = "auto_scheduler.DynWklDispatcher";
+
   TVM_DECLARE_FINAL_OBJECT_INFO(DynWklDispatcherNode, Object);
 };
 
