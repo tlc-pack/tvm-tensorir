@@ -397,6 +397,8 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
     ICHECK(outer_loop);
     outer_stmt = outer_loop->body;
   }
+  //check stage pipeline is still true after transformation
+  GetScopeRootAndCheckStagePipeline(self, result_srefs[0]);
   return result_srefs;
 }
 
@@ -476,7 +478,10 @@ StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
   fused_loop =
       Downcast<For>(SimplifyBindings(fused_loop, GetLoops(loop_srefs[0]), &opaque_block_reuse));
   self->Replace(loop_srefs[0], fused_loop, opaque_block_reuse);
-  return self->stmt2ref.at(fused_loop.get());
+  StmtSRef result_sref = self->stmt2ref.at(fused_loop.get());
+  //check stage pipeline is still true after transformation
+  GetScopeRootAndCheckStagePipeline(self, result_sref);
+  return result_sref;
 }
 
 }  // namespace tir
