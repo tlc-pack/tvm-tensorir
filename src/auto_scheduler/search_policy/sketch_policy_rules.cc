@@ -1090,7 +1090,7 @@ PopulationGenerationRule::ResultKind InitThreadBind::Apply(SketchPolicyNode* pol
           GetExtent(threadidx_it) < policy->search_task->hardware_params->warp_size) {
 
         // <bojian/DietCode>
-        LOG(WARNING) << "threadidx_it.extent=" << threadidx_it->range->extent;
+        // LOG(WARNING) << "threadidx_it.extent=" << threadidx_it->range->extent;
 
         return ResultKind::kInvalid;
       }

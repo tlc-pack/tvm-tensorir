@@ -401,7 +401,8 @@ std::pair<Array<MeasureInput>, Array<MeasureResult>> SketchPolicyNode::ContinueS
     CalculateInstOptProb(measurer);
   }
 
-  LOG(FATAL) << "Measurements have been completed";
+  // <bojian/DietCode>
+  // LOG(FATAL) << "Measurements have been completed";
 
   // Update measured states throughputs. These states will join the EvolutionarySearch in later
   // search rounds.
@@ -603,8 +604,8 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       } else {
 
         // <bojian/DietCode>
-        LOG(WARNING) << "State=" << tmp_s << " is not valid and hence discarded";
-
+        // LOG(WARNING) << "State=" << tmp_s
+        //              << " is not valid and hence discarded";
 
         fail_ct++;
       }
@@ -654,7 +655,9 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
 
           // <bojian/DietCode>
           // make sure that the explored states are always valid
-          CHECK(explored_state_strs.count(state_str) != 0);
+          if (IsDynTask(search_task)) {
+            CHECK(explored_state_strs.count(state_str) != 0);
+          }
 
           fail_ct++;
         }

@@ -1355,8 +1355,7 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
   } catch (Error& e) {
 
     // <bojian/DietCode>
-    LOG(WARNING) << "Error " << e.what() << " received while lowering";
-
+    // LOG(WARNING) << "Error " << e.what() << " received while lowering";
 
     (*error_ct)++;
   }
