@@ -128,7 +128,7 @@ DynWklDispatcher::DynWklDispatcher(
 Array<ObjectRef>
 DynWklDispatcherNode::dispatch(const int shape_value_idx) const {
   // enable the DietCode schedule optimization
-  dmlc::SetEnv("DIETCODE_SCHED_OPT", 1);
+  // dmlc::SetEnv("DIETCODE_SCHED_OPT", 1);
   LOG(INFO) << "inst_disp_map=" << MapToString(inst_disp_map);
   const State& state = states[inst_disp_map.at(shape_value_idx)];
   LOG(INFO) << "Dispatching to state " << state
@@ -137,7 +137,7 @@ DynWklDispatcherNode::dispatch(const int shape_value_idx) const {
       search_task->compute_dag.InstantiateAndApplySteps(
         state, search_task->shape_vars.value(),
         search_task->shape_values[shape_value_idx]);
-  dmlc::SetEnv("DIETCODE_SCHED_OPT", 0);
+  // dmlc::SetEnv("DIETCODE_SCHED_OPT", 0);
   return {state, sch_and_tensors.first, sch_and_tensors.second};
 }
 
