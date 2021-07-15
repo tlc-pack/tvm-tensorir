@@ -148,6 +148,25 @@ TVM_REGISTER_GLOBAL("auto_scheduler.Dispatch")
       return dispatcher->dispatch(shape_value_idx);
     });
 
+TVM_REGISTER_GLOBAL("auto_scheduler.DispatcherStates")
+    .set_body_typed([](const DynWklDispatcher& dispatcher) {
+      Array<State> states;
+      for (const State& state : dispatcher->states) {
+        states.push_back(state);
+      }
+      return states;
+    });
+
+TVM_REGISTER_GLOBAL("auto_scheduler.DispatcherInstDispMap")
+    .set_body_typed([](const DynWklDispatcher& dispatcher) {
+      Map<Integer, Integer> inst_disp_map;
+      for (const std::pair<size_t, size_t>& kv_pair :
+           dispatcher->inst_disp_map) {
+        inst_disp_map.Set(kv_pair.first, kv_pair.second);
+      }
+      return inst_disp_map;
+    });
+
 TVM_REGISTER_NODE_TYPE(DynWklDispatcherNode);
 
 }  // namespace auto_scheduler

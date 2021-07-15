@@ -684,6 +684,13 @@ def auto_schedule(task, search_policy=None, tuning_options=TuningOptions()):
 class DynWklDispatcher(Object):
 
     def dispatch(self, shape_value_idx):
-        state, sched, in_args = _ffi_api.Dispatch(self, shape_value_idx)
-        return (sched, in_args), \
-               self.search_task.compute_dag.print_python_code_from_state(state)
+        _, sched, in_args = _ffi_api.Dispatch(self, shape_value_idx)
+        return sched, in_args
+
+    @property
+    def states(self):
+        return _ffi_api.DispatcherStates(self)
+
+    @property
+    def inst_disp_map(self):
+        return _ffi_api.DispatcherInstDispMap(self)
