@@ -381,8 +381,8 @@ TVM_DLL Pass PlanAndUpdateBufferAllocationLocation();
 
 /*!
  * \brief Substitute all the block vars with the PrimExprs they are bound to, indicated by the
- *        corresponding iter_values in BlockRealize, and then convert the blocks into opaque 
- *        ones by removing all the iter_values in BlockRealize and iter_vars in Block. 
+ *        corresponding iter_values in BlockRealize, and then convert the blocks into opaque
+ *        ones by removing all the iter_values in BlockRealize and iter_vars in Block.
  * \return The pass.
  */
 TVM_DLL Pass ConvertBlocksToOpaque();
@@ -506,6 +506,12 @@ TVM_DLL Pass CompactBufferAllocation();
  * This pass legalizes packed calls by wrapping their arguments into TVMValues
  */
 TVM_DLL Pass LegalizePackedCalls();
+
+/*!
+ * \brief Remove match buffers inside the block. Also, it will validate the binding.
+ * \return The pass.
+ */
+TVM_DLL Pass LowerMatchBuffer();
 
 /*!
  * \brief Flatten the multi-dimensional BufferLoad and BufferStore
