@@ -45,8 +45,14 @@ class SearchStrategy(Object):
     def generate_measure_candidates(self) -> List["BuilderInput"]:
         return _ffi_api.SearchStrategyGenerateMeasureCandidates(self)  # pylint: disable=no-member
 
-    def update_results(self, results: List["MeasureResult"]):
+    def update_results(self, results: List["MeasureResult"]) -> None:
         return _ffi_api.SearchStrategyGenerate(self, results)  # pylint: disable=no-member
+
+    def pre_tuning(self, design_spaces: List[Trace]) -> None:
+        return _ffi_api.SearchStrategyPreTuning(self, design_spaces)  # pylint: disable=no-member
+
+    def post_tuning_func(self) -> None:
+        return _ffi_api.SearchStrategyPostTuning(self)  # pylint: disable=no-member
 
 
 @register_object("meta_schedule.PySearchStrategy")
@@ -54,23 +60,31 @@ class PySearchStrategy(SearchStrategy):
     """Search strategy that is implemented in python"""
 
     def __init__(self):
-        def initialize_with_tune_context_func(self, context: "TuneContext"):
+        def initialize_with_tune_context_func(context: "TuneContext") -> None:
             self.initialize_with_tune_context(context)
 
-        def generate_measure_candidates_func():
+        def generate_measure_candidates_func() -> List["BuilderInput"]:
             return self.generate_measure_candidates()
 
-        def notify_measure_results_func(results: List["MeasureResult"]):
+        def notify_measure_results_func(results: List["MeasureResult"]) -> None:
             self.notify_measure_results(results)
 
+        def pre_tuning_func(design_spaces: List[Trace]) -> None:
+            self.pre_tuning(design_spaces)
+
+        def post_tuning_func() -> None:
+            self.post_tuning()
+
         self.__init_handle_by_constructor__(
-            _ffi_api.PySearchStrategyNew,  # pylint: disable=no-member
+            _ffi_api.PySearchStrategy,  # pylint: disable=no-member
             initialize_with_tune_context_func,
             generate_measure_candidates_func,
             notify_measure_results_func,
+            pre_tuning_func,
+            post_tuning_func,
         )
 
-    def init_with_tune_context(self, context: "TuneContext"):
+    def initialize_with_tune_context(self, context: "TuneContext") -> None:
         """Initialize the search strategy with a given context
 
         Parameters
@@ -90,7 +104,7 @@ class PySearchStrategy(SearchStrategy):
         """
         raise NotImplementedError
 
-    def notify_measure_results(self, results: List[Object]):
+    def notify_measure_results(self, results: List["MeasureResult"]) -> None:
         """Update the search srategy status accoding to the measurement results
 
         Returns
@@ -100,11 +114,11 @@ class PySearchStrategy(SearchStrategy):
         """
         raise NotImplementedError
 
-    def pretuning(self):
+    def pre_tuning(self, design_spaces: List[Trace]) -> None:
         """Initiate the search strategy status before tuning"""
         raise NotImplementedError
 
-    def postuning(self):
+    def post_tuning(self) -> None:
         """Finish the search strategy process after tuning"""
         raise NotImplementedError
 
@@ -117,28 +131,30 @@ class ReplaySearchStrategy(PySearchStrategy):
         self.trials = trials
         self.batch_size = batch_size
 
-    def init_with_tune_context(self, context: "TuneContext"):
-        raise NotImplementedError
+    def initialize_with_tune_context(self, context: "TuneContext") -> None:
+        pass
 
-    def pretuning(self, space: List["Trace"] = None):  # pylint: disable=arguments-differ
-        self.space = space
+    def pre_tuning(self, design_spaces: List["Trace"]) -> None:
+        self.design_spaces = design_spaces
         self.count = 0
 
-    def postuning(self):
+    def post_tuning(self) -> None:
         pass
 
     def generate_measure_candidates(self) -> List["BuilderInput"]:
         """generate candidates for autotuning measurement according to the space generator"""
 
         if self.count >= self.trials:
-            return []
+            return None
         candidates = []
         for _ in range(self.count, min(self.count + self.batch_size, self.trials)):
-            trace = Trace(random.choice(self.space).trace.insts)  # clear the argument decisions
+            trace = Trace(
+                random.choice(self.design_spaces).trace.insts  # clear the argument decisions
+            )
             candidates.append(trace)
         return candidates
 
-    def notify_measure_results(self, results: List["MeasureResult"]):
+    def notify_measure_results(self, results: List["MeasureResult"]) -> None:
         """Update the search strategy status accoding to the measurement results
 
         Returns

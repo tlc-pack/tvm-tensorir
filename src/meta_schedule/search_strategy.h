@@ -35,9 +35,11 @@ class SearchStrategyNode : public runtime::Object {
  public:
   using MeasureResult = ObjectRef;
   using BuilderInput = ObjectRef;
-  using FInitWithTuneContext = void(const TuneContext&);
+  using FInitializeWithTuneContext = void(const TuneContext&);
   using FGenerateMeasureCandidates = runtime::Array<BuilderInput>();
-  using FUpdateResults = void(const Array<MeasureResult>&);
+  using FNotifyMeasureResults = void(const Array<MeasureResult>&);
+  using FPreTuning = void(const Array<Trace>&);
+  using FPostTuning = void();
 
   /*! \brief Virtual destructor */
   virtual ~SearchStrategyNode() = default;
@@ -55,7 +57,11 @@ class SearchStrategyNode : public runtime::Object {
    * \brief Update the search strategy with meansurement results from the runners
    * \param results The measurement results of candidates generated from the search strategy
    */
-  virtual void UpdateResults(const Array<MeasureResult>& results) = 0;
+  virtual void NotifyMeasureResults(const Array<MeasureResult>& results) = 0;
+
+  virtual void PreTuning(const Array<Trace>& design_spaces) = 0;
+
+  virtual void PostTuning() = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SearchStrategy";
   TVM_DECLARE_BASE_OBJECT_INFO(SearchStrategyNode, Object);
@@ -69,11 +75,13 @@ class SearchStrategy : public runtime::ObjectRef {
  public:
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
   static SearchStrategy PySearchStrategy(
-      runtime::TypedPackedFunc<SearchStrategyNode::FInitWithTuneContext>
-          init_with_tune_context_func,
+      runtime::TypedPackedFunc<SearchStrategyNode::FInitializeWithTuneContext>
+          initialize_with_tune_context_func,
       runtime::TypedPackedFunc<SearchStrategyNode::FGenerateMeasureCandidates>
           generate_measure_candidates_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FUpdateResults> update_results_func);
+      runtime::TypedPackedFunc<SearchStrategyNode::FNotifyMeasureResults> update_results_func,
+      runtime::TypedPackedFunc<SearchStrategyNode::FPreTuning> pre_tuning_func,
+      runtime::TypedPackedFunc<SearchStrategyNode::FPostTuning> post_tuning_func);
 };
 
 }  // namespace meta_schedule

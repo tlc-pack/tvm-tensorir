@@ -43,7 +43,7 @@ def test_meta_schedule_search_strategy():
 
     results = []
     temp = replay.generate_measure_candidates()
-    while len(temp) > 0:
+    while temp is not None:
         results += temp
         assert len(temp) == batch_size or len(results) == trials
         assert len(results) <= trials
