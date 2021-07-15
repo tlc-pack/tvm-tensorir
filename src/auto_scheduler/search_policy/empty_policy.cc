@@ -52,7 +52,7 @@ EmptyPolicy::EmptyPolicy(SearchTask task, Optional<Array<SearchCallback>> init_s
 
 // <bojian/DietCode>
 // State
-Array<ObjectRef>
+std::pair<std::vector<State>, std::unordered_map<size_t, size_t>>
 EmptyPolicyNode::Search(int num_measure_trials, int early_stopping,
                         int num_measures_per_round, ProgramMeasurer measurer) {
   // Basic design principe: `SearchOneRound()` several times to get candidate states,
@@ -64,7 +64,8 @@ EmptyPolicyNode::Search(int num_measure_trials, int early_stopping,
 
     // <bojian/DietCode>
     // return res[0];
-    return {res};
+    return std::make_pair(std::vector<State>{res[0]},
+                          std::unordered_map<size_t, size_t>{});
 
   } else {
     Array<MeasureInput> inputs;
@@ -91,23 +92,26 @@ EmptyPolicyNode::Search(int num_measure_trials, int early_stopping,
 
     // <bojian/DietCode>
     // return measurer->best_state[search_task->workload_key];
-    Array<ObjectRef> states_and_inst_disp_map;
-    if (IsDynTask(search_task)) {
-      for (const State& state :
-           measurer->best_states[search_task->workload_key]) {
-        states_and_inst_disp_map.push_back(state);
-      }
-      Map<Integer, Integer> inst_disp_map;
-      for (const std::pair<size_t, size_t>& kv_pair :
-           measurer->best_inst_disp_map[search_task->workload_key]) {
-        inst_disp_map.Set(Integer(kv_pair.first), Integer(kv_pair.second));
-      }
-    } else {
-      CHECK(measurer->best_states[search_task->workload_key].size() == 1);
-      states_and_inst_disp_map.push_back(
-          measurer->best_states[search_task->workload_key][0]);
-    }
-    return states_and_inst_disp_map;
+    // Array<ObjectRef> states_and_inst_disp_map;
+    // if (IsDynTask(search_task)) {
+    //   for (const State& state :
+    //        measurer->best_states[search_task->workload_key]) {
+    //     states_and_inst_disp_map.push_back(state);
+    //   }
+    //   Map<Integer, Integer> inst_disp_map;
+    //   for (const std::pair<size_t, size_t>& kv_pair :
+    //        measurer->best_inst_disp_map[search_task->workload_key]) {
+    //     inst_disp_map.Set(Integer(kv_pair.first), Integer(kv_pair.second));
+    //   }
+    // } else {
+    //   CHECK(measurer->best_states[search_task->workload_key].size() == 1);
+    //   states_and_inst_disp_map.push_back(
+    //       measurer->best_states[search_task->workload_key][0]);
+    // }
+    // return states_and_inst_disp_map;
+    return std::make_pair(
+             measurer->best_states[search_task->workload_key],
+             measurer->best_inst_disp_map[search_task->workload_key]);
   }
 }
 

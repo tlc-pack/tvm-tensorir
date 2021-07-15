@@ -49,14 +49,17 @@ TuningOptions::TuningOptions(int num_measure_trials, int early_stopping, int num
 
 // <bojian/DietCode>
 // std::pair<te::Schedule, Array<te::Tensor>>
-ObjectRef
+ObjectRef  // DynWklDispatcher in the case of dynamic workload,
+           // (state, schedule, tensors) otherwise
 AutoSchedule(SearchPolicy search_policy, TuningOptions tuning_options) {
   // Create a ProgramMeasurer to handle the schedule build and performance measure
   ProgramMeasurer measurer =
       ProgramMeasurer(tuning_options->builder, tuning_options->runner,
                       tuning_options->measure_callbacks, tuning_options->verbose);
   // Search for the best schedule
-  Array<ObjectRef> states_and_inst_disp_map =
+  std::vector<State> states;
+  std::unordered_map<size_t, size_t> inst_disp_map;
+  std::tie(states, inst_disp_map) =
       search_policy->Search(tuning_options->num_measure_trials,
                             tuning_options->early_stopping,
                             tuning_options->num_measures_per_round,
@@ -67,10 +70,10 @@ AutoSchedule(SearchPolicy search_policy, TuningOptions tuning_options) {
   // <bojian/DietCode>
   if (IsDynTask(search_policy->search_task)) {
     return DynWklDispatcher(search_policy->search_task,
-                            states_and_inst_disp_map);
+                            std::move(states), std::move(inst_disp_map));
   } else {
-    CHECK(states_and_inst_disp_map.size() == 1);
-    State state = Downcast<State>(states_and_inst_disp_map[0]);
+    CHECK(states.size() == 1);
+    State state = Downcast<State>(states[0]);
     if (state.defined()) {
       std::pair<te::Schedule, Array<te::Tensor>> sch_and_tensors =
           search_policy->search_task->compute_dag.ApplySteps(
@@ -113,40 +116,39 @@ TVM_REGISTER_GLOBAL("auto_scheduler.AutoSchedule")
 
 
 DynWklDispatcher::DynWklDispatcher(
-    const SearchTask& search_task,
-    const Array<ObjectRef>& state_and_inst_disp_map) {
+    const SearchTask& search_task, std::vector<State>&& states,
+    std::unordered_map<size_t, size_t>&& inst_disp_map) {
   ObjectPtr<DynWklDispatcherNode> node = make_object<DynWklDispatcherNode>();
   node->search_task = search_task;
-
-  node->states = Array<State>();
-  for (size_t i = 0; i < state_and_inst_disp_map.size() - 1; ++i) {
-    node->states.push_back(Downcast<State>(state_and_inst_disp_map[i]));
-  }
-  node->inst_disp_map =
-      Downcast<Map<Integer, Integer>>(
-        state_and_inst_disp_map[state_and_inst_disp_map.size() - 1]);
+  node->states = std::move(states);
+  node->inst_disp_map = std::move(inst_disp_map);
   data_ = std::move(node);
 }
 
 Array<ObjectRef>
-DynWklDispatcherNode::dispatch(const IntImm& shape_value_idx) const {
+DynWklDispatcherNode::dispatch(const int shape_value_idx) const {
+  // enable the DietCode schedule optimization
   dmlc::SetEnv("DIETCODE_SCHED_OPT", 1);
+  LOG(INFO) << "inst_disp_map=" << MapToString(inst_disp_map);
+  const State& state = states[inst_disp_map.at(shape_value_idx)];
+  LOG(INFO) << "Dispatching to state " << state
+            << " w/ split_factors=" << MatrixToString(state.GetSplitFactors());
   std::pair<te::Schedule, Array<te::Tensor>> sch_and_tensors =
       search_task->compute_dag.InstantiateAndApplySteps(
-        states[inst_disp_map[shape_value_idx]], search_task->shape_vars.value(),
-        search_task->shape_values[shape_value_idx->value]);
+        state, search_task->shape_vars.value(),
+        search_task->shape_values[shape_value_idx]);
   dmlc::SetEnv("DIETCODE_SCHED_OPT", 0);
-  return {states[inst_disp_map[shape_value_idx]],
-          sch_and_tensors.first, sch_and_tensors.second};
+  return {state, sch_and_tensors.first, sch_and_tensors.second};
 }
 
 
 TVM_REGISTER_GLOBAL("auto_scheduler.Dispatch")
     .set_body_typed([](const DynWklDispatcher& dispatcher,
-                       const IntImm& shape_value_idx) {
+                       const int shape_value_idx) {
       return dispatcher->dispatch(shape_value_idx);
     });
 
+TVM_REGISTER_NODE_TYPE(DynWklDispatcherNode);
 
 }  // namespace auto_scheduler
 }  // namespace tvm

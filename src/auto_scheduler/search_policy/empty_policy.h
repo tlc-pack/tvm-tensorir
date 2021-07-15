@@ -45,7 +45,8 @@ class EmptyPolicyNode : public SearchPolicyNode {
  public:
   // <bojian/DietCode>
   // State
-  Array<ObjectRef>
+  // Array<ObjectRef>
+  std::pair<std::vector<State>, std::unordered_map<size_t, size_t>>
   Search(int num_measure_trials, int early_stopping, int num_measures_per_round,
          ProgramMeasurer measurer) final;
 

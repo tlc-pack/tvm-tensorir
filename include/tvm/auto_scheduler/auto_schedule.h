@@ -110,27 +110,24 @@ TVM_DLL ObjectRef AutoSchedule(SearchPolicy search_policy,
 class DynWklDispatcherNode : public Object {
  public:
   SearchTask search_task;
-  Array<State> states;
-  Map<Integer, Integer> inst_disp_map;
+  std::vector<State> states;
+  std::unordered_map<size_t, size_t> inst_disp_map;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("search_task", &search_task);
-    v->Visit("states", &states);
-    v->Visit("inst_disp_map", &inst_disp_map);
+    // v->Visit("states", &states);
+    // v->Visit("inst_disp_map", &inst_disp_map);
   }
 
-  Array<ObjectRef> dispatch(const IntImm& shape_value_idx) const;
-
+  Array<ObjectRef> dispatch(const int shape_value_idx) const;
   static constexpr const char* _type_key = "auto_scheduler.DynWklDispatcher";
-
   TVM_DECLARE_FINAL_OBJECT_INFO(DynWklDispatcherNode, Object);
 };
 
 class DynWklDispatcher : public ObjectRef {
  public:
-  DynWklDispatcher(
-      const SearchTask& search_task,
-      const Array<ObjectRef>& states_and_inst_disp_map);
+  DynWklDispatcher(const SearchTask& search_task, std::vector<State>&& states,
+                   std::unordered_map<size_t, size_t>&& inst_disp_map);
   TVM_DEFINE_OBJECT_REF_METHODS(DynWklDispatcher, ObjectRef,
                                 DynWklDispatcherNode);
 };

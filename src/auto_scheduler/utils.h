@@ -381,8 +381,19 @@ inline std::string OptionalMatrixToString(const Array<Array<Optional<T>>>& Mat) 
   return strout.str();
 }
 
+template<typename K, typename V>
+inline std::string MapToString(const Map<K, V>& Map) {
+  std::ostringstream strout;
+  strout << "{\n";
+  for (const std::pair<K, V>& kv : Map) {
+    strout << "  " << kv.first << " : " << kv.second << "\n";
+  }
+  strout << "}";
+  return strout.str();
+}
+
 template<typename K, typename V, typename H, typename E>
-inline std::string MapToString(const Map<K, V, H, E>& Map) {
+inline std::string MapToString(const std::unordered_map<K, V, H, E>& Map) {
   std::ostringstream strout;
   strout << "{\n";
   for (const std::pair<K, V>& kv : Map) {
