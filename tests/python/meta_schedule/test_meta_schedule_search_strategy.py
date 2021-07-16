@@ -33,13 +33,12 @@ def test_meta_schedule_search_strategy():
         k_0, k_1 = sch.split(loop=k, factors=k_tiles)
         sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
 
-    space_gen = ms.ScheduleFn(sch_fn=schedule_matmul)
-    (sch,) = space_gen.generate(workload=matmul)
-
     trials = 100
     batch_size = 30
+
+    space_gen = ms.ScheduleFn(sch_fn=schedule_matmul)
     replay = ms.ReplaySearchStrategy(trials, batch_size)
-    replay.pre_tuning(design_spaces=[sch])
+    replay.pre_tuning(design_spaces=space_gen.generate(workload=matmul))
 
     results = []
     temp = replay.generate_measure_candidates()
