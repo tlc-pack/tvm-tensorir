@@ -39,20 +39,20 @@ class SearchStrategy(Object):
         context: "TuneContext",
     ) -> None:
         return _ffi_api.SearchStrategyInitializeWithTuneContext(  # pylint: disable=no-member
-            self, context
+            context
         )
 
     def generate_measure_candidates(self) -> List["BuilderInput"]:
-        return _ffi_api.SearchStrategyGenerateMeasureCandidates(self)  # pylint: disable=no-member
+        return _ffi_api.SearchStrategyGenerateMeasureCandidates()  # pylint: disable=no-member
 
-    def update_results(self, results: List["MeasureResult"]) -> None:
-        return _ffi_api.SearchStrategyGenerate(self, results)  # pylint: disable=no-member
+    def notify_measure_results(self, results: List["MeasureResult"]) -> None:
+        return _ffi_api.SearchStrategyNotifyMeasureResults(results)  # pylint: disable=no-member
 
     def pre_tuning(self, design_spaces: List[Trace]) -> None:
-        return _ffi_api.SearchStrategyPreTuning(self, design_spaces)  # pylint: disable=no-member
+        return _ffi_api.SearchStrategyPreTuning(design_spaces)  # pylint: disable=no-member
 
     def post_tuning_func(self) -> None:
-        return _ffi_api.SearchStrategyPostTuning(self)  # pylint: disable=no-member
+        return _ffi_api.SearchStrategyPostTuning()  # pylint: disable=no-member
 
 
 @register_object("meta_schedule.PySearchStrategy")

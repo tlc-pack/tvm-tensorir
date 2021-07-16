@@ -39,7 +39,7 @@ def test_meta_schedule_search_strategy():
     trials = 100
     batch_size = 30
     replay = ms.ReplaySearchStrategy(trials, batch_size)
-    replay.pretuning(space=[sch])
+    replay.pre_tuning(design_spaces=[sch])
 
     results = []
     temp = replay.generate_measure_candidates()
@@ -47,7 +47,7 @@ def test_meta_schedule_search_strategy():
         results += temp
         assert len(temp) == batch_size or len(results) == trials
         assert len(results) <= trials
-        replay.update_results(temp)
+        replay.notify_measure_results(temp)
         temp = replay.generate_measure_candidates()
 
     assert len(results) == trials

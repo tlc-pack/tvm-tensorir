@@ -36,7 +36,7 @@ class SearchStrategyNode : public runtime::Object {
   using MeasureResult = ObjectRef;
   using BuilderInput = ObjectRef;
   using FInitializeWithTuneContext = void(const TuneContext&);
-  using FGenerateMeasureCandidates = runtime::Array<BuilderInput>();
+  using FGenerateMeasureCandidates = Optional<runtime::Array<BuilderInput>>();
   using FNotifyMeasureResults = void(const Array<MeasureResult>&);
   using FPreTuning = void(const Array<Trace>&);
   using FPostTuning = void();
@@ -51,7 +51,7 @@ class SearchStrategyNode : public runtime::Object {
    * \brief Generate the candidates from design space in tune context for measurement
    * \return The next batch of candidates for measurements generated from the design space
    */
-  virtual runtime::Array<BuilderInput> GenerateMeasureCandidates() = 0;
+  virtual Optional<runtime::Array<BuilderInput>> GenerateMeasureCandidates() = 0;
 
   /*!
    * \brief Update the search strategy with meansurement results from the runners
@@ -79,7 +79,8 @@ class SearchStrategy : public runtime::ObjectRef {
           initialize_with_tune_context_func,
       runtime::TypedPackedFunc<SearchStrategyNode::FGenerateMeasureCandidates>
           generate_measure_candidates_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FNotifyMeasureResults> update_results_func,
+      runtime::TypedPackedFunc<SearchStrategyNode::FNotifyMeasureResults>
+          notify_measure_results_func,
       runtime::TypedPackedFunc<SearchStrategyNode::FPreTuning> pre_tuning_func,
       runtime::TypedPackedFunc<SearchStrategyNode::FPostTuning> post_tuning_func);
 };
