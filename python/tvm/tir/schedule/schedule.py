@@ -371,6 +371,9 @@ class Schedule(Object):
         else:
             factors = [nparts, factor]
         return _ffi_api_schedule.ScheduleSplit(self, loop, factors)  # pylint: disable=no-member
+    
+    def normalize(self, *loops: List[LoopRV]):
+        _ffi_api_schedule.ScheduleNormalize(self, loops)  # pylint: disable=no-member
 
     def reorder(self, *loops: List[LoopRV]) -> None:
         _ffi_api_schedule.ScheduleReorder(self, loops)  # pylint: disable=no-member

@@ -56,6 +56,7 @@ TVM_DLL Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& 
 TVM_DLL StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef& inner_sref);
 TVM_DLL Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimExpr& nparts,
                               const PrimExpr& factor);
+TVM_DLL void Normalize(ScheduleState self, const Array<StmtSRef>& loop_srefs);
 TVM_DLL void Reorder(ScheduleState self, const Array<StmtSRef>& order);
 
 /******** Schedule: Manipulate ForKind ********/
