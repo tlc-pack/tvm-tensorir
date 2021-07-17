@@ -599,6 +599,18 @@ class AllReduceTransformer : public StmtExprMutator {
   }
 
   void AddStatements(const Stmt& op_stmt, const Stmt& loop_stmt, const Stmt& stmt_ori, Stmt& stmt) {
+    struct LaunchedThreadRemover : public StmtMutator {
+      Stmt VisitStmt_(const ForNode* op) final {
+        Stmt stmt = StmtMutator::VisitStmt_(op);
+        For loop = Downcast<For>(stmt);
+        return loop->kind == ForKind::kThreadBinding ? loop->body : loop;
+      }
+
+      Stmt VisitStmt_(const BlockRealizeNode* block_realize) final {
+        return GetRef<Stmt>(block_realize);
+      }
+    };
+
     const auto* loop = loop_stmt.as<ForNode>();
     if (loop != nullptr) {
       For loop_stmt_ = Downcast<For>(loop_stmt);
@@ -614,7 +626,7 @@ class AllReduceTransformer : public StmtExprMutator {
           stmts.emplace_back(inits[0]);
         }
         // Append the original statement and the new statements.
-        stmts.emplace_back(stmt_ori);
+        stmts.emplace_back(LaunchedThreadRemover()(stmt_ori));
         for (const Stmt& stmt_ : new_stmts_) {
           stmts.emplace_back(stmt_);
         }
@@ -631,13 +643,8 @@ class AllReduceTransformer : public StmtExprMutator {
         ICHECK(!loops.empty());
         for (auto it = loops.rbegin(); it != loops.rend(); it++) {
           For loop_ = *it;
-          std::string thread_tag =
-              loop_->thread_binding.defined() ? loop_->thread_binding.value()->thread_tag : "";
-          if (thread_tag.substr(0, 9) == "threadIdx") {
-            stmt = AttrStmt(IterVar(Range(loop_->min, loop_->extent), loop_->loop_var,
-                                    IterVarType::kThreadIndex, thread_tag),
-                            attr::thread_extent, loop_->extent, stmt);
-          }
+          loop_.CopyOnWrite()->body = stmt;
+          stmt = loop_;
         }
       }
     }
