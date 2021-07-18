@@ -19,11 +19,15 @@
 #ifndef TVM_TIR_SCHEDULE_SAMPLER_H_
 #define TVM_TIR_SCHEDULE_SAMPLER_H_
 
+#include <algorithm>
 #include <functional>
 #include <random>
 #include <vector>
 
 namespace tvm {
+
+class Target;
+
 namespace tir {
 
 /*! \brief Random number sampler used for sampling in meta schedule */
@@ -47,6 +51,13 @@ class Sampler {
    * \return The list of integers sampled
    */
   std::vector<int> SampleInts(int n, int min_inclusive, int max_exclusive);
+  /*!
+   * \brief Random shuffle from the begin iterator to the end.
+   * \param begin_it The begin iterator
+   * \param end_it The end iterator
+   */
+  template<typename RandomAccessIterator>
+  void Shuffle(RandomAccessIterator begin_it, RandomAccessIterator end_it);
   /*!
    * \brief Sample n tiling factors of the specific extent
    * \param n The number of parts the loop is split
@@ -72,6 +83,20 @@ class Sampler {
    * equals to extent
    */
   std::vector<int> SamplePerfectTile(int n_splits, int extent, int max_innermost_factor);
+  /*!
+   * \brief Sample shape-generic tiling factors that are determined by the hardware constraints.
+   * \param n_splits The number of parts the loops are split
+   * \param max_extents Maximum length of the loops
+   * \param is_spatial Whether each loop is a spatial axis or not
+   * \param target Hardware target
+   * \param max_innermost_factor A small number indicating the max length of the innermost loop
+   * \return A list of list of length n_splits, the tiling factors sampled, all satisfying the
+   * maximum extents and the hardware constraints
+   */
+  std::vector<std::vector<int>> SampleShapeGenericTiles(const std::vector<int>& n_splits,
+                                                        const std::vector<int>& max_extents,
+                                                        const Target& target,
+                                                        int max_innermost_factor);
   /*!
    * \brief Sample n floats uniformly in [min, max)
    * \param min The left boundary
@@ -112,6 +137,13 @@ class Sampler {
   /*! \brief The random number generator */
   std::minstd_rand rand_;
 };
+
+
+template<typename RandomAccessIterator>
+void Sampler::Shuffle(RandomAccessIterator begin_it, RandomAccessIterator end_it) {
+  std::shuffle(begin_it, end_it, rand_);
+}
+
 
 }  // namespace tir
 }  // namespace tvm
