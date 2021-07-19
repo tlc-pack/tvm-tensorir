@@ -701,6 +701,9 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
 
 Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_population,
                                                   int out_size) {
+  // <bojian/DietCode>
+  PrintTitle("Evolutionary Search", verbose);
+
   Array<State> best_states;
   auto tic_begin = std::chrono::high_resolution_clock::now();
 
@@ -758,8 +761,9 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
   for (int k = 0; k < num_iters + 1; ++k) {
     // Maintain the heap
     if (IsDynTask(search_task)) {
-      *pnow = search_task->compute_dag.InferBoundOnSyntheticWorkload(
-          *pnow, search_task->hardware_params);
+      *pnow =
+          search_task->compute_dag.InferBoundOnSyntheticWorkload(
+            *pnow, search_task->hardware_params);
       PruneInvalidState(search_task, pnow);
       program_cost_model->Predict(search_task, *pnow, &pop_scores);
     } else {
@@ -812,10 +816,21 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
     // Compute selection probability
     ComputePrefixSumProb(pop_scores, &pop_selection_probs);
 
+
+    // <bojian/DietCode>
+    // LOG(INFO) << "pop_scores=" << VectorToString(pop_scores)
+    //           << ", pop_selection_probs" << VectorToString(pop_selection_probs);
+
     // TODO(merrymercy, comaniac): add crossover.
 
     // Do mutation
     while (pnext->size() < population) {
+
+
+      // <bojian/DietCode>
+      // PrintTitle("Evolutionary Search (Mutation Rule)", verbose);
+
+
       State tmp_s = (*pnow)[RandomChoose(pop_selection_probs, &rand_gen)];
 
       if (dis(rand_gen) < mutation_prob) {

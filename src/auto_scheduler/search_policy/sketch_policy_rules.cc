@@ -1130,6 +1130,8 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
                                std::mt19937* rand_gen) const {
   CHECK(IsDynTask(policy->search_task));
 
+  LOG(FATAL) << "*** Applying innermost tile size mutation rule ***";
+
   if (policy->curr_inst_opt_prob.empty()) {
     return ResultKind::kInvalid;
   }
