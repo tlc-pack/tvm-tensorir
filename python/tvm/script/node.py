@@ -101,6 +101,12 @@ class BufferSlice(ObjectGeneric):
                         "index expected an int32 type PrimExpr but got " + str(index.dtype),
                         index.span,
                     )
+            elif isinstance(index, BufferSlice):
+                if len(index.slices) != 1 or index.slices[0].stop is not None or index.buffer.dtype != 'int32':
+                    report_error(
+                        "index only accept int32 scalar BufferSlice but got " + str(index),
+                        index.span
+                    )
             else:
                 report_error(
                     "Unsupported index type, expected int or tvm.tir.PrimExpr, but got "
@@ -117,6 +123,9 @@ class BufferSlice(ObjectGeneric):
             elif isinstance(index, (PrimExpr, int)):
                 check_index(index)
                 slices.append(Slice(index))
+            elif isinstance(index, BufferSlice):
+                check_index(index)
+                slices.append(Slice(index.asobject()))
             else:
                 report_error(
                     "Unsupported index type for BufferSlice, "

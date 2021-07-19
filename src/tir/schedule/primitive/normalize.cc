@@ -53,5 +53,38 @@ void Normalize(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
   }
 }
 
+struct NormalizeTraits : public UnpackedInstTraits<NormalizeTraits> {
+  static constexpr const char* kName = "Normalize";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  template <size_t delta>
+  static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
+                                           const Array<ObjectRef>& inputs) {
+    setter(delta, inputs);
+  }
+
+  static void UnpackedApplyToSchedule(Schedule sch, Array<LoopRV> loop_rvs) {
+    return sch->Normalize(loop_rvs);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs,
+                                 Array<String> loop_rvs) {
+    PythonAPICall py("normalize");
+    for (const String& loop_rv : loop_rvs) {
+      py.Input("", loop_rv);
+    }
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND(NormalizeTraits);
+
 }  // namespace tir
 }  // namespace tvm
