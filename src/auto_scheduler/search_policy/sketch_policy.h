@@ -113,7 +113,6 @@ class SketchPolicyNode : public SearchPolicyNode {
   // <bojian/DietCode> Add DietCode architecture-dependent split memorization.
   SplitFactorizationMemo split_memo;
   DietCodeSplitFactorizationMemo dietcode_split_memo;
-  std::vector<double> curr_inst_opt_prob;
 
  private:
   void CalculateInstOptProb(const ProgramMeasurer& measurer);

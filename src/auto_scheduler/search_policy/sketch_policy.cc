@@ -303,7 +303,11 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
 
       // Measure candidate states
       PrintTitle("Measure", verbose);
-      results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
+      results = measurer->Measure(search_task,
+                                  // <bojian/DietCode>
+                                  // GetRef<SearchPolicy>(this),
+                                  this,
+                                  inputs);
 
       // <bojian/DietCode>
       if (IsDynTask(search_task)) {
@@ -394,7 +398,11 @@ std::pair<Array<MeasureInput>, Array<MeasureResult>> SketchPolicyNode::ContinueS
 
   // Measure candidate states
   PrintTitle("Measure", verbose);
-  results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
+  results = measurer->Measure(search_task,
+                              // <bojian/DietCode>
+                              // GetRef<SearchPolicy>(this),
+                              this,
+                              inputs);
 
   // <bojian/DietCode>
   if (IsDynTask(search_task)) {

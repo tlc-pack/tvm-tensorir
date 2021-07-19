@@ -136,6 +136,9 @@ class SearchPolicyNode : public Object {
    */
   int verbose;
 
+  // <bojian/DietCode>
+  std::vector<double> curr_inst_opt_prob;
+
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("search_task", &search_task);
     v->Visit("verbose", &verbose);

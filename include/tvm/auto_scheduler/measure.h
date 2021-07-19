@@ -50,6 +50,7 @@ namespace tvm {
 namespace auto_scheduler {
 
 class SearchPolicy;
+class SearchPolicyNode;
 class MeasureInput;
 class MeasureResult;
 
@@ -505,7 +506,12 @@ class ProgramMeasurerNode : public Object {
    * \param batch_size Number of programs to be measured in one batch.
    * \return results The results of measurement.
    */
-  Array<MeasureResult> Measure(const SearchTask& task, const SearchPolicy& policy,
+  Array<MeasureResult> Measure(const SearchTask& task,
+                               
+                               // <bojian/DietCode>
+                               // const SearchPolicy& policy,
+                               SearchPolicyNode* const policy,
+                               
                                const Array<MeasureInput>& inputs, int batch_size = -1);
   /*!
    * \brief Do measurement silently.

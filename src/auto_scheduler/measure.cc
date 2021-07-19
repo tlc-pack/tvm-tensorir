@@ -240,7 +240,7 @@ void ProgramMeasurerNode::Reset() {
 }
 
 Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
-                                                  const SearchPolicy& policy,
+                                                  SearchPolicyNode* const policy,
                                                   const Array<MeasureInput>& inputs,
                                                   int batch_size) {
   auto t_begin = std::chrono::high_resolution_clock::now();
@@ -360,7 +360,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     // Call callback functions
     if (callbacks) {
       for (const auto& callback : callbacks.value()) {
-        callback->Callback(policy, input_batch, result_batch);
+        callback->Callback(GetRef<SearchPolicy>(policy), input_batch, result_batch);
       }
     }
 
@@ -382,12 +382,10 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
   if (IsDynTask(task)) {
     // calculate the adapted score of each candidate state
     float occupancy_penalty, padding_penalty;
-    std::vector<float> adapted_candidate_flops(
-        candidate_states.size() * task->shape_values.size());
+    std::vector<float> adapted_candidate_flops(candidate_states.size() * task->shape_values.size());
 
     for (size_t state_id = 0; state_id < candidate_states.size(); ++state_id) {
-      for (size_t inst_id = 0; inst_id < task->shape_values.size();
-           ++inst_id) {
+      for (size_t inst_id = 0; inst_id < task->shape_values.size(); ++inst_id) {
         AdaptStateToWorkload(task, candidate_states[state_id],
                              task->shape_vars.value(),
                              task->shape_values[inst_id],
@@ -406,6 +404,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     // record the selected candidate states
     std::vector<size_t> selected_candidate_state_ids;
     std::vector<float>  inst_predicted_flops;
+    std::vector<double> inst_opt_prob;
     std::unordered_map<size_t, size_t> inst_disp_map;
 
     // gather all the non-duplicate state_ids
@@ -427,8 +426,9 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
             inst_state_pair.second]
           );
     }
-    LOG(INFO) << "inst_predicted_flops="
-              << VectorToString(inst_predicted_flops);
+    ComputePrefixSumProb(inst_predicted_flops, &inst_opt_prob);
+    LOG(INFO) << "inst_predicted_flops=" << VectorToString(inst_predicted_flops)
+              << ", inst_opt_prob=" << VectorToString(inst_opt_prob);
 
     std::vector<State> selected_candidate_states;
     std::vector<float> selected_candidate_flops;
@@ -441,6 +441,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     best_inst_disp_map[task->workload_key] = std::move(inst_disp_map);
     best_state_flops[task->workload_key] = std::move(selected_candidate_flops);
     best_inst_flops[task->workload_key] = std::move(inst_predicted_flops);
+    policy->curr_inst_opt_prob = std::move(inst_opt_prob);
   }  // IsDynTask(task)
 
   PrintTimeElapsed(t_begin, "measurement", verbose);
