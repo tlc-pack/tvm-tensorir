@@ -240,7 +240,7 @@ void ProgramMeasurerNode::Reset() {
 }
 
 Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
-                                                  SearchPolicyNode* const policy,
+                                                  const SearchPolicy& policy,
                                                   const Array<MeasureInput>& inputs,
                                                   int batch_size) {
   auto t_begin = std::chrono::high_resolution_clock::now();
@@ -360,7 +360,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     // Call callback functions
     if (callbacks) {
       for (const auto& callback : callbacks.value()) {
-        callback->Callback(GetRef<SearchPolicy>(policy), input_batch, result_batch);
+        callback->Callback(policy, input_batch, result_batch);
       }
     }
 

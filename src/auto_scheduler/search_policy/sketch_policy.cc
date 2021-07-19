@@ -184,8 +184,7 @@ SketchPolicy::SketchPolicy(SearchTask task, CostModel program_cost_model,
 // <bojian/DietCode>
 void SketchPolicyNode::CalculateInstOptProb(const ProgramMeasurer& measurer) {
   CHECK(IsDynTask(search_task));
-  std::vector<float>  inst_opt_priority;
-  std::vector<double> inst_opt_prob;
+  std::vector<float> inst_opt_priority;
 
   const auto& best_states = measurer->best_states[search_task->workload_key];
   const auto& best_inst_disp_map =
@@ -206,8 +205,8 @@ void SketchPolicyNode::CalculateInstOptProb(const ProgramMeasurer& measurer) {
     inst_opt_priority.push_back(
         flop * search_task->shape_freqs[i]->value / best_inst_flops[i]);
   }
-  ComputePrefixSumProb(inst_opt_priority, &inst_opt_prob);
-  LOG(INFO) << "inst_opt_prob=" << VectorToString(inst_opt_prob);
+  ComputePrefixSumProb(inst_opt_priority, &curr_inst_opt_prob);
+  LOG(INFO) << "curr_inst_opt_prob=" << VectorToString(curr_inst_opt_prob);
 }
 
 
@@ -303,11 +302,7 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
 
       // Measure candidate states
       PrintTitle("Measure", verbose);
-      results = measurer->Measure(search_task,
-                                  // <bojian/DietCode>
-                                  // GetRef<SearchPolicy>(this),
-                                  this,
-                                  inputs);
+      results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
 
       // <bojian/DietCode>
       if (IsDynTask(search_task)) {
@@ -398,11 +393,7 @@ std::pair<Array<MeasureInput>, Array<MeasureResult>> SketchPolicyNode::ContinueS
 
   // Measure candidate states
   PrintTitle("Measure", verbose);
-  results = measurer->Measure(search_task,
-                              // <bojian/DietCode>
-                              // GetRef<SearchPolicy>(this),
-                              this,
-                              inputs);
+  results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
 
   // <bojian/DietCode>
   if (IsDynTask(search_task)) {

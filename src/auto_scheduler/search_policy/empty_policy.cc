@@ -85,11 +85,7 @@ EmptyPolicyNode::Search(int num_measure_trials, int early_stopping,
       }
       // Perform measurement.
       // ProgramMeasurer will record the state with best performance during measure process
-      results = measurer->Measure(search_task,
-                                  // <bojian/DietCode>
-                                  // GetRef<SearchPolicy>(this),
-                                  this,
-                                  inputs);
+      results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
     }
 
     // Return a state with best measured performance
@@ -134,11 +130,7 @@ std::pair<Array<MeasureInput>, Array<MeasureResult>> EmptyPolicyNode::ContinueSe
   for (const auto& state : best_states) {
     inputs.push_back(MeasureInput(search_task, state));
   }
-  results = measurer->Measure(search_task,
-                              // <bojian/DietCode>
-                              // GetRef<SearchPolicy>(this),
-                              this,
-                              inputs);
+  results = measurer->Measure(search_task, GetRef<SearchPolicy>(this), inputs);
 
   return std::make_pair(std::move(inputs), std::move(results));
 }

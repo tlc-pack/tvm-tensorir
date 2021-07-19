@@ -50,7 +50,7 @@ namespace tvm {
 namespace auto_scheduler {
 
 class SearchPolicy;
-class SearchPolicyNode;
+// class SearchPolicyNode;
 class MeasureInput;
 class MeasureResult;
 
@@ -509,8 +509,8 @@ class ProgramMeasurerNode : public Object {
   Array<MeasureResult> Measure(const SearchTask& task,
                                
                                // <bojian/DietCode>
-                               // const SearchPolicy& policy,
-                               SearchPolicyNode* const policy,
+                               const SearchPolicy& policy,
+                               // SearchPolicyNode* const policy,
                                
                                const Array<MeasureInput>& inputs, int batch_size = -1);
   /*!
