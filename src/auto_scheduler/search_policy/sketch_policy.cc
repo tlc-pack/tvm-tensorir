@@ -206,7 +206,7 @@ void SketchPolicyNode::CalculateInstOptProb(const ProgramMeasurer& measurer) {
         flop * search_task->shape_freqs[i]->value / best_inst_flops[i]);
   }
   ComputePrefixSumProb(inst_opt_priority, &curr_inst_opt_prob);
-  LOG(INFO) << "curr_inst_opt_prob=" << VectorToString(curr_inst_opt_prob);
+  LOG(INFO) << "curr_inst_opt_prob=" << ArrayToString(curr_inst_opt_prob);
 }
 
 
@@ -817,8 +817,8 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
 
 
     // <bojian/DietCode>
-    // LOG(INFO) << "pop_scores=" << VectorToString(pop_scores)
-    //           << ", pop_selection_probs" << VectorToString(pop_selection_probs);
+    // LOG(INFO) << "pop_scores=" << ArrayToString(pop_scores)
+    //           << ", pop_selection_probs" << ArrayToString(pop_selection_probs);
 
     // TODO(merrymercy, comaniac): add crossover.
 

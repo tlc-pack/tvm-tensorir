@@ -58,7 +58,7 @@ using namespace tir;
 
 // <bojian/DietCode>
 // using auto_scheduler::enable_verbose_logging;
-// using auto_scheduler::VectorToString;
+// using auto_scheduler::ArrayToString;
 
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
@@ -280,7 +280,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
 
     // <bojian/DietCode>
     // if (enable_verbose_logging) {
-    //   LOG(INFO) << axis[i] << " : ∪" << VectorToString(tdom.data.at(i))
+    //   LOG(INFO) << axis[i] << " : ∪" << ArrayToString(tdom.data.at(i))
     //             << ".cover(" << axis[i]->dom << ")"
     //             << " = " << r;
     // }

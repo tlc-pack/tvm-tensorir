@@ -646,18 +646,21 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
   } else {
     num_threads_per_block = 1;
     for (const std::vector<int>& split_factor : split_factors) {
+      if (split_factor.size() == 2) {
+        continue;
+      }
       num_threads_per_block *= split_factor[1];
     }
+    LOG(INFO) << "num_threads_per_block=" << num_threads_per_block;
   }  // if (!freeze_num_threads)
   // ===========================================================================
   // factor[0] (vthread)
   // ===========================================================================
-  size_t reg_usage = num_threads_per_block,
-         shmem_usage = 0;
+  size_t reg_usage = num_threads_per_block, shmem_usage = 0;
 
-  auto sample_factors = [&](std::function<  bool(const size_t)> continue_predicate,
+  auto sample_factors = [&](std::function<bool(const size_t)>   continue_predicate,
                             std::function<size_t(const size_t)> max_extent,
-                            std::function<  int&(const size_t)> factor_to_assign,
+                            std::function<int&(const size_t)>   factor_to_assign,
                             std::function<size_t(const size_t)> extent_to_factor) {
         std::vector<size_t> iter_max_extents;
         std::vector<size_t> factors_to_assign;
@@ -671,6 +674,10 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
           size_t factor_to_assign;
 
           if (sample_perfect_tile_size) {
+
+            LOG(INFO) << "Sampling perfect tile size of "
+                      << extent_to_factor(iter_id);
+
             const std::vector<int>& iter_max_extent_factors =
                 memo.GetFactors(extent_to_factor(iter_id));
             std::uniform_int_distribution<> dist(
@@ -700,8 +707,9 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
         std::vector<size_t>::iterator
             iter_max_extents_it = iter_max_extents.begin(),
             factors_to_assign_it = factors_to_assign.begin();
-        // LOG(INFO) << "iter_max_extents=" << VectorToString(iter_max_extents) << " vs. "
-        //           << "factors_to_assign=" << VectorToString(factors_to_assign);
+        // LOG(INFO) << "iter_max_extents=" << ArrayToString(iter_max_extents)
+        //           << " vs. factors_to_assign="
+        //           << ArrayToString(factors_to_assign);
         for (size_t iter_id = 0; iter_id < split_steps_info.size(); ++iter_id) {
           if (continue_predicate(iter_id)) {
             continue;
@@ -1035,6 +1043,13 @@ DietCodeSplitFactorizationMemo::MutateFactorizationScheme(
     std::mt19937* const rng, const bool simplify_sketch,
     const std::vector<std::vector<int>>& curr_split_factors,
     const bool sample_perfect_tile_size) {
+
+  if (sample_perfect_tile_size) {
+    LOG(INFO) << "Sampling perfect tile size";
+  } else {
+    LOG(INFO) << "Sampling non-perfect tile size";
+  }
+
   FactorizationScheme scheme(split_steps_info, simplify_sketch, true);
   scheme.split_factors = curr_split_factors;
   scheme.RandomSample(hardware_params_, max_innermost_factor_, rng, true,

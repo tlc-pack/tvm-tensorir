@@ -1134,7 +1134,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     return ResultKind::kInvalid;
   }
 
-  // LOG(FATAL) << "*** Applying innermost tile size mutation rule ***";
+  // LOG(INFO) << "*** Applying innermost tile size mutation rule ***";
 
   std::vector<size_t> split_step_ids;
   std::vector<std::vector<int>> curr_split_factors;
@@ -1148,8 +1148,13 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
         continue;
       }
       split_step_ids.push_back(i);
+      curr_split_factors.push_back(std::vector<int>());
+      for (const Optional<Integer>& length : split_step->lengths) {
+        curr_split_factors.back().push_back(length.value()->value);
+      }
     }
   }  // for (i ∈ (*state)->transform_steps)
+  // LOG(INFO) << "curr_split_factors=" << MatrixToString(curr_split_factors);
 
   if (split_step_ids.empty()) {
     return ResultKind::kInvalid;
@@ -1163,6 +1168,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
   Array<IntImm> selected_inst =
       policy->search_task->shape_values[
         RandomChoose(policy->curr_inst_opt_prob, rand_gen)];
+  // LOG(INFO) << "Selected inst=" << ArrayToString(selected_inst);
 
   arith::Analyzer analyzer;
   Map<String, IntImm> shape_var_value_map;
@@ -1263,6 +1269,9 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
                   split_step->extent, new_split_factor,
                   split_step->inner_to_outer));
   }
+
+  // LOG(FATAL) << "Finish applying the mutation rule";
+
   return ResultKind::kValid;
 }
 
