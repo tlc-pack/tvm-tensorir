@@ -1270,7 +1270,22 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
                   split_step->inner_to_outer));
   }
 
-  // LOG(FATAL) << "Finish applying the mutation rule";
+  // TODO(bojian) Currently the mutation of the vectorization size is neglected,
+  //              The primary reason is because the sampled tile sizes are in
+  //              most cases non-perfect. Furthermore, empirical evidence
+  //              indicates that mutating the vectorization size has little
+  //              impact on the overall performance.
+
+  // for (size_t i = 0; i < (*state)->transform_steps.size(); ++i) {
+  //   if (const SplitStepNode* const split_step =
+  //       (*state)->transform_steps[i].as<SplitStepNode>()) {
+  //     if (!split_step->extent.defined() ||
+  //         (*state)->stages[split_step->stage_id]->op->name.find(".shared") ==
+  //           std::string::npos) {
+  //       continue;
+  //     }
+  //   }
+  // }
 
   return ResultKind::kValid;
 }
