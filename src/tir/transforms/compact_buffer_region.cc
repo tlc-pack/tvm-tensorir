@@ -306,7 +306,7 @@ class BufferAccessRegionCollector : public StmtExprVisitor {
 class StorageAlignCollector : public StmtVisitor {
  public:
   static std::unordered_map<Buffer, Array<Array<Integer>>, ObjectPtrHash, ObjectPtrEqual> Collect(
-    const PrimFunc& f) {
+      const PrimFunc& f) {
     StorageAlignCollector collector;
     collector(f->body);
     return std::move(collector.storage_align_);
@@ -319,8 +319,8 @@ class StorageAlignCollector : public StmtVisitor {
       const auto& storage_align = Downcast<Array<Array<Array<Integer>>>>((*it).second);
       ICHECK(storage_align.size() == op->writes.size());
       for (size_t i = 0; i < storage_align.size(); ++i) {
-        CHECK(!storage_align_.count(op->writes[i]->buffer)) <<
-             "ValueError: Conflicting storage_align for buffer " << op->writes[i]->buffer->name;
+        CHECK(!storage_align_.count(op->writes[i]->buffer))
+            << "ValueError: Conflicting storage_align for buffer " << op->writes[i]->buffer->name;
         storage_align_.emplace(op->writes[i]->buffer, storage_align[i]);
       }
     }
@@ -334,9 +334,11 @@ class StorageAlignCollector : public StmtVisitor {
 /*! \brief Reallocate the buffers with minimal region. */
 class BufferCompactor : public StmtExprMutator {
  public:
-  static Stmt Compact(const PrimFunc& f,
-                      const std::unordered_map<Buffer, Region, ObjectPtrHash, ObjectPtrEqual>& regions,
-                      const std::unordered_map<Buffer, Array<Array<Integer>>, ObjectPtrHash, ObjectPtrEqual>& storage_align) {
+  static Stmt Compact(
+      const PrimFunc& f,
+      const std::unordered_map<Buffer, Region, ObjectPtrHash, ObjectPtrEqual>& regions,
+      const std::unordered_map<Buffer, Array<Array<Integer>>, ObjectPtrHash, ObjectPtrEqual>&
+          storage_align) {
     std::unordered_map<Buffer, BufferAllocInfo, ObjectPtrHash, ObjectPtrEqual> buffer_info;
 
     for (const auto& kv : regions) {
@@ -363,7 +365,6 @@ class BufferCompactor : public StmtExprMutator {
   }
 
  private:
-
   /*! \brief The storage alignment for a dimension */
   struct DimAlignInfo {
     /*! \brief The factor of the alignment */
@@ -415,6 +416,7 @@ class BufferCompactor : public StmtExprMutator {
     BlockNode* n = block.CopyOnWrite();
     RewriteBufferRegions(&n->reads);
     RewriteBufferRegions(&n->writes);
+    RewriteMatchBuffers(&n->match_buffers);
     n->alloc_buffers = std::move(alloc_buffers);
     return std::move(block);
   }
@@ -505,6 +507,18 @@ class BufferCompactor : public StmtExprMutator {
       new_regions.push_back(buffer_region);
     }
     *regions = std::move(new_regions);
+  }
+
+  void RewriteMatchBuffers(Array<MatchBufferRegion>* match_buffers) const {
+    Array<MatchBufferRegion> result;
+    result.reserve(match_buffers->size());
+    for (const auto& match_buffer : *match_buffers) {
+      const BufferRegion& buffer_region = match_buffer->source;
+      auto p = make_object<BufferRegionNode>(*buffer_region.get());
+      RewriteBufferRegion(&p->buffer, &p->region);
+      result.push_back(MatchBufferRegion(match_buffer->buffer, BufferRegion(p)));
+    }
+    *match_buffers = std::move(result);
   }
 
   /*! \brief The allocation information about each buffer. */
