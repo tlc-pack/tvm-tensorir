@@ -651,7 +651,8 @@ class RemoveLikelyTags : public StmtExprMutator {
 Stmt LoopPartition(Stmt stmt, bool partition_const_loop, bool no_unroll_loop_with_extent_one) {
   stmt = LoopPartitioner(partition_const_loop, no_unroll_loop_with_extent_one
                          // <bojian/DietCode>
-                       , (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT_BLOCKIDX_PARTITION", 0)))
+                       , (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT", 0) != 0) ||
+                         (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT_BLOCKIDX_PARTITION", 0)))
              .VisitAndMutate(std::move(stmt));
   stmt = RemoveLikelyTags()(std::move(stmt));
 
@@ -668,12 +669,7 @@ Pass LoopPartition() {
       cfg = AttrsWithDefaultValues<LoopPartitionConfig>();
     }
     n->body = LoopPartition(std::move(n->body),
-    
-                            // <bojian/DietCode>
-                            // cfg.value()->partition_const_loop,
-                            (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT", 0) != 0) || 
-                            (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT_BLOCKIDX_PARTITION", 0)),
-
+                            cfg.value()->partition_const_loop,
                             cfg.value()->no_unroll_loop_with_extent_one);
     return f;
   };

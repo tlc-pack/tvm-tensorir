@@ -1225,7 +1225,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
           split_steps_info, rand_gen, simplify_sketch, curr_split_factors,
           prob_dist(*rand_gen) > 0.8
         );
-    LOG(INFO) << "Mutated factorization scheme=" << mutated_scheme.toString();
+    // LOG(INFO) << "Mutated factorization scheme=" << mutated_scheme.toString();
 
     CHECK(mutated_scheme.split_factors.size() == split_step_ids.size());
     for (size_t i = 0; i < split_step_ids.size(); ++i) {
