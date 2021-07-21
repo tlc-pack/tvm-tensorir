@@ -82,8 +82,8 @@ Array<PrimExpr> InitializeDynamicArgs(Array<PrimExpr> args,
   for (const auto& shape_value_freq_pair : shape_value_freq_pairs) {
     CHECK(shape_vars.size() == shape_value_freq_pair.first.size());
     for (size_t i = 0; i < shape_vars.size(); ++i) {
-      dyn_axes_info[std::string(shape_vars[i])].insert(
-          shape_value_freq_pair.first[i]->value);
+      dyn_axes_info[std::string(shape_vars[i])]
+          .insert(shape_value_freq_pair.first[i]->value);
     }
   }
   Array<PrimExpr> new_args;
