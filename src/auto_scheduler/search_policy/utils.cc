@@ -651,7 +651,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
       }
       num_threads_per_block *= split_factor[1];
     }
-    // LOG(INFO) << "num_threads_per_block=" << num_threads_per_block;
+    LOG(INFO) << "num_threads_per_block=" << num_threads_per_block;
   }  // if (!freeze_num_threads)
   // ===========================================================================
   // factor[0] (vthread)
@@ -669,14 +669,19 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
             continue;
           }
           size_t iter_max_extent = max_extent(iter_id);
-          CHECK(iter_max_extent != 0) << "current scheme=" << toString();
+
+          if (iter_max_extent == 0) {
+            LOG(INFO) << "max_extent=0 under current scheme=" << toString();
+            throw std::out_of_range("max_extent=0");
+          }
 
           size_t factor_to_assign;
 
           if (sample_perfect_tile_size) {
 
-            // LOG(INFO) << "Sampling perfect tile size of "
-            //           << extent_to_factor(iter_id);
+            LOG(INFO) << "Sampling perfect tile size of "
+                      << extent_to_factor(iter_id) << " vs. max="
+                      << iter_max_extent;
 
             const std::vector<int>& iter_max_extent_factors =
                 memo.GetFactors(extent_to_factor(iter_id));
@@ -685,7 +690,7 @@ void FactorizationScheme::RandomSample(const HardwareParams& hardware_params,
             do {
               factor_to_assign =
                   static_cast<size_t>(iter_max_extent_factors[dist(*rng)]);
-            } while (factor_to_assign >= iter_max_extent);
+            } while (factor_to_assign > iter_max_extent);
           } else {
             std::uniform_int_distribution<> dist(1, iter_max_extent);
             factor_to_assign = dist(*rng);
@@ -1044,11 +1049,11 @@ DietCodeSplitFactorizationMemo::MutateFactorizationScheme(
     const std::vector<std::vector<int>>& curr_split_factors,
     const bool sample_perfect_tile_size) {
 
-  // if (sample_perfect_tile_size) {
-  //   LOG(INFO) << "Sampling perfect tile size";
-  // } else {
-  //   LOG(INFO) << "Sampling non-perfect tile size";
-  // }
+  if (sample_perfect_tile_size) {
+    LOG(INFO) << "Sampling perfect tile size";
+  } else {
+    LOG(INFO) << "Sampling non-perfect tile size";
+  }
 
   FactorizationScheme scheme(split_steps_info, simplify_sketch, true);
   scheme.split_factors = curr_split_factors;
