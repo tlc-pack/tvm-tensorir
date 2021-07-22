@@ -1168,7 +1168,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
   Array<IntImm> selected_inst =
       policy->search_task->shape_values[
         RandomChoose(policy->curr_inst_opt_prob, rand_gen)];
-  LOG(INFO) << "Selected inst=" << ArrayToString(selected_inst);
+  // LOG(INFO) << "Selected inst=" << ArrayToString(selected_inst);
 
   arith::Analyzer analyzer;
   Map<String, IntImm> shape_var_value_map;
