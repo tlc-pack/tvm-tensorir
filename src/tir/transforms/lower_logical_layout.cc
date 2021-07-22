@@ -18,7 +18,7 @@
  */
 
 /*!
- *  Lower logical layout
+ * \brief Lower logical layout into physical layout
  * \file lower_logical_layout.cc
  */
 #include <tvm/arith/iter_affine_map.h>
@@ -38,13 +38,12 @@
 namespace tvm {
 namespace tir {
 
-
 using FLowerLogicalLayout = TypedPackedFunc<Array<PrimExpr>(Array<PrimExpr>)>;
 
 class LogicalLayoutNode : public Object {
  public:
   FLowerLogicalLayout lower_func;
-  size_t num_dims;
+  int num_dims;
   TVM_DECLARE_FINAL_OBJECT_INFO(LogicalLayoutNode, Object);
 
   void VisitAttrs(AttrVisitor* v) {
@@ -83,229 +82,277 @@ class LogicalLayoutRegistry {
 
 class LogicalLayoutMutator : public StmtExprMutator {
  public:
-  Stmt Rewrite(const Stmt& stmt) {
-    return LogicalLayoutMutator()(stmt);
-  }
+  Stmt Rewrite(const Stmt& stmt) { return LogicalLayoutMutator()(stmt); }
 
  private:
   Stmt VisitStmt_(const ForNode* op) final {
-    loop_map_.emplace(op->loop_var, Range::FromMinExtent(op->min, op->extent));
-    // ancestor_loops_.push_back(GetRef<For>(op));
+    loop_map_.emplace(op->loop_var, GetRef<For>(op));
     auto new_stmt = StmtExprMutator::VisitStmt_(op);
     loop_map_.erase(op->loop_var);
-    if (removed_for_loops.count(op->loop_var)) {
+    if (removed_loops.count(op->loop_var)) {
       return Downcast<For>(new_stmt)->body;
     }
-    // ancestor_loops_.pop_back();
     return new_stmt;
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
-    // Step 0: Collect target buffers
-    for (const auto& buffer : op->alloc_buffers) {
-      if (LogicalLayoutRegistry::Global()->reg.count(buffer->scope)) {
-        target_buffers_.insert(buffer);
-      }
-    }
-    // Step 1: Recursively rewrite children and collect access region of target buffers.
     Block block = Downcast<Block>(StmtExprMutator::VisitStmt_(op));
     BlockNode* n = block.CopyOnWrite();
 
-    // Step 2: Infer physical buffer shape of the target buffers.
     for (size_t i = 0; i < block->alloc_buffers.size(); i++) {
       if (buffer_map_.count(block->alloc_buffers[i])) {
         n->alloc_buffers.Set(i, buffer_map_.at(block->alloc_buffers[i]));
       }
     }
-    // Step 3: Rewrite buffer allocation.
     return block;
-  }
-
-  // void RewriteBufferRegion(Buffer* buffer, Region* region) const {
-  //   for (size_t i = 0; i < region->size(); i++) {
-  //     CHECK((*region)[i].IsSinglePoint());
-  //   }
-  //   auto it = buffer_info_.find(*buffer);
-  //   if (it == buffer_info_.end()) {
-  //     // Skip if the buffer is parameter
-  //     return;
-  //   }
-  //   const BufferAllocInfo& info = it->second;
-  //   ICHECK_EQ(region->size(), info.region.size());
-  //   Region new_region;
-  //   new_region.reserve(info.region.size());
-  //   for (size_t i = 0; i < info.region.size(); ++i) {
-  //     const Range& range = (*region)[i];
-  //     new_region.push_back(Range::FromMinExtent(range->min - info.region[i]->min, range->extent));
-  //   }
-  //   *buffer = info.new_buffer;
-  //   *region = std::move(new_region);
-  // }
-
-  void RewriteBufferRegions(Array<BufferRegion>* regions) const {
-    Array<BufferRegion> new_regions;
-    new_regions.reserve(regions->size());
-    for (const auto& region : *regions) {
-      BufferRegion buffer_region = region;
-      BufferRegionNode* p = buffer_region.CopyOnWrite();
-      // RewriteBufferRegion(&p->buffer, &p->region);
-      new_regions.push_back(buffer_region);
-    }
-    *regions = std::move(new_regions);
-  }
-
-  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map_;
-  std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> removed_for_loops;
-
-  arith::NDIntSet InferNewShape(const Array<PrimExpr> indices) {
-    arith::NDIntSet nd_int_set = arith::NDIntSetFromPoint(indices);
-    std::unordered_map<const VarNode*, arith::IntSet> dom_map;
-    for (const auto &index : indices) {
-      PostOrderVisit(index, [&](const ObjectRef& obj) {
-        if (obj.as<VarNode>()) {
-          const auto&range = loop_map_.at(Downcast<Var>(obj));
-          dom_map.emplace(obj.as<VarNode>(), arith::IntSetFromMinExtent(range->min, range->extent));
-        }
-      });
-    }
-    arith::NDIntSet new_ranges = arith::EvalNDIntSet(nd_int_set, dom_map);
-    return new_ranges;
   }
 
   Stmt VisitStmt_(const BufferStoreNode* _op) final {
     BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(_op));
     const auto& reg = LogicalLayoutRegistry::Global()->reg;
-    auto it = reg.find(_op->buffer->scope);
+    auto it = reg.find(store->buffer->scope);
     if (it == reg.end()) {
       return store;
     }
+
     BufferStoreNode* op = store.CopyOnWrite();
     auto& indices = op->indices;
-
+    size_t orig_buffer_num_dims = indices.size();
     const LogicalLayout& logical_layout = (*it).second;
-    // CHECK(_op->value.as<BufferLoadNode>()) << "ValueError: data copying between buffers expected";
-    if (!_op->value.as<BufferLoadNode>()) {
-      size_t offset = op->indices.size() - logical_layout->num_dims;
-      RewriteBufferIndices(op->buffer, &op->indices);
-      auto new_ranges = InferNewShape(Array<PrimExpr>(op->indices.begin() + offset, op->indices.end()));
-      Buffer new_buffer = MakeNewBuffer(op->buffer, logical_layout, new_ranges);
-      buffer_map_[op->buffer] = new_buffer;
-      op->buffer = new_buffer;
+    CHECK_LE(logical_layout->num_dims, orig_buffer_num_dims)
+        << "ValueError: The lower function of logical layout " << op->buffer->scope
+        << " expects the buffer to be at least " << logical_layout->num_dims
+        << "-D (actual: " << orig_buffer_num_dims << "-D).";
+
+    Array<PrimExpr> leading_indices = GetLeadingIndices(indices, logical_layout->num_dims);
+    // Collect related outer loops of the block
+    std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> index_vars =
+        CollectVars(leading_indices);
+
+    if (!NeedRewriteOuterLoops(_op, index_vars)) {
+      RewriteBufferIndices(logical_layout, &op->indices);
+      auto leading_indices = GetLeadingIndices(op->indices, op->indices.size() - orig_buffer_num_dims);
+      auto leading_shape = InferRange(leading_indices);
+      ReallocOrValidateBuffer(&op->buffer, logical_layout, leading_shape);
       return store;
     }
 
-    CHECK_LE(logical_layout->num_dims, indices.size());
-    Array<PrimExpr> args;
-    arith::NDIntSet nd_intset;
-    for (size_t i = 0; i < logical_layout->num_dims; i++) {
-      args.push_back(indices[indices.size() - logical_layout->num_dims + i]);
-      CHECK(args.back().as<VarNode>()) << args.back() << " ORIG " << store;
-      removed_for_loops.insert(Downcast<Var>(args.back()));
-    }
-    Array<PrimExpr> new_args = logical_layout->lower_func(args);
-
-    auto new_ranges = InferNewShape(new_args);
-
-    Array<PrimExpr> iter_vars;
-    std::vector<Stmt> loop_nests;
-    auto nop = Evaluate(Integer(0));
-    for (size_t i = 0; i < new_ranges.size(); i++) {
-      Range dom(new_ranges[i].min(), new_ranges[i].max());
-      // TODO check int set exactly matches the range
-      LOG(INFO) << "Make ForLoop range " << dom;
-      IterVar iter_var(dom, Var(), IterVarType::kDataPar, i == 0 ? "threadIdx.x" : "");
-      CHECK(is_zero(new_ranges[i].min()));
-      loop_nests.push_back(For(iter_var->var, new_ranges[i].min(), new_ranges[i].max() - new_ranges[i].min() + 1, i == 0 ? ForKind::kThreadBinding : ForKind::kSerial, nop, iter_var));
-      iter_vars.push_back(iter_var);
-    }
-    arith::Analyzer analyzer;
-    Array<arith::IterSumExpr> iter_map = arith::DetectIterMap(iter_vars, loop_map_, Bool(true), true, &analyzer);
-    // LOG(INFO)<<iter_map.size() << " " << iter_map;
-    Array<PrimExpr> loop_vars;
-
-    for (const auto& iter_var : iter_vars) {
-      loop_vars.push_back(iter_var);
+    // mark the outer loops to remove
+    for (const Var& index_var : index_vars) {
+      removed_loops.insert(index_var);
     }
 
-    auto inverse_var_map = arith::InverseAffineIterMap(iter_map, loop_vars);
-    indices.resize(indices.size() - args.size());
-    std::copy(loop_vars.begin(), loop_vars.end(), std::back_inserter(indices));
+    // rewrite the indices and infer the extents of outer loops
+    leading_indices = logical_layout->lower_func(leading_indices);
+    auto leading_shape = InferRange(leading_indices);
+    std::vector<Stmt> loop_nests = BuildLoopNests(leading_shape);
+    Array<PrimExpr> new_loop_vars;
+    new_loop_vars.reserve(loop_nests.size());
+    for (const auto& loop_nest : loop_nests) {
+      new_loop_vars.push_back(loop_nest.as<ForNode>()->loop_var);
+    }
+    // use the new loop vars as the new indices
+    indices.resize(indices.size() - logical_layout->num_dims);
+    indices.insert(indices.end(), new_loop_vars.begin(), new_loop_vars.end());
 
-    // rewrite op->value
-    BufferLoad value = Downcast<BufferLoad>(op->value);
-    value = Downcast<BufferLoad>(Substitute(value, inverse_var_map));
-    LOG(INFO) << "New BufferLoad " << value;
-    op->value = value;
-
-
-    Buffer new_buffer = MakeNewBuffer(op->buffer, logical_layout, new_ranges);
-    LOG(INFO) << "New Buffer Shape " << new_buffer->shape;
-    buffer_map_[op->buffer] = new_buffer;
-    op->buffer = new_buffer;
+    auto inverse_var_map = GetInverseAffineIterMap(indices, index_vars, new_loop_vars);
+    op->value = Substitute(op->value, inverse_var_map);
+    ReallocOrValidateBuffer(&op->buffer, logical_layout, leading_shape);
     return MergeNest(loop_nests, store);
-  }
-
-  Buffer MakeNewBuffer(const Buffer& orig_buffer, const LogicalLayout& logical_layout, const arith::NDIntSet& nd_int_set) const {
-    ObjectPtr<BufferNode> n = make_object<BufferNode>(*orig_buffer.get());
-    Array<PrimExpr> new_shape(orig_buffer->shape.begin(), orig_buffer->shape.begin() + orig_buffer->shape.size() - logical_layout->num_dims);
-    for (size_t i = 0; i < nd_int_set.size(); i++) {
-      ICHECK(is_zero(nd_int_set[i].min()));
-      new_shape.push_back(nd_int_set[i].max() - nd_int_set[i].min() + 1);
-    }
-    n->shape = std::move(new_shape);
-    std::string scope = n->scope;
-    n->scope = scope.substr(0, scope.find('.')); // remove logical layout suffix
-    return Buffer(std::move(n));
-  }
-
-  void RewriteBufferIndices(const Buffer& orig_buffer, Array<PrimExpr> *indices) {
-    const LogicalLayout& logical_layout = LogicalLayoutRegistry::Global()->reg.at(orig_buffer->scope);
-    CHECK_LE(logical_layout->num_dims, indices->size());
-    Array<PrimExpr> args;
-    for (size_t i = 0; i < logical_layout->num_dims; i++) {
-      args.push_back(indices->operator[](indices->size() - logical_layout->num_dims + i));
-    }
-    Array<PrimExpr> new_args = logical_layout->lower_func(args);
-    indices->resize(indices->size() - args.size());
-    for (size_t i = 0; i < new_args.size(); i++) {
-      indices->push_back(new_args[i]);
-    }
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* _op) final {
     BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_op));
-    if (!buffer_map_.count(load->buffer)) {
+    const auto& reg = LogicalLayoutRegistry::Global()->reg;
+    auto it = reg.find(load->buffer->scope);
+    if (it == reg.end()) {
       return load;
     }
+    const LogicalLayout& logical_layout = (*it).second;
+    size_t orig_buffer_num_dims = load->indices.size();
+    CHECK(buffer_map_.count(load->buffer)) << "ValueError: Cannot find the producer of the buffer "
+                                           << load->buffer->name << " with logical layout.";
+    CHECK_LE(logical_layout->num_dims, orig_buffer_num_dims)
+        << "ValueError: The lower function of logical layout " << load->buffer->scope
+        << " expects the buffer to be at least " << logical_layout->num_dims
+        << "-D (actual: " << orig_buffer_num_dims << "-D.";
     BufferLoadNode* op = load.CopyOnWrite();
-    RewriteBufferIndices(op->buffer, &(op->indices));
+    RewriteBufferIndices(logical_layout, &op->indices);
     op->buffer = buffer_map_.at(load->buffer);
     return std::move(load);
   }
 
-  std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> target_buffers_;
-  std::unordered_map<Buffer, Region, ObjectPtrHash, ObjectPtrEqual> access_region_;
-  std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map_;
-  Array<For> ancestor_loops_;
-};
+  void ReallocOrValidateBuffer(Buffer *buffer, const LogicalLayout& logical_layout, const arith::NDIntSet& leading_shape) {
+    Array<PrimExpr> new_shape(
+        (*buffer)->shape.begin(),
+        (*buffer)->shape.end() - logical_layout->num_dims);
+    for (const auto& range : leading_shape) {
+      new_shape.push_back(range.max() + 1);
+    }
+    new_shape.reserve(new_shape.size() + leading_shape.size());
 
-Stmt LowerLogicalLayout(Stmt stmt, const std::string& target) {
-  return LogicalLayoutMutator().Rewrite(std::move(stmt));
-}
+    auto it = buffer_map_.find(*buffer);
+    if (it != buffer_map_.end()) {
+      const auto& new_buffer = it->second;
+      ICHECK(new_buffer->shape.size() == new_shape.size());
+      for (size_t i = 0; i < new_shape.size(); i++) {
+        CHECK(analyzer_.CanProveEqual(new_buffer->shape[i], new_shape[i])) << "ValueError: Inconsistent buffer shape of the buffer after logical layout lowering.";
+      }
+      return;
+    }
+    ObjectPtr<BufferNode> n = make_object<BufferNode>(*(buffer->get()));
+    std::string scope = n->scope;
+    n->scope = scope.substr(0, scope.find('.'));  // remove the suffix of the logical layout
+    Buffer new_buffer = Buffer(std::move(n));
+    buffer_map_.emplace(*buffer, new_buffer);
+    *buffer = new_buffer;
+  }
+
+  Map<Var, PrimExpr> GetInverseAffineIterMap(
+      const Array<PrimExpr>& indices,
+      std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual>& index_vars,
+      const Array<PrimExpr>& loop_vars) {
+    Map<Var, Range> input_iters;
+    for (const Var& index_var : index_vars) {
+      const auto& for_loop = loop_map_.at(index_var);
+      input_iters.Set(index_var, Range::FromMinExtent(for_loop->min, for_loop->extent));
+    }
+    Array<arith::IterSumExpr> iter_map =
+        arith::DetectIterMap(indices, input_iters, Bool(true), true, &analyzer_);
+        LOG(INFO) << iter_map.size() << " " << loop_vars.size();
+    return arith::InverseAffineIterMap(iter_map, loop_vars);
+  }
+
+  // Infer range of the indices by evaluating NDIntSet
+  arith::NDIntSet InferRange(const Array<PrimExpr> indices) {
+    arith::NDIntSet nd_int_set = arith::NDIntSetFromPoint(indices);
+    std::unordered_map<const VarNode*, arith::IntSet> dom_map;
+    for (const auto& index : indices) {
+      PostOrderVisit(index, [&](const ObjectRef& obj) {
+        if (obj.as<VarNode>()) {
+          const For& for_loop = loop_map_.at(Downcast<Var>(obj));
+          dom_map.emplace(obj.as<VarNode>(),
+                          arith::IntSetFromMinExtent(for_loop->min, for_loop->extent));
+        }
+      });
+    }
+    arith::NDIntSet new_ranges = arith::EvalNDIntSet(nd_int_set, dom_map);
+    // Validate the new ranges has zero as minumum
+    for (const auto& range : new_ranges) {
+      CHECK(is_zero(range.min())) << "ValueError: the transformed indices of the logical layout "
+                                     "should have zero as minimum.";
+      CHECK(!range.IsNothing() && !arith::is_pos_inf(range.max()))
+          << "ValueError: Invalid range " << range << " of the transformed indices of the buffer with logical "
+             "layout";
+    }
+    return new_ranges;
+  }
+
+  Array<PrimExpr> GetLeadingIndices(const Array<PrimExpr>& indices, int num_dims) {
+    Array<PrimExpr> leading_indices(indices.end() - num_dims, indices.end());
+    return leading_indices;
+  }
+
+  // Collect variables in the indices
+  std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> CollectVars(
+      const Array<PrimExpr>& indices) {
+    std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> vars;
+    for (const PrimExpr& index : indices) {
+      PostOrderVisit(index, [&vars](const ObjectRef& obj) {
+        if (obj.as<VarNode>()) {
+          vars.insert(Downcast<Var>(obj));
+        }
+      });
+    }
+    return vars;
+  }
+
+  // Build loop nests to cover the given NDIntSet
+  std::vector<Stmt> BuildLoopNests(const arith::NDIntSet& shape) {
+    std::vector<Stmt> loop_vars;
+    const auto nop = Evaluate(Integer(0));
+    for (size_t i = 0; i < shape.size(); i++) {
+      Range dom(shape[i].min(), shape[i].max() + 1);
+      // TODO: how should we name these loop vars?
+      if (i == 0) {
+        // the outermost loop is automatically bound to thread axis
+        IterVar iter_var(dom, Var(), IterVarType::kDataPar, "threadIdx.x");
+        loop_vars.push_back(
+            For(iter_var->var, dom->min, dom->extent, ForKind::kThreadBinding, nop, iter_var));
+      } else {
+        loop_vars.push_back(For(Var(), dom->min, dom->extent, ForKind::kSerial, nop));
+      }
+    }
+    return loop_vars;
+  }
+
+  // Check whether need to rewrite outer loops to make access to the buffer continuous.
+  bool NeedRewriteOuterLoops(
+      const StmtNode* stmt,
+      const std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual>& loop_vars) {
+
+    // We require the loop variables that appear in the buffer indices to be the loops that are direct
+    // ancestors of the buffer store.
+    // For example, we require the outer loops to have the
+    // following pattern:
+    // for (ax0, ...) {
+    //   for (ax1, ...) {
+    //     for (ax2, ...) {
+    //       buf[ax0 * 4 + ax1, ax2] = ...
+    //     }
+    //   }
+    // }
+    // Note that these outer loops can be reordered, but no other statements can be their children.
+
+    for (const Var& loop_var : loop_vars) {
+      const auto& for_loop = loop_map_.at(loop_var);
+      if (for_loop->body.get() == stmt || for_loop->body.as<BlockRealizeNode>()) {
+        continue;
+      } else if (const auto* child_loop = for_loop->body.as<ForNode>()) {
+        if (loop_vars.count(child_loop->loop_var)) {
+          continue;
+        }
+      }
+      LOG(INFO) << "Cannot rewrite outer loops because of " << for_loop;
+      return false;
+    }
+    return true;
+  }
+
+  Buffer MakeNewBuffer(const Buffer& orig_buffer, const LogicalLayout& logical_layout,
+                       const arith::NDIntSet& leading_shape) const {
+    ObjectPtr<BufferNode> n = make_object<BufferNode>(*orig_buffer.get());
+    Array<PrimExpr> new_shape(
+        orig_buffer->shape.begin(),
+        orig_buffer->shape.begin() + orig_buffer->shape.size() - logical_layout->num_dims);
+    for (const auto& range : leading_shape) {
+      new_shape.push_back(range.max() + 1);
+    }
+    n->shape = std::move(new_shape);
+    std::string scope = n->scope;
+    n->scope = scope.substr(0, scope.find('.'));  // remove the suffix of the logical layout
+    return Buffer(std::move(n));
+  }
+
+  void RewriteBufferIndices(const LogicalLayout& logical_layout, Array<PrimExpr>* indices) {
+    Array<PrimExpr> leading_indices = GetLeadingIndices(*indices, logical_layout->num_dims);
+    leading_indices = logical_layout->lower_func(leading_indices);
+    indices->resize(indices->size() - logical_layout->num_dims);
+    indices->insert(indices->end(), leading_indices.begin(), leading_indices.end());
+  }
+
+  std::unordered_map<Var, For, ObjectPtrHash, ObjectPtrEqual> loop_map_;
+  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map_;
+  std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> removed_loops;
+  arith::Analyzer analyzer_;
+};
 
 namespace transform {
 
 Pass LowerLogicalLayout() {
   auto pass_func = [](PrimFunc f, IRModule m, PassContext ctx) {
     auto* n = f.CopyOnWrite();
-    // auto regions = CollectBufferAccessRegion(f);
-    // // auto target = f->GetAttr<Target>(tvm::attr::kTarget);
-    // // ICHECK(target.defined()) << "LowerLogicalLayout: Require the target attribute";
-    // auto mtriple = target.value()->GetAttr<runtime::String>("mtriple", "");
-    // LOG(INFO) << f;
-    n->body =
-        LowerLogicalLayout(std::move(n->body), "");
-        LOG(INFO) << "LowerLogicalLayout Result:\n"<<n->body;
+    n->body = LogicalLayoutMutator().Rewrite(std::move(f->body));
     return f;
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.LowerLogicalLayout", {});
