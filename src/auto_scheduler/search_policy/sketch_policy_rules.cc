@@ -1154,7 +1154,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
       }
     }
   }  // for (i ∈ (*state)->transform_steps)
-  LOG(INFO) << "curr_split_factors=" << MatrixToString(curr_split_factors);
+  // LOG(INFO) << "curr_split_factors=" << MatrixToString(curr_split_factors);
 
   if (split_step_ids.empty()) {
     return ResultKind::kInvalid;
@@ -1230,7 +1230,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     } catch (const std::out_of_range& e) {
       return ResultKind::kInvalid;
     }
-    LOG(INFO) << "Mutated factorization scheme=" << mutated_scheme.toString();
+    // LOG(INFO) << "Mutated factorization scheme=" << mutated_scheme.toString();
 
     CHECK(mutated_scheme.split_factors.size() == split_step_ids.size());
     for (size_t i = 0; i < split_step_ids.size(); ++i) {
