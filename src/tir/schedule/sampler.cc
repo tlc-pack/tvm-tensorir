@@ -19,6 +19,7 @@
 #include "./sampler.h"
 
 #include <tvm/runtime/logging.h>
+#include <tvm/target/target.h>
 
 #include <algorithm>
 
@@ -340,6 +341,251 @@ std::vector<int> Sampler::SamplePerfectTile(int n_splits, int extent, int max_in
   std::vector<int> result = SamplePerfectTile(n_splits - 1, extent / innermost);
   result.push_back(innermost);
   return result;
+}
+
+static inline int ExtractInt(const Target& target, const char* name) {
+  if (Optional<Integer> v = target->GetAttr<Integer>(name)) {
+    return v.value()->value;
+  }
+  LOG(FATAL) << "AttributedError: \"" << name << "\" is not defined in the target";
+  throw;
+}
+
+static inline bool IsCudaTarget(const Target& target) {
+  if (Optional<String> v = target->GetAttr<String>("kind")) {
+    return v.value() == "cuda";
+  }
+  return false;
+}
+
+std::vector<std::vector<int>> Sampler::SampleShapeGenericTiles(
+    const std::vector<int>& n_splits, const std::vector<int>& max_extents,
+    const Target& target, int max_innermost_factor) {
+  std::vector<std::vector<int>> ret_split_factors;
+
+  if (IsCudaTarget(target)) {
+    // The following factorization scheme is built under the assumption that: (1) The target is
+    // CUDA, and (2) The tiling structure is SSSRRSRS.
+
+    // extract all the hardware parameters
+    const struct HardwareConstraints {
+      int max_shared_memory_per_block;
+      int max_local_memory_per_block;
+      int max_threads_per_block;
+      int max_innermost_factor;
+      int max_vthread;
+    } constraints = {
+        ExtractInt(target, "shared_memory_per_block"), ExtractInt(target, "registers_per_block"),
+        ExtractInt(target, "max_threads_per_block"), max_innermost_factor,  8};
+
+    for (const int n_split : n_splits) {
+      ret_split_factors.push_back(std::vector<int>(n_split, 1));
+    }
+
+    // sample the number of threads per block
+    const int warp_size = ExtractInt(target, "warp_size");
+    int num_threads_per_block =
+        SampleInt(1, constraints.max_threads_per_block / warp_size) * warp_size;
+    // find all the possible factors of the number of threads per block
+    int num_spatial_axes = 0;
+    size_t last_spatial_iter_id = -1;
+    for (size_t iter_id = 0; iter_id < n_splits.size(); ++iter_id) {
+      CHECK(n_splits[iter_id] == 4 || n_splits[iter_id] == 2)
+          << "The tiling structure is not SSSRRSRS";
+      if (n_splits[iter_id] == 4) {
+        ++num_spatial_axes;
+        last_spatial_iter_id = iter_id;
+      }
+    }
+
+    bool all_below_max_extents;
+    std::vector<int> num_threads_factor_scheme;
+    do {
+      all_below_max_extents = true;
+
+      num_threads_factor_scheme = 
+          SamplePerfectTile(num_spatial_axes, num_threads_per_block);
+      for (size_t iter_id = 0, spatial_iter_id = 0; iter_id < n_splits.size(); ++iter_id) {
+        if (n_splits[iter_id] == 4) {
+          if (num_threads_factor_scheme[spatial_iter_id] > max_extents[iter_id]) {
+            all_below_max_extents = false;
+          }
+          ++spatial_iter_id;
+        }
+      }  // for (iter_id ∈ [0, split_steps_info.size()))
+    } while (!all_below_max_extents);
+
+    // do the looping again and assign the factors
+    for (size_t iter_id = 0, spatial_iter_id = 0; iter_id < n_splits.size(); ++iter_id) {
+      if (n_splits[iter_id] == 4) {
+        ret_split_factors[iter_id][1] = num_threads_factor_scheme[spatial_iter_id];
+        ++spatial_iter_id;
+      }
+    }
+
+    // factor[0] (vthread)
+    int reg_usage = num_threads_per_block, shmem_usage = 0;
+
+    auto sample_factors = [&](std::function<bool(const size_t)> continue_predicate,
+                              std::function<int(const size_t)> max_extent,
+                              std::function<int&(const size_t)> factor_to_assign) {
+          std::vector<int> iter_max_extents;
+          std::vector<int> factors_to_assign;
+          for (size_t iter_id = 0; iter_id < n_splits.size(); ++iter_id) {
+            if (continue_predicate(iter_id)) {
+              continue;
+            }
+            size_t iter_max_extent = max_extent(iter_id), factor_to_assign;
+
+            std::uniform_int_distribution<> dist(1, iter_max_extent);
+            factor_to_assign = SampleInt(1, iter_max_extent);
+
+            if (n_splits[iter_id] == 4) {
+              reg_usage *= factor_to_assign;
+            } else {
+              shmem_usage *= factor_to_assign;
+            }
+            iter_max_extents.push_back(iter_max_extent);
+            factors_to_assign.push_back(factor_to_assign);
+          }
+          // shuffle the factors
+          std::vector<int> factors_to_assign_bak = factors_to_assign;
+          Shuffle(factors_to_assign.begin(), factors_to_assign.end());
+          // make sure that the shuffle is valid
+          bool valid_shuffle = true;
+          std::vector<int>::iterator iter_max_extents_it = iter_max_extents.begin(),
+                                     factors_to_assign_it = factors_to_assign.begin();
+
+          for (size_t iter_id = 0; iter_id < n_splits.size(); ++iter_id) {
+            if (continue_predicate(iter_id)) {
+              continue;
+            }
+            int iter_max_extent = *iter_max_extents_it;
+            if (*factors_to_assign_it > iter_max_extent) {
+              valid_shuffle = false;
+            }
+            ++iter_max_extents_it;
+            ++factors_to_assign_it;
+          }
+          if (!valid_shuffle) {
+            factors_to_assign = std::move(factors_to_assign_bak);
+          }
+          // do the actual assignment
+          factors_to_assign_it = factors_to_assign.begin();
+          for (size_t iter_id = 0; iter_id < n_splits.size(); ++iter_id) {
+            if (continue_predicate(iter_id)) {
+              continue;
+            }
+            factor_to_assign(iter_id) = *factors_to_assign_it;
+            ++factors_to_assign_it;
+          }
+        };
+
+    sample_factors(
+        [&](const size_t iter_id) -> bool {
+          return (n_splits[iter_id] != 4) || 
+                 (iter_id != last_spatial_iter_id);
+        },
+        [&](const size_t iter_id) -> int {
+          size_t max_vthread_extent =
+              std::min(constraints.max_vthread,
+                       max_extents[iter_id] / ret_split_factors[iter_id][1]); 
+          max_vthread_extent =
+              std::min(constraints.max_vthread,
+                       constraints.max_local_memory_per_block / reg_usage);
+          return max_vthread_extent;
+        },
+        [&](const size_t iter_id) -> int& {
+          return ret_split_factors[iter_id][0];
+        }
+        );
+
+    // factor[3] (innermost)
+    sample_factors(
+        [&](const size_t iter_id) -> bool {
+          return (n_splits[iter_id] != 4) || 
+                 (iter_id == last_spatial_iter_id);
+        },
+        [&](const size_t iter_id) -> int {
+          int max_innermost_extent =
+              std::min(max_innermost_factor,
+                       max_extents[iter_id] / ret_split_factors[iter_id][0]
+                         / ret_split_factors[iter_id][1]);
+          max_innermost_extent =
+              std::min(max_innermost_extent,
+                       constraints.max_local_memory_per_block / reg_usage);
+          return max_innermost_extent;
+        },
+        [&](const size_t iter_id) -> int& {
+          return ret_split_factors[iter_id][3];
+        }
+        );
+    // factor[2]
+    sample_factors(
+        [&](const size_t iter_id) -> bool {
+          return (n_splits[iter_id] != 4);
+        },
+        [&](const size_t iter_id) -> size_t {
+          size_t max_2nd_innermost_extent =
+              std::min(max_extents[iter_id] / ret_split_factors[iter_id][0]
+                         / ret_split_factors[iter_id][1] / ret_split_factors[iter_id][3],
+                       constraints.max_local_memory_per_block / reg_usage
+                       );
+          return max_2nd_innermost_extent;
+        },
+        [&](const size_t iter_id) -> int& {
+          return ret_split_factors[iter_id][2];
+        }
+        );
+
+    for (size_t iter_id = 0; iter_id < n_splits.size(); ++iter_id) {
+      if (n_splits[iter_id] == 4) {
+        shmem_usage += ret_split_factors[iter_id][0] * ret_split_factors[iter_id][1]
+                         * ret_split_factors[iter_id][2] * ret_split_factors[iter_id][3];
+      }
+    }
+    if (shmem_usage > static_cast<int>(constraints.max_shared_memory_per_block / sizeof(float))) {
+      LOG(FATAL) << "shmem_usage goes out-of-range";
+    }
+    // repeat similar procedure for reduction axes
+    // rfactor[1] (innermost)
+    sample_factors(
+        [&](const size_t iter_id) -> bool {
+          return (n_splits[iter_id] != 2);
+        },
+        [&](const size_t iter_id) -> int {
+          int max_innermost_extent =
+              std::min(max_innermost_factor, max_extents[iter_id]);
+          max_innermost_extent =
+              std::min(max_innermost_extent,
+                       static_cast<int>(
+                         constraints.max_shared_memory_per_block / sizeof(float) / shmem_usage
+                       ));
+          return max_innermost_extent;
+        },
+        [&](const size_t iter_id) -> int& {
+          return ret_split_factors[iter_id][1];
+        }
+        );
+    // rfactor[0]
+    sample_factors(
+        [&](const size_t iter_id) -> bool {
+          return (n_splits[iter_id] != 2);
+        },
+        [&](const size_t iter_id) -> size_t {
+          size_t max_2nd_innermost_extent =
+              std::min(max_extents[iter_id] / ret_split_factors[iter_id][1],
+                       static_cast<int>(
+                         constraints.max_shared_memory_per_block / sizeof(float) / shmem_usage
+                       ));
+          return max_2nd_innermost_extent;
+        },
+        [&](const size_t iter_id) -> int& {
+          return ret_split_factors[iter_id][0];
+        }
+        );
+  }  // if (IsCudaTarget(target))
+  return ret_split_factors;
 }
 
 }  // namespace tir
