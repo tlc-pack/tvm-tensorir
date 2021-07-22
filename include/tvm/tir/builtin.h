@@ -670,7 +670,6 @@ TVM_DLL const Op& atomic_add();
  *     pipeline       : the pipeline object to track the asynchronous operation
  */
 TVM_DLL const Op& tvm_memcpy_async();
-TVM_DLL const Op& tvm_mfma_sync();
 
 /*! \brief The kind of structure field info used in intrinsic */
 enum TVMStructFieldKind : int {

@@ -211,17 +211,14 @@ def test_integration_conv2d_nchwc():
         # X: vectorized cooperative fetching
         x_read = sch.cache_read(block, 1, "shared")
         sch.compute_at(x_read, rw0)
-        fused = sch.fuse(*sch.get_loops(x_read)[-4:])
+        fused = sch.fuse(*sch.get_loops(x_read)[-5:])
         fused_0, fused_1 = sch.split(fused, factors=[None, 4])
         sch.mark_loop(fused_0, "loop_type", "lazy_cooperative_fetch")
         sch.vectorize(fused_1)
         # Decompose reduction
         sch.decompose_reduction(block, thread_idx)
-        # sch.tensorize(i_tc, "test.tensorcore.wmma")
-        # print(tvm.script.asscript(sch.mod))
-        with tvm.target.Target('cuda'):
-            print(tvm.lower(sch.mod['main'], None, simple_mode=True))
-            # tvm.build(sch.mod['main'])
+        sch.tensorize(i_tc, "test.tensorcore.wmma")
+        print(tvm.script.asscript(sch.mod))
 
     sch = tir.Schedule(mod=workload, traced=True)
     schedule(sch)

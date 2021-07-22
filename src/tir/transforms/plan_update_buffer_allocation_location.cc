@@ -127,7 +127,6 @@ class BufferAllocationLocator : public StmtExprMutator {
 
   void CollectReadWrite(const Block& block, Array<BufferRegion>* reads,
                         Array<BufferRegion>* writes) {
-                          LOG(INFO) << "CollectBlock " << block;
     Array<Array<BufferRegion>> access = GetBlockAccessRegion(block, buffer_data_to_buffer_);
     *reads = access[0];
     *writes = access[1];

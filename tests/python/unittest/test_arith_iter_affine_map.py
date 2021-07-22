@@ -713,12 +713,12 @@ def test_inverse_affine_iter_map():
 
 
 if __name__ == "__main__":
-    # test_split()
-    # test_trivial()
-    # test_fuse()
-    # test_compound()
-    # test_predicate()
-    # test_normalize_iter_map_to_expr()
-    # test_subspace_division()
-    # test_complex()
+    test_split()
+    test_trivial()
+    test_fuse()
+    test_compound()
+    test_predicate()
+    test_normalize_iter_map_to_expr()
+    test_subspace_division()
+    test_complex()
     test_inverse_affine_iter_map()
