@@ -42,7 +42,6 @@ MemoryInfo GetMemoryInfo(const std::string& scope) {
   std::string fname = "tvm.info.mem." + scope;
   const runtime::PackedFunc* f = runtime::Registry::Get(fname);
   if (f == nullptr) {
-    LOG(INFO) << "Can't get mmmmory info " << fname;
     return MemoryInfo();
   } else {
     return (*f)();

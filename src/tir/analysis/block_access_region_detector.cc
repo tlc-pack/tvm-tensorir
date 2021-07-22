@@ -127,10 +127,17 @@ Array<BufferRegion> BlockReadWriteDetector::CollectOpaques() {
   return CollectRegions(opaque_buffers_, opaque_regions_);
 }
 
+<<<<<<< HEAD
 void BlockReadWriteDetector::VisitExpr_(const VarNode* op) { UpdateOpaque(GetRef<Var>(op)); }
 
 void BlockReadWriteDetector::VisitExpr_(const LoadNode* op) {
   UpdateOpaque(op->buffer_var);
+=======
+void BlockReadWriteDetector::VisitExpr_(const VarNode* op) { AddOpaque(GetRef<Var>(op)); }
+
+void BlockReadWriteDetector::VisitExpr_(const LoadNode* op) {
+  AddOpaque(op->buffer_var);
+>>>>>>> -
   ExprVisitor::VisitExpr_(op);
 }
 
@@ -166,7 +173,6 @@ void BlockReadWriteDetector::VisitStmt_(const BufferStoreNode* op) {
 
 void BlockReadWriteDetector::VisitStmt_(const BlockRealizeNode* op) {
   /*! \note detector will not visit child block recursively, so it will stop here */
-  LOG(INFO) << "VisitBlock " << GetRef<BlockRealize>(op);
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   for (size_t i = 0; i < op->block->iter_vars.size(); ++i) {
     vmap[op->block->iter_vars[i]->var.get()] = op->iter_values[i];
@@ -272,9 +278,12 @@ void BlockReadWriteDetector::UpdateOpaque(const Var& buffer_var) {
       int_set.push_back(arith::EvalSet(range, dom_map_));
     }
 <<<<<<< HEAD
+<<<<<<< HEAD
     Update(&opaque_buffers_, &opaque_regions_, buffer, int_set);
 =======
     LOG(INFO) << "AddOpaqueBuf " << buffer_var;
+=======
+>>>>>>> -
     opaque_buffers_.push_back(buffer);
 >>>>>>> [WIP] Logical Layout lowering
   }

@@ -217,7 +217,7 @@ def test_integration_conv2d_nchwc():
         sch.vectorize(fused_1)
         # Decompose reduction
         sch.decompose_reduction(block, thread_idx)
-        sch.tensorize(i_tc, "test.tensorcore.wmma")
+        # sch.tensorize(i_tc, "test.tensorcore.wmma")
         print(tvm.script.asscript(sch.mod))
 
     sch = tir.Schedule(mod=workload, traced=True)

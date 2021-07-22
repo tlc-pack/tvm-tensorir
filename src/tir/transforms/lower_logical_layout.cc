@@ -219,7 +219,6 @@ class LogicalLayoutMutator : public StmtExprMutator {
     }
     Array<arith::IterSumExpr> iter_map =
         arith::DetectIterMap(indices, input_iters, Bool(true), true, &analyzer_);
-        LOG(INFO) << iter_map.size() << " " << loop_vars.size();
     return arith::InverseAffineIterMap(iter_map, loop_vars);
   }
 
@@ -313,7 +312,6 @@ class LogicalLayoutMutator : public StmtExprMutator {
           continue;
         }
       }
-      LOG(INFO) << "Cannot rewrite outer loops because of " << for_loop;
       return false;
     }
     return true;

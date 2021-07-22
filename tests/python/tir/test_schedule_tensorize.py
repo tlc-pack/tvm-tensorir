@@ -74,7 +74,7 @@ def lower_intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.bind(vj, 0)
         tir.bind(vk, 0)
         tir.reads([C[vi:vi + 16, vj:vj + 16], A[vi:vi + 16, vk:vk + 16], B[vj:vj + 16, vk:vk + 16]])
-        tir.writes(C[vi:vi + 16, vj:vj + 16]))
+        tir.writes(C[vi:vi + 16, vj:vj + 16])
         tir.evaluate(tir.tvm_mma_sync(C.data, C.elem_offset // 256,
                                       A.data, A.elem_offset // 256,
                                       B.data, B.elem_offset // 256,
@@ -324,8 +324,6 @@ def test_high_dim_tensorize():
     s.reorder(io, jo, ko, ii, ji, ki)
     tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
     s.tensorize(ii, tensor_intrin)
-    print(tvm.script.asscript(s.mod['main']))
-    print(tvm.script.asscript(tensorized_batch_matmul))
     tvm.ir.assert_structural_equal(tensorized_batch_matmul, s.mod["main"])
 
 
