@@ -18,7 +18,7 @@
  */
 
 /*!
- * \brief Lower logical layout into physical layout
+ * \brief Lower logical layout to physical layout
  * \file lower_logical_layout.cc
  */
 #include <tvm/arith/iter_affine_map.h>
@@ -89,7 +89,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     loop_map_.emplace(op->loop_var, GetRef<For>(op));
     auto new_stmt = StmtExprMutator::VisitStmt_(op);
     loop_map_.erase(op->loop_var);
-    if (removed_loops.count(op->loop_var)) {
+    if (removed_loops_.count(op->loop_var)) {
       return Downcast<For>(new_stmt)->body;
     }
     return new_stmt;
@@ -129,34 +129,47 @@ class LogicalLayoutMutator : public StmtExprMutator {
     std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> index_vars =
         CollectVars(leading_indices);
 
+    // Case 1: The outer loops will not be regenerated. We use the logical layout to convert buffer
+    // indices. The locality of the new indices is not guaranteed.
     if (!NeedRewriteOuterLoops(_op, index_vars)) {
       RewriteBufferIndices(logical_layout, &op->indices);
-      auto leading_indices = GetLeadingIndices(op->indices, op->indices.size() - orig_buffer_num_dims);
+      auto leading_indices =
+          GetLeadingIndices(op->indices, op->indices.size() - orig_buffer_num_dims);
       auto leading_shape = InferRange(leading_indices);
       ReallocOrValidateBuffer(&op->buffer, logical_layout, leading_shape);
       return store;
     }
 
-    // mark the outer loops to remove
+    // Case 2: The outer loops can be mutated. We will regenerate outer loops to make sure
+    // continuous access to the buffer in BufferStore.
+
+    // Step 1: Mark the outer loops to remove
     for (const Var& index_var : index_vars) {
-      removed_loops.insert(index_var);
+      removed_loops_.insert(index_var);
     }
 
-    // rewrite the indices and infer the extents of outer loops
+    // Step 2: Use the logical layout to rewrite the indices and infer the extents of outer loops
     leading_indices = logical_layout->lower_func(leading_indices);
     auto leading_shape = InferRange(leading_indices);
+
+    // Step 3: Generate outer loops with the inferred extents
     std::vector<Stmt> loop_nests = BuildLoopNests(leading_shape);
+
+    // Step 4: Use the new loop vars as the new indices
     Array<PrimExpr> new_loop_vars;
     new_loop_vars.reserve(loop_nests.size());
     for (const auto& loop_nest : loop_nests) {
       new_loop_vars.push_back(loop_nest.as<ForNode>()->loop_var);
     }
-    // use the new loop vars as the new indices
     indices.resize(indices.size() - logical_layout->num_dims);
     indices.insert(indices.end(), new_loop_vars.begin(), new_loop_vars.end());
 
+    // Step 5: Compute the inverse of the affine transformation specified by the logical layout,
+    // and rewrite loop variables of old outer loops.
     auto inverse_var_map = GetInverseAffineIterMap(indices, index_vars, new_loop_vars);
     op->value = Substitute(op->value, inverse_var_map);
+
+    // Step 6: Compute new buffer shape and make new buffer.
     ReallocOrValidateBuffer(&op->buffer, logical_layout, leading_shape);
     return MergeNest(loop_nests, store);
   }
@@ -182,21 +195,24 @@ class LogicalLayoutMutator : public StmtExprMutator {
     return std::move(load);
   }
 
-  void ReallocOrValidateBuffer(Buffer *buffer, const LogicalLayout& logical_layout, const arith::NDIntSet& leading_shape) {
-    Array<PrimExpr> new_shape(
-        (*buffer)->shape.begin(),
-        (*buffer)->shape.end() - logical_layout->num_dims);
+  void ReallocOrValidateBuffer(Buffer* buffer, const LogicalLayout& logical_layout,
+                               const arith::NDIntSet& leading_shape) {
+    // Compute new buffer shape
+    Array<PrimExpr> new_shape((*buffer)->shape.begin(),
+                              (*buffer)->shape.end() - logical_layout->num_dims);
     for (const auto& range : leading_shape) {
       new_shape.push_back(range.max() + 1);
     }
     new_shape.reserve(new_shape.size() + leading_shape.size());
 
+    // Add the new buffer to buffer_map. If the new buffer exists, verify the new buffer shape.
     auto it = buffer_map_.find(*buffer);
     if (it != buffer_map_.end()) {
       const auto& new_buffer = it->second;
       ICHECK(new_buffer->shape.size() == new_shape.size());
       for (size_t i = 0; i < new_shape.size(); i++) {
-        CHECK(analyzer_.CanProveEqual(new_buffer->shape[i], new_shape[i])) << "ValueError: Inconsistent buffer shape of the buffer after logical layout lowering.";
+        CHECK(analyzer_.CanProveEqual(new_buffer->shape[i], new_shape[i]))
+            << "ValueError: Inconsistent buffer shape of the buffer after logical layout lowering.";
       }
       return;
     }
@@ -241,7 +257,8 @@ class LogicalLayoutMutator : public StmtExprMutator {
       CHECK(is_zero(range.min())) << "ValueError: the transformed indices of the logical layout "
                                      "should have zero as minimum.";
       CHECK(!range.IsNothing() && !arith::is_pos_inf(range.max()))
-          << "ValueError: Invalid range " << range << " of the transformed indices of the buffer with logical "
+          << "ValueError: Invalid range " << range
+          << " of the transformed indices of the buffer with logical "
              "layout";
     }
     return new_ranges;
@@ -289,10 +306,8 @@ class LogicalLayoutMutator : public StmtExprMutator {
   bool NeedRewriteOuterLoops(
       const StmtNode* stmt,
       const std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual>& loop_vars) {
-
-    // We require the loop variables that appear in the buffer indices to be the loops that are direct
-    // ancestors of the buffer store.
-    // For example, we require the outer loops to have the
+    // We require the loop variables that appear in the buffer indices to be the loops that are
+    // direct ancestors of the buffer store. For example, we require the outer loops to have the
     // following pattern:
     // for (ax0, ...) {
     //   for (ax1, ...) {
@@ -341,7 +356,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
 
   std::unordered_map<Var, For, ObjectPtrHash, ObjectPtrEqual> loop_map_;
   std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map_;
-  std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> removed_loops;
+  std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> removed_loops_;
   arith::Analyzer analyzer_;
 };
 
