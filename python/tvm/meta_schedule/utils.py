@@ -631,10 +631,10 @@ def rpc_runner_worker(
                 _, remote = request_remote(key, host, port, priority, timeout)
                 remote.upload(build_result.filename)
                 func = remote.load_module(os.path.split(build_result.filename)[1])
-                ctx = remote.device(measure_input.task.target.kind.name, 0)
+                dev = remote.device(measure_input.task.target.kind.name, 0)
                 time_f = func.time_evaluator(
                     func_name=func.entry_name,
-                    ctx=ctx,
+                    dev=dev,
                     number=number,
                     repeat=repeat,
                     min_repeat_ms=min_repeat_ms,
