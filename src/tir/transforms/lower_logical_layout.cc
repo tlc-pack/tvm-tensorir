@@ -100,8 +100,10 @@ class LogicalLayoutMutator : public StmtExprMutator {
     BlockNode* n = block.CopyOnWrite();
 
     for (size_t i = 0; i < block->alloc_buffers.size(); i++) {
-      if (buffer_map_.count(block->alloc_buffers[i])) {
-        n->alloc_buffers.Set(i, buffer_map_.at(block->alloc_buffers[i]));
+      auto it = buffer_map_.find(block->alloc_buffers[i]);
+      if (it != buffer_map_.end()) {
+        n->alloc_buffers.Set(i, it->second);
+        buffer_map_.erase(block->alloc_buffers[i]);
       }
     }
     return block;
@@ -166,7 +168,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
 
     // Step 5: Compute the inverse of the affine transformation specified by the logical layout,
     // and rewrite loop variables of old outer loops.
-    auto inverse_var_map = GetInverseAffineIterMap(indices, index_vars, new_loop_vars);
+    auto inverse_var_map = GetInverseAffineIterMap(leading_indices, index_vars, new_loop_vars);
     op->value = Substitute(op->value, inverse_var_map);
 
     // Step 6: Compute new buffer shape and make new buffer.
@@ -191,7 +193,9 @@ class LogicalLayoutMutator : public StmtExprMutator {
         << "-D (actual: " << orig_buffer_num_dims << "-D.";
     BufferLoadNode* op = load.CopyOnWrite();
     RewriteBufferIndices(logical_layout, &op->indices);
-    op->buffer = buffer_map_.at(load->buffer);
+    auto buf_it = buffer_map_.find(load->buffer);
+    CHECK(buf_it != buffer_map_.end()) << "ValueError: Cannot find the producer of buffer " << load->buffer->name;
+    op->buffer = buf_it->second;
     return std::move(load);
   }
 
@@ -319,6 +323,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     // Note that these outer loops can be reordered, but no other statements can be their children.
 
     for (const Var& loop_var : loop_vars) {
+      ICHECK(loop_map_.count(loop_var));
       const auto& for_loop = loop_map_.at(loop_var);
       if (for_loop->body.get() == stmt || for_loop->body.as<BlockRealizeNode>()) {
         continue;
