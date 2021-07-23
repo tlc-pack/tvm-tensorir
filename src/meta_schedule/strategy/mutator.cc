@@ -266,7 +266,7 @@ class MutatorAutoUnroll {
       const Inst& mark_inst = trace->insts[i];
       // Step 1. Find the `MarkBlockAttr` whose attr_key is `auto_unroll`
       //         and whose unroll depth is a `tir::VarNode`.
-      if (mark_inst->kind.same_as(inst_mark_block)) {
+      if (!mark_inst->kind.same_as(inst_mark_block)) {
         continue;
       }
       ICHECK_EQ(mark_inst->inputs.size(), 2);
@@ -429,7 +429,7 @@ class MutatorParallel {
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) const {
-    static InstKind inst_enter_postproc = InstKind::Get("EnterPostproc");
+    static InstKind inst_enter_postproc = InstKind::Get("EnterPostProc");
     int max_extent =
         GetTargetNumCores(task->target, &warned_num_cores_missing) * max_jobs_per_core - 1;
     Candidate candidate = FindCandidates(trace, task->workload, max_extent);
