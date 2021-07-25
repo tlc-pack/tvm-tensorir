@@ -56,21 +56,17 @@ def spmm(a_indptr: ty.handle, a_indices: ty.handle, a_data: ty.handle, b: ty.han
     A = tir.match_buffer(a_data, [nnz], 'float32')
     B = tir.match_buffer(b, [m, n], 'float32')
     C = tir.match_buffer(c, [k, n], 'float32')
-    for i in tir.grid(m):
-        for j in tir.serial(indptr[i], indptr[i + 1]):
-            for k in tir.grid(k):
-                with tir.block([m, tir.reduce_axis(indptr[i], indptr[i + 1]), k], 'spmm') as [ii, jj, kk]:
-                    tir.bind(ii, i)
-                    tir.bind(jj, j)
-                    tir.bind(kk, k)
-                    C[ii, kk] = C[ii, kk] + A[jj] * B[indices[jj], kk]
+    with tir.block([m, k], 'spmm_outer') as [vi, vj]:
+        with tir.init():
+            C[vi, vj] = 0.
+        with tir.block([tir.reduce_axis(indptr[vi], indptr[vi + 1])], 'spmm_inner') as [vk]:
+            C[vi, vj] = C[vi, vj] + A[vk] * B[indices[vk], vj]
 
 
 def test_elementwise():
     sch = tir.Schedule(elementwise, debug_mode=True, traced=True)
     loops = sch.get_loops(sch.get_block('B'))
     sch.normalize(*loops)
-    print(tvm.script.asscript(sch.mod['main']))
     print(tvm.lower(sch.mod['main']))
 
 
@@ -80,19 +76,23 @@ def test_reduction():
     blk_C = sch.get_block('C')
     sch.compute_inline(blk_B)
     sch.normalize(sch.get_loops(blk_C)[0])
-    print(tvm.script.asscript(sch.mod['main']))
     print(tvm.lower(sch.mod['main']))
 
+
 def test_spmm():
-    sch = tir.Schedule(spmm, debug_mode=True, traced=True)
-    blk = sch.get_block('spmm')
-    i, j, k = sch.get_loops(blk)
-    sch.normalize(j)
-    sch.reorder(j, k)
-    sch.split(i, factor=4)
-    sch.split(j, factor=4)
-    print(tvm.script.asscript(sch.mod['main']))
+    sch = tir.Schedule(spmm, debug_mode=True)
+    blk_outer = sch.get_block('spmm_outer')
+    blk_inner = sch.get_block('spmm_inner')
+    i, j = sch.get_loops(blk_outer)
+    k, = sch.get_loops(blk_inner)
+    sch.normalize(k)
+    io, ii = sch.split(i, factor=4)
+    jo, ji = sch.split(j, factor=1024)
+    ko, ki = sch.split(k, factor=32)
+    sch.bind(io, 'blockIdx.x')
+    sch.bind(ji, 'threadIdx.x')
     print(tvm.lower(sch.mod['main']))
+
 
 if __name__ == "__main__":
     test_spmm()

@@ -26,29 +26,25 @@ namespace tir {
 void Normalize(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
   CHECK(!loop_srefs.empty()) << "ValueError: 'normalize' expects 'loop_srefs' "
                                 "to be an non-empty list.";
-  // Type check and collect unique loops
+  // Collect unique loops
   std::unordered_set<const StmtSRefNode*> loops;
   for (const StmtSRef& loop_sref : loop_srefs) {
-    // type check
-    const auto* loop = loop_sref->StmtAs<ForNode>();
-    CHECK(loop) << "TypeError: 'normalize' expects an array of loops.";
-    // collect unique loops
+    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     loops.insert(loop_sref.operator->());
   }
   // Shift the range of all loops.
-  // TODO(zihao): the implementation is slow, will improve later.
   for (const auto& loop_sref : loops) {
-    const ForNode* loop = loop_sref->StmtAs<ForNode>();
+    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     Stmt new_loop_body =
         SubstituteInScope(loop->body, [&](const VarNode* v) -> PrimExpr {
-          if (GetRef<Var>(v).same_as(loop->loop_var)) {
+          if (v == loop->loop_var.get()) {
             return loop->loop_var + loop->min;
           } else {
             return PrimExpr{nullptr};
           }
         });
-    For new_loop(loop->loop_var, IntImm(loop->loop_var->dtype, 0, loop->span),
-                 loop->extent, loop->kind, new_loop_body);
+    For new_loop(loop->loop_var, Integer(0), loop->extent, loop->kind,
+                 new_loop_body);
     self->Replace(self->stmt2ref.at(loop), new_loop, {});
   }
 }
