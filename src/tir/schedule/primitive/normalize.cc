@@ -26,8 +26,8 @@ namespace tir {
 class LoopNormalizer : public StmtExprMutator {
  public:
   explicit LoopNormalizer(std::unordered_set<const VarNode*>* vars,
-                       std::unordered_map<Var, PrimExpr, ObjectPtrHash,
-                                          ObjectPtrEqual>* loop_map)
+                          std::unordered_map<Var, PrimExpr, ObjectPtrHash,
+                                             ObjectPtrEqual>* loop_map)
       : loop_map_(loop_map), vars_(vars){};
 
   Stmt VisitStmt_(const ForNode* op) final {
@@ -52,7 +52,7 @@ class LoopNormalizer : public StmtExprMutator {
     }
   }
 
-  PrimExpr VisitExpr_(const VarNode *v) final {
+  PrimExpr VisitExpr_(const VarNode* v) final {
     Var v_ref = GetRef<Var>(v);
     auto it = loop_map_->find(v_ref);
     if (it != loop_map_->end()) {
@@ -75,11 +75,13 @@ void Normalize(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
   for (const StmtSRef& loop_sref : loop_srefs) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     vars.insert(loop->loop_var.get());
-    CHECK(GetScopeRoot(loop_sref).get() == GetScopeRoot(loop_srefs[0]).get()) << "Normalize expects input loops to be in the same scope.";
+    CHECK(GetScopeRoot(loop_sref).get() == GetScopeRoot(loop_srefs[0]).get())
+        << "Normalize expects input loops to be in the same scope.";
   }
 
   LoopNormalizer normalizer(&vars, &loop_map);
-  const BlockNode* root = TVM_SREF_TO_BLOCK(root, GetScopeRoot(loop_srefs[0]).value());
+  const BlockNode* root =
+      TVM_SREF_TO_BLOCK(root, GetScopeRoot(loop_srefs[0]).value());
   auto new_block = normalizer(GetRef<Block>(root));
   self->Replace(GetScopeRoot(loop_srefs[0]).value(), new_block, {});
 }
