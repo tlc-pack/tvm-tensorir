@@ -16,6 +16,7 @@
 # under the License.
 import tvm
 from tvm import tir
+from tvm._ffi.base import TVMError
 from tvm.script import ty
 
 
@@ -34,6 +35,22 @@ def elementwise(a: ty.handle, b: ty.handle) -> None:
 
 
 @tvm.script.tir
+def multilevel(a: ty.handle, offset: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, [100], 'float32')
+    Off = tir.match_buffer(offset, [10], 'int32')
+    B = tir.match_buffer(b, [9], 'float32')
+
+    for i in tir.serial(1, 10):
+        for j in tir.serial(Off[i-1], Off[i]):
+            with tir.block([9, tir.reduce_axis(Off[i-1], Off[i])], 'segment_reduce') as [vi, vj]:
+                tir.bind(vi, i - 1)
+                tir.bind(vj, j)
+                with tir.init():
+                    B[vi] = 0.
+                B[vi] = B[vi] + A[vj]
+
+
+@tvm.script.tir
 def reduction(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [100], 'float32')
     B = tir.alloc_buffer([100], 'float32')
@@ -44,6 +61,7 @@ def reduction(a: ty.handle, c: ty.handle) -> None:
 
     with tir.block([tir.reduce_axis(1, 100)], 'C') as [i]:
         C[0] = C[0] + B[i]
+
 
 @tvm.script.tir
 def spmm(a_indptr: ty.handle, a_indices: ty.handle, a_data: ty.handle, b: ty.handle, c: ty.handle) -> None:
@@ -65,8 +83,8 @@ def spmm(a_indptr: ty.handle, a_indices: ty.handle, a_data: ty.handle, b: ty.han
 
 def test_elementwise():
     sch = tir.Schedule(elementwise, debug_mode=True, traced=True)
-    loops = sch.get_loops(sch.get_block('B'))
-    sch.normalize(*loops)
+    i, j = sch.get_loops(sch.get_block('B'))
+    sch.normalize(i, j)
     print(tvm.lower(sch.mod['main']))
 
 
@@ -79,12 +97,26 @@ def test_reduction():
     print(tvm.lower(sch.mod['main']))
 
 
+def test_multi_level():
+    sch = tir.Schedule(multilevel, debug_mode=True, traced=True)
+    blk = sch.get_block('segment_reduce')
+    i, j = sch.get_loops(blk)
+    sch.normalize(i, j)
+    print(tvm.lower(sch.mod['main']))
+
+
 def test_spmm():
     sch = tir.Schedule(spmm, debug_mode=True)
     blk_outer = sch.get_block('spmm_outer')
     blk_inner = sch.get_block('spmm_inner')
     i, j = sch.get_loops(blk_outer)
     k, = sch.get_loops(blk_inner)
+    try:
+        sch.normalize(i, k)
+    except TVMError:
+        pass
+    else:
+        assert "Should throw error"
     sch.normalize(k)
     io, ii = sch.split(i, factor=4)
     jo, ji = sch.split(j, factor=1024)
@@ -95,6 +127,7 @@ def test_spmm():
 
 
 if __name__ == "__main__":
-    test_spmm()
     test_elementwise()
     test_reduction()
+    test_multi_level()
+    test_spmm()

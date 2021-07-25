@@ -23,30 +23,65 @@
 namespace tvm {
 namespace tir {
 
+class LoopNormalizer : public StmtExprMutator {
+ public:
+  explicit LoopNormalizer(std::unordered_set<const VarNode*>* vars,
+                       std::unordered_map<Var, PrimExpr, ObjectPtrHash,
+                                          ObjectPtrEqual>* loop_map)
+      : loop_map_(loop_map), vars_(vars){};
+
+  Stmt VisitStmt_(const ForNode* op) final {
+    PrimExpr min = this->VisitExpr(op->min);
+    PrimExpr extent = this->VisitExpr(op->extent);
+    bool normalize = vars_->find(op->loop_var.get()) != vars_->end();
+    PrimExpr new_min = normalize ? Integer(0) : std::move(min);
+    if (normalize) {
+      (*loop_map_)[op->loop_var] = min;
+    }
+    Stmt body = this->VisitStmt(op->body);
+
+    if (!normalize && new_min.same_as(op->min) && extent.same_as(op->extent) &&
+        body.same_as(op->body)) {
+      return GetRef<Stmt>(op);
+    } else {
+      auto n = CopyOnWrite(op);
+      n->min = std::move(new_min);
+      n->extent = std::move(extent);
+      n->body = std::move(body);
+      return Stmt(n);
+    }
+  }
+
+  PrimExpr VisitExpr_(const VarNode *v) final {
+    Var v_ref = GetRef<Var>(v);
+    auto it = loop_map_->find(v_ref);
+    if (it != loop_map_->end()) {
+      return v_ref + it->second;
+    } else {
+      return GetRef<PrimExpr>(v);
+    }
+  }
+
+ private:
+  std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>* loop_map_;
+  std::unordered_set<const VarNode*>* vars_;
+};
+
 void Normalize(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
   CHECK(!loop_srefs.empty()) << "ValueError: 'normalize' expects 'loop_srefs' "
                                 "to be an non-empty list.";
-  // Collect unique loops
-  std::unordered_set<const StmtSRefNode*> loops;
+  std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> loop_map;
+  std::unordered_set<const VarNode*> vars;
   for (const StmtSRef& loop_sref : loop_srefs) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-    loops.insert(loop_sref.operator->());
+    vars.insert(loop->loop_var.get());
+    CHECK(GetScopeRoot(loop_sref).get() == GetScopeRoot(loop_srefs[0]).get()) << "Normalize expects input loops to be in the same scope.";
   }
-  // Shift the range of all loops.
-  for (const auto& loop_sref : loops) {
-    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-    Stmt new_loop_body =
-        SubstituteInScope(loop->body, [&](const VarNode* v) -> PrimExpr {
-          if (v == loop->loop_var.get()) {
-            return loop->loop_var + loop->min;
-          } else {
-            return PrimExpr{nullptr};
-          }
-        });
-    For new_loop(loop->loop_var, Integer(0), loop->extent, loop->kind,
-                 new_loop_body);
-    self->Replace(self->stmt2ref.at(loop), new_loop, {});
-  }
+
+  LoopNormalizer normalizer(&vars, &loop_map);
+  const BlockNode* root = TVM_SREF_TO_BLOCK(root, GetScopeRoot(loop_srefs[0]).value());
+  auto new_block = normalizer(GetRef<Block>(root));
+  self->Replace(GetScopeRoot(loop_srefs[0]).value(), new_block, {});
 }
 
 struct NormalizeTraits : public UnpackedInstTraits<NormalizeTraits> {
