@@ -18,6 +18,7 @@ import tvm
 from tvm import tir
 from tvm._ffi.base import TVMError
 from tvm.script import ty
+from tvm.tir.schedule.schedule import LoopRV
 
 
 @tvm.script.tir
@@ -27,11 +28,10 @@ def elementwise(a: ty.handle, b: ty.handle) -> None:
 
     for i in tir.serial(2, 4):
         for j in tir.serial(1, 4):
-            with tir.block([2, 3], 'B') as [ii, jj]:
-                tir.bind(ii, i - 2)
-                tir.bind(jj, j - 1)
-                tir.where(i <= j)
-                B[ii, jj] = A[ii, jj]
+            with tir.block([2, 3], 'B') as [vi, vj]:
+                tir.bind(vi, i - 2)
+                tir.bind(vj, j - 1)
+                B[vi, vj] = A[vi, vj]
 
 
 @tvm.script.tir
@@ -41,12 +41,11 @@ def multilevel(a: ty.handle, offset: ty.handle, b: ty.handle) -> None:
     B = tir.match_buffer(b, [9], 'float32')
 
     for i in tir.serial(1, 10):
-        for j in tir.serial(Off[i-1], Off[i]):
-            with tir.block([9, tir.reduce_axis(Off[i-1], Off[i])], 'segment_reduce') as [vi, vj]:
-                tir.bind(vi, i - 1)
-                tir.bind(vj, j)
-                with tir.init():
-                    B[vi] = 0.
+        with tir.block([9], 'i') as [vi]:
+            tir.bind(vi, i - 1)
+            with tir.init():
+                B[vi] = 0.
+            with tir.block([tir.reduce_axis(Off[vi], Off[vi + 1])], 'j') as [vj]:
                 B[vi] = B[vi] + A[vj]
 
 
@@ -99,9 +98,15 @@ def test_reduction():
 
 def test_multi_level():
     sch = tir.Schedule(multilevel, debug_mode=True, traced=True)
-    blk = sch.get_block('segment_reduce')
-    i, j = sch.get_loops(blk)
-    sch.normalize(i, j)
+    blk_j = sch.get_block('j')
+    j, = sch.get_loops(blk_j)
+    blk_i = sch.get_block('i')
+    i, = sch.get_loops(blk_i)
+    sch.normalize(i)
+    sch.normalize(j)
+    jo, ji = sch.split(j, factor=1)
+    sch.bind(ji, 'threadIdx.x')
+    sch.bind(i, 'blockIdx.x')
     print(tvm.lower(sch.mod['main']))
 
 
@@ -118,7 +123,7 @@ def test_spmm():
     else:
         assert "Should throw error"
     sch.normalize(k)
-    io, ii = sch.split(i, factor=4)
+    io, vi = sch.split(i, factor=4)
     jo, ji = sch.split(j, factor=1024)
     ko, ki = sch.split(k, factor=32)
     sch.bind(io, 'blockIdx.x')
