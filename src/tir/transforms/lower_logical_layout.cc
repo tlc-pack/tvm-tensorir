@@ -82,7 +82,12 @@ class LogicalLayoutRegistry {
 
 class LogicalLayoutMutator : public StmtExprMutator {
  public:
-  Stmt Rewrite(const Stmt& stmt) { return LogicalLayoutMutator()(stmt); }
+  explicit LogicalLayoutMutator(const PrimFunc& func) {
+    for (const auto& kv : func->buffer_map) {
+      const auto& buffer = kv.second;
+      buffer_data_to_buffer_.Set(buffer->data, buffer);
+    }
+  }
 
  private:
   Stmt VisitStmt_(const ForNode* op) final {
@@ -95,16 +100,49 @@ class LogicalLayoutMutator : public StmtExprMutator {
     return new_stmt;
   }
 
+  void RewriteBlockAccessRegions(BlockNode* block) {
+    auto block_access_regions = GetBlockAccessRegion(GetRef<Block>(block), buffer_data_to_buffer_);
+    block->reads = block_access_regions[0];
+    block->writes = block_access_regions[1];
+    const auto& opaque = block_access_regions[2];
+    block->reads.reserve(block->reads.size() + opaque.size());
+    block->reads.insert(block->reads.end(), opaque.begin(), opaque.end());
+    block->writes.reserve(block->writes.size() + opaque.size());
+    block->writes.insert(block->writes.end(), opaque.begin(), opaque.end());
+  }
+
+  Stmt VisitStmt_(const BlockRealizeNode* op) final {
+    BlockRealize block_realize = Downcast<BlockRealize>(StmtExprMutator::VisitStmt_(op));
+    if (!current_loop_nests_.empty()) {
+      Stmt result = MergeNest(current_loop_nests_, block_realize);
+      current_loop_nests_.clear();
+      return result;
+    }
+    return block_realize;
+  }
+
   Stmt VisitStmt_(const BlockNode* op) final {
+    bool is_root = is_root_;
+    is_root_ = false;
+    for (const auto& buffer : op->alloc_buffers) {
+      buffer_data_to_buffer_.Set(buffer->data, buffer);
+    }
     Block block = Downcast<Block>(StmtExprMutator::VisitStmt_(op));
     BlockNode* n = block.CopyOnWrite();
 
-    for (size_t i = 0; i < block->alloc_buffers.size(); i++) {
-      auto it = buffer_map_.find(block->alloc_buffers[i]);
+    for (size_t i = 0; i < n->alloc_buffers.size(); i++) {
+      auto it = buffer_map_.find(n->alloc_buffers[i]);
       if (it != buffer_map_.end()) {
         n->alloc_buffers.Set(i, it->second);
-        buffer_map_.erase(block->alloc_buffers[i]);
+        buffer_map_.erase(it);
       }
+    }
+    if (!is_root) {
+      RewriteBlockAccessRegions(n);
+    }
+
+    for (const auto& buffer : op->alloc_buffers) {
+      buffer_data_to_buffer_.erase(buffer->data);
     }
     return block;
   }
@@ -155,12 +193,12 @@ class LogicalLayoutMutator : public StmtExprMutator {
     auto leading_shape = InferRange(leading_indices);
 
     // Step 3: Generate outer loops with the inferred extents
-    std::vector<Stmt> loop_nests = BuildLoopNests(leading_shape);
+    current_loop_nests_ = BuildLoopNests(leading_shape);
 
     // Step 4: Use the new loop vars as the new indices
     Array<PrimExpr> new_loop_vars;
-    new_loop_vars.reserve(loop_nests.size());
-    for (const auto& loop_nest : loop_nests) {
+    new_loop_vars.reserve(current_loop_nests_.size());
+    for (const auto& loop_nest : current_loop_nests_) {
       new_loop_vars.push_back(loop_nest.as<ForNode>()->loop_var);
     }
     indices.resize(indices.size() - logical_layout->num_dims);
@@ -173,7 +211,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
 
     // Step 6: Compute new buffer shape and make new buffer.
     ReallocOrValidateBuffer(&op->buffer, logical_layout, leading_shape);
-    return MergeNest(loop_nests, store);
+    return store;
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* _op) final {
@@ -223,8 +261,10 @@ class LogicalLayoutMutator : public StmtExprMutator {
     ObjectPtr<BufferNode> n = make_object<BufferNode>(*(buffer->get()));
     std::string scope = n->scope;
     n->scope = scope.substr(0, scope.find('.'));  // remove the suffix of the logical layout
+    n->shape = std::move(new_shape);
     Buffer new_buffer = Buffer(std::move(n));
     buffer_map_.emplace(*buffer, new_buffer);
+    buffer_data_to_buffer_.Set(new_buffer->data, new_buffer);
     *buffer = new_buffer;
   }
 
@@ -294,13 +334,15 @@ class LogicalLayoutMutator : public StmtExprMutator {
     for (size_t i = 0; i < shape.size(); i++) {
       Range dom(shape[i].min(), shape[i].max() + 1);
       // TODO: how should we name these loop vars?
+      String var_name = std::string("v") + std::to_string(i);
+      Var loop_var(std::move(var_name));
       if (i == 0) {
         // the outermost loop is automatically bound to thread axis
-        IterVar iter_var(dom, Var(), IterVarType::kDataPar, "threadIdx.x");
+        IterVar iter_var(NullValue<Range>(), Var(), IterVarType::kThreadIndex, "threadIdx.x");
         loop_vars.push_back(
-            For(iter_var->var, dom->min, dom->extent, ForKind::kThreadBinding, nop, iter_var));
+            For(std::move(loop_var), dom->min, dom->extent, ForKind::kThreadBinding, nop, iter_var));
       } else {
-        loop_vars.push_back(For(Var(), dom->min, dom->extent, ForKind::kSerial, nop));
+        loop_vars.push_back(For(std::move(loop_var), dom->min, dom->extent, ForKind::kSerial, nop));
       }
     }
     return loop_vars;
@@ -359,10 +401,24 @@ class LogicalLayoutMutator : public StmtExprMutator {
     indices->insert(indices->end(), leading_indices.begin(), leading_indices.end());
   }
 
+  void CollectReadWrite(const Block& block, Array<BufferRegion>* reads,
+                        Array<BufferRegion>* writes) {
+    Array<Array<BufferRegion>> access = GetBlockAccessRegion(block, buffer_data_to_buffer_);
+    *reads = access[0];
+    *writes = access[1];
+    for (const auto& opaque_access : access[2]) {
+      reads->push_back(opaque_access);
+      writes->push_back(opaque_access);
+    }
+  }
+
   std::unordered_map<Var, For, ObjectPtrHash, ObjectPtrEqual> loop_map_;
   std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map_;
   std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> removed_loops_;
   arith::Analyzer analyzer_;
+  std::vector<Stmt> current_loop_nests_;  // current outer loops to be inserted when mutating Block
+  bool is_root_{true};
+  Map<Var, Buffer> buffer_data_to_buffer_;
 };
 
 namespace transform {
@@ -370,7 +426,7 @@ namespace transform {
 Pass LowerLogicalLayout() {
   auto pass_func = [](PrimFunc f, IRModule m, PassContext ctx) {
     auto* n = f.CopyOnWrite();
-    n->body = LogicalLayoutMutator().Rewrite(std::move(f->body));
+    n->body = LogicalLayoutMutator(f)(std::move(f->body));
     return f;
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.LowerLogicalLayout", {});
