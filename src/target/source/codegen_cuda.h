@@ -46,6 +46,12 @@ class CodeGenCUDA final : public CodeGenC {
   }
   // override behavior
   void PrintFuncPrefix() final;
+
+
+  // <bojian/DietCode>
+  void PrintLaunchBounds(const PrimFunc& f) final;
+
+
   void VisitStmt_(const ForNode* op) final;
   void PrintStorageSync(const CallNode* op) final;
   void PrintStorageScope(const std::string& scope, std::ostream& os) final;  // NOLINT(*)

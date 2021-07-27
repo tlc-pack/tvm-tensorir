@@ -32,6 +32,11 @@
 
 #include "literal/cuda_half_t.h"
 
+// <bojian/DietCode>
+// #include "../../runtime/thread_storage_scope.h"
+// #include <tvm/ir/expr.h>
+#include <tvm/tir/stmt_functor.h>
+
 namespace tvm {
 namespace codegen {
 
@@ -45,6 +50,35 @@ void CodeGenCUDA::Init(bool output_ssa) {
 }
 
 void CodeGenCUDA::PrintFuncPrefix() { stream << "extern \"C\" __global__ void"; }
+
+
+// <bojian/DietCode>
+
+class threadIdxExtractor : public tir::StmtVisitor {
+ private:
+  void VisitStmt_(const AttrStmtNode* op) override final {
+    if (op->attr_key == tir::attr::thread_extent) {
+      IterVar iv = Downcast<IterVar>(op->node);
+      if (iv->var->name_hint == "threadIdx.x" && threadIdx_ext.get() == nullptr) {
+        threadIdx_ext = op->value;
+      }
+    }
+    StmtVisitor::VisitStmt_(op);
+  }
+ public:
+  PrimExpr threadIdx_ext;
+};
+
+
+void CodeGenCUDA::PrintLaunchBounds(const PrimFunc& f) {
+  threadIdxExtractor extractor;
+  extractor(f->body);
+  PrimExpr threadIdx_ext = extractor.threadIdx_ext;
+  if (const IntImmNode* const threadIdx_ext_int = threadIdx_ext.as<IntImmNode>()) {
+    stream << " __launch_bounds__(" << threadIdx_ext_int->value << ")";
+  }
+}
+
 
 std::string CodeGenCUDA::Finish() {
   if (enable_fp16_) {

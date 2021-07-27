@@ -103,6 +103,12 @@ class CodeGenC : public ExprFunctor<void(const PrimExpr&, std::ostream&)>,
    *  Example: stream << "void";
    */
   virtual void PrintFuncPrefix();  // NOLINT(*)
+
+
+  // <bojian/DietCode>
+  virtual void PrintLaunchBounds(const PrimFunc& f) {}
+
+
   /*!
    * \brief Print the final return at the end the function.
    */

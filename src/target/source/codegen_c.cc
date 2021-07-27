@@ -27,6 +27,10 @@
 
 #include "../../arith/pattern_match.h"
 
+// <bojian/DietCode>
+#include <dmlc/parameter.h>
+
+
 namespace tvm {
 namespace codegen {
 
@@ -83,6 +87,13 @@ void CodeGenC::AddFunction(const PrimFunc& f) {
   bool no_alias = f->HasNonzeroAttr(tir::attr::kNoAlias);
 
   this->PrintFuncPrefix();
+
+  // <bojian/DietCode>
+  if (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0)) {
+    this->PrintLaunchBounds(f);
+  }
+
+
   this->stream << " " << static_cast<std::string>(global_symbol.value()) << "(";
 
   for (size_t i = 0; i < f->params.size(); ++i) {
