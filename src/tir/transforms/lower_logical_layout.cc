@@ -206,7 +206,8 @@ class LogicalLayoutMutator : public StmtExprMutator {
 
     // Step 5: Compute the inverse of the affine transformation specified by the logical layout,
     // and rewrite loop variables of old outer loops.
-    auto inverse_var_map = GetInverseAffineIterMap(leading_indices, index_vars, new_loop_vars);
+    auto inverse_var_map =
+        GetInverseAffineIterMap(leading_indices, index_vars, new_loop_vars, op->buffer->scope);
     op->value = Substitute(op->value, inverse_var_map);
 
     // Step 6: Compute new buffer shape and make new buffer.
@@ -232,7 +233,8 @@ class LogicalLayoutMutator : public StmtExprMutator {
     BufferLoadNode* op = load.CopyOnWrite();
     RewriteBufferIndices(logical_layout, &op->indices);
     auto buf_it = buffer_map_.find(load->buffer);
-    CHECK(buf_it != buffer_map_.end()) << "ValueError: Cannot find the producer of buffer " << load->buffer->name;
+    CHECK(buf_it != buffer_map_.end())
+        << "ValueError: Cannot find the producer of buffer " << load->buffer->name;
     op->buffer = buf_it->second;
     return std::move(load);
   }
@@ -271,7 +273,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
   Map<Var, PrimExpr> GetInverseAffineIterMap(
       const Array<PrimExpr>& indices,
       std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual>& index_vars,
-      const Array<PrimExpr>& loop_vars) {
+      const Array<PrimExpr>& loop_vars, const String& layout_name) {
     Map<Var, Range> input_iters;
     for (const Var& index_var : index_vars) {
       const auto& for_loop = loop_map_.at(index_var);
@@ -279,6 +281,8 @@ class LogicalLayoutMutator : public StmtExprMutator {
     }
     Array<arith::IterSumExpr> iter_map =
         arith::DetectIterMap(indices, input_iters, Bool(true), true, &analyzer_);
+    CHECK_EQ(iter_map.size(), loop_vars.size())
+        << "ValueError: Logical layout " << layout_name << " should be bijective.";
     return arith::InverseAffineIterMap(iter_map, loop_vars);
   }
 
@@ -339,8 +343,8 @@ class LogicalLayoutMutator : public StmtExprMutator {
       if (i == 0) {
         // the outermost loop is automatically bound to thread axis
         IterVar iter_var(NullValue<Range>(), Var(), IterVarType::kThreadIndex, "threadIdx.x");
-        loop_vars.push_back(
-            For(std::move(loop_var), dom->min, dom->extent, ForKind::kThreadBinding, nop, iter_var));
+        loop_vars.push_back(For(std::move(loop_var), dom->min, dom->extent, ForKind::kThreadBinding,
+                                nop, iter_var));
       } else {
         loop_vars.push_back(For(std::move(loop_var), dom->min, dom->extent, ForKind::kSerial, nop));
       }
