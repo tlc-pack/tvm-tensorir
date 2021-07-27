@@ -345,12 +345,12 @@ class LoopPartitioner : public StmtMutator {
  public:
   explicit LoopPartitioner(bool partition_const_loop, bool no_unroll_loop_with_extent_one
                            // <bojian/DietCode>
-                         , bool blockIdx_partitioning = false
+                         , bool partition_blockIdx = false
                            )
       : selector(CandidateSelector(partition_const_loop)),
         no_unroll_loop_with_extent_one_(no_unroll_loop_with_extent_one)
         // <bojian/DietCode>
-      , blockIdx_partitioning(blockIdx_partitioning) {}
+      , partition_blockIdx(partition_blockIdx) {}
 
   Stmt VisitAndMutate(Stmt stmt) {
     selector(stmt);
@@ -420,7 +420,7 @@ class LoopPartitioner : public StmtMutator {
   bool no_unroll_loop_with_extent_one_;
 
   // <bojian/DietCode>
-  bool blockIdx_partitioning;
+  bool partition_blockIdx;
 };
 
 // Returns an interval (in the first component) in which all the conditions
@@ -648,11 +648,14 @@ class RemoveLikelyTags : public StmtExprMutator {
   }
 };
 
-Stmt LoopPartition(Stmt stmt, bool partition_const_loop, bool no_unroll_loop_with_extent_one) {
+Stmt LoopPartition(Stmt stmt, bool partition_const_loop, bool no_unroll_loop_with_extent_one
+                   // <bojian/DietCode>
+                 , bool partition_blockIdx
+                   ) {
   stmt = LoopPartitioner(partition_const_loop, no_unroll_loop_with_extent_one
                          // <bojian/DietCode>
-                       , (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT", 0) != 0) ||
-                         (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT_BLOCKIDX_PARTITION", 0)))
+                       , partition_blockIdx
+                         )
              .VisitAndMutate(std::move(stmt));
   stmt = RemoveLikelyTags()(std::move(stmt));
 
@@ -669,8 +672,16 @@ Pass LoopPartition() {
       cfg = AttrsWithDefaultValues<LoopPartitionConfig>();
     }
     n->body = LoopPartition(std::move(n->body),
-                            cfg.value()->partition_const_loop,
-                            cfg.value()->no_unroll_loop_with_extent_one);
+                            cfg.value()->partition_const_loop
+                         || (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0) == 2)
+                          
+                          , cfg.value()->no_unroll_loop_with_extent_one
+                            
+                            // <bojian/DietCode>
+                          , (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT", 0) != 0) ||
+                            (bool)(dmlc::GetEnv("DIETCODE_SCHED_OPT_BLOCKIDX_PARTITION", 0))
+                            
+                            );
     return f;
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.LoopPartition", {});

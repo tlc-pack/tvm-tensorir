@@ -691,10 +691,17 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
               LOG(WARNING) << "Local padding has been disabled";
             }
           }
-          if (dmlc::GetEnv("DIETCODE_AGRESSIVE_SCHED_OPT", 0)) {
-            
-          }
-        }
+          // if (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0) == 2) {
+          //   if (stage->origin_op->name.find(".shared") != std::string::npos) {
+          //     if (!dmlc::GetEnv("DIETCODE_SCHED_OPT_NO_LOCAL_PADDING", 0)) {
+          //       LOG(WARNING) << "\'.local\' spotted in " << stage->origin_op->name << ". "
+          //                       "Assuming it is a local compute operation whose boundary check "
+          //                       "(" << value << "<" << iv->dom->extent << ") can be neglected.";
+          //       continue;
+          //     }
+          //   }
+          // }  // if (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0) == 2)
+        }    // if (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0))
 
         preds.emplace_back(value < iv->dom->extent);
 
