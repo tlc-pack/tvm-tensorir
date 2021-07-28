@@ -174,7 +174,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     if (!NeedRewriteOuterLoops(_op, index_vars)) {
       RewriteBufferIndices(logical_layout, &op->indices);
       auto leading_indices =
-          GetLeadingIndices(op->indices, op->indices.size() - orig_buffer_num_dims);
+          GetLeadingIndices(op->indices, op->indices.size() - orig_buffer_num_dims + logical_layout->num_dims);
       auto leading_shape = InferRange(leading_indices);
       ReallocOrValidateBuffer(&op->buffer, logical_layout, leading_shape);
       return store;
