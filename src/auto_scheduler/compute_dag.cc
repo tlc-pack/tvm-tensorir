@@ -1306,8 +1306,8 @@ ComputeDAG::InstantiateAndApplySteps(
   State state_mutable_copy = state;
 
   state_mutable_copy = InferBound(state_mutable_copy);
-  LOG(INFO) << "split_steps="
-            << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
+  // LOG(INFO) << "split_steps="
+  //           << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
 
   Map<ObjectRef, IntImm> axes_to_extents;
   for (size_t i = 0; i < shape_vars.size(); ++i) {
