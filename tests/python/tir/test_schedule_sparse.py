@@ -80,7 +80,7 @@ def schedule_sparse_dense_llvm(func):
     bsr_block = s.get_block("bsr_block")
     i, j = s.get_loops(bsr_block)
     data = s.mod["main"].params[1]
-    jo, ji = s.split(j, factor=s.mod["main"].buffer_map[data].shape[1])
+    jo, ji = s.split(j, factors=[None, s.mod["main"].buffer_map[data].shape[1]])
     s.compute_at(bsr_par, ji)
     s.vectorize(ji)
     i_jo = s.fuse(i, jo)

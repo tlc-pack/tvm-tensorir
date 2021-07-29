@@ -442,7 +442,7 @@ class BufferAllocator : public StmtExprMutator {
         bool need_relax = (alloc_site == nullptr);
         for (const For& loop : this->ancestor_loops_) {
           const VarNode* loop_var = loop->loop_var.get();
-          if (need_relax || (buffer->scope == "shared" && IsThreadBound(loop))) {
+          if (need_relax || (buffer.scope() == "shared" && IsThreadBound(loop))) {
             // TODO
             dom_map[loop_var] = IntSetFromMinExtent(loop->min, loop->extent);
           }
@@ -621,7 +621,7 @@ class Flattener : public StmtExprMutator {
     if (IsReduceTempBuffer(buffer)) {
       return body;
     }
-    String storage_scope = buffer->scope;
+    String storage_scope = buffer.scope();
     if (storage_scope.empty()) {
       storage_scope = "global";
     }

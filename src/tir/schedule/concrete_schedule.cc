@@ -318,88 +318,89 @@ Array<BlockRV> ConcreteScheduleNode::GetConsumers(const BlockRV& block_rv) {
 /******** Schedule: Transform loops ********/
 
 LoopRV ConcreteScheduleNode::Fuse(const Array<LoopRV>& loop_rvs) {
-  TVM_TIR_SCHEDULE_BEGIN();
   CHECK(!loop_rvs.empty()) << "ValueError: 'fuse' requires at least 1 loop(s)";
   Array<StmtSRef> loop_srefs = this->GetSRefs(loop_rvs);
-  while (loop_srefs.size() >= 2) {
-    StmtSRef inner_sref = loop_srefs.back();
-    loop_srefs.pop_back();
-    StmtSRef outer_sref = loop_srefs.back();
-    loop_srefs.pop_back();
-    StmtSRef fused = tir::Fuse(state_, outer_sref, inner_sref);
-    loop_srefs.push_back(fused);
-    this->state_->DebugVerify();
-  }
-  return CreateRV<LoopRV>(loop_srefs[0]);
+  StmtSRef result{nullptr};
+  TVM_TIR_SCHEDULE_BEGIN();
+  result = tir::Fuse(state_, loop_srefs);
   TVM_TIR_SCHEDULE_END("fuse", this->error_render_level_);
+  this->state_->DebugVerify();
+  return CreateRV<LoopRV>(result);
 }
 
 Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
                                           const Array<Optional<ExprRV>>& factor_rvs) {
-  TVM_TIR_SCHEDULE_BEGIN();
+  class NotSingleInferFactorError : public ScheduleError {
+   public:
+    explicit NotSingleInferFactorError(IRModule mod) : mod_(mod) {}
+
+    String FastErrorString() const final {
+      return "ScheduleError: only one factor can be specified as -1 or none";
+    }
+
+    String DetailRenderTemplate() const final {
+      return "Only one factor can be specified as -1 or none";
+    }
+
+    IRModule mod() const final { return mod_; }
+    Array<ObjectRef> LocationsOfInterest() const final { return {}; }
+
+    IRModule mod_;
+  };
+
+  class WrongFactorProductError : public ScheduleError {
+   public:
+    explicit WrongFactorProductError(IRModule mod, For loop) : mod_(mod), loop_(std::move(loop)) {}
+
+    String FastErrorString() const final {
+      return "ScheduleError: The product of factors is not larger than or equal to the extent of "
+             "loop";
+    }
+
+    String DetailRenderTemplate() const final {
+      return "The product of factors is not larger than or equal to the extent of loop {0}";
+    }
+
+    IRModule mod() const final { return mod_; }
+    Array<ObjectRef> LocationsOfInterest() const final { return {loop_}; }
+
+    IRModule mod_;
+    For loop_;
+  };
   // Prepare for the splitting
   StmtSRef loop_sref = this->GetSRef(loop_rv);
   const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-  PrimExpr len = loop->extent;
-  // Find out the None
-  int n = factor_rvs.size();
-  CHECK_GE(n, 2) << "ValueError: `split` requires at least 2 parts";
-  std::vector<PrimExpr> factors;
-  factors.reserve(n);
-  int p = -1;
-  for (int i = 0; i < n; ++i) {
-    PrimExpr factor = this->Get(factor_rvs[i].value_or(Integer(-1)));
-    if (analyzer_->CanProve(factor == -1)) {
-      CHECK_EQ(p, -1) << "ValueError: `split` requires at most one `None` factor, but gets: "
-                      << factor_rvs;
-      p = i;
-      factors.emplace_back(Integer(-1));
+  Array<PrimExpr> factors;
+  factors.reserve(factor_rvs.size());
+  int infer_index = -1;
+  PrimExpr tot_length = 1;
+  Array<StmtSRef> results;
+  TVM_TIR_SCHEDULE_BEGIN();
+  // infer factor if needed and check validity of factors
+  for (size_t i = 0; i < factor_rvs.size(); i++) {
+    if (!factor_rvs[i].defined()) {
+      factors.push_back(Integer(-1));
+      if (infer_index == -1) {
+        infer_index = i;
+      } else {
+        throw NotSingleInferFactorError(state_->mod);
+      }
     } else {
-      factors.emplace_back(std::move(factor));
+      PrimExpr factor = this->Get(factor_rvs[i].value());
+      factors.push_back(factor);
+      tot_length *= factor;
     }
   }
-  if (p == -1) {
-    PrimExpr prod = factors[0];
-    for (int i = 1; i < n; ++i) {
-      prod = prod * factors[i];
-    }
-    if (analyzer_->CanProve(prod == len)) {
-      p = 0;
-      factors[0] = Integer(-1);
-    } else {
-      LOG(FATAL) << "ValueError: invalid extents for `split`, the loop extent is " << len
-                 << ", but extents are: " << Array<PrimExpr>{factors.begin(), factors.end()};
-    }
+  if (infer_index != -1) {
+    factors.Set(infer_index,
+                this->analyzer_->Simplify(floordiv(loop->extent + tot_length - 1, tot_length)));
+  } else if (!this->analyzer_->CanProve(tot_length >= loop->extent)) {
+    throw WrongFactorProductError(state_->mod, GetRef<For>(loop));
   }
-  std::vector<StmtSRef> results(n, StmtSRef{nullptr});
-  // Split from right to left
-  for (int i = n - 1; i > p; --i) {
-    PrimExpr inner_len = factors[i];
-    PrimExpr outer_len = floordiv(len + inner_len - 1, inner_len);
-    Array<StmtSRef> parts = tir::Split(state_,     //
-                                       loop_sref,  //
-                                       outer_len, inner_len);
-    ICHECK_EQ(parts.size(), 2);
-    loop_sref = parts[0];
-    results[i] = parts[1];
-    len = outer_len;
-  }
-  // Split from left to right
-  for (int i = 0; i < p; ++i) {
-    PrimExpr outer_len = factors[i];
-    PrimExpr inner_len = floordiv(len + outer_len - 1, outer_len);
-    Array<StmtSRef> parts = tir::Split(state_,     //
-                                       loop_sref,  //
-                                       outer_len, inner_len);
-    this->state_->DebugVerify();
-    ICHECK_EQ(parts.size(), 2);
-    results[i] = parts[0];
-    loop_sref = parts[1];
-    len = inner_len;
-  }
-  results[p] = loop_sref;
-  return CreateRV<LoopRV>(Array<StmtSRef>{results.begin(), results.end()});
+  results = tir::Split(state_, loop_sref, factors);
   TVM_TIR_SCHEDULE_END("split", this->error_render_level_);
+  this->state_->DebugVerify();
+  return CreateRV<LoopRV>(results);
 }
 
 void ConcreteScheduleNode::Reorder(const Array<LoopRV>& order) {
@@ -570,94 +571,6 @@ void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin
   tir::Tensorize(state_, this->GetSRef(loop_rv), tir::TensorIntrin::Get(intrin_name));
   this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("tensorize", this->error_render_level_);
-}
-
-/******** Schedule: loops manipulation ********/
-
-LoopRV ConcreteScheduleNode::Fuse(const Array<LoopRV>& loop_rvs) {
-  CHECK(!loop_rvs.empty()) << "ValueError: 'fuse' requires at least 1 loop(s)";
-  Array<StmtSRef> loop_srefs = this->GetSRefs(loop_rvs);
-  StmtSRef result{nullptr};
-  TVM_TIR_SCHEDULE_BEGIN();
-  result = tir::Fuse(state_, loop_srefs);
-  TVM_TIR_SCHEDULE_END("fuse", this->error_render_level_);
-  this->state_->DebugVerify();
-  return CreateRV<LoopRV>(result);
-}
-
-Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
-                                          const Array<Optional<ExprRV>>& factor_rvs) {
-  class NotSingleInferFactorError : public ScheduleError {
-   public:
-    explicit NotSingleInferFactorError(IRModule mod) : mod_(mod) {}
-
-    String FastErrorString() const final {
-      return "ScheduleError: only one factor can be specified as -1 or none";
-    }
-
-    String DetailRenderTemplate() const final {
-      return "Only one factor can be specified as -1 or none";
-    }
-
-    IRModule mod() const final { return mod_; }
-    Array<ObjectRef> LocationsOfInterest() const final { return {}; }
-
-    IRModule mod_;
-  };
-
-  class WrongFactorProductError : public ScheduleError {
-   public:
-    explicit WrongFactorProductError(IRModule mod, For loop) : mod_(mod), loop_(std::move(loop)) {}
-
-    String FastErrorString() const final {
-      return "ScheduleError: The product of factors is not larger than or equal to the extent of "
-             "loop";
-    }
-
-    String DetailRenderTemplate() const final {
-      return "The product of factors is not larger than or equal to the extent of loop {0}";
-    }
-
-    IRModule mod() const final { return mod_; }
-    Array<ObjectRef> LocationsOfInterest() const final { return {loop_}; }
-
-    IRModule mod_;
-    For loop_;
-  };
-  // Prepare for the splitting
-  StmtSRef loop_sref = this->GetSRef(loop_rv);
-  const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-  Array<PrimExpr> factors;
-  factors.reserve(factor_rvs.size());
-  int infer_index = -1;
-  PrimExpr tot_length = 1;
-  Array<StmtSRef> results;
-  TVM_TIR_SCHEDULE_BEGIN();
-  // infer factor if needed and check validity of factors
-  for (size_t i = 0; i < factor_rvs.size(); i++) {
-    if (!factor_rvs[i].defined()) {
-      factors.push_back(Integer(-1));
-      if (infer_index == -1) {
-        infer_index = i;
-      } else {
-        throw NotSingleInferFactorError(state_->mod);
-      }
-    } else {
-      PrimExpr factor = this->Get(factor_rvs[i].value());
-      factors.push_back(factor);
-      tot_length *= factor;
-    }
-  }
-  if (infer_index != -1) {
-    factors.Set(infer_index,
-                this->analyzer_->Simplify(floordiv(loop->extent + tot_length - 1, tot_length)));
-  } else if (!this->analyzer_->CanProve(tot_length >= loop->extent)) {
-    throw WrongFactorProductError(state_->mod, GetRef<For>(loop));
-  }
-  results = tir::Split(state_, loop_sref, factors);
-  TVM_TIR_SCHEDULE_END("split", this->error_render_level_);
-  this->state_->DebugVerify();
-  return CreateRV<LoopRV>(results);
 }
 
 /******** Schedule: Annotation ********/

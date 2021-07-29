@@ -311,8 +311,8 @@ def test_reduction_rfactor_1():
     s = tir.Schedule(func, debug_mode=True)
     C = s.get_block("update")
     _, _, k = s.get_loops(C)
-    _, ki = s.split(k, factor=32)
-    _, kii = s.split(ki, factor=4)
+    _, ki = s.split(k, factors=[None, 32])
+    _, kii = s.split(ki, factors=[None, 4])
     _ = s.rfactor(kii, factor=0)
     tvm.ir.assert_structural_equal(s.mod["main"], matmul_rfactor)
 
@@ -348,7 +348,7 @@ def test_reduction_rfactor_3():
     C = s.get_block("C")
     _, i, j = s.get_loops(C)
     fuse = s.fuse(i, j)
-    _, fi = s.split(fuse, factor=1)
+    _, fi = s.split(fuse, factors=[None, 1])
     _ = s.rfactor(fi, 0)
     tvm.ir.assert_structural_equal(s.mod["main"], square_sum_square_root_rfactor)
 
@@ -422,7 +422,7 @@ def test_reduction_allreduce_4():
     _, ax_i, _ = s.get_loops(B_block)
     B_rf = s.rfactor(ax_i, 0)
     ax_ii_rf, ax_i_rf, ax_j_rf = s.get_loops(B_rf)
-    ax_i_rf_o, _ = s.split(ax_i_rf, factor=4)
+    ax_i_rf_o, _ = s.split(ax_i_rf, factors=[None, 4])
     s.bind(ax_ii_rf, tir.thread_axis("blockIdx.x"))
     s.bind(ax_i_rf_o, tir.thread_axis("threadIdx.x"))
     _ = s.cache_write(B_rf, 0, "local")
@@ -443,7 +443,7 @@ def test_reduction_allreduce_5():
     s = tir.Schedule(non_multiple_allreduce, debug_mode=True)
     B = s.get_block("B")
     _, k = s.get_loops(B)
-    _, ki = s.split(k, factor=32)
+    _, ki = s.split(k, factors=[None, 32])
     s.bind(ki, "threadIdx.x")
 
     f = tvm.build(s.mod["main"], target="cuda")

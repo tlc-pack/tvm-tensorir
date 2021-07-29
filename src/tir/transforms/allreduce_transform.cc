@@ -590,8 +590,8 @@ class AllReduceTransformer : public StmtExprMutator {
 
   static Buffer AddBufferAllocation(const std::string& name, std::vector<Buffer>& allos,
                                     std::vector<Buffer>& allocations_, const DataType& dtype) {
-    Var var(name, PointerType(PrimType(dtype)));
-    Buffer buf(var, dtype, {1}, {1}, PrimExpr(), name, "local", 0, 0, kDefault);
+    Var var(name, PointerType(PrimType(dtype),"local"));
+    Buffer buf(var, dtype, {1}, {1}, PrimExpr(), name, 0, 0, kDefault);
 
     allos.emplace_back(buf);
     allocations_.emplace_back(buf);
@@ -636,7 +636,7 @@ class AllReduceTransformer : public StmtExprMutator {
         for (auto it = allos.rbegin(); it != allos.rend(); it++) {
           Buffer allo = *it;
           stmt = Allocate(allo->data, allo->dtype, {1}, const_true(), stmt);
-          std::string scope = allo->scope;
+          std::string scope = allo.scope();
           stmt = AttrStmt(allo->data, attr::storage_scope, StringImm(scope), stmt);
         }
         // Wrap the result with loop binding attributes.

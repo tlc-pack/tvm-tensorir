@@ -409,8 +409,8 @@ def test_traced_schedule_copy():
     assert sch.get_sref(i).stmt.same_as(sch_copy.get_sref(i).stmt)
     assert sch.get_sref(j).stmt.same_as(sch_copy.get_sref(j).stmt)
     assert sch.get_sref(k).stmt.same_as(sch_copy.get_sref(k).stmt)
-    i_0, i_1 = sch.split(i, factor=512)
-    j_0, j_1 = sch_copy.split(j, factors=[-1, 256])
+    i_0, i_1 = sch.split(i, factors=[None, 512])
+    j_0, j_1 = sch_copy.split(j, factors=[None, 256])
 
     assert sch.get_sref(i_0).stmt.extent == 2
     assert sch.get_sref(i_1).stmt.extent == 512
@@ -534,7 +534,7 @@ def test_traced_schedule_fuse():
 def test_traced_schedule_split():
     sch = tir.Schedule(mod=matmul, traced=True)
     i, _, _ = sch.get_loops(sch.get_block("matmul"))
-    i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in sch.split(i, factors=[-1, 8, 32])]
+    i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in sch.split(i, factors=[None, 8, 32])]
     assert tvm.ir.structural_equal(i_0, sch.mod["main"].body.block.body)
     assert tvm.ir.structural_equal(i_1, sch.mod["main"].body.block.body.body)
     assert tvm.ir.structural_equal(i_2, sch.mod["main"].body.block.body.body.body)
@@ -691,9 +691,9 @@ def test_traced_schedule_tensorize():
     sch = tir.Schedule(mod=matmul, traced=True)
     block = sch.get_block("matmul")
     i, j, k = sch.get_loops(block)
-    i_o, i_i = sch.split(i, factor=16)
-    j_o, j_i = sch.split(j, factor=16)
-    k_o, k_i = sch.split(k, factor=16)
+    i_o, i_i = sch.split(i, factors=[None, 16])
+    j_o, j_i = sch.split(j, factors=[None, 16])
+    k_o, k_i = sch.split(k, factors=[None, 16])
     sch.reorder(i_o, j_o, k_o, i_i, j_i, k_i)
     sch.decompose_reduction(block, k_o)
     sch.tensorize(i_i, "tir_test.tensor_intrin")

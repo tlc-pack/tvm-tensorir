@@ -100,7 +100,7 @@ def test_vectorize_complete():
     s = tir.Schedule(func, debug_mode=True)
     C = s.get_block("C")
     _, inner = s.get_loops(C)
-    _, i_i = s.split(inner, factor=4)
+    _, i_i = s.split(inner, factors=[None, 4])
     s.vectorize(i_i)
     mod = tvm.script.create_module(
         {"element_wise_compute_at_vectorize": element_wise_compute_at_vectorize}

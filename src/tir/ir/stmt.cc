@@ -68,9 +68,13 @@ AttrStmt::AttrStmt(ObjectRef node, String attr_key, PrimExpr value, Stmt body, S
     const auto* ptr_type = buf->type_annotation.as<PointerTypeNode>();
     ICHECK(ptr_type) << "The provided variable is not of pointer type";
     auto attr_scope = value.as<StringImmNode>()->value;
-    ICHECK_EQ(attr_scope, ptr_type->storage_scope)
+    String buffer_scope = ptr_type->storage_scope;
+    if (ptr_type->storage_scope == "") {
+       buffer_scope = "global";
+    }
+    ICHECK_EQ(attr_scope, buffer_scope)
         << "Storage scopes attached to AttrStmt and buffer var are different. " << attr_scope
-        << ", " << ptr_type->storage_scope;
+        << ", " << buffer_scope;
   }
   auto n = make_object<AttrStmtNode>();
   n->node = node;
@@ -697,9 +701,9 @@ MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source) {
   const Buffer& source_buffer = source->buffer;
   arith::Analyzer analyzer;
   // Check scope and dtype
-  CHECK_EQ(buffer->scope, source_buffer->scope)
-      << "MatchBuffer " << buffer << " scope mismatch:" << buffer->scope << " vs. "
-      << source_buffer->scope;
+  CHECK_EQ(buffer.scope(), source_buffer.scope())
+      << "MatchBuffer " << buffer << " scope mismatch:" << buffer.scope() << " vs. "
+      << source_buffer.scope();
   CHECK_EQ(buffer->dtype, source_buffer->dtype)
       << "MatchBuffer " << buffer << " data type mismatch:" << buffer->dtype << " vs. "
       << source_buffer->dtype;

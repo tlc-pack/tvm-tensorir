@@ -341,7 +341,7 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
   auto update_for_gpu = [&block](const ForNode* loop) -> bool {
     CHECK_EQ(block->writes.size(), 1)
         << "ValueError: Only block with one write buffer can be compute_at";
-    std::string write_scope = block->writes[0]->buffer->scope;
+    std::string write_scope = block->writes[0]->buffer.scope();
 
     std::string thread_tag =
         loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";

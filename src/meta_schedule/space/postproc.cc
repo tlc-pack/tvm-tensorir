@@ -1075,7 +1075,7 @@ class PostProcRewriteLayout {
       }
       // Step 1: create a new buffer
       tir::Buffer new_buffer(buffer->data, buffer->dtype, new_shape, Array<PrimExpr>(),
-                             buffer->elem_offset, buffer->name, buffer->scope,
+                             buffer->elem_offset, buffer->name,
                              buffer->data_alignment, buffer->offset_factor, buffer->buffer_type);
       // Step 2: do the rewrite to the buffer access
       // the rule is as below:

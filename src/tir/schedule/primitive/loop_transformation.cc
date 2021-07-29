@@ -131,6 +131,26 @@ class IterMapSimplifyBlockBinding : public StmtExprMutator {
   Map<Var, Range> loop_var2extent_;
 };
 
+std::vector<const StmtSRefNode*> GetLoopsPostOrder(const ScheduleState self,
+                                                   const StmtSRef& root_sref) {
+  std::vector<const StmtSRefNode*> loops;
+  // Gather all the loops under parent_block
+  PreOrderVisit(root_sref->StmtAs<BlockNode>()->body, [&loops, self](const ObjectRef& node) {
+    // Stops at a new BlockNode
+    if (node->IsInstance<BlockNode>()) {
+      return false;
+    }
+    // Collects every LoopNode
+    if (const auto* loop = node.as<ForNode>()) {
+      loops.push_back(self->stmt2ref.at(loop).operator->());
+    }
+    return true;
+  });
+  // Reverse to get bottom-up order
+  std::reverse(loops.begin(), loops.end());
+  return loops;
+}
+
 class HasAnnotationOrThreadBindingError : public ScheduleError {
  public:
   explicit HasAnnotationOrThreadBindingError(IRModule mod, For loop)
@@ -384,6 +404,202 @@ StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
   self->Replace(loop_srefs[0], new_stmt, opaque_block_reuse);
   return self->stmt2ref.at(new_stmt.get());
 }
+
+void Reorder(ScheduleState self, const Array<StmtSRef>& order) {
+  /*
+   * Check:
+   * - check loops are in the same line and are single-branch
+   * - the block below has all its block_var to be data_par or reduce.
+   * Mutate:
+   * - reorder the loops
+   */
+  CHECK(!order.empty()) << "ValueError: 'reorder' expects 'order' to be an non-empty list";
+  // Check 1. type checks and uniqueness check
+  std::unordered_set<const StmtSRefNode*> loops;
+  for (const StmtSRef& loop_sref : order) {
+    // type check
+    const auto* loop = loop_sref->StmtAs<ForNode>();
+    CHECK(loop) << "TypeError: 'reorder' expects an array of loops, but get type: "
+    << loop_sref->stmt->GetTypeKey();
+    // uniqueness check
+    const StmtSRefNode* loop_sref_ptr = loop_sref.operator->();
+    CHECK_EQ(loops.count(loop_sref_ptr), 0U)
+    << "ValueError: 'reorder' expects an array of unique array, but get duplicate: "
+    << GetRef<Stmt>(loop_sref->stmt);
+    loops.insert(loop_sref_ptr);
+  }
+  // Check 2. Loops are in the same line
+  // The algorithm now is to scan the inverse DFS order of the whole loop tree in the scope.
+  // For some Loop x, it is potentially in the reorder range if
+  //   - x is in the reorder list
+  //   - exactly 1 son y of x is potentially in the reorder range
+  //     (If there are more, then the loops are not in the same line).
+  //     Put (x, y) in the map.
+  // If x is potentially in the reorder range, check x is single branch
+  // After the inverse DFS, we can know how to catch the loop line by the map.
+  // Top and bottom denotes the range of loops need reordering
+  const StmtSRefNode* top = nullptr;
+  const StmtSRefNode* bottom = nullptr;
+  // Maps a parent to its child
+  std::unordered_map<const StmtSRefNode*, const StmtSRefNode*> successor;
+  // Gather all the loops under parent_block
+  int n_loops_not_found = order.size();
+  for (const StmtSRefNode* loop : GetLoopsPostOrder(self, GetScopeRoot(order[0]).value())) {
+    bool is_in_reorder_list = loops.count(loop);
+    bool has_inner_loop = successor.count(loop);
+    if (is_in_reorder_list || has_inner_loop) {
+      const StmtSRefNode* parent = loop->parent;
+      // If the successor of `parent` exists, then it is not the current loop
+      CHECK(!successor.count(parent))
+      << "ValueError: 'reorder' expects the loops be in the same line";
+      successor[parent] = loop;
+      // `bottom` is the first loop encountered
+      if (bottom == nullptr) {
+        bottom = loop;
+      }
+      // `top` is the last loop encountered
+      if (is_in_reorder_list) {
+        top = loop;
+        --n_loops_not_found;
+      }
+    }
+  }
+  // Check 3. Loops are in the same block scope
+  CHECK_EQ(n_loops_not_found, 0)
+  << "ValueError: 'reorder' expects loops to be under the same block scope";
+  // Check 4. Loops are single-branch
+  const BlockNode* block = nullptr;
+  for (const StmtSRefNode* loop = top; !(block = loop->StmtAs<BlockNode>());) {
+    Array<Stmt> children = GetChildren(GetRef<Stmt>(loop->stmt));
+    CHECK_EQ(children.size(), 1) << "ValueError: 'reorder' expects the loops to be single-branch";
+    loop = self->stmt2ref.at(children[0].get()).operator->();
+  }
+  // Check 5. the block below has all its block_var to be data_par or reduce
+  for (const IterVar& iter_var : block->iter_vars) {
+    IterVarType kind = iter_var->iter_type;
+    // TODO(@junrushao1994): remove kThreadIndex
+    CHECK(kind == kDataPar || kind == kCommReduce || kind == kThreadIndex)
+    << "ValueError: 'reorder' expects block var to be data parallel or reduction";
+  }
+  std::function<Stmt(const StmtSRefNode*, int index)> f_reorder =
+      [&bottom, &loops, &successor, &order, &f_reorder](const StmtSRefNode* loop,
+          int index) -> Stmt {
+    // The order list maybe incomplete, so we may copy the old_loop rather than order
+    const ForNode* copy =
+        loops.count(loop) ? order[index++]->StmtAs<ForNode>() : loop->StmtAs<ForNode>();
+    ObjectPtr<ForNode> n = make_object<ForNode>(*copy);
+    if (loop == bottom) {
+      // bottom loop
+      n->body = loop->StmtAs<ForNode>()->body;
+    } else {
+      // reorder recursively
+      n->body = f_reorder(successor.at(loop), index);
+    }
+    return Stmt(n);
+  };
+  self->Replace(GetRef<StmtSRef>(top), f_reorder(top, 0), {});
+}
+
+struct FuseTraits : public UnpackedInstTraits<FuseTraits> {
+  static constexpr const char* kName = "Fuse";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  template <size_t delta>
+  static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
+                                           const Array<ObjectRef>& inputs) {
+    setter(delta, inputs);
+  }
+
+  static LoopRV UnpackedApplyToSchedule(Schedule sch, Array<LoopRV> loop_rvs) {
+    return sch->Fuse(loop_rvs);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, Array<String> loop_rvs) {
+    PythonAPICall py("fuse");
+    for (const String& loop_rv : loop_rvs) {
+      py.Input("", loop_rv);
+    }
+    py.SingleOutput(outputs);
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
+struct SplitTraits : public UnpackedInstTraits<SplitTraits> {
+  static constexpr const char* kName = "Split";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 2;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  template <size_t delta>
+  static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
+                                           const Array<ObjectRef>& inputs) {
+    thread_local ObjectRef loop_rv{nullptr};
+    thread_local Array<ObjectRef> factors{nullptr};
+    loop_rv = inputs[0];
+    factors = Array<ObjectRef>{inputs.begin() + 1, inputs.end()};
+    setter(delta, loop_rv);
+    setter(delta + 1, factors);
+  }
+
+  static Array<LoopRV> UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv,
+                                               Array<Optional<ExprRV>> factors) {
+    return sch->Split(loop_rv, factors);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Array<ObjectRef> factors) {
+    PythonAPICall py("split");
+    py.Input("loop", loop_rv);
+    py.Input("factors", factors);
+    py.OutputList(outputs);
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
+struct ReorderTraits : public UnpackedInstTraits<ReorderTraits> {
+  static constexpr const char* kName = "Reorder";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  template <size_t delta>
+  static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
+                                           const Array<ObjectRef>& inputs) {
+    setter(delta, inputs);
+  }
+
+  static void UnpackedApplyToSchedule(Schedule sch, Array<LoopRV> loop_rvs) {
+    return sch->Reorder(loop_rvs);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, Array<String> loop_rvs) {
+    PythonAPICall py("reorder");
+    for (const String& loop_rv : loop_rvs) {
+      py.Input("", loop_rv);
+    }
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND(FuseTraits);
+TVM_REGISTER_INST_KIND(SplitTraits);
+TVM_REGISTER_INST_KIND(ReorderTraits);
 
 }  // namespace tir
 }  // namespace tvm

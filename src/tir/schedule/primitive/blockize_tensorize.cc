@@ -262,7 +262,7 @@ bool TensorizeComparator::CompareBuffer(const Buffer& lhs, const Buffer& rhs) {
   // Remap both buffer itself and buffer data
   // Skip buffer shape
   bool equal = DefEqual(lhs, rhs) && DefEqual(lhs->data, rhs->data) &&
-               CompareType(lhs->dtype, rhs->dtype) && lhs->scope == rhs->scope;
+               CompareType(lhs->dtype, rhs->dtype) && lhs.scope() == rhs.scope();
   if (equal) {
     rhs_buffer_map_[rhs] = lhs;
   } else if (assert_mode_) {

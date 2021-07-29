@@ -354,62 +354,62 @@ class Schedule(Object):
     ########## Schedule: loops ##########
 
     def fuse(self, *loops: List[LoopRV]) -> LoopRV:
-    """Fuse a list of consecutive loops into one. It requires:
-    1) The loops can't have annotations or thread bindings.
-    2) The (i+1)-th loop must be the only child of the i-th loop.
-    3) All loops must start with 0.
+        """Fuse a list of consecutive loops into one. It requires:
+        1) The loops can't have annotations or thread bindings.
+        2) The (i+1)-th loop must be the only child of the i-th loop.
+        3) All loops must start with 0.
 
-    Parameters
-    ----------
-    *loops : List[LoopRV]
-        The loops to be fused
+        Parameters
+        ----------
+        *loops : List[LoopRV]
+            The loops to be fused
 
-    Returns
-    ----------
-    fused_loop : LoopRV
-        The new loop after fusion
+        Returns
+        ----------
+        fused_loop : LoopRV
+            The new loop after fusion
 
-    Examples
-    --------
+        Examples
+        --------
 
-    Before applying fuse, in TensorIR, the IR is:
+        Before applying fuse, in TensorIR, the IR is:
 
-    .. code-block:: python
+        .. code-block:: python
 
-        @tvm.script.tir
-        def before_fuse(a: ty.handle, b: ty.handle) -> None:
-            A = tir.match_buffer(a, (128, 128))
-            B = tir.match_buffer(b, (128, 128))
-            for i, j in tir.grid(128, 128):
-                with tir.block([128, 128], "B") as [vi, vj]:
-                    B[vi, vj] = A[vi, vj] * 2.0
+            @tvm.script.tir
+            def before_fuse(a: ty.handle, b: ty.handle) -> None:
+                A = tir.match_buffer(a, (128, 128))
+                B = tir.match_buffer(b, (128, 128))
+                for i, j in tir.grid(128, 128):
+                    with tir.block([128, 128], "B") as [vi, vj]:
+                        B[vi, vj] = A[vi, vj] * 2.0
 
-    Create the schedule and do fuse:
+        Create the schedule and do fuse:
 
-    .. code-block:: python
+        .. code-block:: python
 
-        sch = tir.Schedule(before_fuse)
-        i, j = sch.get_loops(sch.get_block("B"))
-        sch.fuse(i, j)
-        print(tvm.script.asscript(sch.mod["main"]))
+            sch = tir.Schedule(before_fuse)
+            i, j = sch.get_loops(sch.get_block("B"))
+            sch.fuse(i, j)
+            print(tvm.script.asscript(sch.mod["main"]))
 
-    After applying fuse, the IR becomes:
+        After applying fuse, the IR becomes:
 
-    .. code-block:: python
+        .. code-block:: python
 
-        @tvm.script.tir
-        def after_fuse(a: ty.handle, b: ty.handle) -> None:
-            A = tir.match_buffer(a, (128, 128))
-            B = tir.match_buffer(b, (128, 128))
-            # the 2 loops are fused into 1
-            for i_j_fused in tir.serial(0, 16384):
-                with tir.block([128, 128], "B") as [vi, vj]:
-                    tir.bind(vi, tir.floordiv(i_j_fused, 128))
-                    tir.bind(vj, tir.floormod(i_j_fused, 128))
-                    B[vi, vj] = A[vi, vj] * 2.0
+            @tvm.script.tir
+            def after_fuse(a: ty.handle, b: ty.handle) -> None:
+                A = tir.match_buffer(a, (128, 128))
+                B = tir.match_buffer(b, (128, 128))
+                # the 2 loops are fused into 1
+                for i_j_fused in tir.serial(0, 16384):
+                    with tir.block([128, 128], "B") as [vi, vj]:
+                        tir.bind(vi, tir.floordiv(i_j_fused, 128))
+                        tir.bind(vj, tir.floormod(i_j_fused, 128))
+                        B[vi, vj] = A[vi, vj] * 2.0
 
-    """
-    return _ffi_api_schedule.ScheduleFuse(self, loops)  # type: ignore # pylint: disable=no-member
+        """
+        return _ffi_api_schedule.ScheduleFuse(self, loops)  # type: ignore # pylint: disable=no-member
 
     def split(
             self,

@@ -401,9 +401,12 @@ PrimExpr Buffer::access_ptr(int access_mask, DataType ptr_type, int content_lane
 
 Buffer BufferNode::WithScope(const String& scope) const {
   auto n = make_object<BufferNode>(*this);
-  n->data = this->data.copy_with_suffix("_" + scope);
+  auto new_ptr = make_object<VarNode>(*n->data.get());
+  const auto* ptr_type = this->data->type_annotation.as<PointerTypeNode>();
+  ICHECK(ptr_type) << "Buffer variable is not of pointer type";
+  new_ptr->type_annotation = PointerType(ptr_type->element_type, scope);
+  n->data = Var(new_ptr);
   n->name = this->name + "_" + scope;
-  n->scope = scope;
   return Buffer(n);
 }
 

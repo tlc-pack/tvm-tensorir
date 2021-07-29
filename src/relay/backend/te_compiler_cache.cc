@@ -68,7 +68,8 @@ CCacheKey::CCacheKey(Function source_func, Target target) {
 }
 
 CachedFunc::CachedFunc(tvm::Target target, GlobalVar prim_fn_var, tvm::Array<te::Tensor> inputs,
-                       tvm::Array<te::Tensor> outputs, te::Schedule schedule,
+                       tvm::Array<te::Tensor> outputs, te::Schedule schedule, tir::PrimFunc
+                                                                                  prim_func,
                        tvm::Array<Integer> shape_func_param_states, IRModule funcs) {
   auto n = make_object<CachedFuncNode>();
   n->target = target;
@@ -78,6 +79,7 @@ CachedFunc::CachedFunc(tvm::Target target, GlobalVar prim_fn_var, tvm::Array<te:
   n->schedule = schedule;
   n->shape_func_param_states = shape_func_param_states;
   n->funcs = funcs;
+  n->prim_func = prim_func;
   data_ = std::move(n);
 }
 
@@ -113,6 +115,7 @@ class ScheduleBuilder : public backend::MemoizedExprTranslator<Array<te::Tensor>
       : target_(target), device_copy_op_(Op::Get("device_copy")) {
     // Whether to use auto_scheduler schedule.
     use_auto_scheduler_ = backend::IsAutoSchedulerEnabled();
+    use_meta_schedule_ = backend::IsMetaScheduleEnabled();
   }
 
   CachedFunc Create(const Function& prim_func, std::function<std::string(std::string)> renamer) {
@@ -163,13 +166,16 @@ class ScheduleBuilder : public backend::MemoizedExprTranslator<Array<te::Tensor>
     // between inputs and outputs, and those should not be scheduled.
     // Hence schedule only non PlaceholderOp outputs.
     tvm::Array<te::Tensor> tensor_outs;
+    Array<te::Tensor> all_args = fn_inputs;
     for (const auto& tensor : outputs) {
       if (!tensor->op.as<te::PlaceholderOpNode>()) {
         tensor_outs.push_back(tensor);
       }
+      all_args.push_back(tensor);
     }
 
     te::Schedule schedule;
+    tir::PrimFunc func;
     // No need to register schedule for device copy op.
     if (anchor_attrs_.as<DeviceCopyAttrs>() == nullptr) {
       if (use_auto_scheduler_) {
@@ -182,11 +188,30 @@ class ScheduleBuilder : public backend::MemoizedExprTranslator<Array<te::Tensor>
           schedule = Downcast<te::Schedule>(obj);
         }
       }
+      
+      if (use_meta_schedule_) {
+        const auto* fmeta_schedule =
+            runtime::Registry::Get("meta_schedule.relay_integration.get_func_from_dispatcher");
+        ICHECK(fmeta_schedule != nullptr)
+        << "meta_schedule.relay_integration.get_func_from_dispatcher is not registered";
+        const auto* fcreate_func = runtime::Registry::Get("te.CreatePrimFunc");
+        ObjectRef func = (*fcreate_func)(all_args);
+        ObjectRef obj = (*fmeta_schedule)(func);
+        if (obj.defined()) {
+          func = Downcast<tir::PrimFunc>(obj);
+        }
+      }
 
       // Use TOPI schdule if user specificed, or the function has no auto_scheduler schedule.
-      if (!schedule.defined()) {
+      if (!schedule.defined() && !func.defined()) {
         ICHECK(anchor_implementation_.defined());
-        schedule = anchor_implementation_.Schedule(anchor_attrs_, tensor_outs, target_);
+        auto pass_ctx = transform::PassContext::Current();
+        bool with_tir = pass_ctx->GetConfig<Bool>("relay.with_tir_schedule", Bool(false)).value();
+        if (with_tir) {
+          func = anchor_implementation_.PrimFunc(anchor_attrs_, all_args, target_);
+        } else {
+          schedule = anchor_implementation_.Schedule(anchor_attrs_, tensor_outs, target_);
+        }
       }
       for (const auto& scalar : scalars_) {
         if (schedule->Contain(scalar)) {
@@ -195,7 +220,7 @@ class ScheduleBuilder : public backend::MemoizedExprTranslator<Array<te::Tensor>
       }
     }
 
-    return CachedFunc(target_, prim_fn_var, fn_inputs, outputs, schedule, {});
+    return CachedFunc(target_, prim_fn_var, fn_inputs, outputs, schedule,func, {});
   }
 
   Array<te::Tensor> VisitExpr_(const VarNode* op) final {
@@ -342,6 +367,7 @@ class ScheduleBuilder : public backend::MemoizedExprTranslator<Array<te::Tensor>
   // Cache device copy op for equivalence checking to reduce registry lookup
   // overhead for each invocation of call node when retrieving schedules.
   const Op& device_copy_op_;
+  bool use_meta_schedule_;
 };
 
 /*!
@@ -464,7 +490,8 @@ class MakeShapeFunc : public backend::MemoizedExprTranslator<Array<te::Tensor>> 
     std::unordered_map<te::Tensor, tir::Buffer> binds;
     IRModule ir_module = tvm::LowerSchedule(schedule, all_args, func_name, binds);
 
-    return CachedFunc(target, prim_fn_gvar, inputs, outputs, schedule, shape_func_param_states,
+    return CachedFunc(target, prim_fn_gvar, inputs, outputs, schedule,
+                      tir::PrimFunc(), shape_func_param_states,
                       ir_module);
   }
 

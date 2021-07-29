@@ -140,6 +140,8 @@ struct CachedFuncNode : public Object {
   tvm::Array<te::Tensor> outputs;
   /*! \brief The schedule to the function */
   te::Schedule schedule;
+  /*! \brief The Prim function */
+  tir::PrimFunc prim_func;
   /*! \brief Parameter usage states in the shape function. */
   tvm::Array<Integer> shape_func_param_states;
   /*! \brief The lowered functions to support the function. */
@@ -152,6 +154,7 @@ struct CachedFuncNode : public Object {
     v->Visit("outputs", &outputs);
     v->Visit("schedule", &schedule);
     v->Visit("funcs", &funcs);
+    v->Visit("prim_func", &prim_func);
     v->Visit("shape_func_param_states", &shape_func_param_states);
   }
 
@@ -162,7 +165,7 @@ struct CachedFuncNode : public Object {
 class CachedFunc : public ObjectRef {
  public:
   CachedFunc(tvm::Target target, GlobalVar prim_fn_name, tvm::Array<te::Tensor> inputs,
-             tvm::Array<te::Tensor> outputs, te::Schedule schedule,
+             tvm::Array<te::Tensor> outputs, te::Schedule schedule, tir::PrimFunc prim_func,
              tvm::Array<Integer> shape_func_param_states,
              IRModule funcs = IRModule(Map<GlobalVar, BaseFunc>({})));
 

@@ -390,7 +390,7 @@ void SetScope(ScheduleState self, const StmtSRef& block_sref, int i, const Strin
   CHECK_LT(i, block_ptr->writes.size()) << "ValueError: index out of range";
   Buffer buffer = block_ptr->writes[i]->buffer;
   // If the `storage_scope` equals the original storage scope of the buffer, just return.
-  if (buffer->scope == storage_scope) {
+  if (buffer.scope() == storage_scope) {
     return;
   }
   StmtSRef allocate_site_sref;

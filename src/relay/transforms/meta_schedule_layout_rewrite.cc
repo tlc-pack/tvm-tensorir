@@ -119,7 +119,7 @@ Expr MetaScheduleLayoutRewriter::VisitExpr_(const CallNode* n) {
       // Use ScheduleGetter to call python lower functions.
       // This is used to get the layout transform information.
       // The layout transformation will be recorded to global_layout_rewrite_queue
-      CreateSchedule(GetRef<Function>(func), Target::Current());
+      PrimFuncFor(GetRef<Function>(func), Target::Current(), [](std::string name) { return name; });
 
       // Mutate the called function
       if (!global_layout_rewrite_queue.empty()) {
