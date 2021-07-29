@@ -267,11 +267,15 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
       // Infer bound. This is necessary for computing the correct ToStr() for redundancy check
       if (IsDynTask(search_task)) {
         best_states =
-            search_task->compute_dag.InferBoundOnSyntheticWorkload(
-              best_states, search_task->hardware_params);
+            // search_task->compute_dag.InferBoundOnSyntheticWorkload(
+            //   best_states, search_task->hardware_params);
+            search_task->compute_dag.InferBoundOnCherryPickedWorkload(
+                best_states, search_task);
         random_states =
-            search_task->compute_dag.InferBoundOnSyntheticWorkload(
-              random_states, search_task->hardware_params);
+            // search_task->compute_dag.InferBoundOnSyntheticWorkload(
+            //   random_states, search_task->hardware_params);
+            search_task->compute_dag.InferBoundOnCherryPickedWorkload(
+                random_states, search_task);
       } else {
         best_states   = search_task->compute_dag.InferBound(best_states);
         random_states = search_task->compute_dag.InferBound(random_states);
@@ -332,8 +336,9 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
       CHECK(inputs.size() == results.size());
       for (size_t input_id = 0; input_id < inputs.size(); ++input_id) {
         measured_states_throughputs_.push_back(
-            GetSyntheticWorkloadFlopCtFromState(
-              search_task, inputs[input_id]->state)
+            // GetSyntheticWorkloadFlopCtFromState(
+            //   search_task, inputs[input_id]->state)
+            GetCherryPickedWorkloadInstanceFlopCtFromState(search_task, inputs[input_id]->state)
             / FloatArrayMean(results[input_id]->costs)
             );
       }  // for (input_id ∈ inputs.size())
@@ -632,8 +637,10 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       // <bojian/DietCode>
       if (IsDynTask(search_task)) {
         cand_states =
-            search_task->compute_dag.InferBoundOnSyntheticWorkload(
-              cand_states, search_task->hardware_params);
+            // search_task->compute_dag.InferBoundOnSyntheticWorkload(
+            //   cand_states, search_task->hardware_params);
+            search_task->compute_dag.InferBoundOnCherryPickedWorkload(
+                cand_states, search_task);
         PruneInvalidState(search_task, &cand_states);
         program_cost_model->PredictForAllInstances(
             search_task, cand_states, &occupancy_penalty, &padding_penalty,
@@ -761,8 +768,10 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
     // Maintain the heap
     if (IsDynTask(search_task)) {
       *pnow =
-          search_task->compute_dag.InferBoundOnSyntheticWorkload(
-            *pnow, search_task->hardware_params);
+          // search_task->compute_dag.InferBoundOnSyntheticWorkload(
+          //   *pnow, search_task->hardware_params);
+          search_task->compute_dag.InferBoundOnCherryPickedWorkload(
+              *pnow, search_task);
       PruneInvalidState(search_task, pnow);
       program_cost_model->Predict(search_task, *pnow, &pop_scores);
     } else {

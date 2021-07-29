@@ -677,16 +677,17 @@ class FlopEstimator : public tir::ExprFunctor<double(const PrimExpr& n)> {
 
 
 void AdaptStateToWorkload(const SearchTask& task, const State& state,
-                          const Array<String>& shape_vars,
                           const Array<IntImm>& shape_values,
-                          const float& score,
+                          const float score,
                           float* const occupancy_penalty,
                           float* const padding_penalty,
                           float* const adapted_score
                           );
 
-double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
-                                           const State& state);
+// double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
+//                                            const State& state);
+double GetCherryPickedWorkloadInstanceFlopCtFromState(const SearchTask& task,
+                                                      const State& state);
 
 double EstimateFlopForInst(const ComputeDAG& compute_dag,
                            const Array<Step>& transform_steps,

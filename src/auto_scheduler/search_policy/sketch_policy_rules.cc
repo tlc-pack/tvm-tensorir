@@ -1251,9 +1251,8 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     float base_score = 1., occupancy_penalty, padding_penalty, adapted_score;
 
     AdaptStateToWorkload(policy->search_task, GetRef<State>(pstate),
-                         policy->search_task->shape_vars.value(), selected_inst,
-                         base_score, &occupancy_penalty, &padding_penalty,
-                         &adapted_score);
+                         selected_inst, base_score, &occupancy_penalty,
+                         &padding_penalty, &adapted_score);
     if (adapted_score > max_adapted_score) {
       max_adapted_score = adapted_score;
       opt_split_factors = mutated_scheme.split_factors;

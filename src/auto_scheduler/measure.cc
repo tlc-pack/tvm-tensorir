@@ -293,7 +293,8 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
         // <bojian/DietCode> Estimate the FLOPs for synthetic workloads.
         if (IsDynTask(task)) {
           flop_ct =
-              GetSyntheticWorkloadFlopCtFromState(task, input_batch[j]->state);
+              // GetSyntheticWorkloadFlopCtFromState(task, input_batch[j]->state);
+              GetCherryPickedWorkloadInstanceFlopCtFromState(task, input_batch[j]->state);
         } else {
           flop_ct = task->compute_dag->flop_ct;
         }
@@ -387,7 +388,6 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     for (size_t state_id = 0; state_id < candidate_states.size(); ++state_id) {
       for (size_t inst_id = 0; inst_id < task->shape_values.size(); ++inst_id) {
         AdaptStateToWorkload(task, candidate_states[state_id],
-                             task->shape_vars.value(),
                              task->shape_values[inst_id],
                              candidate_flops[state_id],
                              &occupancy_penalty, &padding_penalty,

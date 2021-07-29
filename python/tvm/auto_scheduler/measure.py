@@ -624,9 +624,8 @@ def _timed_func(inp_serialized, build_func, verbose):
         # )
         if task.shape_vars is not None:
             # dynamic search task
-            sch, args = task.compute_dag.generate_synthetic_workload(
-                    inp.state, task.hardware_params)
-
+            sch, args = task.compute_dag.cherry_pick_workload_instance(inp.state, task)
+            # sch, args = task.compute_dag.generate_synthetic_workload(inp.state, task)
             # print("Generated synthetic workload={}"
             #       .format(tvm.lower(sch, args, simple_mode=True)))
 

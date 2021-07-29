@@ -1322,126 +1322,166 @@ ComputeDAG::InstantiateAndApplySteps(
 
 
 std::pair<te::Schedule, Array<te::Tensor>>
-ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
-    const State& state, const HardwareParams& hardware_params,
-    Array<te::Stage>* stages, StageToAxesMap* stage_to_axes) const {
+ComputeDAG::CherryPickWorkloadInstanceAndApplySteps(
+    const State& state, const SearchTask& task, Array<te::Stage>* stages,
+    StageToAxesMap* stage_to_axes) const {
   State state_mutable_copy = state;
 
   state_mutable_copy = InferBound(state_mutable_copy);
-  // check all the tensors
-  // LOG(INFO) << "ComputeDAG has tensors="
-  //           << ArrayToString(operator->()->tensors);
   if (enable_verbose_logging) {
     LOG(INFO) << "split_steps="
               << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
   }
+  Array<IntImm> cherry_picked_shape_values;
+  const float base_score = 1;
+  float adapted_score, occupancy_penalty, padding_penalty,
+        max_adapted_score = -1;
 
-  Map<ObjectRef, IntImm> axes_to_extents;
-  bool is_first_spatial_axis = true;
-
-  for (const Step& step : state->transform_steps) {
-    if (const SplitStepNode* const split_step = step.as<SplitStepNode>()) {
-      if (state_mutable_copy->stages[step->stage_id]->op->name
-            .find(".shared") != std::string::npos) {
-        continue;
-      }
-      bool is_spatial_axis = (split_step->lengths.size() == 4);
-
-      int64_t extent = 1;
-      for (const Optional<Integer>& split_length : split_step->lengths) {
-        extent *= split_length.value()->value;
-        // if (enable_verbose_logging) {
-        //   LOG(INFO) << "extent -> " << extent;
-        // }
-      }
-      if (is_spatial_axis) {
-        if (is_first_spatial_axis) {
-          is_first_spatial_axis = false;
-          axes_to_extents.Set(split_step->extent.value(),
-                              Integer(2 * extent * hardware_params->num_cores));
-        } else {
-          axes_to_extents.Set(split_step->extent.value(), Integer(extent));
-        }
-      } else {
-        arith::Analyzer analyzer;
-        arith::IntSet s = analyzer.int_set(split_step->extent.value(), {});
-        int64_t synthetic_extent = GetIntImm(s.max()) / extent * extent;
-        axes_to_extents.Set(split_step->extent.value(),
-                            Integer(synthetic_extent));
-      }
-    }  // if (split_step = step.as<SplitStepNode>())
-  }    // for (step ∈ state->transform_steps)
-
-  /*
-  for (int stage_id = state_mutable_copy->stages.size() - 1; stage_id >= 0;
-       --stage_id) {
-    const Stage& stage = state_mutable_copy->stages[stage_id];
-
-    // LOG(INFO) << "stage->op->name=" << stage->op->name << ", "
-    //              "stage->iters=" << ArrayToString(stage->iters);
-    if (StrEndsWith(stage->op->name, ".local")) {
-      // if (enable_verbose_logging) {
-      //   LOG(INFO) << "iterators=" << stage->iters;
-      // }
-      for (const Iterator& iter : stage->iters) {
-        if (StrEndsWith(iter->name, ".0")) {
-          // gather all the iterators that start with the same prefix
-          std::vector<Iterator> iters_w_same_prefix =
-              GatherAllItersWithSamePrefix(stage->iters, iter);
-          int64_t extent = 1;
-          for (const Iterator& iter : iters_w_same_prefix) {
-            extent *= GetIntImm(iter->range->extent);
-          }
-          Iterator init_iter =
-              FindIterInInitState(operator->()->init_state, iter);
-          if (enable_verbose_logging) {
-            LOG(INFO) << "iter=" << iter << " w/ extent=" << extent
-                      << ", init_iter=" << init_iter;
-          }
-          if (iter->iter_kind == IteratorKind::kSpatial) {
-            if (is_first_spatial_axis) {
-              is_first_spatial_axis = false;
-              axes_to_extents.Set(init_iter->range->extent,
-                                  Integer(
-                                    2 * extent * hardware_params->num_cores
-                                  ));
-            } else {
-              axes_to_extents.Set(init_iter->range->extent, Integer(extent));
-            }
-
-            if (enable_verbose_logging) {
-              LOG(INFO) << init_iter->range->extent << " -> " << extent;
-            }
-
-          } else if (iter->iter_kind == IteratorKind::kReduction) {
-            arith::Analyzer analyzer;
-            arith::IntSet s = analyzer.int_set(init_iter->range->extent, {});
-            int64_t synthetic_extent = GetIntImm(s.max()) / extent * extent;
-            CHECK(synthetic_extent >= extent);
-            if (enable_verbose_logging) {
-              LOG(INFO) << "Synthetic extent=" << synthetic_extent << " for "
-                           "reduction axis " << init_iter->range->extent;
-            }
-            axes_to_extents.Set(init_iter->range->extent,
-                                Integer(synthetic_extent));
-          } else {
-            LOG(FATAL) << "Not implemeted yet";
-          }  // if (iter->iter_kind == IteratorKind::kSpatial)
-        }    // if (StrEndsWith(iter->name, ".0"))
-      }      // for (iter ∈ stage->iters)
-    }        // if (StrEndsWith(stage->op->name, ".local"))
-  }          // for (stage ∈ state_mutable_copy->stages)
-   */
-
-  if (enable_verbose_logging) {
-    LOG(INFO) << "axes_to_extents=" << MapToString(axes_to_extents);
+  for (const Array<IntImm>& shape_values : task->shape_values) {
+    AdaptStateToWorkload(task, state, shape_values, base_score,
+                         &occupancy_penalty, &padding_penalty, &adapted_score);
+    if (adapted_score > max_adapted_score) {
+      max_adapted_score = adapted_score;
+      cherry_picked_shape_values = shape_values;
+    }
   }
-
-  SyntheticExprReplacer synthetic_expr_replacer(axes_to_extents);
-
+  Array<String> shape_vars = task->shape_vars.value();
+  Map<ObjectRef, IntImm> shape_var_value_map;
+  for (size_t i = 0; i < shape_vars.size(); ++i) {
+    shape_var_value_map.Set(shape_vars[i], cherry_picked_shape_values[i]);
+  }
+  // if (enable_verbose_logging) {
+  //   LOG(INFO) << "shape_var_value_map=" << MapToString(shape_var_value_map);
+  // }
+  SyntheticExprReplacer synthetic_expr_replacer(shape_var_value_map);
+  // make sure that the DietCode schedule optimization is turned on
+  CHECK(dmlc::GetEnv("DIETCODE_SCHED_OPT", 0));
   return InstantiateAndApplySteps(state_mutable_copy, synthetic_expr_replacer,
                                   stages, stage_to_axes);
 }
+
+
+// std::pair<te::Schedule, Array<te::Tensor>>
+// ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
+//     const State& state, const HardwareParams& hardware_params,
+//     Array<te::Stage>* stages, StageToAxesMap* stage_to_axes) const {
+//   State state_mutable_copy = state;
+
+//   state_mutable_copy = InferBound(state_mutable_copy);
+//   // check all the tensors
+//   // LOG(INFO) << "ComputeDAG has tensors="
+//   //           << ArrayToString(operator->()->tensors);
+//   if (enable_verbose_logging) {
+//     LOG(INFO) << "split_steps="
+//               << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
+//   }
+
+//   Map<ObjectRef, IntImm> axes_to_extents;
+//   bool is_first_spatial_axis = true;
+
+//   for (const Step& step : state->transform_steps) {
+//     if (const SplitStepNode* const split_step = step.as<SplitStepNode>()) {
+//       if (state_mutable_copy->stages[step->stage_id]->op->name
+//             .find(".shared") != std::string::npos) {
+//         continue;
+//       }
+//       bool is_spatial_axis = (split_step->lengths.size() == 4);
+
+//       int64_t extent = 1;
+//       for (const Optional<Integer>& split_length : split_step->lengths) {
+//         extent *= split_length.value()->value;
+//         // if (enable_verbose_logging) {
+//         //   LOG(INFO) << "extent -> " << extent;
+//         // }
+//       }
+//       if (is_spatial_axis) {
+//         if (is_first_spatial_axis) {
+//           is_first_spatial_axis = false;
+//           axes_to_extents.Set(split_step->extent.value(),
+//                               Integer(2 * extent * hardware_params->num_cores));
+//         } else {
+//           axes_to_extents.Set(split_step->extent.value(), Integer(extent));
+//         }
+//       } else {
+//         arith::Analyzer analyzer;
+//         arith::IntSet s = analyzer.int_set(split_step->extent.value(), {});
+//         int64_t synthetic_extent = GetIntImm(s.max()) / extent * extent;
+//         axes_to_extents.Set(split_step->extent.value(),
+//                             Integer(synthetic_extent));
+//       }
+//     }  // if (split_step = step.as<SplitStepNode>())
+//   }    // for (step ∈ state->transform_steps)
+
+//   /*
+//   for (int stage_id = state_mutable_copy->stages.size() - 1; stage_id >= 0;
+//        --stage_id) {
+//     const Stage& stage = state_mutable_copy->stages[stage_id];
+
+//     // LOG(INFO) << "stage->op->name=" << stage->op->name << ", "
+//     //              "stage->iters=" << ArrayToString(stage->iters);
+//     if (StrEndsWith(stage->op->name, ".local")) {
+//       // if (enable_verbose_logging) {
+//       //   LOG(INFO) << "iterators=" << stage->iters;
+//       // }
+//       for (const Iterator& iter : stage->iters) {
+//         if (StrEndsWith(iter->name, ".0")) {
+//           // gather all the iterators that start with the same prefix
+//           std::vector<Iterator> iters_w_same_prefix =
+//               GatherAllItersWithSamePrefix(stage->iters, iter);
+//           int64_t extent = 1;
+//           for (const Iterator& iter : iters_w_same_prefix) {
+//             extent *= GetIntImm(iter->range->extent);
+//           }
+//           Iterator init_iter =
+//               FindIterInInitState(operator->()->init_state, iter);
+//           if (enable_verbose_logging) {
+//             LOG(INFO) << "iter=" << iter << " w/ extent=" << extent
+//                       << ", init_iter=" << init_iter;
+//           }
+//           if (iter->iter_kind == IteratorKind::kSpatial) {
+//             if (is_first_spatial_axis) {
+//               is_first_spatial_axis = false;
+//               axes_to_extents.Set(init_iter->range->extent,
+//                                   Integer(
+//                                     2 * extent * hardware_params->num_cores
+//                                   ));
+//             } else {
+//               axes_to_extents.Set(init_iter->range->extent, Integer(extent));
+//             }
+
+//             if (enable_verbose_logging) {
+//               LOG(INFO) << init_iter->range->extent << " -> " << extent;
+//             }
+
+//           } else if (iter->iter_kind == IteratorKind::kReduction) {
+//             arith::Analyzer analyzer;
+//             arith::IntSet s = analyzer.int_set(init_iter->range->extent, {});
+//             int64_t synthetic_extent = GetIntImm(s.max()) / extent * extent;
+//             CHECK(synthetic_extent >= extent);
+//             if (enable_verbose_logging) {
+//               LOG(INFO) << "Synthetic extent=" << synthetic_extent << " for "
+//                            "reduction axis " << init_iter->range->extent;
+//             }
+//             axes_to_extents.Set(init_iter->range->extent,
+//                                 Integer(synthetic_extent));
+//           } else {
+//             LOG(FATAL) << "Not implemeted yet";
+//           }  // if (iter->iter_kind == IteratorKind::kSpatial)
+//         }    // if (StrEndsWith(iter->name, ".0"))
+//       }      // for (iter ∈ stage->iters)
+//     }        // if (StrEndsWith(stage->op->name, ".local"))
+//   }          // for (stage ∈ state_mutable_copy->stages)
+//    */
+
+//   if (enable_verbose_logging) {
+//     LOG(INFO) << "axes_to_extents=" << MapToString(axes_to_extents);
+//   }
+
+//   SyntheticExprReplacer synthetic_expr_replacer(axes_to_extents);
+
+//   return InstantiateAndApplySteps(state_mutable_copy, synthetic_expr_replacer,
+//                                   stages, stage_to_axes);
+// }
 
 
 std::pair<te::Schedule, Array<te::Tensor>>
@@ -1459,7 +1499,7 @@ ComputeDAG::InstantiateAndApplySteps(
   if (stage_to_axes == nullptr) {
     stage_to_axes = &tmp_stage_to_axes;
   }
-
+  arith::Analyzer analyzer;
 
   for (const te::Tensor& t : operator->()->tensors) {
     // 1. Shape
@@ -1471,7 +1511,7 @@ ComputeDAG::InstantiateAndApplySteps(
       // } else {
       //   synthetic_shape.push_back(expr);
       // }
-      synthetic_shape.push_back(replacer(expr));
+      synthetic_shape.push_back(analyzer.Simplify(replacer(expr)));
     }
     // LOG(INFO) << "Synthetic shape=" << ArrayToString(synthetic_shape);
     // 2. ComputeOp
@@ -1486,8 +1526,8 @@ ComputeDAG::InstantiateAndApplySteps(
       Map<String, ObjectRef> synthetic_attrs;
       for (const IterVar& iv : compute_op_node->axis) {
         synthetic_axis.push_back(
-            tir::IterVar(Range::FromMinExtent(replacer(iv->dom->min),
-                                              replacer(iv->dom->extent)),
+            tir::IterVar(Range::FromMinExtent(analyzer.Simplify(replacer(iv->dom->min)),
+                                              analyzer.Simplify(replacer(iv->dom->extent))),
                          iv->var,
                          iv->iter_type,
                          iv->thread_tag
@@ -1553,6 +1593,7 @@ ComputeDAG::InstantiateAndApplySteps(
   }
   // LOG(INFO) << "Finished applying the transformation steps";
   // if (enable_verbose_logging) {
+  //   LOG(INFO) << "synthetic_tensors=" << ArrayToString(synthetic_tensors);
   //   LOG(INFO) << lower(synthetic_sch, synthetic_tensors, "main", {});
   // }
   // LOG(FATAL) << "Finished generating synthetic schedule";
@@ -1560,8 +1601,10 @@ ComputeDAG::InstantiateAndApplySteps(
 }
 
 
-State ComputeDAG::InferBoundOnSyntheticWorkload(
-    const State& state, const HardwareParams& hardware_params) const {
+// State ComputeDAG::InferBoundOnSyntheticWorkload(
+//     const State& state, const HardwareParams& hardware_params) const {
+State
+ComputeDAG::InferBoundOnCherryPickedWorkload(const State& state, const SearchTask& task) const {
   ICHECK(state->concrete);
   State ret_state;
   StateNode* pstate;
@@ -1587,32 +1630,37 @@ State ComputeDAG::InferBoundOnSyntheticWorkload(
   //           << " transformation steps";
 
   std::tie(sch, tensors) =
-      GenerateSyntheticWorkloadAndApplySteps(ret_state, hardware_params,
-                                             // pstate->transform_steps,
-                                             &stages, &stage_to_axes);
+      // GenerateSyntheticWorkloadAndApplySteps(ret_state, hardware_params,
+      //                                        &stages, &stage_to_axes);
+      CherryPickWorkloadInstanceAndApplySteps(ret_state, task, &stages,
+                                              &stage_to_axes);
   return ret_state;
 }
 
 
-Array<State> ComputeDAG::InferBoundOnSyntheticWorkload(
-    const Array<State>& states, const HardwareParams& hardware_params) const {
+// Array<State> ComputeDAG::InferBoundOnSyntheticWorkload(
+//     const Array<State>& states, const HardwareParams& hardware_params) const {
+Array<State>
+ComputeDAG::InferBoundOnCherryPickedWorkload(const Array<State>& states,
+                                             const SearchTask& task) const {
   Array<State> out_states(states.size(), State());
 
   // LOG(WARNING) << "Parallel InferBound has been made sequential";
   support::parallel_for(0, states.size(),
-                        [this, &states, &out_states, &hardware_params](const size_t i) {
+                        [this, &states, &out_states, &task](const size_t i) {
+  // enable_verbose_logging = (i == 0);
   // for (size_t i = 0; i < states.size(); ++i) {
     try {
       out_states.Set(
           i,
           (states[i].defined()) ?
-            InferBoundOnSyntheticWorkload(states[i], hardware_params) :
+            InferBoundOnCherryPickedWorkload(states[i], task) :
             states[i]
           );
     } catch (const Error& e) {
-      LOG(WARNING) << "InferBoundOnSyntheticWorkload fails on the state:\n"
-                   << states[i] << "\n"
-                   << "with: " << e.what() << std::endl;
+      LOG(FATAL) << "InferBoundOnCherryPickedWorkload fails on the state:\n"
+                 << states[i] << "\n"
+                 << "with: " << e.what() << std::endl;
     }
   }
   );
@@ -1813,17 +1861,29 @@ TVM_REGISTER_GLOBAL("auto_scheduler.ComputeDAG")
 
 
 // <bojian/DietCode>
-TVM_REGISTER_GLOBAL("auto_scheduler.GenerateSyntheticWorkload")
+TVM_REGISTER_GLOBAL("auto_scheduler.CherryPickWorkloadInstance")
     .set_body_typed(
-      [](const ComputeDAG& dag, const State& state,
-         const HardwareParams& hardware_params) -> Array<ObjectRef> {
+      [](const ComputeDAG& dag, const State& state, const SearchTask& task)
+        -> Array<ObjectRef> {
         te::Schedule sch;
         Array<te::Tensor> synthetic_tensors;
         std::tie(sch, synthetic_tensors) =
-            dag.GenerateSyntheticWorkloadAndApplySteps(state, hardware_params);
+            dag.CherryPickWorkloadInstanceAndApplySteps(state, task);
         return Array<ObjectRef>{sch, synthetic_tensors};
       }
       );
+
+// TVM_REGISTER_GLOBAL("auto_scheduler.GenerateSyntheticWorkload")
+//     .set_body_typed(
+//       [](const ComputeDAG& dag, const State& state,
+//          const HardwareParams& hardware_params) -> Array<ObjectRef> {
+//         te::Schedule sch;
+//         Array<te::Tensor> synthetic_tensors;
+//         std::tie(sch, synthetic_tensors) =
+//             dag.GenerateSyntheticWorkloadAndApplySteps(state, hardware_params);
+//         return Array<ObjectRef>{sch, synthetic_tensors};
+//       }
+//       );
 
 
 TVM_REGISTER_GLOBAL("auto_scheduler.ComputeDAGApplyStepsFromState")

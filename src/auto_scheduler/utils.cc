@@ -169,6 +169,7 @@ TopKDispatcher::dispatch(const std::vector<float>& scores,
 }
 
 
+/*
 double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
                                            const State& state) {
   te::Schedule synthetic_sch;
@@ -176,6 +177,20 @@ double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
   std::tie(synthetic_sch, synthetic_tensors) =
       task->compute_dag.GenerateSyntheticWorkloadAndApplySteps(
         state, task->hardware_params);
+  Array<te::Operation> synthetic_sch_ops;
+  for (const te::Stage& stage : synthetic_sch->stages) {
+    synthetic_sch_ops.push_back(stage->op);
+  }
+  return FlopEstimator().EstimateFlop(synthetic_sch_ops);
+}
+ */
+
+double GetCherryPickedWorkloadInstanceFlopCtFromState(const SearchTask& task,
+                                                      const State& state) {
+  te::Schedule synthetic_sch;
+  Array<te::Tensor> synthetic_tensors;
+  std::tie(synthetic_sch, synthetic_tensors) =
+      task->compute_dag.CherryPickWorkloadInstanceAndApplySteps(state, task);
   Array<te::Operation> synthetic_sch_ops;
   for (const te::Stage& stage : synthetic_sch->stages) {
     synthetic_sch_ops.push_back(stage->op);

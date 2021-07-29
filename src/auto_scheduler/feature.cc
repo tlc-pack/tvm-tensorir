@@ -1280,8 +1280,9 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
   // auto bounds = te::InferBound(sch);
   if (IsDynTask(task)) {
     std::tie(sch, tensors) =
-        task->compute_dag.GenerateSyntheticWorkloadAndApplySteps(
-          state, task->hardware_params);
+        // task->compute_dag.GenerateSyntheticWorkloadAndApplySteps(
+        //   state, task->hardware_params);
+        task->compute_dag.CherryPickWorkloadInstanceAndApplySteps(state, task);
   } else {
     std::tie(sch, tensors) =
         task->compute_dag.ApplySteps(state->transform_steps);
@@ -1550,7 +1551,8 @@ void GetPerStoreFeaturesFromMeasurePairs(const Array<MeasureInput>& inputs,
   for (size_t i = 0; i < normalized_throughputs->size(); ++i) {
     if (IsDynTask(inputs[i]->task)) {
       (*normalized_throughputs)[i] =
-          GetSyntheticWorkloadFlopCtFromState(inputs[i]->task, inputs[i]->state)
+          // GetSyntheticWorkloadFlopCtFromState(inputs[i]->task, inputs[i]->state)
+          GetCherryPickedWorkloadInstanceFlopCtFromState(inputs[i]->task, inputs[i]->state)
           / (*normalized_throughputs)[i] / 1e12;
     } else {
       (*normalized_throughputs)[i] =
@@ -1717,14 +1719,14 @@ static inline size_t floor_by(const size_t a, const size_t b) {
 }
 
 void AdaptStateToWorkload(const SearchTask& task, const State& state,
-                          const Array<String>& shape_vars,
                           const Array<IntImm>& shape_values,
-                          const float& score,
-                          float* const occupancy_penalty,
+                          const float score, float* const occupancy_penalty,
                           float* const padding_penalty,
                           float* const adapted_score
                           ) {
   Map<String, IntImm> shape_var_value_map;
+  Array<String> shape_vars = task->shape_vars.value();
+
   CHECK(shape_vars.size() == shape_values.size());
   for (size_t i = 0; i < shape_vars.size(); ++i) {
     shape_var_value_map.Set(shape_vars[i], shape_values[i]);
@@ -1863,8 +1865,7 @@ Array<NDArray> AdaptStatesToWorkloads(
   std::vector<float> padding_penalty(adapted_scores.size(), 1.f);
 
   enable_verbose_logging = true;
-  AdaptStateToWorkload(task, states[0], task->shape_vars.value(),
-                       task->shape_values[0], scores[0]->value,
+  AdaptStateToWorkload(task, states[0], task->shape_values[0], scores[0]->value,
                        &occupancy_penalty[0], &padding_penalty[0],
                        &adapted_scores[0]);
   enable_verbose_logging = false;
@@ -1875,7 +1876,7 @@ Array<NDArray> AdaptStatesToWorkloads(
        &padding_penalty, &adapted_scores]
       (const size_t i) {
         size_t inst_id = i / states.size(), state_id = i % states.size();
-        AdaptStateToWorkload(task, states[state_id], task->shape_vars.value(),
+        AdaptStateToWorkload(task, states[state_id],
                              task->shape_values[inst_id],
                              scores[state_id]->value, &occupancy_penalty[i],
                              &padding_penalty[i], &adapted_scores[i]);

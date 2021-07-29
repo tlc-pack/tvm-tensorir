@@ -221,6 +221,7 @@ enum class LayoutRewriteOption : int {
 
 // <bojian/DietCode>
 class HardwareParams;
+class SearchTask;
 class SyntheticExprReplacer;
 
 
@@ -291,11 +292,15 @@ class ComputeDAG : public ObjectRef {
  public:
   // <bojian/DietCode>
   std::pair<te::Schedule, Array<te::Tensor>>
-  GenerateSyntheticWorkloadAndApplySteps(
-      const State& pstate, const HardwareParams& hardware_params,
+  CherryPickWorkloadInstanceAndApplySteps(
+      const State& state, const SearchTask& task,
       Array<te::Stage>* stages = nullptr,
       StageToAxesMap* stage_to_axes = nullptr) const;
-
+  // std::pair<te::Schedule, Array<te::Tensor>>
+  // GenerateSyntheticWorkloadAndApplySteps(
+  //     const State& pstate, const HardwareParams& hardware_params,
+  //     Array<te::Stage>* stages = nullptr,
+  //     StageToAxesMap* stage_to_axes = nullptr) const;
   std::pair<te::Schedule, Array<te::Tensor>>
   InstantiateAndApplySteps(const State& state, const Array<String>& shape_vars,
                            const Array<IntImm>& shape_value) const;
@@ -303,10 +308,14 @@ class ComputeDAG : public ObjectRef {
   /**
    * \brief Infer bound on a synthetic workload.
    */
-  State InferBoundOnSyntheticWorkload(
-      const State& state, const HardwareParams& hardware_params) const;
-  Array<State> InferBoundOnSyntheticWorkload(
-      const Array<State>& states, const HardwareParams& hardware_params) const;
+  State InferBoundOnCherryPickedWorkload(
+      const State& state, const SearchTask& task) const;
+  Array<State> InferBoundOnCherryPickedWorkload(
+      const Array<State>& states, const SearchTask& task) const;
+  // State InferBoundOnSyntheticWorkload(
+  //     const State& state, const HardwareParams& hardware_params) const;
+  // Array<State> InferBoundOnSyntheticWorkload(
+  //     const Array<State>& states, const HardwareParams& hardware_params) const;
 
   /*!
    * \brief Fill the correct bound information for a given state by calling ir_pass::InferBound.
