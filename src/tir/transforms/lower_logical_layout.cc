@@ -150,7 +150,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
   Stmt VisitStmt_(const BufferStoreNode* _op) final {
     BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(_op));
     const auto& reg = LogicalLayoutRegistry::Global()->reg;
-    auto it = reg.find(store->buffer->scope);
+    auto it = reg.find(store->buffer.scope());
     if (it == reg.end()) {
       return store;
     }
@@ -160,7 +160,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     size_t orig_buffer_num_dims = indices.size();
     const LogicalLayout& logical_layout = (*it).second;
     CHECK_LE(logical_layout->num_dims, orig_buffer_num_dims)
-        << "ValueError: The lower function of logical layout " << op->buffer->scope
+        << "ValueError: The lower function of logical layout " << op->buffer.scope()
         << " expects the buffer to be at least " << logical_layout->num_dims
         << "-D (actual: " << orig_buffer_num_dims << "-D).";
 
@@ -207,7 +207,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     // Step 5: Compute the inverse of the affine transformation specified by the logical layout,
     // and rewrite loop variables of old outer loops.
     auto inverse_var_map =
-        GetInverseAffineIterMap(leading_indices, index_vars, new_loop_vars, op->buffer->scope);
+        GetInverseAffineIterMap(leading_indices, index_vars, new_loop_vars, op->buffer.scope());
     op->value = Substitute(op->value, inverse_var_map);
 
     // Step 6: Compute new buffer shape and make new buffer.
@@ -218,7 +218,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
   PrimExpr VisitExpr_(const BufferLoadNode* _op) final {
     BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_op));
     const auto& reg = LogicalLayoutRegistry::Global()->reg;
-    auto it = reg.find(load->buffer->scope);
+    auto it = reg.find(load->buffer.scope());
     if (it == reg.end()) {
       return load;
     }
@@ -227,7 +227,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     CHECK(buffer_map_.count(load->buffer)) << "ValueError: Cannot find the producer of the buffer "
                                            << load->buffer->name << " with logical layout.";
     CHECK_LE(logical_layout->num_dims, orig_buffer_num_dims)
-        << "ValueError: The lower function of logical layout " << load->buffer->scope
+        << "ValueError: The lower function of logical layout " << load->buffer.scope()
         << " expects the buffer to be at least " << logical_layout->num_dims
         << "-D (actual: " << orig_buffer_num_dims << "-D.";
     BufferLoadNode* op = load.CopyOnWrite();
@@ -261,10 +261,11 @@ class LogicalLayoutMutator : public StmtExprMutator {
       return;
     }
     ObjectPtr<BufferNode> n = make_object<BufferNode>(*(buffer->get()));
-    std::string scope = n->scope;
-    n->scope = scope.substr(0, scope.find('.'));  // remove the suffix of the logical layout
+    std::string scope = (*buffer).scope();
+    scope = scope.substr(0, scope.find('.'));  // remove the suffix of the logical layout
     n->shape = std::move(new_shape);
     Buffer new_buffer = Buffer(std::move(n));
+    new_buffer = new_buffer->WithScope(scope);
     buffer_map_.emplace(*buffer, new_buffer);
     buffer_data_to_buffer_.Set(new_buffer->data, new_buffer);
     *buffer = new_buffer;
@@ -381,21 +382,6 @@ class LogicalLayoutMutator : public StmtExprMutator {
       return false;
     }
     return true;
-  }
-
-  Buffer MakeNewBuffer(const Buffer& orig_buffer, const LogicalLayout& logical_layout,
-                       const arith::NDIntSet& leading_shape) const {
-    ObjectPtr<BufferNode> n = make_object<BufferNode>(*orig_buffer.get());
-    Array<PrimExpr> new_shape(
-        orig_buffer->shape.begin(),
-        orig_buffer->shape.begin() + orig_buffer->shape.size() - logical_layout->num_dims);
-    for (const auto& range : leading_shape) {
-      new_shape.push_back(range.max() + 1);
-    }
-    n->shape = std::move(new_shape);
-    std::string scope = n->scope;
-    n->scope = scope.substr(0, scope.find('.'));  // remove the suffix of the logical layout
-    return Buffer(std::move(n));
   }
 
   void RewriteBufferIndices(const LogicalLayout& logical_layout, Array<PrimExpr>* indices) {
