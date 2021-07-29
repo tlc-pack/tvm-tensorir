@@ -338,7 +338,7 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
         measured_states_throughputs_.push_back(
             // GetSyntheticWorkloadFlopCtFromState(
             //   search_task, inputs[input_id]->state)
-            GetCherryPickedWorkloadInstanceFlopCtFromState(search_task, inputs[input_id]->state)
+            GetCherryPickedWklInstNormalizedFlopCtFromState(search_task, inputs[input_id]->state)
             / FloatArrayMean(results[input_id]->costs)
             );
       }  // for (input_id ∈ inputs.size())

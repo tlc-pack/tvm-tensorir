@@ -291,6 +291,8 @@ class ComputeDAG : public ObjectRef {
 
  public:
   // <bojian/DietCode>
+  Array<IntImm>
+  CherryPickWorkloadInstance(const State& state, const SearchTask& task) const;
   std::pair<te::Schedule, Array<te::Tensor>>
   CherryPickWorkloadInstanceAndApplySteps(
       const State& state, const SearchTask& task,
@@ -303,7 +305,7 @@ class ComputeDAG : public ObjectRef {
   //     StageToAxesMap* stage_to_axes = nullptr) const;
   std::pair<te::Schedule, Array<te::Tensor>>
   InstantiateAndApplySteps(const State& state, const Array<String>& shape_vars,
-                           const Array<IntImm>& shape_value) const;
+                           const Array<IntImm>& shape_values) const;
 
   /**
    * \brief Infer bound on a synthetic workload.

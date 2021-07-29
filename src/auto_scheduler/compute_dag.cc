@@ -1302,7 +1302,7 @@ Iterator FindIterInInitState(const State& init_state, const Iterator& iter_0) {
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::InstantiateAndApplySteps(
     const State& state, const Array<String>& shape_vars,
-    const Array<IntImm>& shape_value) const {
+    const Array<IntImm>& shape_values) const {
   State state_mutable_copy = state;
 
   state_mutable_copy = InferBound(state_mutable_copy);
@@ -1311,7 +1311,7 @@ ComputeDAG::InstantiateAndApplySteps(
 
   Map<ObjectRef, IntImm> axes_to_extents;
   for (size_t i = 0; i < shape_vars.size(); ++i) {
-    axes_to_extents.Set(shape_vars[i], shape_value[i]);
+    axes_to_extents.Set(shape_vars[i], shape_values[i]);
   }
   SyntheticExprReplacer synthetic_expr_replacer(axes_to_extents);
 
@@ -1321,10 +1321,9 @@ ComputeDAG::InstantiateAndApplySteps(
 
 
 
-std::pair<te::Schedule, Array<te::Tensor>>
-ComputeDAG::CherryPickWorkloadInstanceAndApplySteps(
-    const State& state, const SearchTask& task, Array<te::Stage>* stages,
-    StageToAxesMap* stage_to_axes) const {
+Array<IntImm>
+ComputeDAG::CherryPickWorkloadInstance(
+    const State& state, const SearchTask& task) const {
   State state_mutable_copy = state;
 
   state_mutable_copy = InferBound(state_mutable_copy);
@@ -1345,21 +1344,17 @@ ComputeDAG::CherryPickWorkloadInstanceAndApplySteps(
       cherry_picked_shape_values = shape_values;
     }
   }
-  Array<String> shape_vars = task->shape_vars.value();
-  Map<ObjectRef, IntImm> shape_var_value_map;
-  for (size_t i = 0; i < shape_vars.size(); ++i) {
-    shape_var_value_map.Set(shape_vars[i], cherry_picked_shape_values[i]);
-  }
-  // if (enable_verbose_logging) {
-  //   LOG(INFO) << "shape_var_value_map=" << MapToString(shape_var_value_map);
-  // }
-  SyntheticExprReplacer synthetic_expr_replacer(shape_var_value_map);
-  // make sure that the DietCode schedule optimization is turned on
-  CHECK(dmlc::GetEnv("DIETCODE_SCHED_OPT", 0));
-  return InstantiateAndApplySteps(state_mutable_copy, synthetic_expr_replacer,
-                                  stages, stage_to_axes);
+  return cherry_picked_shape_values;
 }
 
+std::pair<te::Schedule, Array<te::Tensor>>
+ComputeDAG::CherryPickWorkloadInstanceAndApplySteps(
+    const State& state, const SearchTask& task, Array<te::Stage>* stages,
+    StageToAxesMap* stage_to_axes) const {
+  Array<IntImm> shape_values = CherryPickWorkloadInstance(state, task);
+  return InstantiateAndApplySteps(state, task->shape_vars.value(),
+                                  shape_values);
+}
 
 // std::pair<te::Schedule, Array<te::Tensor>>
 // ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
@@ -1487,8 +1482,7 @@ ComputeDAG::CherryPickWorkloadInstanceAndApplySteps(
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::InstantiateAndApplySteps(
     const State& state, SyntheticExprReplacer& replacer,
-    Array<te::Stage>* stages = nullptr,
-    StageToAxesMap* stage_to_axes = nullptr) const {
+    Array<te::Stage>* stages, StageToAxesMap* stage_to_axes) const {
   Array<te::Tensor> synthetic_tensors;
 
   Array<te::Stage> tmp_stages;

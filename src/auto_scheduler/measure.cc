@@ -294,7 +294,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
         if (IsDynTask(task)) {
           flop_ct =
               // GetSyntheticWorkloadFlopCtFromState(task, input_batch[j]->state);
-              GetCherryPickedWorkloadInstanceFlopCtFromState(task, input_batch[j]->state);
+              GetCherryPickedWklInstNormalizedFlopCtFromState(task, input_batch[j]->state);
         } else {
           flop_ct = task->compute_dag->flop_ct;
         }

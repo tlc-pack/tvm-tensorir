@@ -1552,7 +1552,7 @@ void GetPerStoreFeaturesFromMeasurePairs(const Array<MeasureInput>& inputs,
     if (IsDynTask(inputs[i]->task)) {
       (*normalized_throughputs)[i] =
           // GetSyntheticWorkloadFlopCtFromState(inputs[i]->task, inputs[i]->state)
-          GetCherryPickedWorkloadInstanceFlopCtFromState(inputs[i]->task, inputs[i]->state)
+          GetCherryPickedWklInstNormalizedFlopCtFromState(inputs[i]->task, inputs[i]->state)
           / (*normalized_throughputs)[i] / 1e12;
     } else {
       (*normalized_throughputs)[i] =

@@ -185,17 +185,26 @@ double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
 }
  */
 
-double GetCherryPickedWorkloadInstanceFlopCtFromState(const SearchTask& task,
-                                                      const State& state) {
+double GetCherryPickedWklInstNormalizedFlopCtFromState(const SearchTask& task,
+                                                       const State& state) {
   te::Schedule synthetic_sch;
   Array<te::Tensor> synthetic_tensors;
+  Array<IntImm> cherry_picked_wkl_inst =
+      task->compute_dag.CherryPickWorkloadInstance(state, task);
   std::tie(synthetic_sch, synthetic_tensors) =
-      task->compute_dag.CherryPickWorkloadInstanceAndApplySteps(state, task);
+      task->compute_dag.InstantiateAndApplySteps(state,
+                                                 task->shape_vars.value(),
+                                                 cherry_picked_wkl_inst);
   Array<te::Operation> synthetic_sch_ops;
   for (const te::Stage& stage : synthetic_sch->stages) {
     synthetic_sch_ops.push_back(stage->op);
   }
-  return FlopEstimator().EstimateFlop(synthetic_sch_ops);
+  const float base_score = 1.;
+  float occupancy_penalty, padding_penalty, adapted_score;
+
+  AdaptStateToWorkload(task, state, cherry_picked_wkl_inst, base_score,
+                       &occupancy_penalty, &padding_penalty, &adapted_score);
+  return FlopEstimator().EstimateFlop(synthetic_sch_ops) / adapted_score;
 }
 
 
