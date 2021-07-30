@@ -690,7 +690,7 @@ double GetCherryPickedWklInstNormalizedFlopCtFromState(const SearchTask& task,
                                                        const State& state);
 
 double EstimateFlopForInst(const ComputeDAG& compute_dag,
-                           const Array<Step>& transform_steps,
+                           // const Array<Step>& transform_steps,
                            const Array<String>& shape_vars,
                            const Array<IntImm>& shape_values);
 

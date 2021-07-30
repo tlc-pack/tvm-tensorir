@@ -187,29 +187,33 @@ double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
 
 double GetCherryPickedWklInstNormalizedFlopCtFromState(const SearchTask& task,
                                                        const State& state) {
-  te::Schedule synthetic_sch;
-  Array<te::Tensor> synthetic_tensors;
+  // te::Schedule synthetic_sch;
+  // Array<te::Tensor> synthetic_tensors;
   Array<IntImm> cherry_picked_wkl_inst =
       task->compute_dag.CherryPickWorkloadInstance(state, task);
-  std::tie(synthetic_sch, synthetic_tensors) =
-      task->compute_dag.InstantiateAndApplySteps(state,
-                                                 task->shape_vars.value(),
-                                                 cherry_picked_wkl_inst);
-  Array<te::Operation> synthetic_sch_ops;
-  for (const te::Stage& stage : synthetic_sch->stages) {
-    synthetic_sch_ops.push_back(stage->op);
-  }
+  // std::tie(synthetic_sch, synthetic_tensors) =
+  //     task->compute_dag.InstantiateAndApplySteps(state,
+  //                                                task->shape_vars.value(),
+  //                                                cherry_picked_wkl_inst);
+  // Array<te::Operation> synthetic_sch_ops;
+  // for (const te::Stage& stage : synthetic_sch->stages) {
+  //   synthetic_sch_ops.push_back(stage->op);
+  // }
+  double inst_flop =
+      EstimateFlopForInst(task->compute_dag, task->shape_vars.value(),
+                          cherry_picked_wkl_inst);
+
   const float base_score = 1.;
   float occupancy_penalty, padding_penalty, adapted_score;
 
   AdaptStateToWorkload(task, state, cherry_picked_wkl_inst, base_score,
                        &occupancy_penalty, &padding_penalty, &adapted_score);
-  return FlopEstimator().EstimateFlop(synthetic_sch_ops) / adapted_score;
+  return inst_flop / adapted_score;
 }
 
 
 double EstimateFlopForInst(const ComputeDAG& compute_dag,
-                           const Array<Step>& transform_steps,
+                           // const Array<Step>& transform_steps,
                            const Array<String>& shape_vars,
                            const Array<IntImm>& shape_values) {
   CHECK(shape_vars.size() == shape_values.size());
@@ -232,7 +236,7 @@ double EstimateFlopForInst(const ComputeDAG& compute_dag,
       );
   te::Schedule sch;
   Array<te::Tensor> tensors;
-  std::tie(sch, tensors) = compute_dag.ApplySteps(transform_steps);
+  std::tie(sch, tensors) = compute_dag.ApplySteps({});
   Array<te::Operation> sch_ops;
   for (const te::Stage& stage : sch->stages) {
     sch_ops.push_back(stage->op);

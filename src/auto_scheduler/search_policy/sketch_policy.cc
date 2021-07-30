@@ -186,9 +186,9 @@ void SketchPolicyNode::CalculateInstOptProb(const ProgramMeasurer& measurer) {
   CHECK(IsDynTask(search_task));
   std::vector<float> inst_opt_priority;
 
-  const auto& best_states = measurer->best_states[search_task->workload_key];
-  const auto& best_inst_disp_map =
-      measurer->best_inst_disp_map[search_task->workload_key];
+  // const auto& best_states = measurer->best_states[search_task->workload_key];
+  // const auto& best_inst_disp_map =
+  //     measurer->best_inst_disp_map[search_task->workload_key];
   const auto& best_inst_flops =
       measurer->best_inst_flops[search_task->workload_key];
 
@@ -197,8 +197,8 @@ void SketchPolicyNode::CalculateInstOptProb(const ProgramMeasurer& measurer) {
   for (size_t i = 0; i < search_task->shape_values.size(); ++i) {
     double flop = EstimateFlopForInst(
         search_task->compute_dag,
-        best_states.at(best_inst_disp_map.at(i))
-          ->transform_steps,
+        // best_states.at(best_inst_disp_map.at(i))
+        //   ->transform_steps,
         search_task->shape_vars.value(), search_task->shape_values[i]);
     CHECK(flop > 0.);
     
