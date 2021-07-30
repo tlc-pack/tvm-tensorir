@@ -913,6 +913,10 @@ def _timed_eval_func(
                 )
             dev.sync()
             costs = time_f(*args).results
+
+            # <bojian/DietCode>
+            # del func
+
         # pylint: disable=broad-except
         except Exception:
             costs = (MAX_FLOAT,)
@@ -1154,6 +1158,12 @@ def _timed_rpc_run(
             remote.remove(os.path.splitext(build_res.filename)[0] + ".so")
             remote.remove("")
             dev.free_raw_stream(stream)
+
+            # <bojian/DietCode>
+            # Try to delete the module early in the case when invalid computes
+            # happen (e.g., illegal memory accesses).
+            del func
+
         # pylint: disable=broad-except
         except Exception:
             dev.free_raw_stream(stream)

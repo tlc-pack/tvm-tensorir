@@ -58,7 +58,11 @@ class CUDAModuleNode : public runtime::ModuleNode {
     for (size_t i = 0; i < module_.size(); ++i) {
       if (module_[i] != nullptr) {
         CUDA_CALL(cudaSetDevice(static_cast<int>(i)));
-        CUDA_DRIVER_CALL(cuModuleUnload(module_[i]));
+        try {
+          CUDA_DRIVER_CALL(cuModuleUnload(module_[i]));
+        } catch(...) {
+          LOG(FATAL) << "cuda_source=" << cuda_source_;
+        }
       }
     }
   }
@@ -78,6 +82,10 @@ class CUDAModuleNode : public runtime::ModuleNode {
       ICHECK_EQ(fmt, fmt_) << "Can only save to format=" << fmt_;
       SaveMetaDataToFile(meta_file, fmap_);
       SaveBinaryToFile(file_name, data_);
+
+      // <bojian/DietCode>
+      SaveBinaryToFile(file_name, cuda_source_);
+
     }
   }
 
@@ -85,6 +93,10 @@ class CUDAModuleNode : public runtime::ModuleNode {
     stream->Write(fmt_);
     stream->Write(fmap_);
     stream->Write(data_);
+
+    // <bojian/DietCode>
+    stream->Write(cuda_source_);
+
   }
 
   std::string GetSource(const std::string& format) final {
@@ -258,9 +270,18 @@ Module CUDAModuleLoadFile(const std::string& file_name, const std::string& forma
   std::unordered_map<std::string, FunctionInfo> fmap;
   std::string fmt = GetFileFormat(file_name, format);
   std::string meta_file = GetMetaFilePath(file_name);
+
+  // <bojian/DietCode>
+  std::string cuda_source;
+  LoadBinaryFromFile(file_name, &cuda_source);
+
   LoadBinaryFromFile(file_name, &data);
   LoadMetaDataFromFile(meta_file, &fmap);
-  return CUDAModuleCreate(data, fmt, fmap, std::string());
+  return CUDAModuleCreate(data, fmt, fmap,
+                          // <bojian/DietCode>
+                          // std::string()
+                          cuda_source
+                          );
 }
 
 Module CUDAModuleLoadBinary(void* strm) {
@@ -271,7 +292,16 @@ Module CUDAModuleLoadBinary(void* strm) {
   stream->Read(&fmt);
   stream->Read(&fmap);
   stream->Read(&data);
-  return CUDAModuleCreate(data, fmt, fmap, std::string());
+
+  // <bojian/DietCode>
+  std::string cuda_source;
+  stream->Read(&cuda_source);
+
+  return CUDAModuleCreate(data, fmt, fmap,
+                          // <bojian/DietCode>
+                          // std::string()
+                          cuda_source
+                          );
 }
 
 TVM_REGISTER_GLOBAL("runtime.module.loadfile_cubin").set_body_typed(CUDAModuleLoadFile);

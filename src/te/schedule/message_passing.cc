@@ -575,6 +575,19 @@ bool IsRangeSame(const Range input_1, const Range input_2) {
           analyzer.CanProve(input_1->extent == input_2->extent));
 }
 
+
+class ContainsBlockIdx : public ExprVisitor {
+ public:
+  bool hasBlockIdx = false;
+ protected:
+  void VisitExpr_(const VarNode* op) override {
+    if (op->name_hint == "blockIdx.x") {
+      hasBlockIdx = true;
+    }
+  }
+};
+
+
 std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Range>& dom_map,
                                      const std::unordered_map<IterVar, PrimExpr>& value_map,
                                      bool skip_ivar_domain,
@@ -681,15 +694,18 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
 
         // <bojian/DietCode>
         if (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0)) {
-          if (stage->origin_op->name.find(".local") != std::string::npos) {
+          ContainsBlockIdx blockIdx_checker;
+          blockIdx_checker(value);
+          if (stage->origin_op->name.find(".local") != std::string::npos &&
+              blockIdx_checker.hasBlockIdx) {
             if (!dmlc::GetEnv("DIETCODE_SCHED_OPT_NO_LOCAL_PADDING", 0)) {
               // LOG(WARNING) << "\'.local\' spotted in " << stage->origin_op->name << ". "
               //                 "Assuming it is a local compute operation whose boundary check "
               //                 "(" << value << "<" << iv->dom->extent << ") can be neglected.";
               continue;
-            } else {
-              LOG(WARNING) << "Local padding has been disabled";
-            }
+            } // else {
+              // LOG(WARNING) << "Local padding has been disabled";
+            // }
           }
           // if (dmlc::GetEnv("DIETCODE_SCHED_OPT", 0) == 2) {
           //   if (stage->origin_op->name.find(".shared") != std::string::npos) {
