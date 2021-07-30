@@ -131,7 +131,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     BlockNode* n = block.CopyOnWrite();
 
     for (size_t i = 0; i < n->alloc_buffers.size(); i++) {
-      auto it = buffer_map_.find(n->alloc_buffers[i]);
+      auto it = buffer_map_.find(n->alloc_buffers[i]->data);
       if (it != buffer_map_.end()) {
         n->alloc_buffers.Set(i, it->second);
         buffer_map_.erase(it);
@@ -224,7 +224,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     }
     const LogicalLayout& logical_layout = (*it).second;
     size_t orig_buffer_num_dims = load->indices.size();
-    CHECK(buffer_map_.count(load->buffer)) << "ValueError: Cannot find the producer of the buffer "
+    CHECK(buffer_map_.count(load->buffer->data)) << "ValueError: Cannot find the producer of the buffer "
                                            << load->buffer->name << " with logical layout.";
     CHECK_LE(logical_layout->num_dims, orig_buffer_num_dims)
         << "ValueError: The lower function of logical layout " << load->buffer.scope()
@@ -232,11 +232,27 @@ class LogicalLayoutMutator : public StmtExprMutator {
         << "-D (actual: " << orig_buffer_num_dims << "-D.";
     BufferLoadNode* op = load.CopyOnWrite();
     RewriteBufferIndices(logical_layout, &op->indices);
-    auto buf_it = buffer_map_.find(load->buffer);
+    auto buf_it = buffer_map_.find(load->buffer->data);
     CHECK(buf_it != buffer_map_.end())
         << "ValueError: Cannot find the producer of buffer " << load->buffer->name;
     op->buffer = buf_it->second;
     return std::move(load);
+  }
+
+  PrimExpr VisitExpr_(const VarNode* op) final {
+    auto it = buffer_map_.find(GetRef<Var>(op));
+    if (it != buffer_map_.end()) {
+      return it->second->data;
+    }
+    return GetRef<Var>(op);
+  }
+
+  PrimExpr VisitExpr_(const CallNode* op) final {
+    if (op->op == builtin::tvm_mfma_sync()) {
+       auto res = StmtExprMutator::VisitExpr_(op);
+       return res;
+    }
+    return StmtExprMutator::VisitExpr_(op);
   }
 
   void ReallocOrValidateBuffer(Buffer* buffer, const LogicalLayout& logical_layout,
@@ -250,7 +266,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     new_shape.reserve(new_shape.size() + leading_shape.size());
 
     // Add the new buffer to buffer_map. If the new buffer exists, verify the new buffer shape.
-    auto it = buffer_map_.find(*buffer);
+    auto it = buffer_map_.find((*buffer)->data);
     if (it != buffer_map_.end()) {
       const auto& new_buffer = it->second;
       ICHECK(new_buffer->shape.size() == new_shape.size());
@@ -266,7 +282,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     n->shape = std::move(new_shape);
     Buffer new_buffer = Buffer(std::move(n));
     new_buffer = new_buffer->WithScope(scope);
-    buffer_map_.emplace(*buffer, new_buffer);
+    buffer_map_.emplace((*buffer)->data, new_buffer);
     buffer_data_to_buffer_.Set(new_buffer->data, new_buffer);
     *buffer = new_buffer;
   }
@@ -403,7 +419,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
   }
 
   std::unordered_map<Var, For, ObjectPtrHash, ObjectPtrEqual> loop_map_;
-  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map_;
+  std::unordered_map<Var, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map_;  // buffer data to new buffer
   std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> removed_loops_;
   arith::Analyzer analyzer_;
   std::vector<Stmt> current_loop_nests_;  // current outer loops to be inserted when mutating Block
