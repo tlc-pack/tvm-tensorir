@@ -710,6 +710,28 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleRFactor(self, loop, factor_axis)  # type: ignore # pylint: disable=no-member
 
+    ######## Schedule: Block annotatoins ########
+
+    def storage_align(self, block: BlockRV, buffer_index: int, axis: int, factor: int,
+                      offset: int) -> None:
+        """Set alignment requirement for specific dimension such that
+           stride[axis] == k * factor + offset for some k.
+
+        Parameters
+        ----------
+        block : BlockRV
+            The producer block of the buffer.
+        buffer_index : int
+            The index of the buffer in block's write region.
+        axis : int
+            The dimension to be specified for alignment.
+        factor : int
+            The factor multiple of alignment.
+        offset : int
+            The required offset factor.
+        """
+        _ffi_api_schedule.ScheduleStorageAlign(self, block, buffer_index, axis, factor, offset)  # type: ignore # pylint: disable=no-member
+
     ########## Schedule: Blockize & Tensorize ##########
 
     ########## Schedule: Annotation ##########
