@@ -23,6 +23,8 @@
 
 #include <vector>
 
+#include "sampler.h"
+
 namespace tvm {
 namespace tir {
 

@@ -24,7 +24,7 @@
 #include <random>
 #include <vector>
 
-#include "../support/rng.h"
+#include "../../support/rng.h"
 namespace tvm {
 
 class Target;
