@@ -51,7 +51,7 @@ class ReplayNode : public SearchStrategyNode {
    * \return The best schedule found, NullOpt if no valid schedule is found
    */
   Optional<Schedule> Search(const SearchTask& task, const SearchSpace& space,
-                            const ProgramMeasurer& measurer, Sampler* sampler,
+                            const ProgramMeasurer& measurer, Sampler::TRandomState* rand_state,
                             int verbose) override;
 
   static constexpr const char* _type_key = "meta_schedule.Replay";
@@ -86,21 +86,21 @@ Replay::Replay(int batch_size, int num_trials) {
 /********** Search **********/
 
 Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
-                                      const ProgramMeasurer& measurer, Sampler* sampler,
-                                      int verbose) {
-  std::vector<Sampler> thread_samplers;
+                                      const ProgramMeasurer& measurer,
+                                      Sampler::TRandomState* rand_state, int verbose) {
+  std::vector<Sampler::TRandomState> thread_rand_states;
   std::vector<MeasureInput> thread_measure_inputs;
-  thread_samplers.reserve(this->batch_size);
+  thread_rand_states.reserve(this->batch_size);
   thread_measure_inputs.reserve(this->batch_size);
   for (int i = 0; i < batch_size; ++i) {
-    thread_samplers.emplace_back(sampler->ForkSeed());
+    thread_rand_states.emplace_back(Sampler(rand_state).ForkSeed());
     thread_measure_inputs.emplace_back(nullptr);
   }
-  auto worker = [&task, &space, &thread_samplers, &thread_measure_inputs](int thread_id, int i) {
-    Sampler* sampler = &thread_samplers[i];
+  auto worker = [&task, &space, &thread_rand_states, &thread_measure_inputs](int thread_id, int i) {
+    Sampler::TRandomState* rand_state = &thread_rand_states[i];
     for (;;) {
-      Schedule sch = space->SampleSchedule(task, sampler);
-      if (space->Postprocess(task, sch, sampler)) {
+      Schedule sch = space->SampleSchedule(task, rand_state);
+      if (space->Postprocess(task, sch, rand_state)) {
         thread_measure_inputs[i] = MeasureInput(task, sch);
         break;
       }

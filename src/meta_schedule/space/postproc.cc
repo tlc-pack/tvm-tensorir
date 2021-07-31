@@ -38,8 +38,9 @@ Postproc::Postproc(String name, FProc proc) {
 
 /********** Postproc **********/
 
-bool PostprocNode::Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler) {
-  return proc_(task, sch, sampler);
+bool PostprocNode::Apply(const SearchTask& task, const Schedule& sch,
+                         Sampler::TRandomState* rand_state) {
+  return proc_(task, sch, rand_state);
 }
 
 /********** RewriteTensorize **********/
@@ -115,7 +116,7 @@ class PostprocRewriteTensorize {
 
 Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins) {
   auto f_proc = [tensor_intrins{std::move(tensor_intrins)}](SearchTask task, Schedule self,
-                                                            void* _sampler) -> bool {
+                                                            void* _rand_state) -> bool {
     return PostprocRewriteTensorize(tensor_intrins).Proc(self);
   };
   return Postproc("rewrite_tensorize", f_proc);
@@ -181,7 +182,7 @@ class PostprocRewriteCooperativeFetch {
 };
 
 Postproc RewriteCooperativeFetch() {
-  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _rand_state) -> bool {
     return PostprocRewriteCooperativeFetch().Proc(sch);
   };
   return Postproc("rewrite_cooperative_fetch", f_proc);
@@ -498,7 +499,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
 };
 
 Postproc RewriteParallelizeVectorizeUnroll() {
-  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _rand_state) -> bool {
     return PostprocRewriteParallelizeVectorizeUnroll().Proc(sch);
   };
   return Postproc("rewrite_parallelize_vectorize_unroll", f_proc);
@@ -632,7 +633,7 @@ class PostprocRewriteUnboundBlocks {
 };
 
 Postproc RewriteUnboundBlocks() {
-  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _rand_state) -> bool {
     return PostprocRewriteUnboundBlocks().Proc(task, sch);
   };
   return Postproc("rewrite_unbound_blocks", f_proc);
@@ -764,7 +765,7 @@ class PostprocRewriteReductionBlock {
 };
 
 Postproc RewriteReductionBlock() {
-  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _rand_state) -> bool {
     return PostprocRewriteReductionBlock().Proc(sch);
   };
   return Postproc("rewrite_reduction_block", f_proc);
@@ -794,7 +795,7 @@ class PostprocDisallowDynamicLoops {
 };
 
 Postproc DisallowDynamicLoops() {
-  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _rand_state) -> bool {
     return PostprocDisallowDynamicLoops().Proc(sch);
   };
   return Postproc("disallow_dynamic_loops", f_proc);
@@ -849,7 +850,7 @@ class PostprocVerifyGPUCode {
 };
 
 Postproc VerifyGPUCode() {
-  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _rand_state) -> bool {
     return PostprocVerifyGPUCode().Proc(task, sch);
   };
   return Postproc("verify_gpu_code", f_proc);
@@ -1075,8 +1076,8 @@ class PostProcRewriteLayout {
       }
       // Step 1: create a new buffer
       tir::Buffer new_buffer(buffer->data, buffer->dtype, new_shape, Array<PrimExpr>(),
-                             buffer->elem_offset, buffer->name,
-                             buffer->data_alignment, buffer->offset_factor, buffer->buffer_type);
+                             buffer->elem_offset, buffer->name, buffer->data_alignment,
+                             buffer->offset_factor, buffer->buffer_type);
       // Step 2: do the rewrite to the buffer access
       // the rule is as below:
       //      for example,
@@ -1104,7 +1105,7 @@ class PostProcRewriteLayout {
 };
 
 Postproc RewriteLayout() {
-  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _rand_state) -> bool {
     return PostProcRewriteLayout().Proc(sch, task);
   };
   return Postproc("rewrite_layout", f_proc);
@@ -1118,11 +1119,11 @@ struct Internal {
    * \sa PostProcNode::Apply
    */
   static bool Apply(Postproc self, SearchTask task, Schedule sch, Optional<Integer> seed) {
-    Sampler seeded;
+    Sampler::TRandomState rand_state;
     if (seed.defined()) {
-      seeded.Seed(seed.value());
+      Sampler(&rand_state).Seed(seed.value());
     }
-    return self->Apply(task, sch, &seeded);
+    return self->Apply(task, sch, &rand_state);
   }
 };
 

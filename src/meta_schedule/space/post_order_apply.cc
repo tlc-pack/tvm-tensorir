@@ -49,22 +49,23 @@ class PostOrderApplyNode : public SearchSpaceNode {
    * \brief Apply postprocessors onto the schedule
    * \param task The search task
    * \param sch The schedule to be postprocessed
-   * \param sampler The random number generator
+   * \param rand_state The sampler's random state
    */
-  bool Postprocess(const SearchTask& task, const Schedule& sch, Sampler* sampler) override;
+  bool Postprocess(const SearchTask& task, const Schedule& sch,
+                   Sampler::TRandomState* rand_state) override;
   /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from
    * \return The schedule sampled
    */
-  Schedule SampleSchedule(const SearchTask& task, Sampler* sampler) override;
+  Schedule SampleSchedule(const SearchTask& task, Sampler::TRandomState* rand_state) override;
   /*!
    * \brief Get support of the search space
    * \param task The search task to be sampled from
    * \return An array with a single element returned from SampleSchedule
    * \sa PostOrderApplyNode::SampleSchedule
    */
-  Array<Schedule> GetSupport(const SearchTask& task, Sampler* sampler) override;
+  Array<Schedule> GetSupport(const SearchTask& task, Sampler::TRandomState* rand_state) override;
 
   static constexpr const char* _type_key = "meta_schedule.PostOrderApply";
   TVM_DECLARE_FINAL_OBJECT_INFO(PostOrderApplyNode, SearchSpaceNode);
@@ -97,20 +98,21 @@ PostOrderApply::PostOrderApply(Array<SearchRule> stages, Array<Postproc> postpro
 /********** Sampling **********/
 
 bool PostOrderApplyNode::Postprocess(const SearchTask& task, const Schedule& sch,
-                                     Sampler* sampler) {
-  sch->EnterPostproc();
+                                     Sampler::TRandomState* rand_state) {
+  sch->EnterPostProc();
   for (const Postproc& postproc : postprocs) {
-    if (!postproc->Apply(task, sch, sampler)) {
+    if (!postproc->Apply(task, sch, rand_state)) {
       return false;
     }
   }
   return true;
 }
 
-Schedule PostOrderApplyNode::SampleSchedule(const SearchTask& task, Sampler* sampler) {
-  Array<Schedule> support = GetSupport(task, sampler);
+Schedule PostOrderApplyNode::SampleSchedule(const SearchTask& task,
+                                            Sampler::TRandomState* rand_state) {
+  Array<Schedule> support = GetSupport(task, rand_state);
   ICHECK(!support.empty()) << "ValueError: Found null support";
-  int i = sampler->SampleInt(0, support.size());
+  int i = Sampler(rand_state).SampleInt(0, support.size());
   return support[i];
 }
 
@@ -146,12 +148,13 @@ class BlockCollector : public tir::StmtVisitor {
   const tir::BlockNode* root_block_;
 };
 
-Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* sampler) {
+Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task,
+                                               Sampler::TRandomState* rand_state) {
   using ScheduleAndUnvisitedBlocks = std::pair<Schedule, Array<tir::StmtSRef>>;
 
   Array<Schedule> curr{
       Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), task->workload}}),
-                       /*seed=*/sampler->ForkSeed(),
+                       /*seed=*/Sampler(rand_state).ForkSeed(),
                        /*debug_mode=*/false,
                        /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail)};
   for (const SearchRule& rule : stages) {
@@ -201,7 +204,7 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
     Trace trace = sch->trace().value()->Simplified(/*remove_postproc=*/true);
     Schedule new_sch =
         Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), task->workload}}),
-                         /*seed=*/sampler->ForkSeed(),
+                         /*seed=*/Sampler(rand_state).ForkSeed(),
                          /*debug_mode=*/false,
                          /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
     trace->ApplyToSchedule(new_sch, /*remove_postproc=*/true);

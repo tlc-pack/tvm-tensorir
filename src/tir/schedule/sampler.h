@@ -24,19 +24,31 @@
 #include <random>
 #include <vector>
 
+#include "../support/rng.h"
 namespace tvm {
 
 class Target;
 
 namespace tir {
 
-/*! \brief Random number sampler used for sampling in meta schedule */
+/*!
+ * \brief Sampler based on random number generator for sampling in meta schedule.
+ * \note Typical usage is like Sampler(&random_state).SamplingFunc(...).
+ */
 class Sampler {
  public:
-  /*! \brief Return a seed that can be used to create a new sampler */
-  int ForkSeed();
-  /*! \brief Re-seed the random number generator */
-  void Seed(int seed);
+  /*! Random state type for random number generator. */
+  using TRandomState = support::RandomNumberGenerator::result_type;
+  /*!
+   *  \brief Return a random state value that can be used as seed for new samplers.
+   *  \return The random state value to be used as seed for new samplers.
+   */
+  TRandomState ForkSeed();
+  /*!
+   * \brief Re-seed the random number generator
+   * \param seed The random state value given used to re-seed the RNG.
+   */
+  void Seed(TRandomState seed);
   /*!
    * \brief Sample an integer in [min_inclusive, max_exclusive)
    * \param min_inclusive The left boundary, inclusive
@@ -56,7 +68,7 @@ class Sampler {
    * \param begin_it The begin iterator
    * \param end_it The end iterator
    */
-  template<typename RandomAccessIterator>
+  template <typename RandomAccessIterator>
   void Shuffle(RandomAccessIterator begin_it, RandomAccessIterator end_it);
   /*!
    * \brief Sample n tiling factors of the specific extent
@@ -123,27 +135,24 @@ class Sampler {
    * \return A list of indices, samples drawn, unsorted and index starting from 0
    */
   std::vector<int> SampleWithoutReplacement(int n, int k);
+  /*! \brief The default constructor function for Sampler */
+  Sampler() = default;
   /*!
-   * \brief Constructor. Construct a sampler seeded with std::random_device
+   * \brief Constructor. Construct a sampler with a given random state pointer for its RNG.
+   * \param random_state The given pointer to random state used to construct the RNG.
+   * \note The random state is neither initialized not modified by this constructor.
    */
-  Sampler() : Sampler(std::random_device /**/ {}()) {}
-  /*!
-   * \brief Constructor. Construct a sampler seeded with the specific integer
-   * \param seed The random seed
-   */
-  explicit Sampler(int seed) : rand_(seed) {}
+  explicit Sampler(TRandomState* random_state) : rand_(random_state) {}
 
  private:
-  /*! \brief The random number generator */
-  std::minstd_rand rand_;
+  /*! \brief The random number generator for sampling. */
+  support::RandomNumberGenerator rand_;
 };
 
-
-template<typename RandomAccessIterator>
+template <typename RandomAccessIterator>
 void Sampler::Shuffle(RandomAccessIterator begin_it, RandomAccessIterator end_it) {
   std::shuffle(begin_it, end_it, rand_);
 }
-
 
 }  // namespace tir
 }  // namespace tvm

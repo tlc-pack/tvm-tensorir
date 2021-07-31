@@ -26,19 +26,20 @@
 namespace tvm {
 namespace tir {
 
-
 class Sampler;
 
 /******** Schedule: Sampling ********/
 
-TVM_DLL std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler,
+TVM_DLL std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self,
+                                               Sampler::TRandomState* rand_state,
                                                const tir::StmtSRef& loop_sref, int n,
                                                int max_innermost_factor,
                                                Optional<Array<Integer>>* decision);
-TVM_DLL int64_t SampleCategorical(tir::ScheduleState self, Sampler* sampler,
+TVM_DLL int64_t SampleCategorical(tir::ScheduleState self, Sampler::TRandomState* rand_state,
                                   const Array<Integer>& candidates, const Array<FloatImm>& probs,
                                   Optional<Integer>* decision);
-TVM_DLL tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, Sampler* sampler,
+TVM_DLL tir::StmtSRef SampleComputeLocation(tir::ScheduleState self,
+                                            Sampler::TRandomState* rand_state,
                                             const tir::StmtSRef& block_sref,
                                             Optional<Integer>* decision);
 

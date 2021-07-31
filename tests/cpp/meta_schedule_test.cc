@@ -20,13 +20,13 @@
 #include <dmlc/logging.h>
 #include <gtest/gtest.h>
 
-#include "../../../src/meta_schedule/sampler.h"
+#include "../../../src/tir/schedule/sampler.h"
 
 TEST(Simplify, Sampler) {
   int64_t current = 100;
   for (int i = 0; i < 10; i++) {
-    tvm::meta_schedule::Sampler(&current).SampleInt(0, 100);
-    tvm::meta_schedule::Sampler(&current).SampleUniform(3, -1, 0);
+    tvm::tir::Sampler(&current).SampleInt(0, 100);
+    tvm::tir::Sampler(&current).SampleUniform(3, -1, 0);
   }
 }
 

@@ -43,7 +43,8 @@ class TuneContextNode : public runtime::Object {
   Array<Postproc> postprocs;
   Array<MeasureCallback> measure_callbacks;
   int num_threads;
-  Sampler sampler;
+
+  Sampler::TRandomState rand_state;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("task", &task);

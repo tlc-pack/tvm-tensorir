@@ -99,6 +99,7 @@ class RandomNumberGenerator {
    * \return The next current random state value in the type of result_type.
    */
   result_type next_state() {
+    if (increment == 0 && *rand_state_ptr == 0) *rand_state_ptr = 1;
     (*rand_state_ptr) = ((*rand_state_ptr) * multiplier + increment) % modulus;
     return *rand_state_ptr;
   }

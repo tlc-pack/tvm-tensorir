@@ -28,7 +28,7 @@ Schedule Schedule::Concrete(IRModule mod, int64_t seed, int debug_mode,
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
   n->error_render_level_ = error_render_level;
-  n->sampler_.Seed(seed);
+  Sampler(&n->rand_state_).Seed(seed);
   n->symbol_table_ = {};
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   return Schedule(std::move(n));
@@ -185,7 +185,7 @@ Schedule ConcreteScheduleNode::Copy(int64_t new_seed) const {
   Copy(&n->state_, &n->symbol_table_);
   n->error_render_level_ = this->error_render_level_;
   n->analyzer_ = std::make_unique<arith::Analyzer>();
-  n->sampler_.Seed(new_seed);
+  Sampler(&n->rand_state_).Seed(new_seed);
   return Schedule(std::move(n));
 }
 
@@ -218,7 +218,7 @@ Array<ExprRV> ConcreteScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int
                                                       int max_innermost_factor,
                                                       Optional<Array<Integer>> decision) {
   TVM_TIR_SCHEDULE_BEGIN();
-  return CreateRV(tir::SamplePerfectTile(state_, &this->sampler_, this->GetSRef(loop_rv), n,
+  return CreateRV(tir::SamplePerfectTile(state_, &this->rand_state_, this->GetSRef(loop_rv), n,
                                          max_innermost_factor, &decision));
   TVM_TIR_SCHEDULE_END("sample-perfect-tile", this->error_render_level_);
 }
@@ -227,7 +227,7 @@ ExprRV ConcreteScheduleNode::SampleCategorical(const Array<Integer>& candidates,
                                                const Array<FloatImm>& probs,
                                                Optional<Integer> decision) {
   TVM_TIR_SCHEDULE_BEGIN();
-  return CreateRV(tir::SampleCategorical(state_, &this->sampler_, candidates, probs, &decision));
+  return CreateRV(tir::SampleCategorical(state_, &this->rand_state_, candidates, probs, &decision));
   TVM_TIR_SCHEDULE_END("sample-categorical", this->error_render_level_);
 }
 
@@ -235,7 +235,7 @@ LoopRV ConcreteScheduleNode::SampleComputeLocation(const BlockRV& block_rv,
                                                    Optional<Integer> decision) {
   TVM_TIR_SCHEDULE_BEGIN();
   return CreateRV<LoopRV>(
-      tir::SampleComputeLocation(state_, &this->sampler_, this->GetSRef(block_rv), &decision));
+      tir::SampleComputeLocation(state_, &this->rand_state_, this->GetSRef(block_rv), &decision));
   TVM_TIR_SCHEDULE_END("sample-compute-location", this->error_render_level_);
 }
 

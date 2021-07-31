@@ -44,10 +44,11 @@ class MutatorNode : public Object {
    * \brief Mutate the schedule by applying the mutation
    * \param task The search task
    * \param trace The trace to be mutated
-   * \param sampler The random number sampler
+   * \param rand_state The sampler's random state
    * \return The new schedule after mutation, NullOpt if mutation fails
    */
-  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler);
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace,
+                        Sampler::TRandomState* rand_state);
 
   static constexpr const char* _type_key = "meta_schedule.Mutator";
   TVM_DECLARE_BASE_OBJECT_INFO(MutatorNode, Object);
