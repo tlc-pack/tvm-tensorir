@@ -24,7 +24,7 @@ from tvm.ir import IRModule
 from tvm.runtime import Object
 from tvm.tir import Block, BlockRealize, For, PrimFunc
 
-from . import _ffi_api_schedule
+from . import _ffi_api
 from .block_scope import BlockScope, StmtSRef
 
 CachedFlags = namedtuple("CachedFlags", ["affine_binding", "region_cover", "stage_pipeline"])
@@ -75,14 +75,14 @@ class ScheduleState(Object):
 
     def __init__(
         self,
-        func_or_mod: Union[PrimFunc, IRModule],
+        mod: Union[PrimFunc, IRModule],
         debug_mode: Union[bool, int] = False,
-    ):
+    ) -> None:
         """Construct a schedule state from an IRModule or a PrimFunc
 
         Parameters
         ----------
-        func_or_mod : Union[PrimFunc, IRModule]
+        mod : Union[PrimFunc, IRModule]
             The IRModule or PrimFunc to be scheduled
         debug_mode : Union[bool, int]
             Do extra correctness checking after the class creation and each time
@@ -92,6 +92,8 @@ class ScheduleState(Object):
             2) False - Turn off all the checks
             3) An integer - Turn on checks according to the bitmasks provided in ScheduleDebugMask
         """
+        if isinstance(mod, PrimFunc):
+            mod = IRModule({"main": mod})
         if isinstance(debug_mode, bool):
             if debug_mode:
                 debug_mode = -1
@@ -100,8 +102,8 @@ class ScheduleState(Object):
         if not isinstance(debug_mode, int):
             raise TypeError(f"`debug_mode` should be integer or boolean, but gets: {debug_mode}")
         self.__init_handle_by_constructor__(
-            _ffi_api_schedule.ScheduleState,  # type: ignore # pylint: disable=no-member
-            func_or_mod,
+            _ffi_api.ScheduleState,  # type: ignore # pylint: disable=no-member
+            mod,
             debug_mode,
         )
 
@@ -118,7 +120,7 @@ class ScheduleState(Object):
         sref : StmtSRef
             The corresponding sref
         """
-        return _ffi_api_schedule.ScheduleStateGetSRef(self, stmt)  # type: ignore # pylint: disable=no-member
+        return _ffi_api.ScheduleStateGetSRef(self, stmt)  # type: ignore # pylint: disable=no-member
 
     def get_block_scope(self, block_sref: StmtSRef) -> BlockScope:
         """Get the BlockScope correpsonding to the block sref
@@ -133,7 +135,7 @@ class ScheduleState(Object):
         sref : StmtSRef
             The corresponding sref
         """
-        return _ffi_api_schedule.ScheduleStateGetBlockScope(  # type: ignore # pylint: disable=no-member
+        return _ffi_api.ScheduleStateGetBlockScope(  # type: ignore # pylint: disable=no-member
             self, block_sref
         )
 
@@ -158,7 +160,7 @@ class ScheduleState(Object):
             affine_binding,
             region_cover,
             stage_pipeline,
-        ) = _ffi_api_schedule.ScheduleStateGetCachedFlags(  # type: ignore # pylint: disable=no-member
+        ) = _ffi_api.ScheduleStateGetCachedFlags(  # type: ignore # pylint: disable=no-member
             self, block_sref
         )
         return CachedFlags(
@@ -204,7 +206,7 @@ class ScheduleState(Object):
         """
         if block_sref_reuse is None:
             block_sref_reuse = {}
-        _ffi_api_schedule.ScheduleStateReplace(  # type: ignore # pylint: disable=no-member
+        _ffi_api.ScheduleStateReplace(  # type: ignore # pylint: disable=no-member
             self,
             src_sref,
             tgt_stmt,
