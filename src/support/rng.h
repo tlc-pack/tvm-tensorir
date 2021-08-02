@@ -50,9 +50,6 @@ class RandomNumberGenerator {
   /*! \brief The modulus */
   static constexpr result_type modulus = 2147483647;
 
-  /*! \brief Construct a null random number generator. */
-  RandomNumberGenerator() { rand_state_ptr = nullptr; }
-
   /*!
    * \brief Construct a random number generator with a random state pointer.
    * \param random_state The random state pointer given in result_type*.
@@ -66,7 +63,7 @@ class RandomNumberGenerator {
    * \note The seed is used to initialize the random number generator and the random state would be
    * changed to next random state by calling the next_state() function.
    */
-  void seed(result_type state = 1) {
+  void Seed(result_type state = 1) {
     state %= modulus;                   // Make sure the seed is within the range of the modulus.
     if (state < 0) state += modulus;    // The congruential engine is always non-negative.
     ICHECK(rand_state_ptr != nullptr);  // Make sure the pointer is not null.
