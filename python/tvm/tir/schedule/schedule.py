@@ -111,7 +111,7 @@ class Schedule(Object):
             "none": Do not show any error message.
         traced : bool = False
             A flag indicating if the scheduling process is being traced.
-            If set to true, users are able to print the inspect the instructions executed so far
+            If set to true, users are able to print and inspect the instructions executed so far
             by printing `Schedule.trace`
 
         Note
