@@ -34,9 +34,11 @@ namespace tvm {
 namespace support {
 
 /*!
- * \brief The random number generator is implemented as a linear congruential engine.
+ * \brief This linear congruential engine is a drop-in replacement for and stricly corresponds to
+ * std::minstd_rand but designed to be serializable and strictly reproducible. Specifically
+ * implemented for meta schedule but also reusable for other purposes.
  */
-class RandomNumberGenerator {
+class LinearCongruentialEngine {
  public:
   /*! \brief The result type is defined as int64_t here for sampler usage. */
   using result_type = int64_t;
@@ -55,7 +57,7 @@ class RandomNumberGenerator {
    * \param random_state The random state pointer given in result_type*.
    * \note The random state is not initialized here. You may need to call seed function.
    */
-  explicit RandomNumberGenerator(result_type* random_state) { rand_state_ptr = random_state; }
+  explicit LinearCongruentialEngine(result_type* random_state) { rand_state_ptr_ = random_state; }
 
   /*!
    * \brief Change the start random state of RNG with the seed of a new random state value.
@@ -64,10 +66,10 @@ class RandomNumberGenerator {
    * changed to next random state by calling the next_state() function.
    */
   void Seed(result_type state = 1) {
-    state %= modulus;                   // Make sure the seed is within the range of the modulus.
-    if (state < 0) state += modulus;    // The congruential engine is always non-negative.
-    ICHECK(rand_state_ptr != nullptr);  // Make sure the pointer is not null.
-    *rand_state_ptr = state;            // Change pointed random state to given random state value.
+    state %= modulus;                    // Make sure the seed is within the range of the modulus.
+    if (state < 0) state += modulus;     // The congruential engine is always non-negative.
+    ICHECK(rand_state_ptr_ != nullptr);  // Make sure the pointer is not null.
+    *rand_state_ptr_ = state;            // Change pointed random state to given random state value.
     next_state();
   };
 
@@ -81,7 +83,7 @@ class RandomNumberGenerator {
    * \brief Fetch the current random state.
    * \return The current random state value in the type of result_type.
    */
-  result_type random_state() { return *rand_state_ptr; }
+  result_type random_state() { return *rand_state_ptr_; }
 
   /*!
    * \brief Operator to fetch the current random state.
@@ -96,13 +98,13 @@ class RandomNumberGenerator {
    * \return The next current random state value in the type of result_type.
    */
   result_type next_state() {
-    if (increment == 0 && *rand_state_ptr == 0) *rand_state_ptr = 1;
-    (*rand_state_ptr) = ((*rand_state_ptr) * multiplier + increment) % modulus;
-    return *rand_state_ptr;
+    if (increment == 0 && *rand_state_ptr_ == 0) *rand_state_ptr_ = 1;
+    (*rand_state_ptr_) = ((*rand_state_ptr_) * multiplier + increment) % modulus;
+    return *rand_state_ptr_;
   }
 
  private:
-  result_type* rand_state_ptr;
+  result_type* rand_state_ptr_;
 };
 
 }  // namespace support

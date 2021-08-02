@@ -19,12 +19,12 @@
 #ifndef TVM_TIR_SCHEDULE_SAMPLER_H_
 #define TVM_TIR_SCHEDULE_SAMPLER_H_
 
+#include <tvm/support/rng.h>
+
 #include <algorithm>
 #include <functional>
 #include <random>
 #include <vector>
-
-#include "../../support/rng.h"
 namespace tvm {
 
 class Target;
@@ -38,7 +38,7 @@ namespace tir {
 class Sampler {
  public:
   /*! Random state type for random number generator. */
-  using TRandomState = support::RandomNumberGenerator::result_type;
+  using TRandomState = support::LinearCongruentialEngine::result_type;
   /*!
    *  \brief Return a random state value that can be used as seed for new samplers.
    *  \return The random state value to be used as seed for new samplers.
@@ -146,7 +146,7 @@ class Sampler {
 
  private:
   /*! \brief The random number generator for sampling. */
-  support::RandomNumberGenerator rand_;
+  support::LinearCongruentialEngine rand_;
 };
 
 template <typename RandomAccessIterator>
