@@ -21,6 +21,7 @@ import pytest
 import tvm
 from tvm import tir
 from tvm.script import ty
+from tvm.tir.schedule.testing import verify_trace_roundtrip
 
 # pylint: disable=no-member,invalid-name,unused-variable
 
@@ -321,48 +322,60 @@ def opaque_access_split(a: ty.handle, b: ty.handle) -> None:
 # pylint: enable=no-member,invalid-name,unused-variable
 
 
-def test_fuse():
-    sch = tir.Schedule(elementwise, debug_mode=True)
+@pytest.mark.parametrize("traced", [False, True])
+def test_fuse(traced: bool):
+    sch = tir.Schedule(elementwise, traced=traced, debug_mode=True)
     block_b = sch.get_block("B")
     i, j, k = sch.get_loops(block_b)
     sch.fuse(i, j, k)
     tvm.ir.assert_structural_equal(elementwise_fused, sch.mod["main"])
+    if traced:
+        verify_trace_roundtrip(sch=sch, mod=elementwise)
 
 
-def test_split():
-    sch = tir.Schedule(elementwise, debug_mode=True)
+@pytest.mark.parametrize("traced", [False, True])
+def test_split(traced: bool):
+    sch = tir.Schedule(elementwise, traced=traced, debug_mode=True)
     block_b = sch.get_block("B")
     i, j, k = sch.get_loops(block_b)
     sch.split(i, factors=[2, 1, 64])
     sch.split(j, factors=[4, 32])
     sch.split(k, factors=[16, 8])
     tvm.ir.assert_structural_equal(elementwise_split_case0, sch.mod["main"])
+    if traced:
+        verify_trace_roundtrip(sch=sch, mod=elementwise)
 
 
-def test_split_with_inferred_factor():
-    sch = tir.Schedule(elementwise, debug_mode=True)
+@pytest.mark.parametrize("traced", [False, True])
+def test_split_with_inferred_factor(traced: bool):
+    sch = tir.Schedule(elementwise, traced=traced, debug_mode=True)
     block_b = sch.get_block("B")
     i, j, k = sch.get_loops(block_b)
     sch.split(i, factors=[None, 1, 64])
     sch.split(j, factors=[2, None, 64])
     sch.split(k, factors=[2, 1, None])
     tvm.ir.assert_structural_equal(elementwise_split_case1, sch.mod["main"])
+    if traced:
+        verify_trace_roundtrip(sch=sch, mod=elementwise)
 
 
-def test_split_with_predicate():
-    sch = tir.Schedule(elementwise, debug_mode=True)
+@pytest.mark.parametrize("traced", [False, True])
+def test_split_with_predicate(traced: bool):
+    sch = tir.Schedule(elementwise, traced=traced, debug_mode=True)
     block_b = sch.get_block("B")
     i, j, k = sch.get_loops(block_b)
     sch.split(i, factors=[1000, 2, 3])
     sch.split(j, factors=[None, 129])
     sch.split(k, factors=[3, None])
     tvm.ir.assert_structural_equal(elementwise_split_with_predicate, sch.mod["main"])
+    if traced:
+        verify_trace_roundtrip(sch=sch, mod=elementwise)
 
 
 def test_fuse_fail_not_only_child():
     sch = tir.Schedule(elementwise_with_seq, debug_mode=True)
     block_b = sch.get_block("B")
-    i, j, k = sch.get_loops(block_b)
+    _, j, k = sch.get_loops(block_b)
     with pytest.raises(tvm.tir.ScheduleError):
         sch.fuse(j, k)
 
@@ -370,7 +383,7 @@ def test_fuse_fail_not_only_child():
 def test_fuse_split_fail_with_annotation():
     sch = tir.Schedule(elementwise_with_anno, debug_mode=True)
     block_b = sch.get_block("B")
-    i, j, k = sch.get_loops(block_b)
+    _, j, k = sch.get_loops(block_b)
     with pytest.raises(tvm.tir.ScheduleError):
         sch.fuse(j, k)
     with pytest.raises(tvm.tir.ScheduleError):
@@ -380,23 +393,27 @@ def test_fuse_split_fail_with_annotation():
 def test_fuse_split_fail_not_start_with_zero():
     sch = tir.Schedule(elementwise_with_anno, debug_mode=True)
     block_b = sch.get_block("B")
-    i, j, k = sch.get_loops(block_b)
+    _, j, k = sch.get_loops(block_b)
     with pytest.raises(tvm.tir.ScheduleError):
         sch.fuse(j, k)
     with pytest.raises(tvm.tir.ScheduleError):
         sch.split(k, factors=[None, 10])
 
 
-def test_fuse_with_opaque_block():
-    sch = tir.Schedule(elementwise_with_opaque_block, debug_mode=True)
+@pytest.mark.parametrize("traced", [False, True])
+def test_fuse_with_opaque_block(traced: bool):
+    sch = tir.Schedule(elementwise_with_opaque_block, traced=traced, debug_mode=True)
     block_opaque = sch.get_block("opaque")
     i, j, k = sch.get_loops(block_opaque)
     sch.fuse(i, j, k)
     tvm.ir.assert_structural_equal(elementwise_fuse_with_opaque_block, sch.mod["main"])
+    if traced:
+        verify_trace_roundtrip(sch=sch, mod=elementwise_with_opaque_block)
 
 
-def test_fuse_with_opaque_access():
-    sch = tir.Schedule(opaque_access, debug_mode=True)
+@pytest.mark.parametrize("traced", [False, True])
+def test_fuse_with_opaque_access(traced: bool):
+    sch = tir.Schedule(opaque_access, traced=traced, debug_mode=True)
     block_a = sch.get_block("A")
     i, j = sch.get_loops(block_a)
     sch.fuse(i, j)
@@ -404,51 +421,65 @@ def test_fuse_with_opaque_access():
     i, j = sch.get_loops(block_b)
     sch.fuse(i, j)
     tvm.ir.assert_structural_equal(opaque_access_fused, sch.mod["main"])
+    if traced:
+        verify_trace_roundtrip(sch=sch, mod=opaque_access)
 
 
-def test_split_with_opaque_block():
-    sch = tir.Schedule(elementwise_with_opaque_block, debug_mode=True)
+@pytest.mark.parametrize("traced", [False, True])
+def test_split_with_opaque_block(traced: bool):
+    sch = tir.Schedule(elementwise_with_opaque_block, traced=traced, debug_mode=True)
     block_opaque = sch.get_block("opaque")
-    i, j, k = sch.get_loops(block_opaque)
+    i, _, _ = sch.get_loops(block_opaque)
     sch.split(i, factors=[None, 16])
     tvm.ir.assert_structural_equal(elementwise_split_with_opaque_block, sch.mod["main"])
+    if traced:
+        verify_trace_roundtrip(sch=sch, mod=elementwise_with_opaque_block)
 
 
-def test_split_with_opaque_access():
-    sch = tir.Schedule(opaque_access, debug_mode=True)
+@pytest.mark.parametrize("traced", [False, True])
+def test_split_with_opaque_access(traced: bool):
+    sch = tir.Schedule(opaque_access, traced=traced, debug_mode=True)
     block_a = sch.get_block("A")
-    i, j = sch.get_loops(block_a)
+    _, j = sch.get_loops(block_a)
     sch.split(j, factors=[None, 4])
     block_b = sch.get_block("B")
-    i, j = sch.get_loops(block_b)
+    _, j = sch.get_loops(block_b)
     sch.split(j, factors=[None, 4])
     tvm.ir.assert_structural_equal(opaque_access_split, sch.mod["main"])
+    if traced:
+        verify_trace_roundtrip(sch=sch, mod=opaque_access)
 
 
 def test_fuse_split_fail_with_thread_binding():
     sch = tir.Schedule(elementwise_with_thread_binding, debug_mode=True)
     block_b = sch.get_block("B")
-    i, j, k = sch.get_loops(block_b)
+    _, j, k = sch.get_loops(block_b)
     with pytest.raises(tvm.tir.ScheduleError):
         sch.fuse(j, k)
     with pytest.raises(tvm.tir.ScheduleError):
         sch.split(k, factors=[None, 10])
 
 
-def test_fuse_symbolic():
-    sch = tir.Schedule(elementwise_symbolic, debug_mode=True)
+@pytest.mark.parametrize("traced", [False, True])
+def test_fuse_symbolic(traced: bool):
+    sch = tir.Schedule(elementwise_symbolic, traced=traced, debug_mode=True)
     block_b = sch.get_block("B")
     i, j, k = sch.get_loops(block_b)
     sch.fuse(i, j, k)
     tvm.ir.assert_structural_equal(elementwise_symbolic_fused, sch.mod["main"])
+    if traced:
+        verify_trace_roundtrip(sch=sch, mod=elementwise_symbolic)
 
 
-def test_split_symbolic():
-    sch = tir.Schedule(elementwise_symbolic, debug_mode=True)
+@pytest.mark.parametrize("traced", [False, True])
+def test_split_symbolic(traced: bool):
+    sch = tir.Schedule(elementwise_symbolic, traced=traced, debug_mode=True)
     block_b = sch.get_block("B")
-    i, j, k = sch.get_loops(block_b)
+    _, _, k = sch.get_loops(block_b)
     sch.split(k, factors=[10, None])
     tvm.ir.assert_structural_equal(elementwise_symbolic_split, sch.mod["main"])
+    if traced:
+        verify_trace_roundtrip(sch=sch, mod=elementwise_symbolic)
 
 
 if __name__ == "__main__":

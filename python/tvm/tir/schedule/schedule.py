@@ -14,7 +14,6 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-# pylint: disable=unused-import
 """The TensorIR schedule class"""
 from typing import List, Optional, Union
 
@@ -26,6 +25,7 @@ from tvm.tir import Block, For, IntImm, PrimFunc
 
 from . import _ffi_api
 from .state import ScheduleState, StmtSRef
+from .trace import Trace
 
 
 @register_error
@@ -93,6 +93,7 @@ class Schedule(Object):
         *,
         debug_mode: Union[bool, int] = False,
         error_render_level: ERROR_RENDER_LEVEL_CANDIDATES = "detail",
+        traced: bool = False,
     ) -> None:
         """Construct a concrete TensorIR schedule from an IRModule or a PrimFunc
 
@@ -108,6 +109,10 @@ class Schedule(Object):
             "detail": Render a detailed error message, with the TIR and error locations printed
             "fast: Show a simple error message without rendering or string manipulation
             "none": Do not show any error message.
+        traced : bool = False
+            A flag indicating if the scheduling process is being traced.
+            If set to true, users are able to print the inspect the instructions executed so far
+            by printing `Schedule.trace`
 
         Note
         ----
@@ -115,8 +120,10 @@ class Schedule(Object):
         1) VerifySRefTree
         2) VerifyCachedFlags
         """
+        # preprocess `mod`
         if isinstance(mod, PrimFunc):
             mod = IRModule({"main": mod})
+        # preprocess `debug_mode`
         if isinstance(debug_mode, bool):
             if debug_mode:
                 debug_mode = -1
@@ -124,13 +131,20 @@ class Schedule(Object):
                 debug_mode = 0
         if not isinstance(debug_mode, int):
             raise TypeError(f"`debug_mode` should be integer or boolean, but gets: {debug_mode}")
+        # preprocess `error_render_level`
         if error_render_level not in Schedule.ERROR_RENDER_LEVEL:
             raise ValueError(
                 'error_render_level can be "detail", "fast", or "none", but got: '
                 + f"{error_render_level}"
             )
+        # preprocess `traced`
+        if traced:
+            f_constructor = _ffi_api.TracedSchedule  # type: ignore # pylint: disable=no-member
+        else:
+            f_constructor = _ffi_api.ConcreteSchedule  # type: ignore # pylint: disable=no-member
+        # call the constructor
         self.__init_handle_by_constructor__(
-            _ffi_api.ConcreteSchedule,  # type: ignore # pylint: disable=no-member
+            f_constructor,
             mod,
             debug_mode,
             Schedule.ERROR_RENDER_LEVEL.get(error_render_level),
@@ -141,12 +155,17 @@ class Schedule(Object):
     @property
     def mod(self) -> IRModule:
         """Returns the AST of the module being scheduled"""
-        return _ffi_api.ScheduleModule(self)  # type: ignore # pylint: disable=no-member
+        return _ffi_api.ScheduleGetMod(self)  # type: ignore # pylint: disable=no-member
 
     @property
     def state(self) -> ScheduleState:
         """Returns the ScheduleState in the current schedule class"""
         return _ffi_api.ScheduleGetState(self)  # type: ignore # pylint: disable=no-member
+
+    @property
+    def trace(self) -> Optional[Trace]:
+        """Returns the internally maintained trace of scheduling program execution"""
+        return _ffi_api.ScheduleGetTrace(self)  # type: ignore # pylint: disable=no-member
 
     def copy(self) -> "Schedule":
         """Returns a copy of the schedule, including both the state and the symbol table,
@@ -707,3 +726,8 @@ class Schedule(Object):
 @_register_object("tir.ConcreteSchedule")
 class ConcreteSchedule(Schedule):
     """A concrete schedule class of TensorIR. Do not use directly, use tvm.tir.Schedule instead."""
+
+
+@_register_object("tir.TracedSchedule")
+class TracedSchedule(Schedule):
+    """A traced schedule class of TensorIR. Do not use directly, use tvm.tir.Schedule instead."""

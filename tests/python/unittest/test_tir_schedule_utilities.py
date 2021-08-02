@@ -19,9 +19,11 @@ import sys
 
 import pytest
 import tvm
+
 from tvm import tir
 from tvm.ir import IRModule
 from tvm.script import ty
+from tvm.tir.schedule.testing import verify_trace_roundtrip
 
 # pylint: disable=no-member,invalid-name,unused-variable
 
@@ -95,6 +97,36 @@ def test_tir_schedule_copy():
     assert sch_2.get(i).loop_var.name == "i"
     assert sch_2.get(j).loop_var.name == "j"
     assert sch_2.get(k).loop_var.name == "k"
+
+
+def test_traced_schedule_copy():
+    sch = tir.Schedule(mod=matmul, traced=True)
+    i, j, k = sch.get_loops(sch.get_block("update"))
+    sch_copy = sch.copy()
+    assert not sch.get_sref(i).same_as(sch_copy.get_sref(i))
+    assert not sch.get_sref(j).same_as(sch_copy.get_sref(j))
+    assert not sch.get_sref(k).same_as(sch_copy.get_sref(k))
+    assert sch.get_sref(i).stmt.same_as(sch_copy.get_sref(i).stmt)
+    assert sch.get_sref(j).stmt.same_as(sch_copy.get_sref(j).stmt)
+    assert sch.get_sref(k).stmt.same_as(sch_copy.get_sref(k).stmt)
+    i_0, i_1 = sch.split(i, factors=[None, 64])
+    j_0, j_1 = sch_copy.split(j, factors=[None, 32])
+
+    assert sch.get_sref(i_0).stmt.extent == 2
+    assert sch.get_sref(i_1).stmt.extent == 64
+    with pytest.raises(IndexError):
+        sch_copy.get_sref(i_0)
+    with pytest.raises(IndexError):
+        sch_copy.get_sref(i_1)
+
+    with pytest.raises(IndexError):
+        sch.get_sref(j_0)
+    with pytest.raises(IndexError):
+        sch.get_sref(j_1)
+    assert sch_copy.get_sref(j_0).stmt.extent == 4
+    assert sch_copy.get_sref(j_1).stmt.extent == 32
+    verify_trace_roundtrip(sch, mod=matmul)
+    verify_trace_roundtrip(sch_copy, mod=matmul)
 
 
 def test_tir_schedule_remove_rv():
