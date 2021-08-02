@@ -63,6 +63,23 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
       }
   }
 
+  using FLowerLogicalIntrin = runtime::TypedPackedFunc<Stmt(PrimExpr)>;
+
+  Stmt VisitStmt_(const EvaluateNode* op) final {
+    static const auto& f_lower_logical_intrin = Op::GetAttrMap<FLowerLogicalIntrin>("FLowerLogicalIntrin");
+    if (const auto* call = op->value.as<CallNode>()) {
+    if (const auto* call_op = call->op.as<OpNode>()) {
+        FLowerLogicalIntrin f = f_lower_logical_intrin.get(GetRef<Op>(call_op), nullptr);
+        if (f != nullptr) {
+          Stmt new_stmt = f(GetRef<Call>(call));
+          ICHECK(new_stmt.defined()) << "intrinsic rule must always return valid Stmt";
+          return new_stmt;
+        }
+      }
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
   PrimExpr VisitExpr_(const CallNode* op) final {
     if (auto* ptr_op = op->op.as<OpNode>()) {
       for (const auto& f_attr_map : attr_maps_) {

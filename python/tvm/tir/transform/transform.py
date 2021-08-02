@@ -812,3 +812,7 @@ def LowerLogicalLayout():
         The result pass
     """
     return _ffi_api.LowerLogicalLayout()
+
+
+def UnifyThreadAxis():
+    return _ffi_api.UnifyThreadAxis()

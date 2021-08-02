@@ -226,6 +226,7 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition, bool for
     pass_list.push_back(tir::transform::LowerMatchBuffer());
     pass_list.push_back(tir::transform::Simplify());
     pass_list.push_back(tir::transform::LowerLogicalLayout());
+    // pass_list.push_back(tir::transform::LowerLogicalIntrin());
     pass_list.push_back(tir::transform::FlattenBuffer());
     pass_list.push_back(tir::transform::UnifyThreadBinding());
   }
@@ -424,6 +425,7 @@ std::pair<IRModule, IRModule> SplitDevHostFuncs(IRModule mod_mixed, const Target
                CallingConv::kDeviceKernelLaunch;
       }),
       BindTarget(target),
+      tir::transform::UnifyThreadAxis(),
       tir::transform::LowerWarpMemory(),
       tir::transform::Simplify(),
       tir::transform::LowerCustomDatatypes(),

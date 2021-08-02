@@ -209,8 +209,8 @@ class WarpIndexFinder : private StmtVisitor {
 // Mutator to change the read pattern
 class WarpAccessRewriter : protected StmtExprMutator {
  public:
-  explicit WarpAccessRewriter(int warp_size, arith::Analyzer* analyzer)
-      : warp_size_(warp_size), analyzer_(analyzer) {}
+  explicit WarpAccessRewriter(int warp_size, Var warp_index, int width, arith::Analyzer* analyzer)
+      : warp_size_(warp_size), warp_index_(std::move(warp_index)), width_(width), analyzer_(analyzer) {}
   // Rewrite the allocate statement which transforms
   // warp memory to local memory.
   Stmt Rewrite(const AllocateNode* op) {
@@ -218,7 +218,6 @@ class WarpAccessRewriter : protected StmtExprMutator {
     int alloc_size = op->constant_allocation_size();
     ICHECK_GT(alloc_size, 0) << "warp memory only support constant alloc size";
     alloc_size *= op->dtype.lanes();
-    std::tie(warp_index_, width_) = WarpIndexFinder(warp_size_).Find(op->body);
     warp_coeff_ = WarpStoreCoeffFinder(buffer_, warp_index_, analyzer_).Find(op->body);
 
     // Align the local memory size. The number of elements may not
@@ -358,6 +357,7 @@ class WarpMemoryRewriter : private StmtMutator {
     if (warp_size_ == 1) return stmt;
     BindVarBoundInfo binder(&analyzer_);
     binder(stmt);
+    std::tie(warp_index_, warp_access_width_) = WarpIndexFinder(warp_size_).Find(stmt);
     stmt = operator()(std::move(stmt));
     return stmt;
   }
@@ -369,7 +369,7 @@ class WarpMemoryRewriter : private StmtMutator {
     auto ret = StmtMutator::VisitStmt_(op);
     op = ret.as<AllocateNode>();
     if (warp_buffer_.count(op->buffer_var.get())) {
-      WarpAccessRewriter rewriter(warp_size_, &analyzer_);
+      WarpAccessRewriter rewriter(warp_size_, warp_index_, warp_access_width_, &analyzer_);
       ret = rewriter.Rewrite(op);
     }
     return ret;
@@ -389,6 +389,8 @@ class WarpMemoryRewriter : private StmtMutator {
   }
 
   int warp_size_{0};
+  int warp_access_width_{0};
+  Var warp_index_{NullValue<Var>()};
   std::unordered_set<const VarNode*> warp_buffer_;
   arith::Analyzer analyzer_;
   // variable domain

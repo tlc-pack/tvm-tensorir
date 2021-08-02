@@ -539,6 +539,10 @@ TVM_DLL Pass UnifyThreadBinding();
  */
 TVM_DLL Pass LowerLogicalLayout();
 
+TVM_DLL Pass UnifyThreadAxis();
+
+// TVM_DLL Pass LowerLogicalIntrin();
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm
