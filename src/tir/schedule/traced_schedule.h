@@ -41,9 +41,6 @@ class TracedScheduleNode : public ConcreteScheduleNode {
 
   ~TracedScheduleNode() = default;
 
-  static constexpr const char* _type_key = "tir.TracedSchedule";
-  TVM_DECLARE_FINAL_OBJECT_INFO(TracedScheduleNode, ScheduleNode);
-
  public:
   Optional<Trace> trace() const final { return trace_; }
   Schedule Copy() const final;

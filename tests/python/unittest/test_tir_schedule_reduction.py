@@ -457,37 +457,31 @@ def multiple_reduction_blocks_rfactor(a: ty.handle, f: ty.handle) -> None:
 # pylint: enable=no-member,invalid-name,unused-variable,unexpected-keyword-arg
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_reduction_rfactor_matmul(traced: bool):
-    s = tir.Schedule(transformed_matmul, traced=traced, debug_mode=True)
+def test_reduction_rfactor_matmul():
+    s = tir.Schedule(transformed_matmul, debug_mode=True)
     _, _, _, _, kii = s.get_loops(s.get_block("update"))
     rf_block = s.rfactor(kii, 0)
     tvm.ir.assert_structural_equal(s.mod["main"], matmul_rfactor)
     assert s.get(rf_block).same_as(s.get(s.get_block("update_rf")))
-    if traced:
-        verify_trace_roundtrip(s, mod=transformed_matmul)
+    verify_trace_roundtrip(s, mod=transformed_matmul)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_reduction_rfactor_square_sum(traced: bool):
-    s = tir.Schedule(square_sum, traced=traced, debug_mode=True)
+def test_reduction_rfactor_square_sum():
+    s = tir.Schedule(square_sum, debug_mode=True)
     _, _, j = s.get_loops(s.get_block("C"))
     rf_block = s.rfactor(j, 1)
     tvm.ir.assert_structural_equal(s.mod["main"], square_sum_rfactor)
     assert s.get(rf_block).same_as(s.get(s.get_block("C_rf")))
-    if traced:
-        verify_trace_roundtrip(s, mod=square_sum)
+    verify_trace_roundtrip(s, mod=square_sum)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_reduction_rfactor_square_sum_square_root(traced: bool):
-    s = tir.Schedule(transformed_square_sum_square_root, traced=traced, debug_mode=True)
+def test_reduction_rfactor_square_sum_square_root():
+    s = tir.Schedule(transformed_square_sum_square_root, debug_mode=True)
     _, _, f_i = s.get_loops(s.get_block("C"))
     rf_block = s.rfactor(f_i, 0)
     tvm.ir.assert_structural_equal(s.mod["main"], square_sum_square_root_rfactor)
     assert s.get(rf_block).same_as(s.get(s.get_block("C_rf")))
-    if traced:
-        verify_trace_roundtrip(s, mod=transformed_square_sum_square_root)
+    verify_trace_roundtrip(s, mod=transformed_square_sum_square_root)
 
 
 def test_reduction_rfactor_loop_multiple_children():
@@ -548,15 +542,13 @@ def test_reduction_rfactor_factor_axis_range_fail():
         s.rfactor(kii, -4)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_reduction_rfactor_factor_axis_range(traced: bool):
-    s = tir.Schedule(transformed_matmul, traced=traced, debug_mode=True)
+def test_reduction_rfactor_factor_axis_range():
+    s = tir.Schedule(transformed_matmul, debug_mode=True)
     _, _, _, _, kii = s.get_loops(s.get_block("update"))
     rf_block = s.rfactor(kii, -3)
     tvm.ir.assert_structural_equal(s.mod["main"], matmul_rfactor)
     assert s.get(rf_block).same_as(s.get(s.get_block("update_rf")))
-    if traced:
-        verify_trace_roundtrip(s, mod=transformed_matmul)
+    verify_trace_roundtrip(s, mod=transformed_matmul)
 
 
 def test_reduction_rfactor_wrong_reduce_pattern1():
@@ -587,14 +579,12 @@ def test_reduction_rfactor_wrong_loops2():
         s.rfactor(k_i, 0)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_reduction_rfactor_zero_dim(traced: bool):
-    s = tir.Schedule(rowsum_zero_dim, traced=traced, debug_mode=True)
+def test_reduction_rfactor_zero_dim():
+    s = tir.Schedule(rowsum_zero_dim, debug_mode=True)
     (k,) = s.get_loops(s.get_block("B"))
     s.rfactor(k, 0)
     tvm.ir.assert_structural_equal(s.mod["main"], rowsum_zero_dim_rfactor)
-    if traced:
-        verify_trace_roundtrip(s, mod=rowsum_zero_dim)
+    verify_trace_roundtrip(s, mod=rowsum_zero_dim)
 
 
 def test_reduction_rfactor_outermost_loop_multiple_children_fail():  # pylint: disable=invalid-name
@@ -616,16 +606,12 @@ def test_reduction_rfactor_outermost_loop_multiple_children_fail():  # pylint: d
         s.rfactor(k4i, 0)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_reduction_rfactor_outermost_loop_multiple_children(
-    traced: bool,
-):  # pylint: disable=invalid-name
-    s = tir.Schedule(multiple_reduction_blocks, traced=traced, debug_mode=True)
+def test_reduction_rfactor_outermost_loop_multiple_children():  # pylint: disable=invalid-name
+    s = tir.Schedule(multiple_reduction_blocks, debug_mode=True)
     _, _, k1o, _ = s.get_loops(s.get_block("C"))
     s.rfactor(k1o, 2)
     tvm.ir.assert_structural_equal(s.mod["main"], multiple_reduction_blocks_rfactor)
-    if traced:
-        verify_trace_roundtrip(s, mod=multiple_reduction_blocks)
+    verify_trace_roundtrip(s, mod=multiple_reduction_blocks)
 
 
 if __name__ == "__main__":

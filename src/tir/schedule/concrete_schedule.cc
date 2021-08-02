@@ -182,8 +182,8 @@ void ConcreteScheduleNode::Copy(ScheduleState* new_state, TSymbolTable* new_symb
 Schedule ConcreteScheduleNode::Copy() const {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   n->error_render_level_ = this->error_render_level_;
-  this->Copy(&n->state_, &n->symbol_table_);
-  n->analyzer_ = std::make_unique<arith::Analyzer>();
+  ConcreteScheduleNode::Copy(&n->state_, &n->symbol_table_);
+  n->analyzer_ = std::make_unique<arith::Analyzer>();  // new analyzer needed because it is stateful
   return Schedule(std::move(n));
 }
 
@@ -375,10 +375,6 @@ BlockRV ConcreteScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
 }
 
 /******** Schedule: blockize & tensorize ********/
-
-/******** FFI ********/
-
-TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);
 
 }  // namespace tir
 }  // namespace tvm

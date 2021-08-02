@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """The TensorIR schedule class"""
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 from tvm._ffi import register_object as _register_object
 from tvm.error import TVMError, register_error
@@ -63,7 +63,37 @@ ExprRV = Union[PrimExpr]  # A random variable that evaluates to an integer
 RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
 
 # Update to `Literal["detail", "fast", "none"]` once upgraded to python3.8
-ERROR_RENDER_LEVEL_CANDIDATES = Union[str]  # pylint: disable=invalid-name
+_ERROR_RENDER_LEVEL = {
+    "detail": 0,
+    "fast": 1,
+    "none": 2,
+}
+
+
+def _preprocess_constructor_arguments(
+    mod: Union[PrimFunc, IRModule],
+    debug_mode: Union[bool, int] = False,
+    error_render_level: str = "detail",
+) -> Tuple[IRModule, int, int]:
+    # preprocess `mod`
+    if isinstance(mod, PrimFunc):
+        mod = IRModule({"main": mod})
+    # preprocess `debug_mode`
+    if isinstance(debug_mode, bool):
+        if debug_mode:
+            debug_mode = -1
+        else:
+            debug_mode = 0
+    if not isinstance(debug_mode, int):
+        raise TypeError(f"`debug_mode` should be integer or boolean, but gets: {debug_mode}")
+    # preprocess `error_render_level`
+    if error_render_level not in _ERROR_RENDER_LEVEL:
+        raise ValueError(
+            'error_render_level can be "detail", "fast", or "none", but got: '
+            + f"{error_render_level}"
+        )
+    error_render_level_int: int = _ERROR_RENDER_LEVEL.get(error_render_level)
+    return mod, debug_mode, error_render_level_int
 
 
 @_register_object("tir.Schedule")
@@ -81,21 +111,14 @@ class Schedule(Object):
     Link to tutorial: https://tvm.apache.org/docs/tutorials/language/schedule_primitives.html
     """
 
-    ERROR_RENDER_LEVEL = {
-        "detail": 0,
-        "fast": 1,
-        "none": 2,
-    }
-
     def __init__(
         self,
         mod: Union[PrimFunc, IRModule],
         *,
         debug_mode: Union[bool, int] = False,
-        error_render_level: ERROR_RENDER_LEVEL_CANDIDATES = "detail",
-        traced: bool = False,
+        error_render_level: str = "detail",
     ) -> None:
-        """Construct a concrete TensorIR schedule from an IRModule or a PrimFunc
+        """Construct a TensorIR schedule class from an IRModule
 
         Parameters
         ----------
@@ -109,10 +132,6 @@ class Schedule(Object):
             "detail": Render a detailed error message, with the TIR and error locations printed
             "fast: Show a simple error message without rendering or string manipulation
             "none": Do not show any error message.
-        traced : bool = False
-            A flag indicating if the scheduling process is being traced.
-            If set to true, users are able to print and inspect the instructions executed so far
-            by printing `Schedule.trace`
 
         Note
         ----
@@ -120,34 +139,30 @@ class Schedule(Object):
         1) VerifySRefTree
         2) VerifyCachedFlags
         """
-        # preprocess `mod`
-        if isinstance(mod, PrimFunc):
-            mod = IRModule({"main": mod})
-        # preprocess `debug_mode`
-        if isinstance(debug_mode, bool):
-            if debug_mode:
-                debug_mode = -1
-            else:
-                debug_mode = 0
-        if not isinstance(debug_mode, int):
-            raise TypeError(f"`debug_mode` should be integer or boolean, but gets: {debug_mode}")
-        # preprocess `error_render_level`
-        if error_render_level not in Schedule.ERROR_RENDER_LEVEL:
-            raise ValueError(
-                'error_render_level can be "detail", "fast", or "none", but got: '
-                + f"{error_render_level}"
-            )
-        # preprocess `traced`
-        if traced:
-            f_constructor = _ffi_api.TracedSchedule  # type: ignore # pylint: disable=no-member
-        else:
-            f_constructor = _ffi_api.ConcreteSchedule  # type: ignore # pylint: disable=no-member
         # call the constructor
         self.__init_handle_by_constructor__(
-            f_constructor,
-            mod,
-            debug_mode,
-            Schedule.ERROR_RENDER_LEVEL.get(error_render_level),
+            _ffi_api.TracedSchedule,  # type: ignore # pylint: disable=no-member
+            *_preprocess_constructor_arguments(
+                mod,
+                debug_mode,
+                error_render_level,
+            ),
+        )
+
+    @staticmethod
+    def _create_non_traced(
+        mod: Union[PrimFunc, IRModule],
+        *,
+        debug_mode: Union[bool, int] = False,
+        error_render_level: str = "detail",
+    ) -> "Schedule":
+        """Construct a non-traced TensorIR schedule class from an IRModule."""
+        return _ffi_api.ConcreteSchedule(  # type: ignore # pylint: disable=no-member
+            *_preprocess_constructor_arguments(
+                mod,
+                debug_mode,
+                error_render_level,
+            )
         )
 
     ########## Utilities ##########
@@ -721,13 +736,3 @@ class Schedule(Object):
     def enter_postproc(self) -> None:
         """A no-op that marks the start of postprocessing phase of scheduling"""
         _ffi_api.ScheduleEnterPostproc(self)  # type: ignore # pylint: disable=no-member
-
-
-@_register_object("tir.ConcreteSchedule")
-class ConcreteSchedule(Schedule):
-    """A concrete schedule class of TensorIR. Do not use directly, use tvm.tir.Schedule instead."""
-
-
-@_register_object("tir.TracedSchedule")
-class TracedSchedule(Schedule):
-    """A traced schedule class of TensorIR. Do not use directly, use tvm.tir.Schedule instead."""

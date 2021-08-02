@@ -82,7 +82,7 @@ def test_tir_schedule_get_loops():
     assert sch.get(k).loop_var.name == "k"
 
 
-def test_tir_schedule_copy():
+def test_tir_schedule_copy_1():
     # Tests:
     # - Schedule.copy
     sch_1 = tir.Schedule(matmul, debug_mode=True)
@@ -99,8 +99,8 @@ def test_tir_schedule_copy():
     assert sch_2.get(k).loop_var.name == "k"
 
 
-def test_traced_schedule_copy():
-    sch = tir.Schedule(mod=matmul, traced=True)
+def test_tir_schedule_copy_2():
+    sch = tir.Schedule(mod=matmul, debug_mode=True)
     i, j, k = sch.get_loops(sch.get_block("update"))
     sch_copy = sch.copy()
     assert not sch.get_sref(i).same_as(sch_copy.get_sref(i))

@@ -54,9 +54,6 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   virtual ~ConcreteScheduleNode() = default;
 
-  static constexpr const char* _type_key = "tir.ConcreteSchedule";
-  TVM_DECLARE_BASE_OBJECT_INFO(ConcreteScheduleNode, ScheduleNode);
-
  public:
   ScheduleState state() const final { return state_; }
   Optional<Trace> trace() const override { return NullOpt; }

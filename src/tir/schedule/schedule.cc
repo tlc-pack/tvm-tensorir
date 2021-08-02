@@ -64,6 +64,11 @@ TVM_REGISTER_GLOBAL("tir.schedule.ConcreteSchedule")
       return Schedule::Concrete(mod, debug_mode,
                                 static_cast<ScheduleErrorRenderLevel>(error_render_level));
     });
+TVM_REGISTER_GLOBAL("tir.schedule.TracedSchedule")
+    .set_body_typed([](IRModule mod, int debug_mode, int error_render_level) -> Schedule {
+      return Schedule::Traced(mod, debug_mode,
+                              static_cast<ScheduleErrorRenderLevel>(error_render_level));
+    });
 
 /******** (FFI) Lookup random variables ********/
 

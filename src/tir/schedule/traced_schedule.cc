@@ -34,9 +34,9 @@ Schedule Schedule::Traced(IRModule mod, int debug_mode,
 
 Schedule TracedScheduleNode::Copy() const {
   ObjectPtr<TracedScheduleNode> n = make_object<TracedScheduleNode>();
-  ConcreteScheduleNode::Copy(&n->state_, &n->symbol_table_);
   n->error_render_level_ = this->error_render_level_;
-  n->analyzer_ = std::make_unique<arith::Analyzer>();
+  ConcreteScheduleNode::Copy(&n->state_, &n->symbol_table_);
+  n->analyzer_ = std::make_unique<arith::Analyzer>();  // new analyzer needed because it is stateful
   n->trace_ = Trace(this->trace_->insts, this->trace_->decisions);
   return Schedule(std::move(n));
 }
@@ -151,15 +151,6 @@ void TracedScheduleNode::EnterPostproc() {
                                       /*attrs=*/{},
                                       /*outputs=*/{}));
 }
-
-/******** FFI ********/
-
-TVM_REGISTER_NODE_TYPE(TracedScheduleNode);
-TVM_REGISTER_GLOBAL("tir.schedule.TracedSchedule")
-    .set_body_typed([](IRModule mod, int debug_mode, int error_render_level) -> Schedule {
-      return Schedule::Traced(mod, debug_mode,
-                              static_cast<ScheduleErrorRenderLevel>(error_render_level));
-    });
 
 }  // namespace tir
 }  // namespace tvm

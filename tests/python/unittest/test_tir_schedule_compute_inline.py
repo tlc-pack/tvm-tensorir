@@ -223,45 +223,38 @@ def elementwise_multi_loads_inlined(a: ty.handle, c: ty.handle) -> None:
 # pylint: enable=no-member,invalid-name,unused-variable
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_compute_inline_elementwise(traced: bool):
-    sch = tir.Schedule(elementwise, traced=traced, debug_mode=True)
+def test_compute_inline_elementwise():
+    sch = tir.Schedule(elementwise, debug_mode=True)
     block_b = sch.get_block("B")
     block_c = sch.get_block("C")
     sch.compute_inline(block_b)
     tvm.ir.assert_structural_equal(elementwise_inlined, sch.mod["main"])
     assert sch.get(block_c).name_hint == "C"
-    if traced:
-        verify_trace_roundtrip(sch=sch, mod=elementwise)
+    verify_trace_roundtrip(sch=sch, mod=elementwise)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_compute_inline_under_loop(traced: bool):
-    sch = tir.Schedule(elementwise_under_loop, traced=traced, debug_mode=True)
+def test_compute_inline_under_loop():
+    sch = tir.Schedule(elementwise_under_loop, debug_mode=True)
     block_b = sch.get_block("B")
     block_c = sch.get_block("C")
     sch.compute_inline(block_b)
     tvm.ir.assert_structural_equal(elementwise_inlined, sch.mod["main"])
     assert sch.get(block_c).name_hint == "C"
-    if traced:
-        verify_trace_roundtrip(sch=sch, mod=elementwise_under_loop)
+    verify_trace_roundtrip(sch=sch, mod=elementwise_under_loop)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_compute_inline_as_dce(traced: bool):
-    sch = tir.Schedule(elementwise_standalone, traced=traced, debug_mode=True)
+def test_compute_inline_as_dce():
+    sch = tir.Schedule(elementwise_standalone, debug_mode=True)
     block_b = sch.get_block("B")
     block_c = sch.get_block("C")
     sch.compute_inline(block_b)
     tvm.ir.assert_structural_equal(elementwise_standalone_dce, sch.mod["main"])
     assert sch.get(block_c).name_hint == "C"
-    if traced:
-        verify_trace_roundtrip(sch=sch, mod=elementwise_standalone)
+    verify_trace_roundtrip(sch=sch, mod=elementwise_standalone)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_compute_inline_multi_consumer(traced: bool):
-    sch = tir.Schedule(elementwise_multi_producer_consumer, traced=traced, debug_mode=True)
+def test_compute_inline_multi_consumer():
+    sch = tir.Schedule(elementwise_multi_producer_consumer, debug_mode=True)
     block_b = sch.get_block("B")
     block_c = sch.get_block("C")
     block_d = sch.get_block("D")
@@ -269,8 +262,7 @@ def test_compute_inline_multi_consumer(traced: bool):
     tvm.ir.assert_structural_equal(elementwise_multi_consumer_inlined, sch.mod["main"])
     assert sch.get(block_c).name_hint == "C"
     assert sch.get(block_d).name_hint == "D"
-    if traced:
-        verify_trace_roundtrip(sch=sch, mod=elementwise_multi_producer_consumer)
+    verify_trace_roundtrip(sch=sch, mod=elementwise_multi_producer_consumer)
 
 
 def test_compute_inline_fail_multi_writer():
@@ -280,28 +272,24 @@ def test_compute_inline_fail_multi_writer():
         sch.compute_inline(block_b)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_reverse_compute_inline_elementwise(traced: bool):
-    sch = tir.Schedule(elementwise, traced=traced, debug_mode=True)
+def test_reverse_compute_inline_elementwise():
+    sch = tir.Schedule(elementwise, debug_mode=True)
     block_b = sch.get_block("B")
     block_c = sch.get_block("C")
     sch.reverse_compute_inline(block_c)
     tvm.ir.assert_structural_equal(elementwise_inlined, sch.mod["main"])
     assert sch.get(block_b).name_hint == "B"
-    if traced:
-        verify_trace_roundtrip(sch=sch, mod=elementwise)
+    verify_trace_roundtrip(sch=sch, mod=elementwise)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_reverse_compute_inline_under_loop(traced: bool):
-    sch = tir.Schedule(elementwise_under_loop, traced=traced, debug_mode=True)
+def test_reverse_compute_inline_under_loop():
+    sch = tir.Schedule(elementwise_under_loop, debug_mode=True)
     block_b = sch.get_block("B")
     block_c = sch.get_block("C")
     sch.reverse_compute_inline(block_c)
     tvm.ir.assert_structural_equal(elementwise_inlined, sch.mod["main"])
     assert sch.get(block_b).name_hint == "B"
-    if traced:
-        verify_trace_roundtrip(sch=sch, mod=elementwise_under_loop)
+    verify_trace_roundtrip(sch=sch, mod=elementwise_under_loop)
 
 
 def test_reverse_compute_inline_fail_as_dce():
@@ -325,14 +313,12 @@ def test_reverse_compute_inline_fail_multi_reader():
         sch.reverse_compute_inline(block_c)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_reverse_compute_multi_reverse_loads(traced: bool):
-    sch = tir.Schedule(elementwise_multi_reverse_loads, traced=traced, debug_mode=True)
+def test_reverse_compute_multi_reverse_loads():
+    sch = tir.Schedule(elementwise_multi_reverse_loads, debug_mode=True)
     block_c = sch.get_block("C")
     sch.reverse_compute_inline(block_c)
     tvm.ir.assert_structural_equal(elementwise_multi_reverse_loads_inlined, sch.mod["main"])
-    if traced:
-        verify_trace_roundtrip(sch=sch, mod=elementwise_multi_reverse_loads)
+    verify_trace_roundtrip(sch=sch, mod=elementwise_multi_reverse_loads)
 
 
 def test_reverse_compute_fail_multi_reverse_loads():
@@ -363,24 +349,20 @@ def test_buffer_matched():
         sch.compute_inline(block_b)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_compute_inline_predicate(traced: bool):
-    sch = tir.Schedule(elementwise_predicate, traced=traced, debug_mode=True)
+def test_compute_inline_predicate():
+    sch = tir.Schedule(elementwise_predicate, debug_mode=True)
     block_b = sch.get_block("B")
     sch.compute_inline(block_b)
     tvm.ir.assert_structural_equal(elementwise_predicate_inlined, sch.mod["main"])
-    if traced:
-        verify_trace_roundtrip(sch=sch, mod=elementwise_predicate)
+    verify_trace_roundtrip(sch=sch, mod=elementwise_predicate)
 
 
-@pytest.mark.parametrize("traced", [False, True])
-def test_compute_inline_multi_loads(traced: bool):
-    sch = tir.Schedule(elementwise_multi_loads, traced=traced, debug_mode=True)
+def test_compute_inline_multi_loads():
+    sch = tir.Schedule(elementwise_multi_loads, debug_mode=True)
     block_b = sch.get_block("B")
     sch.compute_inline(block_b)
     tvm.ir.assert_structural_equal(elementwise_multi_loads_inlined, sch.mod["main"])
-    if traced:
-        verify_trace_roundtrip(sch=sch, mod=elementwise_multi_loads)
+    verify_trace_roundtrip(sch=sch, mod=elementwise_multi_loads)
 
 
 if __name__ == "__main__":

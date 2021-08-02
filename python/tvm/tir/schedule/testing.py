@@ -51,7 +51,7 @@ def verify_trace_roundtrip(
     assert trace is not None
     json_obj = trace.as_json()
     # Step 2. Apply the JSON trace to a new schedule, then check if it reproduces the scheduling
-    new_sch = tir.Schedule(mod=mod, traced=True, debug_mode=debug_mod)
+    new_sch = tir.Schedule(mod=mod, debug_mode=debug_mod)
     Trace.apply_json_to_schedule(json_obj=json_obj, sch=new_sch)
     assert structural_equal(new_sch.mod, sch.mod)
     # Step 3. Check the consistency of the text format between the old and new traces
