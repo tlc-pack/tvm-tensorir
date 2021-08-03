@@ -1372,10 +1372,10 @@ void GetPerStoreFeaturesFromStates(const Array<State>& states, const SearchTask&
 
   LOG(WARNING) << "Parallel feature extraction has been made sequential";
 
-  enable_verbose_logging = true;
+  // enable_verbose_logging = true;
   GetPerStoreFeaturesWorkerFunc(task, states[skip_first_n_feature_extraction], max_n_bufs,
                                 &(*features)[skip_first_n_feature_extraction], &error_ct);
-  enable_verbose_logging = false;
+  // enable_verbose_logging = false;
   support::parallel_for(
       skip_first_n_feature_extraction + 1, states.size(),
   // for (size_t i = skip_first_n_feature_extraction + 1; i < states.size(); ++i) {
