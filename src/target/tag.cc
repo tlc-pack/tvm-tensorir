@@ -88,11 +88,7 @@ TVM_REGISTER_CUDA_TAG("nvidia/tesla-c2075", "sm_20", 49152, 32768);
 TVM_REGISTER_CUDA_TAG("nvidia/tesla-c2050", "sm_20", 49152, 32768);
 TVM_REGISTER_CUDA_TAG("nvidia/tesla-c2070", "sm_20", 49152, 32768);
 TVM_REGISTER_CUDA_TAG("nvidia/nvidia-a100", "sm_80", 49152, 65536);
-
-// <bojian/DietCode> Not sure the reason why, but the maximum shared memory size
-//                   queried is different from the shared memory capacity.
 TVM_REGISTER_CUDA_TAG("nvidia/nvidia-t4", "sm_75", 49152, 65536);
-
 TVM_REGISTER_CUDA_TAG("nvidia/nvidia-v100", "sm_70", 49152, 65536);
 TVM_REGISTER_CUDA_TAG("nvidia/tesla-p100", "sm_60", 49152, 65536);
 TVM_REGISTER_CUDA_TAG("nvidia/tesla-p40", "sm_61", 49152, 65536);
