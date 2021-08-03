@@ -1352,8 +1352,7 @@ ComputeDAG::CherryPickWorkloadInstance(
 
 std::pair<te::Schedule, Array<te::Tensor>>
 ComputeDAG::CherryPickWorkloadInstanceAndApplySteps(
-    const State& state, const SearchTask& task, Array<te::Stage>* stages,
-    StageToAxesMap* stage_to_axes) const {
+    const State& state, const SearchTask& task) const {
   Array<IntImm> shape_values = CherryPickWorkloadInstance(state, task);
 
   if (enable_verbose_logging) {
@@ -1366,8 +1365,7 @@ ComputeDAG::CherryPickWorkloadInstanceAndApplySteps(
 
 // std::pair<te::Schedule, Array<te::Tensor>>
 // ComputeDAG::GenerateSyntheticWorkloadAndApplySteps(
-//     const State& state, const HardwareParams& hardware_params,
-//     Array<te::Stage>* stages, StageToAxesMap* stage_to_axes) const {
+//     const State& state, const HardwareParams& hardware_params) const {
 //   State state_mutable_copy = state;
 
 //   state_mutable_copy = InferBound(state_mutable_copy);
@@ -1483,7 +1481,7 @@ ComputeDAG::CherryPickWorkloadInstanceAndApplySteps(
 //   SyntheticExprReplacer synthetic_expr_replacer(axes_to_extents);
 
 //   return InstantiateAndApplySteps(state_mutable_copy, synthetic_expr_replacer,
-//                                   stages, stage_to_axes);
+//                                   nullptr, nullptr);
 // }
 
 
@@ -1622,8 +1620,6 @@ ComputeDAG::InferBoundOnCherryPickedWorkload(const State& state, const SearchTas
     ret_state = state;
     pstate = ret_state.CopyOnWrite();
   }
-  Array<te::Stage> stages;
-  StageToAxesMap stage_to_axes;
   te::Schedule sch;
   Array<te::Tensor> tensors;
 
@@ -1632,10 +1628,8 @@ ComputeDAG::InferBoundOnCherryPickedWorkload(const State& state, const SearchTas
   //           << " transformation steps";
 
   std::tie(sch, tensors) =
-      // GenerateSyntheticWorkloadAndApplySteps(ret_state, hardware_params,
-      //                                        &stages, &stage_to_axes);
-      CherryPickWorkloadInstanceAndApplySteps(ret_state, task, &stages,
-                                              &stage_to_axes);
+      // GenerateSyntheticWorkloadAndApplySteps(ret_state, hardware_params);
+      CherryPickWorkloadInstanceAndApplySteps(ret_state, task);
   return ret_state;
 }
 
@@ -1867,13 +1861,13 @@ TVM_REGISTER_GLOBAL("auto_scheduler.CherryPickWorkloadInstance")
     .set_body_typed(
       [](const ComputeDAG& dag, const State& state, const SearchTask& task)
         -> Array<ObjectRef> {
-        te::Schedule sch;
+        te::Schedule synthetic_sch;
         Array<te::Tensor> synthetic_tensors;
         // enable_verbose_logging = true;
-        std::tie(sch, synthetic_tensors) =
+        std::tie(synthetic_sch, synthetic_tensors) =
             dag.CherryPickWorkloadInstanceAndApplySteps(state, task);
         // enable_verbose_logging = false;
-        return Array<ObjectRef>{sch, synthetic_tensors};
+        return Array<ObjectRef>{synthetic_sch, synthetic_tensors};
       }
       );
 
@@ -1881,11 +1875,11 @@ TVM_REGISTER_GLOBAL("auto_scheduler.CherryPickWorkloadInstance")
 //     .set_body_typed(
 //       [](const ComputeDAG& dag, const State& state,
 //          const HardwareParams& hardware_params) -> Array<ObjectRef> {
-//         te::Schedule sch;
+//         te::Schedule synthetic_sch;
 //         Array<te::Tensor> synthetic_tensors;
-//         std::tie(sch, synthetic_tensors) =
+//         std::tie(synthetic_sch, synthetic_tensors) =
 //             dag.GenerateSyntheticWorkloadAndApplySteps(state, hardware_params);
-//         return Array<ObjectRef>{sch, synthetic_tensors};
+//         return Array<ObjectRef>{synthetic_sch, synthetic_tensors};
 //       }
 //       );
 

@@ -294,15 +294,11 @@ class ComputeDAG : public ObjectRef {
   Array<IntImm>
   CherryPickWorkloadInstance(const State& state, const SearchTask& task) const;
   std::pair<te::Schedule, Array<te::Tensor>>
-  CherryPickWorkloadInstanceAndApplySteps(
-      const State& state, const SearchTask& task,
-      Array<te::Stage>* stages = nullptr,
-      StageToAxesMap* stage_to_axes = nullptr) const;
+  CherryPickWorkloadInstanceAndApplySteps(const State& state,
+                                          const SearchTask& task) const;
   // std::pair<te::Schedule, Array<te::Tensor>>
   // GenerateSyntheticWorkloadAndApplySteps(
-  //     const State& pstate, const HardwareParams& hardware_params,
-  //     Array<te::Stage>* stages = nullptr,
-  //     StageToAxesMap* stage_to_axes = nullptr) const;
+  //     const State& pstate, const HardwareParams& hardware_params) const;
   std::pair<te::Schedule, Array<te::Tensor>>
   InstantiateAndApplySteps(const State& state, const Array<String>& shape_vars,
                            const Array<IntImm>& shape_values) const;

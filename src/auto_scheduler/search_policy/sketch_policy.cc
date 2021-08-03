@@ -846,7 +846,9 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
           mutation_success_ct++;
 
           // <bojian/DietCode>
-          // 0
+          // if (std::dynamic_pointer_cast<MutateInnermostTileSize>(rule)) {
+          //   LOG(FATAL) << "End of a successful innermost tile size mutation";
+          // }
 
         } else {
           mutation_fail_ct++;
