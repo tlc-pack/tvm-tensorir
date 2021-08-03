@@ -374,7 +374,7 @@ const std::string& TargetNode::str() const {
       }
     }
 
-    // <bojian/DietCode>
+    // <bojian/DietCode> Add tag as part of the representation string.
     os << " -tag=" << tag;
 
 
