@@ -1134,7 +1134,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     return ResultKind::kInvalid;
   }
 
-  // LOG(INFO) << "*** Applying innermost tile size mutation rule ***";
+  LOG(INFO) << "*** Applying innermost tile size mutation rule ***";
 
   std::vector<size_t> split_step_ids;
   std::vector<std::vector<int>> curr_split_factors;
@@ -1154,7 +1154,8 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
       }
     }
   }  // for (i ∈ (*state)->transform_steps)
-  // LOG(INFO) << "curr_split_factors=" << MatrixToString(curr_split_factors);
+
+  LOG(INFO) << "curr_split_factors=" << MatrixToString(curr_split_factors);
 
   if (split_step_ids.empty()) {
     return ResultKind::kInvalid;
@@ -1168,7 +1169,8 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
   Array<IntImm> selected_inst =
       policy->search_task->shape_values[
         RandomChoose(policy->curr_inst_opt_prob, rand_gen)];
-  // LOG(INFO) << "Selected inst=" << ArrayToString(selected_inst);
+
+  LOG(INFO) << "Selected inst=" << ArrayToString(selected_inst);
 
   arith::Analyzer analyzer;
   Map<String, IntImm> shape_var_value_map;
@@ -1214,7 +1216,14 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
 
   // Now that we have determined the optimization target, sample as if it is a
   // static workload.
-  float max_adapted_score = 0.;
+  float base_score = 1., occupancy_penalty, padding_penalty, adapted_score;
+
+  AdaptStateToWorkload(policy->search_task, *state, selected_inst, base_score,
+                       &occupancy_penalty, &padding_penalty, &adapted_score);
+  float max_adapted_score = adapted_score;
+
+  LOG(INFO) << "max_adapted_score=" << max_adapted_score;
+
   std::vector<std::vector<int>> opt_split_factors;
   std::uniform_real_distribution<> prob_dist(0., 1.);
 
@@ -1252,7 +1261,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     state_mutable_copy =
         policy->search_task->compute_dag.InferBound(state_mutable_copy);
     // evaluate the adapted score
-    float base_score = 1., occupancy_penalty, padding_penalty, adapted_score;
+    // float base_score = 1., occupancy_penalty, padding_penalty, adapted_score;
 
     AdaptStateToWorkload(policy->search_task, state_mutable_copy,
                          selected_inst, base_score, &occupancy_penalty,
@@ -1260,6 +1269,10 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     if (adapted_score > max_adapted_score) {
       max_adapted_score = adapted_score;
       opt_split_factors = mutated_scheme.split_factors;
+
+
+      LOG(INFO) << "max_adapted_score =>" << max_adapted_score;
+
     }
   }  // for (retry_ct ∈ [0, split_step_ids.size() * 4))
   StateNode* pstate = state->CopyOnWrite();

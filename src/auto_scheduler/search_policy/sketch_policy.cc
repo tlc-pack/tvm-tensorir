@@ -834,10 +834,8 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
     // Do mutation
     while (pnext->size() < population) {
 
-
       // <bojian/DietCode>
       // PrintTitle("Evolutionary Search (Mutation Rule)", verbose);
-
 
       State tmp_s = (*pnow)[RandomChoose(pop_selection_probs, &rand_gen)];
 
@@ -857,6 +855,9 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
     std::swap(pnext, pnow);
     pnext->clear();
   }
+
+  // <bojian/DietCode>
+  LOG(FATAL) << "End of mutation";
 
   // Copy best states in the heap to out_states
   std::sort(heap.begin(), heap.end(), cmp);
