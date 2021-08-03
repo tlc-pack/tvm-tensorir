@@ -844,6 +844,10 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
         if (rule->Apply(this, &tmp_s, &rand_gen) == PopulationGenerationRule::ResultKind::kValid) {
           pnext->push_back(std::move(tmp_s));
           mutation_success_ct++;
+
+          // <bojian/DietCode>
+          // 0
+
         } else {
           mutation_fail_ct++;
         }
@@ -855,9 +859,6 @@ Array<State> SketchPolicyNode::EvolutionarySearch(const Array<State>& init_popul
     std::swap(pnext, pnow);
     pnext->clear();
   }
-
-  // <bojian/DietCode>
-  LOG(FATAL) << "End of mutation";
 
   // Copy best states in the heap to out_states
   std::sort(heap.begin(), heap.end(), cmp);

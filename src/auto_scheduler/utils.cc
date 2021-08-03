@@ -192,8 +192,8 @@ double GetCherryPickedWklInstNormalizedFlopCtFromState(const SearchTask& task,
   Array<IntImm> cherry_picked_wkl_inst =
       task->compute_dag.CherryPickWorkloadInstance(state, task);
   
-  LOG(INFO) << "Cherry picked workload inst="
-            << ArrayToString(cherry_picked_wkl_inst);
+  // LOG(INFO) << "Cherry picked workload inst="
+  //           << ArrayToString(cherry_picked_wkl_inst);
 
   // std::tie(synthetic_sch, synthetic_tensors) =
   //     task->compute_dag.InstantiateAndApplySteps(state,
