@@ -19,7 +19,7 @@
 #ifndef TVM_TIR_SCHEDULE_SAMPLER_H_
 #define TVM_TIR_SCHEDULE_SAMPLER_H_
 
-#include <tvm/support/rng.h>
+#include <tvm/support/random_engine.h>
 
 #include <algorithm>
 #include <functional>

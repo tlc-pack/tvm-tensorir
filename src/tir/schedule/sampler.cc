@@ -134,7 +134,7 @@ Sampler::TRandomState Sampler::ForkSeed() {
   return ret;
 }
 
-void Sampler::Seed(Sampler::TRandomState seed) { this->rand_.Seed(seed); }
+void Sampler::Seed(Sampler::TRandomState seed) { this->rand_.seed(seed); }
 
 int Sampler::SampleInt(int min_inclusive, int max_exclusive) {
   if (min_inclusive + 1 == max_exclusive) {

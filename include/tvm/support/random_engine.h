@@ -57,7 +57,11 @@ class LinearCongruentialEngine {
    * \param random_state The random state pointer given in result_type*.
    * \note The random state is not initialized here. You may need to call seed function.
    */
-  explicit LinearCongruentialEngine(result_type* random_state) { rand_state_ptr_ = random_state; }
+  explicit LinearCongruentialEngine(result_type* random_state) {
+    ICHECK(random_state != nullptr);  // Make sure the pointer is not null.
+    rand_state_ptr_ = random_state;
+    seed(*random_state);
+  }
 
   /*!
    * \brief Change the start random state of RNG with the seed of a new random state value.
@@ -65,12 +69,11 @@ class LinearCongruentialEngine {
    * \note The seed is used to initialize the random number generator and the random state would be
    * changed to next random state by calling the next_state() function.
    */
-  void Seed(result_type state = 1) {
+  void seed(result_type state = 1) {
     state %= modulus;                    // Make sure the seed is within the range of the modulus.
     if (state < 0) state += modulus;     // The congruential engine is always non-negative.
     ICHECK(rand_state_ptr_ != nullptr);  // Make sure the pointer is not null.
     *rand_state_ptr_ = state;            // Change pointed random state to given random state value.
-    next_state();
   };
 
   /*! \brief The minimum possible value of random state here. */
