@@ -1134,7 +1134,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     return ResultKind::kInvalid;
   }
 
-  LOG(INFO) << "*** Applying innermost tile size mutation rule ***";
+  // LOG(INFO) << "*** Applying innermost tile size mutation rule ***";
 
   std::vector<size_t> split_step_ids;
   std::vector<std::vector<int>> curr_split_factors;
@@ -1155,7 +1155,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
     }
   }  // for (i ∈ (*state)->transform_steps)
 
-  LOG(INFO) << "curr_split_factors=" << MatrixToString(curr_split_factors);
+  // LOG(INFO) << "curr_split_factors=" << MatrixToString(curr_split_factors);
 
   if (split_step_ids.empty()) {
     return ResultKind::kInvalid;
@@ -1170,7 +1170,7 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
       policy->search_task->shape_values[
         RandomChoose(policy->curr_inst_opt_prob, rand_gen)];
 
-  LOG(INFO) << "Selected inst=" << ArrayToString(selected_inst);
+  // LOG(INFO) << "Selected inst=" << ArrayToString(selected_inst);
 
   arith::Analyzer analyzer;
   Map<String, IntImm> shape_var_value_map;
@@ -1216,14 +1216,15 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
 
   // Now that we have determined the optimization target, sample as if it is a
   // static workload.
-  float base_score = 1., occupancy_penalty, padding_penalty, adapted_score;
-
+  const float base_score = 1.;
+  float occupancy_penalty, padding_penalty, adapted_score,
+        max_adapted_score;
   AdaptStateToWorkload(policy->search_task, *state, selected_inst, base_score,
-                       &occupancy_penalty, &padding_penalty, &adapted_score);
-  float max_adapted_score = adapted_score;
+                       &occupancy_penalty, &padding_penalty,
+                       &max_adapted_score);
+  // LOG(INFO) << "max_adapted_score=" << max_adapted_score;
 
-  LOG(INFO) << "max_adapted_score=" << max_adapted_score;
-
+  bool opt_split_factors_assigned = false;
   std::vector<std::vector<int>> opt_split_factors;
   std::uniform_real_distribution<> prob_dist(0., 1.);
 
@@ -1256,25 +1257,29 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
                     split_step->extent, new_split_factor,
                     split_step->inner_to_outer));
     }
-    State state_mutable_copy = GetRef<State>(pstate);
+    // State state_mutable_copy = GetRef<State>(pstate);
+    // state_mutable_copy =
+    //     policy->search_task->compute_dag.InferBound(state_mutable_copy);
+    AdaptStateToWorkload(policy->search_task, *state, selected_inst, base_score,
+                         &occupancy_penalty, &padding_penalty, &adapted_score);
 
-    state_mutable_copy =
-        policy->search_task->compute_dag.InferBound(state_mutable_copy);
-    // evaluate the adapted score
-    // float base_score = 1., occupancy_penalty, padding_penalty, adapted_score;
+    // LOG(INFO) << "adapted_score=" << adapted_score;
 
-    AdaptStateToWorkload(policy->search_task, state_mutable_copy,
-                         selected_inst, base_score, &occupancy_penalty,
-                         &padding_penalty, &adapted_score);
     if (adapted_score > max_adapted_score) {
       max_adapted_score = adapted_score;
+      opt_split_factors_assigned = true;
       opt_split_factors = mutated_scheme.split_factors;
 
-
-      LOG(INFO) << "max_adapted_score =>" << max_adapted_score;
+      // LOG(INFO) << "max_adapted_score =>" << max_adapted_score;
 
     }
   }  // for (retry_ct ∈ [0, split_step_ids.size() * 4))
+
+  // LOG(INFO) << "Finished mutating the innermost tile size";
+  if (!opt_split_factors_assigned) {
+    return ResultKind::kInvalid;
+  }
+
   StateNode* pstate = state->CopyOnWrite();
   for (size_t i = 0; i < split_step_ids.size(); ++i) {
     const SplitStepNode* const split_step =
