@@ -1845,7 +1845,8 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
     }
   } else {
     if (enable_verbose_logging) {
-      LOG(WARNING) << "Target has not yet been examined, falling to the default heuristic";
+      LOG(WARNING) << "Target " << task->target->tag << " has not yet been "
+                      "examined, falling to the default heuristic";
     }
     *occupancy_penalty =
         1. * grid_size / floor_by(grid_size, task->hardware_params->num_cores);
@@ -1853,6 +1854,9 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
 
   // temporarily assign the occupancy penalty to be 1.0
   *adapted_score = score * (*occupancy_penalty) * (*padding_penalty);
+  if (enable_verbose_logging) {
+    LOG(INFO) << "adapted_score=" << *adapted_score;
+  }
 }
 
 

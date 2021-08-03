@@ -38,6 +38,9 @@ import tempfile
 import multiprocessing
 import logging
 
+# <bojian/DietCode>
+import numpy as np
+
 import tvm._ffi
 from tvm.runtime import Object, module, ndarray
 from tvm.driver import build_module
@@ -626,8 +629,8 @@ def _timed_func(inp_serialized, build_func, verbose):
             # dynamic search task
             sch, args = task.compute_dag.cherry_pick_workload_instance(inp.state, task)
             # sch, args = task.compute_dag.generate_synthetic_workload(inp.state, task)
-            # print("Generated synthetic workload={}"
-            #       .format(tvm.lower(sch, args, simple_mode=True)))
+            print("Generated synthetic workload={}"
+                  .format(tvm.lower(sch, args, simple_mode=True)))
 
         else:
             sch, args = task.compute_dag.apply_steps_from_state(
@@ -1152,6 +1155,10 @@ def _timed_rpc_run(
             dev.sync()
 
             costs = time_f(*args).results
+
+            # <bojian/DietCode>
+            # print(costs)
+            # print("avg={}".format(np.average(costs)))
 
             # clean up remote files
             remote.remove(build_res.filename)

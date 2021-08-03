@@ -373,6 +373,11 @@ const std::string& TargetNode::str() const {
         os << s;
       }
     }
+
+    // <bojian/DietCode>
+    os << " -tag=" << tag;
+
+
     if (Optional<String> attrs_str = TargetInternal::StringifyAttrsToRaw(attrs)) {
       os << ' ' << attrs_str.value();
     }

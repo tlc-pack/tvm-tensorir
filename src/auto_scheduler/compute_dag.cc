@@ -1337,11 +1337,14 @@ ComputeDAG::CherryPickWorkloadInstance(
         max_adapted_score = -1;
 
   for (const Array<IntImm>& shape_values : task->shape_values) {
-    AdaptStateToWorkload(task, state, shape_values, base_score,
+    AdaptStateToWorkload(task, state_mutable_copy, shape_values, base_score,
                          &occupancy_penalty, &padding_penalty, &adapted_score);
     if (adapted_score > max_adapted_score) {
       max_adapted_score = adapted_score;
       cherry_picked_shape_values = shape_values;
+      if (enable_verbose_logging) {
+        LOG(INFO) << "max_adapted_score => " << max_adapted_score;
+      }
     }
   }
   return cherry_picked_shape_values;
@@ -1352,6 +1355,11 @@ ComputeDAG::CherryPickWorkloadInstanceAndApplySteps(
     const State& state, const SearchTask& task, Array<te::Stage>* stages,
     StageToAxesMap* stage_to_axes) const {
   Array<IntImm> shape_values = CherryPickWorkloadInstance(state, task);
+
+  if (enable_verbose_logging) {
+    LOG(INFO) << "Cherry picked workload inst=" << ArrayToString(shape_values);
+  }
+
   return InstantiateAndApplySteps(state, task->shape_vars.value(),
                                   shape_values);
 }
@@ -1861,8 +1869,10 @@ TVM_REGISTER_GLOBAL("auto_scheduler.CherryPickWorkloadInstance")
         -> Array<ObjectRef> {
         te::Schedule sch;
         Array<te::Tensor> synthetic_tensors;
+        enable_verbose_logging = true;
         std::tie(sch, synthetic_tensors) =
             dag.CherryPickWorkloadInstanceAndApplySteps(state, task);
+        enable_verbose_logging = false;
         return Array<ObjectRef>{sch, synthetic_tensors};
       }
       );

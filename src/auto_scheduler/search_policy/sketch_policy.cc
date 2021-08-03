@@ -558,7 +558,7 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
 
     // <bojian/DietCode> Peel the first iteration out of the initialization
     is_sample_init_population_1st_iter = true;
-    enable_verbose_logging = true;
+    // enable_verbose_logging = true;
     {
       State tmp_s = sketches[(rand_gens[0])() % sketches.size()];
       bool valid = true;
@@ -574,7 +574,7 @@ Array<State> SketchPolicyNode::SampleInitPopulation(const Array<State>& sketches
       }
     }
     is_sample_init_population_1st_iter = false;
-    enable_verbose_logging = false;
+    // enable_verbose_logging = false;
 
     // Sample a batch of states randomly
     support::parallel_for(// 0 
