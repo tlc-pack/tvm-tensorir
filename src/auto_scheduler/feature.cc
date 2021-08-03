@@ -1868,11 +1868,11 @@ Array<NDArray> AdaptStatesToWorkloads(
   std::vector<float> occupancy_penalty(adapted_scores.size(), 1.f);
   std::vector<float> padding_penalty(adapted_scores.size(), 1.f);
 
-  enable_verbose_logging = true;
+  // enable_verbose_logging = true;
   AdaptStateToWorkload(task, states[0], task->shape_values[0], scores[0]->value,
                        &occupancy_penalty[0], &padding_penalty[0],
                        &adapted_scores[0]);
-  enable_verbose_logging = false;
+  // enable_verbose_logging = false;
 
   support::parallel_for(
       1, task->shape_values.size() * states.size(),
