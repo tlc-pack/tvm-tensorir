@@ -1247,10 +1247,14 @@ MutateInnermostTileSize::Apply(SketchPolicyNode* policy, State* state,
                     split_step->extent, new_split_factor,
                     split_step->inner_to_outer));
     }
+    State state_mutable_copy = GetRef<State>(pstate);
+
+    state_mutable_copy =
+        policy->search_task->compute_dag.InferBound(state_mutable_copy);
     // evaluate the adapted score
     float base_score = 1., occupancy_penalty, padding_penalty, adapted_score;
 
-    AdaptStateToWorkload(policy->search_task, GetRef<State>(pstate),
+    AdaptStateToWorkload(policy->search_task, state_mutable_copy,
                          selected_inst, base_score, &occupancy_penalty,
                          &padding_penalty, &adapted_score);
     if (adapted_score > max_adapted_score) {
