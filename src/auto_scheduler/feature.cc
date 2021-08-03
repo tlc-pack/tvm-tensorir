@@ -1362,6 +1362,8 @@ void GetPerStoreFeaturesWorkerFunc(const SearchTask& task, const State& state, i
   }
 }
 
+static bool log_warning_once = true;
+
 void GetPerStoreFeaturesFromStates(const Array<State>& states, const SearchTask& task,
                                    int skip_first_n_feature_extraction, int max_n_bufs,
                                    std::vector<std::vector<float>>* features) {
@@ -1370,7 +1372,10 @@ void GetPerStoreFeaturesFromStates(const Array<State>& states, const SearchTask&
 
   std::atomic<int> error_ct(0);
 
-  LOG(WARNING) << "Parallel feature extraction has been made sequential";
+  if (log_warning_once) {
+    LOG(WARNING) << "Parallel feature extraction has been made sequential";
+    log_warning_once = false;
+  }
 
   // enable_verbose_logging = true;
   GetPerStoreFeaturesWorkerFunc(task, states[skip_first_n_feature_extraction], max_n_bufs,
