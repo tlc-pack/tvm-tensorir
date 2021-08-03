@@ -1869,10 +1869,10 @@ TVM_REGISTER_GLOBAL("auto_scheduler.CherryPickWorkloadInstance")
         -> Array<ObjectRef> {
         te::Schedule sch;
         Array<te::Tensor> synthetic_tensors;
-        enable_verbose_logging = true;
+        // enable_verbose_logging = true;
         std::tie(sch, synthetic_tensors) =
             dag.CherryPickWorkloadInstanceAndApplySteps(state, task);
-        enable_verbose_logging = false;
+        // enable_verbose_logging = false;
         return Array<ObjectRef>{sch, synthetic_tensors};
       }
       );
