@@ -1334,7 +1334,7 @@ ComputeDAG::CherryPickWorkloadInstance(
   Array<IntImm> cherry_picked_shape_values;
   const float base_score = 1;
   float adapted_score, occupancy_penalty, padding_penalty,
-        max_adapted_score = -1;
+        max_adapted_score = 0.;
 
   for (const Array<IntImm>& shape_values : task->shape_values) {
     AdaptStateToWorkload(task, state_mutable_copy, shape_values, base_score,
