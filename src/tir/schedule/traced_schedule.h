@@ -70,6 +70,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
 
   LoopRV Fuse(const Array<LoopRV>& loop_rvs) final;
   Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factor_rvs) final;
+  void Normalize(const Array<LoopRV>& loop_rvs) final;
   void Reorder(const Array<LoopRV>& order) final;
 
   /******** Schedule: Manipulate ForKind ********/

@@ -106,6 +106,7 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   LoopRV Fuse(const Array<LoopRV>& loop_rvs) override;
   Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) override;
+  void Normalize(const Array<LoopRV>& loop_rvs) override;
   void Reorder(const Array<LoopRV>& order) override;
 
   /******** Schedule: Manipulate ForKind ********/

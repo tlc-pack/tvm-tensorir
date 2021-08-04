@@ -75,6 +75,7 @@ TVM_DLL Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
  * \return The sref to the fused loop
  */
 TVM_DLL StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs);
+TVM_DLL void Normalize(ScheduleState self, const Array<StmtSRef>& loop_srefs);
 TVM_DLL void Reorder(ScheduleState self, const Array<StmtSRef>& order);
 
 /******** Schedule: Manipulate ForKind ********/

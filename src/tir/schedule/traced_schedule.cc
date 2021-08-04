@@ -199,6 +199,16 @@ void TracedScheduleNode::Reorder(const Array<LoopRV>& order) {
                                /*outputs=*/{}));
 }
 
+void TracedScheduleNode::Reorder(const Array<LoopRV>& order) {
+  ConcreteScheduleNode::Reorder(order);
+
+  static const InstKind& kind = InstKind::Get("Reorder");
+  trace_->Append(/*inst=*/Inst(/*kind=*/kind,
+                               /*inputs=*/{order.begin(), order.end()},
+                               /*attrs=*/{},
+                               /*outputs=*/{}));
+}
+
 /******** Schedule: Manipulate ForKind ********/
 
 void TracedScheduleNode::Parallel(const LoopRV& loop_rv) {
