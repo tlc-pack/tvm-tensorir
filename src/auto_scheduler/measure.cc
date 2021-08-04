@@ -437,6 +437,11 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       selected_candidate_states.push_back(candidate_states[state_id]);
       selected_candidate_flops .push_back(candidate_flops [state_id]);
     }
+
+    // make a copy of the previous predicted FLOPS per instance
+    std::vector<float> prev_inst_flops =
+        std::move(best_inst_flops[task->workload_key]);
+
     best_states[task->workload_key] = std::move(selected_candidate_states);
     best_inst_disp_map[task->workload_key] = std::move(inst_disp_map);
     best_state_flops[task->workload_key] = std::move(selected_candidate_flops);
@@ -451,9 +456,22 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     }
     strout << "]";
     LOG(INFO) << "best_states=" << ArrayToString(best_states_str_repr);
+    LOG(INFO) << "best_inst_disp_map="
+              << MapToString(best_inst_disp_map[task->workload_key]);
     LOG(INFO) << "best_state_flops=" << ArrayToString(selected_candidate_flops);
     LOG(INFO) << "best_inst_flops="
               << ArrayToString(best_inst_flops[task->workload_key]);
+
+    // inspect the predicted FLOPS per instance, and make sure that performance
+    // degradation does not happen
+    for (size_t i = 0; i < task->shape_values.size(); ++i) {
+      if (prev_inst_flops[i] > best_inst_flops[task->workload_key][i]) {
+        LOG(FATAL) << "Predicted FLOPS on inst="
+                   << ArrayToString(task->shape_values[i]) << " dropped from "
+                   << prev_inst_flops[i] << "=>"
+                   << best_inst_flops[task->workload_key][i];
+      }
+    }
 
   }  // IsDynTask(task)
 
