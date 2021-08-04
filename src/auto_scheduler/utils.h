@@ -347,9 +347,9 @@ inline std::string ArrayToString(const Array<T>& Arr) {
 template<typename T>
 inline std::string MatrixToString(const Array<Array<T>>& Mat) {
   std::ostringstream strout;
-  strout << "[\n";
+  strout << "[" << std::endl;
   for (const Array<T>& Arr : Mat) {
-    strout << "  " << ArrayToString(Arr) << "\n";
+    strout << "  " << ArrayToString(Arr) << std::endl;
   }
   strout << "]";
   return strout.str();
@@ -359,9 +359,9 @@ inline std::string MatrixToString(const Array<Array<T>>& Mat) {
 template<typename T>
 inline std::string MatrixToString(const std::vector<std::vector<T>>& Mat) {
   std::ostringstream strout;
-  strout << "[\n";
+  strout << "[" << std::endl;
   for (const std::vector<T>& Arr : Mat) {
-    strout << "  " << ArrayToString(Arr) << "\n";
+    strout << "  " << ArrayToString(Arr) << std::endl;
   }
   strout << "]";
   return strout.str();
@@ -386,9 +386,9 @@ inline std::string OptionalArrayToString(const Array<Optional<T>>& Arr) {
 template<typename T>
 inline std::string OptionalMatrixToString(const Array<Array<Optional<T>>>& Mat) {
   std::ostringstream strout;
-  strout << "[\n";
+  strout << "[" << std::endl;
   for (const Array<Optional<T>>& Arr : Mat) {
-    strout << "  " << OptionalArrayToString(Arr) << "\n";
+    strout << "  " << OptionalArrayToString(Arr) << std::endl;
   }
   strout << "]";
   return strout.str();
@@ -397,9 +397,9 @@ inline std::string OptionalMatrixToString(const Array<Array<Optional<T>>>& Mat) 
 template<typename K, typename V>
 inline std::string MapToString(const Map<K, V>& Map) {
   std::ostringstream strout;
-  strout << "{\n";
+  strout << "{" << std::endl;
   for (const std::pair<K, V>& kv : Map) {
-    strout << "  " << kv.first << " : " << kv.second << "\n";
+    strout << "  " << kv.first << " : " << kv.second << std::endl;
   }
   strout << "}";
   return strout.str();
@@ -408,9 +408,9 @@ inline std::string MapToString(const Map<K, V>& Map) {
 template<typename K, typename V, typename H, typename E>
 inline std::string MapToString(const std::unordered_map<K, V, H, E>& Map) {
   std::ostringstream strout;
-  strout << "{\n";
+  strout << "{" << std::endl;
   for (const std::pair<K, V>& kv : Map) {
-    strout << "  " << kv.first << " : " << kv.second << "\n";
+    strout << "  " << kv.first << " : " << kv.second << std::endl;
   }
   strout << "}";
   return strout.str();

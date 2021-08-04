@@ -430,9 +430,6 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
             inst_state_pair.second]
           );
     }
-    LOG(INFO) << "inst_predicted_flops="
-              << ArrayToString(inst_predicted_flops);
-
     std::vector<State> selected_candidate_states;
     std::vector<float> selected_candidate_flops;
 
@@ -444,6 +441,20 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     best_inst_disp_map[task->workload_key] = std::move(inst_disp_map);
     best_state_flops[task->workload_key] = std::move(selected_candidate_flops);
     best_inst_flops[task->workload_key] = std::move(inst_predicted_flops);
+
+    std::vector<std::string> best_states_str_repr;
+    std::ostringstream strout;
+    strout << "[" << std::endl;
+    for (const State& state : best_states[task->workload_key]) {
+      strout << "  " << OptionalMatrixToString(state.GetSplitFactors())
+             << std::endl;
+    }
+    strout << "]";
+    LOG(INFO) << "best_states=" << ArrayToString(best_states_str_repr);
+    LOG(INFO) << "best_state_flops=" << ArrayToString(selected_candidate_flops);
+    LOG(INFO) << "best_inst_flops="
+              << ArrayToString(best_inst_flops[task->workload_key]);
+
   }  // IsDynTask(task)
 
   PrintTimeElapsed(t_begin, "measurement", verbose);
