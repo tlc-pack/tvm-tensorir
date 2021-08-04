@@ -21,7 +21,7 @@ from typing import List, Any
 import tvm.tir
 from ..target import codegen
 from .registry import register
-from .utils import get_param_list, tvm_span_from_synr
+from .utils import get_param_list, tvm_span_from_synr, asscalar
 
 
 class Intrin:
@@ -164,7 +164,7 @@ def min(a, b, span):  # pylint: disable=redefined-builtin
 
 def get_axis(begin, end, iter_type, span):
     ana = tvm.arith.Analyzer()
-    extent = ana.simplify(end - begin)
+    extent = ana.simplify(asscalar(end) - asscalar(begin))
     block_var_dom = tvm.ir.Range.from_min_extent(begin, extent)
 
     iter_type_dict = {"data_par": 0, "reduce": 2, "scan": 3, "opaque": 4}

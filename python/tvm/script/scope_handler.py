@@ -31,6 +31,7 @@ from .utils import (
     tvm_span_from_synr,
     buffer_slice_to_region,
     call_with_error_reporting,
+    asscalar,
 )
 from .registry import register
 from .node import BufferSlice
@@ -468,7 +469,7 @@ class ForScopeHandler(ScopeHandler):
             self.context.report_error(
                 f"Expected exactly one loop var, but got {self.loop_vars}", self.node.span
             )
-        extent = end if begin == 0 else self.context.analyzer.simplify(end - begin)
+        extent = end if begin == 0 else self.context.analyzer.simplify(asscalar(end) - asscalar(begin))
         annos: Mapping[str, Object] = {}
         if annotations is not None:
             annos = {

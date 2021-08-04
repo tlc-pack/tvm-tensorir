@@ -136,3 +136,15 @@ def call_with_error_reporting(
         # printing last non-empty row of error message.
         error_msg = list(filter(None, str(err).split("\n")))[-1]
         report_error(error_msg, node_span)
+
+
+def asscalar(x: Union[PrimExpr, int, BufferSlice]):
+    """Convert input to integer scalar."""
+    if isinstance(x, BufferSlice):
+        if len(x.slices) != 1 or x.slices[0].stop is not None or x.buffer.dtype != 'int32':
+            raise ValueError("cannot convert slice {} to integer scalar.".format(x))
+        return x.asobject()
+    elif isinstance(x, (PrimExpr, int)):
+        return x
+    else:
+        raise ValueError("cannot convert {} to integer scalar.".format(x)) 
