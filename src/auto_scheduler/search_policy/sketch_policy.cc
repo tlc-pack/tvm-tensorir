@@ -258,13 +258,14 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
       PrintTitle("Search", verbose);
       best_states = SearchOneRound(num_random * 3, &random_states);
 
-      if (IsDynTask(this->search_task)) {
+      if (IsDynTask(search_task)) {
         LOG(INFO) << "Number of states after pruning: best_states.size()="
                   << best_states.size() << ", random_states.size()="
                   << random_states.size();
       }
 
       // Infer bound. This is necessary for computing the correct ToStr() for redundancy check
+      // <bojian/DietCode>
       if (IsDynTask(search_task)) {
         best_states =
             // search_task->compute_dag.InferBoundOnSyntheticWorkload(
@@ -330,19 +331,27 @@ SketchPolicyNode::Search(int n_trials, int early_stopping, int num_measure_per_i
       // search rounds.
 
       // <bojian/DietCode>
-      // for (const auto& res : results) {
-      //   measured_states_throughputs_.push_back(1.0 / FloatArrayMean(res->costs));
-      // }
-      CHECK(inputs.size() == results.size());
-      for (size_t input_id = 0; input_id < inputs.size(); ++input_id) {
-        measured_states_throughputs_.push_back(
-            // GetSyntheticWorkloadFlopCtFromState(
-            //   search_task, inputs[input_id]->state)
-            GetCherryPickedWklInstNormalizedFlopCtFromState(search_task, inputs[input_id]->state)
-            / FloatArrayMean(results[input_id]->costs)
-            );
+      if (IsDynTask(search_task)) {
+        CHECK(inputs.size() == results.size());
+        double flop_ct, adaption_penalty;
+
+        for (size_t input_id = 0; input_id < inputs.size(); ++input_id) {
+          std::tie(flop_ct, adaption_penalty) =
+              GetCherryPickedWklInstFlopCtFromState(
+                search_task, inputs[input_id]->state);
+          measured_states_throughputs_.push_back(
+              // GetSyntheticWorkloadFlopCtFromState(
+              //   search_task, inputs[input_id]->state)
+              flop_ct / adaption_penalty
+              / FloatArrayMean(results[input_id]->costs)
+              );
       }  // for (input_id ∈ inputs.size())
 
+      } else {
+        for (const auto& res : results) {
+          measured_states_throughputs_.push_back(1.0 / FloatArrayMean(res->costs));
+        }
+      }
 
     }  // while (ct < n_trials)
     PrintTitle("Done", verbose);

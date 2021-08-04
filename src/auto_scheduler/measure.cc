@@ -282,7 +282,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
       // <bojian/DietCode>
       // double flops
-      double flop_ct, flops;
+      double flop_ct, adaption_penalty, flops;
       // Array<Array<PrimExpr>> factorization_scheme =
       //     input_batch[j]->state.GetFactorizationScheme();
       Array<Array<Optional<Integer>>> split_factors =
@@ -292,25 +292,30 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
         // <bojian/DietCode> Estimate the FLOPs for synthetic workloads.
         if (IsDynTask(task)) {
-          flop_ct =
-              // GetSyntheticWorkloadFlopCtFromState(task, input_batch[j]->state);
-              GetCherryPickedWklInstNormalizedFlopCtFromState(task, input_batch[j]->state);
+          std::tie(flop_ct, adaption_penalty) =
+              // GetSyntheticWorkloadFlopCtFromState(
+              //   task, input_batch[j]->state);
+              GetCherryPickedWklInstFlopCtFromState(
+                task, input_batch[j]->state);
         } else {
           flop_ct = task->compute_dag->flop_ct;
+          adaption_penalty = 1.;
         }
         // make sure that the value for FLOPS is well defined
         CHECK(flop_ct != -1);
 
         flops = // <bojian/DietCode>
                 // task->compute_dag->flop_ct
-                flop_ct
+                flop_ct / adaption_penalty
                 / FloatArrayMean(result_batch[j]->costs);
 
         LOG(INFO) << "Successfully completed the measurement on state w/ "
                      "split factors="
                   << OptionalMatrixToString(split_factors)
                   << ", avg_cost=" << FloatArrayMean(result_batch[j]->costs)
-                  << " flop_ct=" << flop_ct << " => flops=" << flops;
+                  << " flop_ct=" << flop_ct << " => flops="
+                  << flop_ct / FloatArrayMean(result_batch[j]->costs) << "->"
+                  << flops;
 
         error_ct = 0;
         has_valid.insert(workload_key);

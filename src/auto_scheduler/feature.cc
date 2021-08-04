@@ -1553,11 +1553,15 @@ void GetPerStoreFeaturesFromMeasurePairs(const Array<MeasureInput>& inputs,
 
   // <bojian/DietCode>
   CHECK(inputs.size() == normalized_throughputs->size());
+  double flop_ct, adaption_penalty;
   for (size_t i = 0; i < normalized_throughputs->size(); ++i) {
     if (IsDynTask(inputs[i]->task)) {
+      std::tie(flop_ct, adaption_penalty) =
+          GetCherryPickedWklInstFlopCtFromState(
+            inputs[i]->task, inputs[i]->state);
       (*normalized_throughputs)[i] =
           // GetSyntheticWorkloadFlopCtFromState(inputs[i]->task, inputs[i]->state)
-          GetCherryPickedWklInstNormalizedFlopCtFromState(inputs[i]->task, inputs[i]->state)
+          flop_ct / adaption_penalty
           / (*normalized_throughputs)[i] / 1e12;
     } else {
       (*normalized_throughputs)[i] =

@@ -686,8 +686,9 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
 
 // double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
 //                                            const State& state);
-double GetCherryPickedWklInstNormalizedFlopCtFromState(const SearchTask& task,
-                                                       const State& state);
+std::pair<double, double>
+GetCherryPickedWklInstFlopCtFromState(const SearchTask& task,
+                                      const State& state);
 
 double EstimateFlopForInst(const ComputeDAG& compute_dag,
                            // const Array<Step>& transform_steps,

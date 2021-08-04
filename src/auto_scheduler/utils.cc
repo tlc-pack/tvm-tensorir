@@ -185,8 +185,9 @@ double GetSyntheticWorkloadFlopCtFromState(const SearchTask& task,
 }
  */
 
-double GetCherryPickedWklInstNormalizedFlopCtFromState(const SearchTask& task,
-                                                       const State& state) {
+std::pair<double, double>
+GetCherryPickedWklInstFlopCtFromState(const SearchTask& task,
+                                      const State& state) {
   // te::Schedule synthetic_sch;
   // Array<te::Tensor> synthetic_tensors;
   Array<IntImm> cherry_picked_wkl_inst =
@@ -212,7 +213,7 @@ double GetCherryPickedWklInstNormalizedFlopCtFromState(const SearchTask& task,
 
   AdaptStateToWorkload(task, state, cherry_picked_wkl_inst, base_score,
                        &occupancy_penalty, &padding_penalty, &adapted_score);
-  return inst_flop / adapted_score;
+  return std::make_pair(inst_flop, adapted_score);
 }
 
 
