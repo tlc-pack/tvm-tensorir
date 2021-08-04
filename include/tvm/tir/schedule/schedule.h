@@ -273,6 +273,12 @@ class ScheduleNode : public runtime::Object {
    */
   virtual Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) = 0;
   /*!
+   * \brief Shift the iteration range of given loops to make them zero-based.
+   * \param loop_rvs The loop random variables to be normalized
+   * \return The normalized loops 
+   */
+  virtual void Normalize(const Array<LoopRV>& loop_rvs) = 0;
+  /*!
    * \brief Reorder a list of loops
    * \param order The order after reordering
    */
