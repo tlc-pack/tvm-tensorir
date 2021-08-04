@@ -24,8 +24,10 @@ namespace tvm {
 namespace meta_schedule {
 
 void TuneContextNode::Init(Optional<Integer> seed) {
-  if (seed.defined()) {
+  if (seed.defined() && seed.value() != -1) {
     Sampler(&this->rand_state).Seed(seed.value()->value);
+  } else {
+    Sampler(&this->rand_state).Seed(std::random_device()());
   }
   if (task.defined()) {
     task.value()->Init(this);

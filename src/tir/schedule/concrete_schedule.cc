@@ -28,6 +28,7 @@ Schedule Schedule::Concrete(IRModule mod, int64_t seed, int debug_mode,
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
   n->error_render_level_ = error_render_level;
+  if (seed == -1) seed = std::random_device()();
   Sampler(&n->rand_state_).Seed(seed);
   n->symbol_table_ = {};
   n->analyzer_ = std::make_unique<arith::Analyzer>();
@@ -185,6 +186,7 @@ Schedule ConcreteScheduleNode::Copy(int64_t new_seed) const {
   Copy(&n->state_, &n->symbol_table_);
   n->error_render_level_ = this->error_render_level_;
   n->analyzer_ = std::make_unique<arith::Analyzer>();
+  if (new_seed == -1) new_seed = std::random_device()();
   Sampler(&n->rand_state_).Seed(new_seed);
   return Schedule(std::move(n));
 }

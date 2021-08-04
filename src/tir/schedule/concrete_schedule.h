@@ -68,6 +68,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   Optional<Trace> trace() const override { return NullOpt; }
   Schedule Copy(Sampler::TRandomState new_seed = -1) const override;
   void Seed(Sampler::TRandomState new_seed = -1) final {
+    if (new_seed == -1) new_seed = std::random_device()();
     Sampler(&this->rand_state_).Seed(new_seed);
   }
   Sampler::TRandomState ForkSeed() final { return Sampler(&this->rand_state_).ForkSeed(); }

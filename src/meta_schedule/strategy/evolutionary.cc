@@ -783,7 +783,7 @@ struct Internal {
   static Array<Trace> SampleInitPopulation(Evolutionary self, Array<Schedule> support,
                                            SearchTask task, SearchSpace space,
                                            Optional<Integer> seed) {
-    Sampler::TRandomState rand_state;
+    Sampler::TRandomState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }
@@ -801,7 +801,7 @@ struct Internal {
    */
   static Array<Trace> EvolveWithCostModel(Evolutionary self, Array<Trace> inits, SearchTask task,
                                           SearchSpace space, Optional<Integer> seed) {
-    Sampler::TRandomState rand_state;
+    Sampler::TRandomState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }
@@ -819,7 +819,7 @@ struct Internal {
   static Array<Trace> PickWithEpsGreedy(Evolutionary self, Array<Trace> inits, Array<Trace> bests,
                                         SearchTask task, SearchSpace space,
                                         Optional<Integer> seed) {
-    Sampler::TRandomState rand_state;
+    Sampler::TRandomState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }

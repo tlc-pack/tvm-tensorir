@@ -76,7 +76,8 @@ class RandCostModel : public CostModel {
 
 struct Internal {
   static RandCostModel New(Optional<Integer> seed) {
-    return seed.defined() ? RandCostModel(seed.value()->value) : RandCostModel();
+    return seed.defined() ? RandCostModel(seed.value()->value)
+                          : RandCostModel(std::random_device()());
   }
 };
 

@@ -18,13 +18,12 @@
  */
 
 /*!
- * \file rng.h
- * \brief Random number generator, for Sampler and Sampling
- *  functions.
+ * \file random_engine.h
+ * \brief Random number generator, for Sampler and Sampling functions.
  */
 
-#ifndef TVM_SUPPORT_RNG_H_
-#define TVM_SUPPORT_RNG_H_
+#ifndef TVM_SUPPORT_RANDOM_ENGINE_H_
+#define TVM_SUPPORT_RANDOM_ENGINE_H_
 
 #include <tvm/runtime/logging.h>
 
@@ -37,10 +36,16 @@ namespace support {
  * \brief This linear congruential engine is a drop-in replacement for and stricly corresponds to
  * std::minstd_rand but designed to be serializable and strictly reproducible. Specifically
  * implemented for meta schedule but also reusable for other purposes.
+ * \note Part of std::linear_congruential_engine's member functions are not included, for full
+ * member functions of std::minstd_rand, please check out the following link:
+ * https://en.cppreference.com/w/cpp/numeric/random/linear_congruential_engine
  */
 class LinearCongruentialEngine {
  public:
-  /*! \brief The result type is defined as int64_t here for sampler usage. */
+  /*!
+   * \brief The result type is defined as int64_t here for meta_schedule sampler usage.
+   * \note The type name is not in Google style because it is used in STL's distribution inferface.
+   */
   using result_type = int64_t;
 
   /*! \brief The multiplier */
@@ -53,57 +58,51 @@ class LinearCongruentialEngine {
   static constexpr result_type modulus = 2147483647;
 
   /*!
-   * \brief Construct a random number generator with a random state pointer.
-   * \param random_state The random state pointer given in result_type*.
-   * \note The random state is not initialized here. You may need to call seed function.
+   * \brief The minimum possible value of random state here.
+   * \note The function name is uncapilized because it is used in STL's distribution inferface.
    */
-  explicit LinearCongruentialEngine(result_type* random_state) {
-    ICHECK(random_state != nullptr);  // Make sure the pointer is not null.
-    rand_state_ptr_ = random_state;
-    seed(*random_state);
+  result_type min() { return 0; }
+
+  /*!
+   * \brief The maximum possible value of random state here.
+   * \note The function name is uncapilized because it is used in STL's distribution inferface.
+   */
+  result_type max() { return modulus - 1; }
+
+  /*!
+   * \brief Operator to move the random state to the next and return the new random state. According
+   * to definition of linear congruential engine, the new random state value is computed as
+   *  new_random_state = (current_random_state * multiplier + increment) % modulus.
+   * \return The next current random state value in the type of result_type.
+   * \note In case of potential overflow, please use Schrage multiplication algorithm to implement.
+   * We also assume the given rand state is not nullptr here.
+   */
+  result_type operator()() {
+    // Avoid getting all 0 given the current parameter set.
+    if (increment == 0 && *rand_state_ptr_ == 0) *rand_state_ptr_ = 1;
+    (*rand_state_ptr_) = ((*rand_state_ptr_) * multiplier + increment) % modulus;
+    return *rand_state_ptr_;
   }
 
   /*!
    * \brief Change the start random state of RNG with the seed of a new random state value.
-   * \param random_state The random state given in result_type.
-   * \note The seed is used to initialize the random number generator and the random state would be
-   * changed to next random state by calling the next_state() function.
+   * \param rand_state The random state given in result_type.
    */
-  void seed(result_type state = 1) {
-    state %= modulus;                    // Make sure the seed is within the range of the modulus.
-    if (state < 0) state += modulus;     // The congruential engine is always non-negative.
-    ICHECK(rand_state_ptr_ != nullptr);  // Make sure the pointer is not null.
-    *rand_state_ptr_ = state;            // Change pointed random state to given random state value.
+  void Seed(result_type rand_state = 1) {
+    rand_state %= modulus;  // Make sure the seed is within the range of modulus.
+    if (rand_state < 0) rand_state += modulus;  // The congruential engine is always non-negative.
+    ICHECK(rand_state_ptr_ != nullptr);         // Make sure the pointer is not null.
+    *rand_state_ptr_ = rand_state;  // Change pointed random state to given random state value.
   };
 
-  /*! \brief The minimum possible value of random state here. */
-  result_type min() { return 0; }
-
-  /*! \brief The maximum possible value of random state here. */
-  result_type max() { return modulus - 1; }
-
   /*!
-   * \brief Fetch the current random state.
-   * \return The current random state value in the type of result_type.
+   * \brief Construct a random number generator with a random state pointer.
+   * \param rand_state_ptr The random state pointer given in result_type*.
+   * \note The random state is not checked for whether it's nullptr and whether it's in the range of
+   * [0, modulus-1]. We assume the given random state is valid or the Seed function would be called.
    */
-  result_type random_state() { return *rand_state_ptr_; }
-
-  /*!
-   * \brief Operator to fetch the current random state.
-   * \return The current random state value in the type of result_type.
-   */
-  result_type operator()() { return next_state(); }
-
-  /*!
-   * \brief Move the random state to the next and return the new random state. According to
-   *  definition of linear congruential engine, the new random state value is computed as
-   *  new_random_state = (current_random_state * multiplier + increment) % modulus.
-   * \return The next current random state value in the type of result_type.
-   */
-  result_type next_state() {
-    if (increment == 0 && *rand_state_ptr_ == 0) *rand_state_ptr_ = 1;
-    (*rand_state_ptr_) = ((*rand_state_ptr_) * multiplier + increment) % modulus;
-    return *rand_state_ptr_;
+  explicit LinearCongruentialEngine(result_type* rand_state_ptr) {
+    rand_state_ptr_ = rand_state_ptr;
   }
 
  private:
@@ -113,4 +112,4 @@ class LinearCongruentialEngine {
 }  // namespace support
 }  // namespace tvm
 
-#endif  // TVM_SUPPORT_RNG_H_
+#endif  // TVM_SUPPORT_RANDOM_ENGINE_H_

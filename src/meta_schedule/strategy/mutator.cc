@@ -485,7 +485,7 @@ struct Internal {
    */
   static Optional<Trace> Apply(Mutator mutator, SearchTask task, Trace trace,
                                Optional<Integer> seed) {
-    Sampler::TRandomState rand_state;
+    Sampler::TRandomState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }

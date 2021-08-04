@@ -26,6 +26,7 @@ Schedule Schedule::Traced(IRModule mod, Sampler::TRandomState seed, int debug_mo
   ObjectPtr<TracedScheduleNode> n = make_object<TracedScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
   n->error_render_level_ = error_render_level;
+  if (seed == -1) seed = std::random_device()();
   Sampler(&n->rand_state_).Seed(seed);
   n->symbol_table_ = {};
   n->analyzer_ = std::make_unique<arith::Analyzer>();
@@ -38,6 +39,7 @@ Schedule TracedScheduleNode::Copy(Sampler::TRandomState new_seed) const {
   ConcreteScheduleNode::Copy(&n->state_, &n->symbol_table_);
   n->error_render_level_ = this->error_render_level_;
   n->analyzer_ = std::make_unique<arith::Analyzer>();
+  if (new_seed == -1) new_seed = std::random_device()();
   Sampler(&n->rand_state_).Seed(new_seed);
   n->trace_ = Trace(this->trace_->insts, this->trace_->decisions);
   return Schedule(std::move(n));
