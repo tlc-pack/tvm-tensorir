@@ -345,30 +345,6 @@ inline std::string ArrayToString(const Array<T>& Arr) {
 }
 
 template<typename T>
-inline std::string MatrixToString(const Array<Array<T>>& Mat) {
-  std::ostringstream strout;
-  strout << "[" << std::endl;
-  for (const Array<T>& Arr : Mat) {
-    strout << "  " << ArrayToString(Arr) << std::endl;
-  }
-  strout << "]";
-  return strout.str();
-}
-
-
-template<typename T>
-inline std::string MatrixToString(const std::vector<std::vector<T>>& Mat) {
-  std::ostringstream strout;
-  strout << "[" << std::endl;
-  for (const std::vector<T>& Arr : Mat) {
-    strout << "  " << ArrayToString(Arr) << std::endl;
-  }
-  strout << "]";
-  return strout.str();
-}
-
-
-template<typename T>
 inline std::string OptionalArrayToString(const Array<Optional<T>>& Arr) {
   std::ostringstream strout;
   strout << "[";
@@ -384,33 +360,118 @@ inline std::string OptionalArrayToString(const Array<Optional<T>>& Arr) {
 }
 
 template<typename T>
-inline std::string OptionalMatrixToString(const Array<Array<Optional<T>>>& Mat) {
+inline std::string MatrixToString(const Array<Array<T>>& Mat,
+                                  const bool flatten = false) {
   std::ostringstream strout;
-  strout << "[" << std::endl;
+  strout << "[";
+  if (!flatten) {
+    strout << std::endl;
+  }
+  for (const Array<T>& Arr : Mat) {
+    if (!flatten) {
+      strout << "  ";
+    }
+    strout << ArrayToString(Arr);
+    if (flatten) {
+      strout << ", ";
+    } else {
+      strout << std::endl;
+    }
+  }
+  strout << "]";
+  return strout.str();
+}
+
+
+template<typename T>
+inline std::string MatrixToString(const std::vector<std::vector<T>>& Mat,
+                                  const bool flatten = false) {
+  std::ostringstream strout;
+  strout << "[";
+  if (!flatten) {
+    strout << std::endl;
+  }
+  for (const std::vector<T>& Arr : Mat) {
+    if (!flatten) {
+      strout << "  ";
+    }
+    strout << ArrayToString(Arr);
+    if (flatten) {
+      strout << ", ";
+    } else {
+      strout << std::endl;
+    }
+  }
+  strout << "]";
+  return strout.str();
+}
+
+
+
+template<typename T>
+inline std::string OptionalMatrixToString(const Array<Array<Optional<T>>>& Mat,
+                                          const bool flatten = false) {
+  std::ostringstream strout;
+  strout << "[";
+  if (!flatten) {
+    strout << std::endl;
+  }
   for (const Array<Optional<T>>& Arr : Mat) {
-    strout << "  " << OptionalArrayToString(Arr) << std::endl;
+    if (!flatten) {
+      strout << "  ";
+    }
+    strout << OptionalArrayToString(Arr);
+    if (flatten) {
+      strout << ", ";
+    } else {
+      strout << std::endl;
+    }
   }
   strout << "]";
   return strout.str();
 }
 
 template<typename K, typename V>
-inline std::string MapToString(const Map<K, V>& Map) {
+inline std::string MapToString(const Map<K, V>& Map,
+                               const bool flatten = false) {
   std::ostringstream strout;
-  strout << "{" << std::endl;
+  strout << "{";
+  if (!flatten) {
+    strout << std::endl;
+  }
   for (const std::pair<K, V>& kv : Map) {
-    strout << "  " << kv.first << " : " << kv.second << std::endl;
+    if (!flatten) {
+      strout << "  ";
+    }
+    strout << kv.first << " : " << kv.second;
+    if (flatten) {
+      strout << ", ";
+    } else {
+      strout << std::endl;
+    }
   }
   strout << "}";
   return strout.str();
 }
 
 template<typename K, typename V, typename H, typename E>
-inline std::string MapToString(const std::unordered_map<K, V, H, E>& Map) {
+inline std::string MapToString(const std::unordered_map<K, V, H, E>& Map,
+                               const bool flatten = false) {
   std::ostringstream strout;
-  strout << "{" << std::endl;
+  strout << "{";
+  if (!flatten) {
+    strout << std::endl;
+  }
   for (const std::pair<K, V>& kv : Map) {
-    strout << "  " << kv.first << " : " << kv.second << std::endl;
+    if (!flatten) {
+      strout << "  ";
+    }
+    strout << kv.first << " : " << kv.second;
+    if (flatten) {
+      strout << ", ";
+    } else {
+      strout << std::endl;
+    }
   }
   strout << "}";
   return strout.str();

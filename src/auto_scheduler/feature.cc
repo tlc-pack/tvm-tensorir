@@ -1742,7 +1742,7 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
   }
 
   if (enable_verbose_logging) {
-    LOG(INFO) << MapToString(shape_var_value_map);
+    LOG(INFO) << MapToString(shape_var_value_map, true);
   }
 
   DynamicAxisReplacer replacer(
