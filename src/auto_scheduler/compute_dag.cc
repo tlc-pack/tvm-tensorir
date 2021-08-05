@@ -1346,6 +1346,26 @@ ComputeDAG::CherryPickWorkloadInstance(
       //   LOG(INFO) << "max_adapted_score => " << max_adapted_score;
       // }
     }
+    // In the case when two workloads share the same adaption penalty, pick the
+    // larger one.
+    if (adapted_score == max_adapted_score) {
+      CHECK(shape_values.size() == cherry_picked_shape_values.size());
+      if (enable_verbose_logging) {
+        LOG(WARNING) << ArrayToString(cherry_picked_shape_values) << " and "
+                     << ArrayToString(shape_values)
+                     << "share the same adaption penalty";
+      }
+      for (size_t i = 0; i < shape_values.size(); ++i) {
+        if (shape_values[i]->value > cherry_picked_shape_values[i]->value) {
+          if (enable_verbose_logging) {
+            LOG(WARNING) << ArrayToString(cherry_picked_shape_values)
+                         << " <= " << ArrayToString(shape_values);
+          }
+          cherry_picked_shape_values = shape_values;
+          break;
+        }
+      }
+    }
   }
   return cherry_picked_shape_values;
 }
