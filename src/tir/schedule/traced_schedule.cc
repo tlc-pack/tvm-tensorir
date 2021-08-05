@@ -453,7 +453,7 @@ void TracedScheduleNode::InlineArgument(int i, const String& func_name) {
 
 TVM_REGISTER_NODE_TYPE(TracedScheduleNode);
 TVM_REGISTER_GLOBAL("tir.schedule.TracedSchedule")
-    .set_body_typed([](IRModule mod, int64_t seed, int debug_mode,
+    .set_body_typed([](IRModule mod, Sampler::TRandState seed, int debug_mode,
                        int error_render_level) -> Schedule {
       return Schedule::Traced(mod, seed, debug_mode,
                               static_cast<ScheduleErrorRenderLevel>(error_render_level));

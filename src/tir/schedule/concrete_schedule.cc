@@ -23,7 +23,7 @@
 namespace tvm {
 namespace tir {
 
-Schedule Schedule::Concrete(IRModule mod, int64_t seed, int debug_mode,
+Schedule Schedule::Concrete(IRModule mod, Sampler::TRandState seed, int debug_mode,
                             ScheduleErrorRenderLevel error_render_level) {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
@@ -181,7 +181,7 @@ void ConcreteScheduleNode::Copy(ScheduleState* new_state, TSymbolTable* new_symb
   ScheduleCopier::Copy(this, new_state, new_symbol_table);
 }
 
-Schedule ConcreteScheduleNode::Copy(int64_t new_seed) const {
+Schedule ConcreteScheduleNode::Copy(Sampler::TRandState new_seed) const {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   Copy(&n->state_, &n->symbol_table_);
   n->error_render_level_ = this->error_render_level_;
@@ -668,7 +668,7 @@ void ConcreteScheduleNode::SoftwarePipeline(const LoopRV& loop_rv, int num_stage
 
 TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);
 TVM_REGISTER_GLOBAL("tir.schedule.ConcreteSchedule")
-    .set_body_typed([](IRModule mod, int64_t seed, int debug_mode,
+    .set_body_typed([](IRModule mod, Sampler::TRandState seed, int debug_mode,
                        int error_render_level) -> Schedule {
       return Schedule::Concrete(mod, seed, debug_mode,
                                 static_cast<ScheduleErrorRenderLevel>(error_render_level));

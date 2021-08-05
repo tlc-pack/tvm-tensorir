@@ -61,10 +61,9 @@ class RandCostModelNode : public CostModelNode {
  */
 class RandCostModel : public CostModel {
  public:
-  RandCostModel() { data_ = make_object<RandCostModelNode>(); }
-
-  explicit RandCostModel(int seed) {
+  explicit RandCostModel(int seed = -1) {
     ObjectPtr<RandCostModelNode> n = make_object<RandCostModelNode>();
+    if (seed == -1) seed = std::random_device()();
     Sampler(&n->rand_state).Seed(seed);
     data_ = std::move(n);
   }
@@ -76,8 +75,7 @@ class RandCostModel : public CostModel {
 
 struct Internal {
   static RandCostModel New(Optional<Integer> seed) {
-    return seed.defined() ? RandCostModel(seed.value()->value)
-                          : RandCostModel(std::random_device()());
+    return seed.defined() ? RandCostModel(seed.value()->value) : RandCostModel();
   }
 };
 
