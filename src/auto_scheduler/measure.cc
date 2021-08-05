@@ -239,6 +239,9 @@ void ProgramMeasurerNode::Reset() {
   has_valid.clear();
 }
 
+// <bojian/DietCode>
+extern bool enable_verbose_logging;
+
 Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
                                                   const SearchPolicy& policy,
                                                   const Array<MeasureInput>& inputs,
@@ -292,11 +295,13 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
         // <bojian/DietCode> Estimate the FLOPs for synthetic workloads.
         if (IsDynTask(task)) {
+          enable_verbose_logging = true;
           std::tie(flop_ct, adaption_penalty) =
               // GetSyntheticWorkloadFlopCtFromState(
               //   task, input_batch[j]->state);
               GetCherryPickedWklInstFlopCtFromState(
                 task, input_batch[j]->state);
+          enable_verbose_logging = false;
         } else {
           flop_ct = task->compute_dag->flop_ct;
           adaption_penalty = 1.;

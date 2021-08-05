@@ -1327,10 +1327,10 @@ ComputeDAG::CherryPickWorkloadInstance(
   State state_mutable_copy = state;
 
   state_mutable_copy = InferBound(state_mutable_copy);
-  if (enable_verbose_logging) {
-    LOG(INFO) << "split_steps="
-              << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
-  }
+  // if (enable_verbose_logging) {
+  //   LOG(INFO) << "split_steps="
+  //             << OptionalMatrixToString(state_mutable_copy.GetSplitFactors());
+  // }
   Array<IntImm> cherry_picked_shape_values;
   const float base_score = 1;
   float adapted_score, occupancy_penalty, padding_penalty,
@@ -1342,9 +1342,9 @@ ComputeDAG::CherryPickWorkloadInstance(
     if (adapted_score > max_adapted_score) {
       max_adapted_score = adapted_score;
       cherry_picked_shape_values = shape_values;
-      if (enable_verbose_logging) {
-        LOG(INFO) << "max_adapted_score => " << max_adapted_score;
-      }
+      // if (enable_verbose_logging) {
+      //   LOG(INFO) << "max_adapted_score => " << max_adapted_score;
+      // }
     }
   }
   return cherry_picked_shape_values;
@@ -1857,16 +1857,25 @@ TVM_REGISTER_GLOBAL("auto_scheduler.ComputeDAG")
 
 
 // <bojian/DietCode>
+TVM_REGISTER_GLOBAL("auto_scheduler.PrintStateSplitFactors")
+    .set_body_typed(
+      [](const ComputeDAG& dag, const State& state) -> void {
+        State state_copy = dag.InferBound(state);
+        LOG(INFO) << MatrixToString(state_copy.GetSplitFactors());
+      }
+      );
+
+
 TVM_REGISTER_GLOBAL("auto_scheduler.CherryPickWorkloadInstance")
     .set_body_typed(
       [](const ComputeDAG& dag, const State& state, const SearchTask& task)
         -> Array<ObjectRef> {
         te::Schedule synthetic_sch;
         Array<te::Tensor> synthetic_tensors;
-        // enable_verbose_logging = true;
+        enable_verbose_logging = true;
         std::tie(synthetic_sch, synthetic_tensors) =
             dag.CherryPickWorkloadInstanceAndApplySteps(state, task);
-        // enable_verbose_logging = false;
+        enable_verbose_logging = false;
         return Array<ObjectRef>{synthetic_sch, synthetic_tensors};
       }
       );

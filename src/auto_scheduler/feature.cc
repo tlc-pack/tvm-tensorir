@@ -1808,28 +1808,28 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
                 GetIntImm(
                   analyzer.Simplify(replacer(init_iter->range->extent))
                 );
-            if (enable_verbose_logging) {
-              LOG(INFO) << "init_iter_extent=" << init_iter_extent;
-            }
+            // if (enable_verbose_logging) {
+            //   LOG(INFO) << "init_iter_extent=" << init_iter_extent;
+            // }
 
             // 2. Compute the padding ratio and accumulate in the padding penalty.
             float padding_ratio =
                 init_iter_extent * 1.
                 / floor_by(init_iter_extent, split_length);
             *padding_penalty *= padding_ratio;
-            if (enable_verbose_logging) {
-              LOG(INFO) << "padding_penalty *= " << padding_ratio
-                        << " -> " << *padding_penalty;
-            }
+            // if (enable_verbose_logging) {
+            //   LOG(INFO) << "padding_penalty *= " << padding_ratio
+            //             << " -> " << *padding_penalty;
+            // }
 
             // 3. Compute the grid dimension.
             size_t extent_ratio =
                 floor_by(init_iter_extent, split_length) / split_length;
             CHECK(extent_ratio >= 1);
             grid_size *= extent_ratio;
-            if (enable_verbose_logging) {
-              LOG(INFO) << "grid_size *= " << extent_ratio << " -> " << grid_size;
-            }
+            // if (enable_verbose_logging) {
+            //   LOG(INFO) << "grid_size *= " << extent_ratio << " -> " << grid_size;
+            // }
           }  // if (iter->iter_kind == IteratorKind::kSpatial)
         }    // if (StrEndsWith(iter->name, ".0"))
       }      // for (iter ∈ stage-iters)
@@ -1837,10 +1837,10 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
   }          // for (stage ∈ state->stages)
 
   if (task->target->tag == "nvidia/nvidia-t4") {
-    if (enable_verbose_logging) {
-      LOG(INFO) << "Target detected as Tesla T4 GPU";
-      LOG(INFO) << "grid_size=" << grid_size;
-    }
+    // if (enable_verbose_logging) {
+    //   LOG(INFO) << "Target detected as Tesla T4 GPU";
+    //   LOG(INFO) << "grid_size=" << grid_size;
+    // }
     float coeff =
         grid_size < static_cast<size_t>(task->hardware_params->num_cores) ?
         1.433 : 2.14;
@@ -1849,9 +1849,9 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
         / ((coeff - 1) * grid_size +
            floor_by(grid_size, task->hardware_params->num_cores)
            );
-    if (enable_verbose_logging) {
-      LOG(INFO) << "occupancy_penalty=" << *occupancy_penalty;
-    }
+    // if (enable_verbose_logging) {
+    //   LOG(INFO) << "occupancy_penalty=" << *occupancy_penalty;
+    // }
   } else {
     if (enable_verbose_logging) {
       LOG(WARNING) << "Target " << task->target->tag << " has not yet been "
