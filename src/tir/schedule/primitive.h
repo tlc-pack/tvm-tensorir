@@ -104,7 +104,7 @@ TVM_DLL void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref
  * \return The sref of the rfactor block
  */
 TVM_DLL StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis);
-/******** Schedule: Block annotations ********/
+/******** Schedule: Block annotation ********/
 /*!
  * \brief Set alignment requirement for specific dimension such that
  *        stride[axis] == k * factor + offset for some k

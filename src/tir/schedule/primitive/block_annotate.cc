@@ -21,21 +21,6 @@
 namespace tvm {
 namespace tir {
 
-/*!
- * \brief Create a new block with the given annotation added
- * \param block The block with original annotation
- * \param attr_key The annotation key to be added
- * \param attr_value The annotation value to be added
- * \return A new block with the given annotation as its last annotation
- */
-Block WithAnnotation(const BlockNode* block, const String& attr_key, const ObjectRef& attr_value) {
-  Map<String, ObjectRef> annotations = block->annotations;
-  annotations.Set(attr_key, attr_value);
-  ObjectPtr<BlockNode> new_block = make_object<BlockNode>(*block);
-  new_block->annotations = std::move(annotations);
-  return Block(new_block);
-}
-
 class StorageAlignAxisOutOfRangeError : public ScheduleError {
  public:
   explicit StorageAlignAxisOutOfRangeError(IRModule mod, Buffer buffer, int axis)
@@ -76,43 +61,6 @@ class StorageAlignAxisOutOfRangeError : public ScheduleError {
   IRModule mod_;
   Buffer buffer_;
   int axis_;
-};
-
-class WriteBufferIndexOutOfRangeError : public ScheduleError {
- public:
-  explicit WriteBufferIndexOutOfRangeError(IRModule mod, Block block, int buffer_index)
-      : mod_(std::move(mod)), block_(std::move(block)), buffer_index_(buffer_index) {}
-
-  String FastErrorString() const final {
-    return "ScheduleError: The input `buffer_index` is out of range. It is required to be in range "
-           "[0, num_write_regions) where `num_write_regions` is the number of buffer regions "
-           "written by the block.";
-  }
-
-  String DetailRenderTemplate() const final {
-    std::ostringstream os;
-    size_t num_writes = block_->writes.size();
-    os << "The block {0} has " << num_writes
-       << " write regions, so `buffer_index` is required to be in [0, "
-       << num_writes << "). However, the input `buffer_index` is " << buffer_index_
-       << ", which is out of the expected range";
-    return os.str();
-  }
-
-  static Buffer CheckAndGetBuffer(const IRModule& mod, const Block& block, int buffer_index) {
-    if (buffer_index < 0 || buffer_index > block->writes.size()) {
-      throw WriteBufferIndexOutOfRangeError(mod, block, buffer_index);
-    }
-    return block->writes[buffer_index]->buffer;
-  }
-
-  IRModule mod() const final { return mod_; }
-  Array<ObjectRef> LocationsOfInterest() const final { return {mod_}; }
-
- private:
-  IRModule mod_;
-  Block block_;
-  int buffer_index_;
 };
 
 /*!
@@ -189,7 +137,7 @@ class NonAllocatedBufferError : public ScheduleError {
 
 class StorageAlignInvalidFactorError : public ScheduleError {
  public:
-  explicit StorageAlignInvalidFactorError(const IRModule& mod, int factor)
+  explicit StorageAlignInvalidFactorError(IRModule mod, int factor)
       : mod_(std::move(mod)), factor_(factor) {}
 
   String FastErrorString() const final {
@@ -219,29 +167,86 @@ class StorageAlignInvalidFactorError : public ScheduleError {
   int factor_;
 };
 
+class StorageAlignInvalidAnnotationError : public ScheduleError {
+ public:
+  explicit StorageAlignInvalidAnnotationError(IRModule mod, Block block)
+      : mod_(std::move(mod)), block_(std::move(block)) {}
+
+  String FastErrorString() const final {
+    return "ScheduleError: The block annotation for storage align is expected to be an array of "
+           "3-integer-tuples (axis, factor, offset).";
+  }
+
+  String DetailRenderTemplate() const final {
+    std::ostringstream os;
+    os << "The block annotation for storage align is expected to be an array of 3-integer-tuples "
+          "(axis, factor, offset). However, the block annotation with key "
+       << attr::buffer_dim_align << " of the block {0} is "
+       << block_->annotations.at(attr::buffer_dim_align) << ", which is unexpected.";
+    return os.str();
+  }
+
+  static Array<Array<Array<Integer>>> CheckAndGetAnnotation(const IRModule& mod,
+          const Block& block) {
+    // Get existing annotation value.
+    auto it = block->annotations.find(attr::buffer_dim_align);
+    if (it != block->annotations.end()) {
+      if (!IsValidAnnotatoin(block, (*it).second)) {
+        throw StorageAlignInvalidAnnotationError(mod, block);
+      }
+      return Downcast<Array<Array<Array<Integer>>>>((*it).second);
+    }
+
+    // Create new annotation value
+    Array<Array<Array<Integer>>> storage_align_annotation;
+    storage_align_annotation.resize(block->writes.size());
+    return storage_align_annotation;
+  }
+
+  Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
+  IRModule mod() const final { return mod_; }
+
+ private:
+  static bool IsValidAnnotatoin(const Block& block, const ObjectRef& anno_value) {
+    if (!anno_value->IsInstance<ArrayNode>()) {
+      return false;
+    }
+    const auto& buffer_annotations = Downcast<Array<ObjectRef>>(anno_value);
+    if (buffer_annotations.size() != block->writes.size()) {
+      return false;
+    }
+    for (const ObjectRef buffer_annotation: buffer_annotations) {
+      if (!buffer_annotation->IsInstance<ArrayNode>()) {
+        return false;
+      }
+      const auto& dim_annotations = Downcast<Array<ObjectRef>>(buffer_annotation);
+      // Check if the annotations are consist of 3-tuples.
+      if (dim_annotations.size() != 3) {
+        return false;
+      }
+      for (const ObjectRef& dim_anno_element : dim_annotations) {
+        if (!dim_anno_element->IsInstance<IntImmNode>()) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  IRModule mod_;
+  Block block_;
+};
+
 void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_index, int axis,
                   int factor, int offset) {
   const BlockNode* block_ptr = TVM_SREF_TO_BLOCK(block_ptr, block_sref);
-  Buffer buffer = WriteBufferIndexOutOfRangeError::CheckAndGetBuffer(
-      self->mod, GetRef<Block>(block_ptr), buffer_index);
+  Buffer buffer = GetNthWriteBuffer(self, GetRef<Block>(block_ptr), buffer_index);
   StorageAlignInvalidFactorError::Check(self->mod, factor);
   axis = StorageAlignAxisOutOfRangeError::CheckAndUpdate(self->mod, buffer, axis);
   NonAllocatedBufferError::CheckBufferAllocated(self->mod, block_sref, buffer);
 
   // Step 1: Get existing or create new annotation value.
-  auto it = block_ptr->annotations.find(attr::buffer_dim_align);
-
-  // Use an array to store the storage alignement information for each output tensor.
-  // For each output tensor, we use an array of tuples (axis, factor, offset) to specify storage
-  // alignment for each dimension.
-  Array<Array<Array<Integer>>> storage_align_annotation;
-
-  if (it != block_ptr->annotations.end()) {
-    storage_align_annotation = Downcast<Array<Array<Array<Integer>>>>((*it).second);
-    ICHECK(storage_align_annotation.size() == block_ptr->writes.size());
-  } else {
-    storage_align_annotation.resize(block_ptr->writes.size());
-  }
+  auto storage_align_annotation = StorageAlignInvalidAnnotationError::CheckAndGetAnnotation(self->mod, GetRef<Block>(block_ptr));
 
   // Step 2: Update the annotation value
   Array<Array<Integer>> buffer_storage_align = storage_align_annotation[buffer_index];

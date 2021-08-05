@@ -76,6 +76,33 @@ def element_wise_storage_align(a: ty.handle, c: ty.handle) -> None:
                     C[vi_1, vj_1] = (B[vi_1, vj_1] + tir.float32(1))
 
 
+@tvm.script.tir
+def element_wise_invalid_annotation(a: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root"):
+        tir.reads([])
+        tir.writes([])
+        B = tir.alloc_buffer([128, 128], elem_offset=0, align=128, offset_factor=1)
+        for i0 in tir.serial(0, 128):
+            for ax1 in tir.serial(0, 128):
+                with tir.block([128, 128], "B") as [vi, vj]:
+                    tir.block_attr({"buffer_dim_align": [0]})
+                    tir.bind(vi, i0)
+                    tir.bind(vj, ax1)
+                    tir.reads([A[vi, vj]])
+                    tir.writes([B[vi, vj]])
+                    B[vi, vj] = (A[vi, vj]*tir.float32(2))
+            for i1 in tir.serial(0, 128):
+                with tir.block([128, 128], "C") as [vi_1, vj_1]:
+                    tir.bind(vi_1, i0)
+                    tir.bind(vj_1, i1)
+                    tir.reads([B[vi_1, vj_1]])
+                    tir.writes([C[vi_1, vj_1]])
+                    C[vi_1, vj_1] = (B[vi_1, vj_1] + tir.float32(1))
+
+
 def test_storage_align():
     func = element_wise
     s = tir.Schedule(func, debug_mode=True)
@@ -133,6 +160,14 @@ def test_storage_align_invalid_axis():
       s.storage_align(B, 0, axis=2, factor=128, offset=127)
 
 
+def test_storage_align_invalid_annotation():
+    func = element_wise_invalid_annotation
+    s = tir.Schedule(func, debug_mode=True)
+    B = s.get_block("B")
+    with pytest.raises(tir.ScheduleError):
+      s.storage_align(B, 0, axis=2, factor=128, offset=127)
+
+
 if __name__ == "__main__":
     test_storage_align()
     test_storage_align_update()
@@ -141,3 +176,4 @@ if __name__ == "__main__":
     test_storage_align_invalid_buffer()
     test_storage_align_invalid_buffer_index()
     test_storage_align_invalid_axis()
+    test_storage_align_invalid_annotation()

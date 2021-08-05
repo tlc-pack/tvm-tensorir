@@ -264,7 +264,7 @@ class ScheduleNode : public runtime::Object {
    * \return The rfactor block
    */
   virtual BlockRV RFactor(const LoopRV& loop_rv, int factor_axis) = 0;
-  /******** Schedule: Block annotations ********/
+  /******** Schedule: Block annotation ********/
   /*!
    * \brief Set alignment requirement for specific dimension such that
    *        stride[axis] == k * factor + offset for some k.

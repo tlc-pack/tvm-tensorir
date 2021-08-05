@@ -710,7 +710,7 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleRFactor(self, loop, factor_axis)  # type: ignore # pylint: disable=no-member
 
-    ######## Schedule: Block annotatoins ########
+    ######## Schedule: Block annotatoin ########
 
     def storage_align(self, block: BlockRV, buffer_index: int, axis: int, factor: int,
                       offset: int) -> None:
