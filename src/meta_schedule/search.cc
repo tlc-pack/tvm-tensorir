@@ -58,7 +58,7 @@ SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, 
  */
 TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
                                     ProgramMeasurer measurer, Optional<Integer> seed, int verbose) {
-  Sampler::TRandomState rand_state = std::random_device()();
+  Sampler::TRandState rand_state = std::random_device()();
   if (seed.defined()) {
     Sampler(&rand_state).Seed(seed.value());
   }
@@ -108,7 +108,7 @@ struct Internal {
    */
   static bool SearchSpacePostprocess(SearchSpace space, SearchTask task, Schedule sch,
                                      Optional<Integer> seed) {
-    Sampler::TRandomState rand_state = std::random_device()();
+    Sampler::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }
@@ -123,7 +123,7 @@ struct Internal {
    */
   static Schedule SearchSpaceSampleSchedule(SearchSpace space, SearchTask task,
                                             Optional<Integer> seed) {
-    Sampler::TRandomState rand_state = std::random_device()();
+    Sampler::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }
@@ -139,7 +139,7 @@ struct Internal {
    */
   static Array<Schedule> SearchSpaceGetSupport(SearchSpace space, SearchTask task,
                                                Optional<Integer> seed) {
-    Sampler::TRandomState rand_state = std::random_device()();
+    Sampler::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }
@@ -157,7 +157,7 @@ struct Internal {
   static Optional<Schedule> SearchStrategySearch(SearchStrategy strategy, SearchTask task,
                                                  SearchSpace space, ProgramMeasurer measurer,
                                                  Optional<Integer> seed, int verbose) {
-    Sampler::TRandomState rand_state = std::random_device()();
+    Sampler::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }

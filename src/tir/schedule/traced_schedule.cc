@@ -21,7 +21,7 @@
 namespace tvm {
 namespace tir {
 
-Schedule Schedule::Traced(IRModule mod, Sampler::TRandomState seed, int debug_mode,
+Schedule Schedule::Traced(IRModule mod, Sampler::TRandState seed, int debug_mode,
                           ScheduleErrorRenderLevel error_render_level) {
   ObjectPtr<TracedScheduleNode> n = make_object<TracedScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
@@ -34,7 +34,7 @@ Schedule Schedule::Traced(IRModule mod, Sampler::TRandomState seed, int debug_mo
   return Schedule(std::move(n));
 }
 
-Schedule TracedScheduleNode::Copy(Sampler::TRandomState new_seed) const {
+Schedule TracedScheduleNode::Copy(Sampler::TRandState new_seed) const {
   ObjectPtr<TracedScheduleNode> n = make_object<TracedScheduleNode>();
   ConcreteScheduleNode::Copy(&n->state_, &n->symbol_table_);
   n->error_render_level_ = this->error_render_level_;

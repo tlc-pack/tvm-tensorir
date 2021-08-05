@@ -28,7 +28,7 @@ namespace meta_schedule {
 class RandCostModelNode : public CostModelNode {
  public:
   /*! \brief A random state for sampler to generate random numbers */
-  Sampler::TRandomState rand_state;
+  Sampler::TRandState rand_state;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     // sampler is not visited

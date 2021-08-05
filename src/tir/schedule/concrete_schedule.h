@@ -42,7 +42,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   /*! \brief The level of error rendering */
   ScheduleErrorRenderLevel error_render_level_;
   /*! \brief Source of randomness */
-  Sampler::TRandomState rand_state_;
+  Sampler::TRandState rand_state_;
   /*! \brief A symbol table that maps random variables to concrete StmtSRef/Integers */
   TSymbolTable symbol_table_;
   /*! \brief A persistent stateless arithmetic analyzer. */
@@ -66,12 +66,12 @@ class ConcreteScheduleNode : public ScheduleNode {
  public:
   ScheduleState state() const final { return state_; }
   Optional<Trace> trace() const override { return NullOpt; }
-  Schedule Copy(Sampler::TRandomState new_seed = -1) const override;
-  void Seed(Sampler::TRandomState new_seed = -1) final {
+  Schedule Copy(Sampler::TRandState new_seed = -1) const override;
+  void Seed(Sampler::TRandState new_seed = -1) final {
     if (new_seed == -1) new_seed = std::random_device()();
     Sampler(&this->rand_state_).Seed(new_seed);
   }
-  Sampler::TRandomState ForkSeed() final { return Sampler(&this->rand_state_).ForkSeed(); }
+  Sampler::TRandState ForkSeed() final { return Sampler(&this->rand_state_).ForkSeed(); }
 
  public:
   /******** Lookup random variables ********/

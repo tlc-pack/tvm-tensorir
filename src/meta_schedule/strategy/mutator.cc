@@ -36,7 +36,7 @@ Mutator::Mutator(String name, FApply apply) {
 /********** Mutator **********/
 
 Optional<Trace> MutatorNode::Apply(const SearchTask& task, const Trace& trace,
-                                   Sampler::TRandomState* rand_state) {
+                                   Sampler::TRandState* rand_state) {
   return apply_(task, trace, rand_state);
 }
 
@@ -79,7 +79,7 @@ class MutatorTileSize {
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace,
-                        Sampler::TRandomState* rand_state) {
+                        Sampler::TRandState* rand_state) {
     // Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
     std::vector<Instruction> candidates = FindCandidates(trace);
     if (candidates.empty()) {
@@ -146,7 +146,7 @@ class MutatorTileSize {
 Mutator MutateTileSize() {
   auto f_apply = [](SearchTask task, Trace trace, void* rand_state) -> Optional<Trace> {
     MutatorTileSize mutator;
-    return mutator.Apply(task, trace, static_cast<Sampler::TRandomState*>(rand_state));
+    return mutator.Apply(task, trace, static_cast<Sampler::TRandState*>(rand_state));
   };
   return Mutator("mutate_tile_size", f_apply);
 }
@@ -219,7 +219,7 @@ class MutatorComputeLocation {
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace,
-                        Sampler::TRandomState* rand_state) {
+                        Sampler::TRandState* rand_state) {
     std::vector<Candidate> candidates = FindCandidates(trace, task->workload);
     if (candidates.empty()) {
       return NullOpt;
@@ -233,7 +233,7 @@ class MutatorComputeLocation {
 Mutator MutateComputeLocation() {
   auto f_apply = [](SearchTask task, Trace trace, void* rand_state) -> Optional<Trace> {
     MutatorComputeLocation mutator;
-    return mutator.Apply(task, trace, static_cast<Sampler::TRandomState*>(rand_state));
+    return mutator.Apply(task, trace, static_cast<Sampler::TRandState*>(rand_state));
   };
   return Mutator("mutate_compute_location", f_apply);
 }
@@ -312,7 +312,7 @@ class MutatorAutoUnroll {
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace,
-                        Sampler::TRandomState* rand_state) {
+                        Sampler::TRandState* rand_state) {
     std::vector<Candidate> candidates = FindCandidates(trace);
     if (candidates.empty()) {
       return NullOpt;
@@ -329,7 +329,7 @@ class MutatorAutoUnroll {
 Mutator MutateAutoUnroll() {
   auto f_apply = [](SearchTask task, Trace trace, void* rand_state) -> Optional<Trace> {
     MutatorAutoUnroll mutator;
-    return mutator.Apply(task, trace, static_cast<Sampler::TRandomState*>(rand_state));
+    return mutator.Apply(task, trace, static_cast<Sampler::TRandState*>(rand_state));
   };
   return Mutator("mutate_unroll_depth", f_apply);
 }
@@ -434,7 +434,7 @@ class MutatorParallel {
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace,
-                        Sampler::TRandomState* rand_state) const {
+                        Sampler::TRandState* rand_state) const {
     static InstructionKind inst_enter_postproc = InstructionKind::Get("EnterPostproc");
     int max_extent =
         GetTargetNumCores(task->target, &warned_num_cores_missing) * max_jobs_per_core - 1;
@@ -471,7 +471,7 @@ class MutatorParallel {
 Mutator MutateParallel(const int& max_jobs_per_core) {
   MutatorParallel mutator(max_jobs_per_core);
   auto f_apply = [mutator](SearchTask task, Trace trace, void* rand_state) -> Optional<Trace> {
-    return mutator.Apply(task, trace, static_cast<Sampler::TRandomState*>(rand_state));
+    return mutator.Apply(task, trace, static_cast<Sampler::TRandState*>(rand_state));
   };
   return Mutator("mutate_parallel", f_apply);
 }
@@ -485,7 +485,7 @@ struct Internal {
    */
   static Optional<Trace> Apply(Mutator mutator, SearchTask task, Trace trace,
                                Optional<Integer> seed) {
-    Sampler::TRandomState rand_state = std::random_device()();
+    Sampler::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }

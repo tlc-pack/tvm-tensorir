@@ -22,7 +22,7 @@
 namespace tvm {
 namespace tir {
 
-std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler::TRandomState* rand_state,
+std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler::TRandState* rand_state,
                                        const tir::StmtSRef& loop_sref, int n,
                                        int max_innermost_factor,
                                        Optional<Array<Integer>>* decision) {
@@ -61,7 +61,7 @@ std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler::TRandom
   return result;
 }
 
-int64_t SampleCategorical(tir::ScheduleState self, Sampler::TRandomState* rand_state,
+int64_t SampleCategorical(tir::ScheduleState self, Sampler::TRandState* rand_state,
                           const Array<Integer>& candidates, const Array<FloatImm>& probs,
                           Optional<Integer>* decision) {
   int i = -1;
@@ -79,7 +79,7 @@ int64_t SampleCategorical(tir::ScheduleState self, Sampler::TRandomState* rand_s
   return candidates[i];
 }
 
-tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, Sampler::TRandomState* rand_state,
+tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, Sampler::TRandState* rand_state,
                                     const tir::StmtSRef& block_sref, Optional<Integer>* decision) {
   // Find all possible compute-at locations
   Array<tir::StmtSRef> loop_srefs = tir::CollectComputeLocation(self, block_sref);

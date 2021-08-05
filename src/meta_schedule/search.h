@@ -104,20 +104,20 @@ class SearchSpaceNode : public runtime::Object {
    * \param rand_state The sampler's random state
    */
   virtual bool Postprocess(const SearchTask& task, const Schedule& sch,
-                           Sampler::TRandomState* rand_state) = 0;
+                           Sampler::TRandState* rand_state) = 0;
   /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from
    * \return The schedule sampled
    */
-  virtual Schedule SampleSchedule(const SearchTask& task, Sampler::TRandomState* rand_state) = 0;
+  virtual Schedule SampleSchedule(const SearchTask& task, Sampler::TRandState* rand_state) = 0;
   /*!
    * \brief Get support of the search space
    * \param task The search task to be sampled from
    * \return The support of the search space. Any point from the search space should along to one of
    * the traces returned
    */
-  virtual Array<Schedule> GetSupport(const SearchTask& task, Sampler::TRandomState* rand_state) = 0;
+  virtual Array<Schedule> GetSupport(const SearchTask& task, Sampler::TRandState* rand_state) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SearchSpace";
   TVM_DECLARE_BASE_OBJECT_INFO(SearchSpaceNode, Object);
@@ -158,7 +158,7 @@ class SearchStrategyNode : public Object {
    */
   virtual Optional<Schedule> Search(const SearchTask& task, const SearchSpace& space,
                                     const ProgramMeasurer& measurer,
-                                    Sampler::TRandomState* rand_state, int verbose) = 0;
+                                    Sampler::TRandState* rand_state, int verbose) = 0;
   /*! \brief Explore the search space */
   virtual void Search() { LOG(FATAL) << "NotImplemented"; }
 

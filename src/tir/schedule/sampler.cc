@@ -126,15 +126,15 @@ struct PrimeTable {
   }
 };
 
-Sampler::TRandomState Sampler::ForkSeed() {
+Sampler::TRandState Sampler::ForkSeed() {
   // In order for reproducibility, we computer the new seed using sampler's RNG's random state and a
   // different set of parameters. Note that both 32767 and 1999999973 are prime numbers.
-  Sampler::TRandomState ret = (this->rand_() * 32767) % 1999999973;
+  Sampler::TRandState ret = (this->rand_() * 32767) % 1999999973;
   return ret;
 }
 
 // We don't need to check the seed here because it's checked in LCE's seed function.
-void Sampler::Seed(Sampler::TRandomState seed) { this->rand_.Seed(seed); }
+void Sampler::Seed(Sampler::TRandState seed) { this->rand_.Seed(seed); }
 
 int Sampler::SampleInt(int min_inclusive, int max_exclusive) {
   if (min_inclusive + 1 == max_exclusive) {

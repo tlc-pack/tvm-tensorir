@@ -139,7 +139,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \return The best schedule found, NullOpt if no valid schedule is found
    */
   Optional<Schedule> Search(const SearchTask& task, const SearchSpace& space,
-                            const ProgramMeasurer& measurer, Sampler::TRandomState* rand_state,
+                            const ProgramMeasurer& measurer, Sampler::TRandState* rand_state,
                             int verbose) override;
 
   /********** Stages in evolutionary search **********/
@@ -155,7 +155,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \return The generated samples, all of which are not post-processed
    */
   Array<Trace> SampleInitPopulation(const Array<Schedule>& support, const SearchTask& task,
-                                    const SearchSpace& space, Sampler::TRandomState* rand_state);
+                                    const SearchSpace& space, Sampler::TRandState* rand_state);
 
   /*!
    * \brief Perform evolutionary search using genetic algorithm with the cost model
@@ -166,7 +166,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \return An array of schedules, the sampling result
    */
   Array<Trace> EvolveWithCostModel(const Array<Trace>& inits, const SearchTask& task,
-                                   const SearchSpace& space, Sampler::TRandomState* rand_state);
+                                   const SearchSpace& space, Sampler::TRandState* rand_state);
 
   /*!
    * \brief Pick a batch of samples for measurement with epsilon greedy
@@ -179,7 +179,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    */
   Array<Trace> PickWithEpsGreedy(const Array<Trace>& inits, const Array<Trace>& bests,
                                  const SearchTask& task, const SearchSpace& space,
-                                 Sampler::TRandomState* rand_state);
+                                 Sampler::TRandState* rand_state);
 
   /*!
    * \brief Make measurements and update the cost model
@@ -205,8 +205,8 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \param rand_state The sampler's random state
    * \return A list of random states, the result of forking
    */
-  static std::vector<Sampler::TRandomState> ForkSamplers(int n, Sampler::TRandomState* rand_state) {
-    std::vector<Sampler::TRandomState> result;
+  static std::vector<Sampler::TRandState> ForkSamplers(int n, Sampler::TRandState* rand_state) {
+    std::vector<Sampler::TRandState> result;
     result.reserve(n);
     for (int i = 0; i < n; ++i) {
       result.emplace_back(Sampler(rand_state).ForkSeed());
@@ -228,7 +228,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \brief Replay the trace and do postprocessing
    */
   static Optional<Schedule> ReplayTrace(const Trace& trace, const SearchTask& task,
-                                        const SearchSpace& space, Sampler::TRandomState* rand_state,
+                                        const SearchSpace& space, Sampler::TRandState* rand_state,
                                         const tir::PrimFunc& workload) {
     Schedule sch = Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), workload}}),
                                     /*seed=*/Sampler(rand_state).ForkSeed(),
@@ -248,7 +248,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    */
   static std::function<Optional<Mutator>()> MakeMutatorSampler(
       double p_mutate, const Map<Mutator, FloatImm>& mutator_probs,
-      Sampler::TRandomState* rand_state) {
+      Sampler::TRandState* rand_state) {
     CHECK(0.0 <= p_mutate && p_mutate <= 1.0)  //
         << "ValueError: Probability should be within [0, 1], "
         << "but get `p_mutate = " << p_mutate << '\'';
@@ -424,7 +424,7 @@ Evolutionary::Evolutionary(int total_measures, int num_measures_per_iteration, i
   CHECK_LE(num_measures_per_iteration, population)
       << "ValueError: requires `num_measures_per_iteration <= population`";
   {
-    Sampler::TRandomState rand_state = 42;
+    Sampler::TRandState rand_state = 42;
     EvolutionaryNode::MakeMutatorSampler(p_mutate, mutator_probs, &rand_state);
   }
   ObjectPtr<EvolutionaryNode> n = make_object<EvolutionaryNode>();
@@ -445,7 +445,7 @@ Evolutionary::Evolutionary(int total_measures, int num_measures_per_iteration, i
 
 Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const SearchSpace& space,
                                             const ProgramMeasurer& measurer,
-                                            Sampler::TRandomState* rand_state, int verbose) {
+                                            Sampler::TRandState* rand_state, int verbose) {
   Array<Schedule> support = space->GetSupport(task, rand_state);
   int iter = 1;
   for (int num_measured = 0; num_measured < this->total_measures; ++iter) {
@@ -472,13 +472,13 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
 Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& support,
                                                     const SearchTask& task,
                                                     const SearchSpace& space,
-                                                    Sampler::TRandomState* global_rand_state) {
+                                                    Sampler::TRandState* global_rand_state) {
   trace_cache_.clear();
   std::vector<Trace> results;
   results.reserve(this->population);
   // Threading RNG
   int num_threads = std::thread::hardware_concurrency();
-  std::vector<Sampler::TRandomState> thread_rand_states =
+  std::vector<Sampler::TRandState> thread_rand_states =
       ForkSamplers(num_threads, global_rand_state);
   std::vector<tir::PrimFunc> thread_workloads = ForkWorkload(num_threads, task->workload);
   // Pick measured states
@@ -488,7 +488,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   }
   auto f_proc_measured = [this, &results, &thread_rand_states, &task, &space, thread_workloads](
                              int thread_id, int i) -> void {
-    Sampler::TRandomState* rand_state = &thread_rand_states[thread_id];
+    Sampler::TRandState* rand_state = &thread_rand_states[thread_id];
     const Trace& trace = results[i];
     if (Optional<Schedule> opt_sch =
             ReplayTrace(trace, task, space, rand_state, thread_workloads[thread_id])) {
@@ -505,7 +505,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   std::atomic<int> success_ct(0);
   auto f_proc_unmeasured = [this, &results, &thread_rand_states, &tot_fail_ct, &task, &space,
                             &support, &success_ct, thread_workloads](int thread_id, int i) -> void {
-    Sampler::TRandomState* rand_state = &thread_rand_states[thread_id];
+    Sampler::TRandState* rand_state = &thread_rand_states[thread_id];
     for (;;) {
       Trace support_trace =
           support[Sampler(rand_state).SampleInt(0, support.size())]->trace().value();
@@ -547,13 +547,13 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
 
 Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
                                                    const SearchTask& task, const SearchSpace& space,
-                                                   Sampler::TRandomState* global_rand_state) {
+                                                   Sampler::TRandState* global_rand_state) {
   // The heap to record best schedule, we do not consider schedules that are already measured
   // Also we use `in_heap` to make sure items in the heap are de-duplicated
   SizedHeap heap(this->num_measures_per_iteration);
   // Threading RNG
   int num_threads = std::thread::hardware_concurrency();
-  std::vector<Sampler::TRandomState> thread_rand_states =
+  std::vector<Sampler::TRandState> thread_rand_states =
       ForkSamplers(num_threads, global_rand_state);
   std::vector<tir::PrimFunc> thread_workloads = ForkWorkload(num_threads, task->workload);
   std::vector<std::function<int()>> thread_trace_samplers(num_threads);
@@ -563,7 +563,7 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
   auto f_set_sampler = [this, num_threads, &thread_rand_states, &thread_trace_samplers,
                         &thread_mutator_samplers, &trace_used](const std::vector<double>& scores) {
     for (int i = 0; i < num_threads; ++i) {
-      Sampler::TRandomState* rand_state = &thread_rand_states[i];
+      Sampler::TRandState* rand_state = &thread_rand_states[i];
       thread_trace_samplers[i] = Sampler(rand_state).MakeMultinomial(scores);
       thread_mutator_samplers[i] =
           MakeMutatorSampler(this->p_mutate, this->mutator_probs, rand_state);
@@ -601,7 +601,7 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
                              &trace_used, &trace_used_mutex, &sch_curr, &sch_next, &task, &space,
                              thread_workloads, this](int thread_id, int i) {
       // Prepare samplers
-      Sampler::TRandomState* rand_state = &thread_rand_states[thread_id];
+      Sampler::TRandState* rand_state = &thread_rand_states[thread_id];
       const std::function<int()>& trace_sampler = thread_trace_samplers[thread_id];
       const std::function<Optional<Mutator>()>& mutator_sampler =
           thread_mutator_samplers[thread_id];
@@ -678,7 +678,7 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
 Array<Trace> EvolutionaryNode::PickWithEpsGreedy(const Array<Trace>& inits,
                                                  const Array<Trace>& bests, const SearchTask& task,
                                                  const SearchSpace& space,
-                                                 Sampler::TRandomState* rand_state) {
+                                                 Sampler::TRandState* rand_state) {
   int num_rands = this->num_measures_per_iteration * this->eps_greedy;
   int num_bests = this->num_measures_per_iteration - num_rands;
   std::vector<int> rands = Sampler(rand_state).SampleWithoutReplacement(inits.size(), inits.size());
@@ -783,7 +783,7 @@ struct Internal {
   static Array<Trace> SampleInitPopulation(Evolutionary self, Array<Schedule> support,
                                            SearchTask task, SearchSpace space,
                                            Optional<Integer> seed) {
-    Sampler::TRandomState rand_state = std::random_device()();
+    Sampler::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }
@@ -801,7 +801,7 @@ struct Internal {
    */
   static Array<Trace> EvolveWithCostModel(Evolutionary self, Array<Trace> inits, SearchTask task,
                                           SearchSpace space, Optional<Integer> seed) {
-    Sampler::TRandomState rand_state = std::random_device()();
+    Sampler::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }
@@ -819,7 +819,7 @@ struct Internal {
   static Array<Trace> PickWithEpsGreedy(Evolutionary self, Array<Trace> inits, Array<Trace> bests,
                                         SearchTask task, SearchSpace space,
                                         Optional<Integer> seed) {
-    Sampler::TRandomState rand_state = std::random_device()();
+    Sampler::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
       Sampler(&rand_state).Seed(seed.value());
     }

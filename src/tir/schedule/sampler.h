@@ -38,17 +38,17 @@ namespace tir {
 class Sampler {
  public:
   /*! Random state type for random number generator. */
-  using TRandomState = support::LinearCongruentialEngine::result_type;
+  using TRandState = support::LinearCongruentialEngine::TRandState;
   /*!
    *  \brief Return a random state value that can be used as seed for new samplers.
    *  \return The random state value to be used as seed for new samplers.
    */
-  TRandomState ForkSeed();
+  TRandState ForkSeed();
   /*!
    * \brief Re-seed the random number generator
    * \param seed The random state value given used to re-seed the RNG.
    */
-  void Seed(TRandomState seed);
+  void Seed(TRandState seed);
   /*!
    * \brief Sample an integer in [min_inclusive, max_exclusive)
    * \param min_inclusive The left boundary, inclusive
@@ -142,7 +142,7 @@ class Sampler {
    * \param random_state The given pointer to random state used to construct the RNG.
    * \note The random state is neither initialized not modified by this constructor.
    */
-  explicit Sampler(TRandomState* random_state) : rand_(random_state) {}
+  explicit Sampler(TRandState* random_state) : rand_(random_state) {}
 
  private:
   /*! \brief The random number generator for sampling. */

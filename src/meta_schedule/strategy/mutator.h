@@ -48,7 +48,7 @@ class MutatorNode : public Object {
    * \return The new schedule after mutation, NullOpt if mutation fails
    */
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace,
-                        Sampler::TRandomState* rand_state);
+                        Sampler::TRandState* rand_state);
 
   static constexpr const char* _type_key = "meta_schedule.Mutator";
   TVM_DECLARE_BASE_OBJECT_INFO(MutatorNode, Object);
