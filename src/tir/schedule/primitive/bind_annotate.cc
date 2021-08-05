@@ -93,8 +93,7 @@ class WriteBufferIndexOutOfRangeError : public ScheduleError {
     std::ostringstream os;
     size_t num_writes = block_->writes.size();
     os << "The block {0} has " << num_writes
-       << " write regions, so `buffer_index` is required to "
-          "be in [0, "
+       << " write regions, so `buffer_index` is required to be in [0, "
        << num_writes << "). However, the input `buffer_index` is " << buffer_index_
        << ", which is out of the expected range";
     return os.str();
