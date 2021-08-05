@@ -442,37 +442,42 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     std::vector<float> prev_inst_flops =
         std::move(best_inst_flops[task->workload_key]);
 
+    std::vector<std::string> best_states_str_repr;
+    std::ostringstream strout;
+    for (const State& state : selected_candidate_states) {
+      strout << "  " << OptionalMatrixToString(state.GetSplitFactors())
+             << std::endl;
+      best_states_str_repr.push_back(strout.str());
+      strout.str("");
+      strout.clear();
+    }
+    strout << "]";
+    Map<Array<IntImm>, Integer> shape_value_disp_map;
+    for (const std::pair<size_t, size_t>& inst_state_pair : inst_disp_map) {
+      shape_value_disp_map.Set(task->shape_values[inst_state_pair.first],
+                        Integer(inst_state_pair.second));
+    }
+    LOG(INFO) << "best_states=" << ArrayToString(best_states_str_repr);
+    LOG(INFO) << "best_inst_disp_map=" << MapToString(shape_value_disp_map);
+    LOG(INFO) << "best_state_flops=" << ArrayToString(selected_candidate_flops);
+    LOG(INFO) << "best_inst_flops=" << ArrayToString(inst_predicted_flops);
+
+    // inspect the predicted FLOPS per instance, and make sure that performance
+    // degradation does not happen
+    if (!prev_inst_flops.empty()) {
+      for (size_t i = 0; i < task->shape_values.size(); ++i) {
+        if (prev_inst_flops[i] > inst_predicted_flops[i]) {
+          LOG(FATAL) << "Predicted FLOPS on inst="
+                     << ArrayToString(task->shape_values[i]) << " dropped from "
+                     << prev_inst_flops[i] << "=>" << inst_predicted_flops[i];
+        }
+      }
+    }  // if (!prev_inst_flops.empty())
+
     best_states[task->workload_key] = std::move(selected_candidate_states);
     best_inst_disp_map[task->workload_key] = std::move(inst_disp_map);
     best_state_flops[task->workload_key] = std::move(selected_candidate_flops);
     best_inst_flops[task->workload_key] = std::move(inst_predicted_flops);
-
-    std::vector<std::string> best_states_str_repr;
-    std::ostringstream strout;
-    strout << "[" << std::endl;
-    for (const State& state : best_states[task->workload_key]) {
-      strout << "  " << OptionalMatrixToString(state.GetSplitFactors())
-             << std::endl;
-    }
-    strout << "]";
-    LOG(INFO) << "best_states=" << ArrayToString(best_states_str_repr);
-    LOG(INFO) << "best_inst_disp_map="
-              << MapToString(best_inst_disp_map[task->workload_key]);
-    LOG(INFO) << "best_state_flops=" << ArrayToString(selected_candidate_flops);
-    LOG(INFO) << "best_inst_flops="
-              << ArrayToString(best_inst_flops[task->workload_key]);
-
-    // inspect the predicted FLOPS per instance, and make sure that performance
-    // degradation does not happen
-    for (size_t i = 0; i < task->shape_values.size(); ++i) {
-      if (prev_inst_flops[i] > best_inst_flops[task->workload_key][i]) {
-        LOG(FATAL) << "Predicted FLOPS on inst="
-                   << ArrayToString(task->shape_values[i]) << " dropped from "
-                   << prev_inst_flops[i] << "=>"
-                   << best_inst_flops[task->workload_key][i];
-      }
-    }
-
   }  // IsDynTask(task)
 
   PrintTimeElapsed(t_begin, "measurement", verbose);
