@@ -20,8 +20,6 @@ import tvm
 from tvm import tir
 from tvm.script import ty
 
-
-
 # fmt: off
 # pylint: disable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
 
