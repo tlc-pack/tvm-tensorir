@@ -467,9 +467,9 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
     if (!prev_inst_flops.empty()) {
       for (size_t i = 0; i < task->shape_values.size(); ++i) {
         if (prev_inst_flops[i] > inst_predicted_flops[i]) {
-          LOG(FATAL) << "Predicted FLOPS on inst="
-                     << ArrayToString(task->shape_values[i]) << " dropped from "
-                     << prev_inst_flops[i] << "=>" << inst_predicted_flops[i];
+          LOG(WARNING) << "Predicted FLOPS on inst="
+                       << ArrayToString(task->shape_values[i]) << " dropped from "
+                       << prev_inst_flops[i] << "=>" << inst_predicted_flops[i];
         }
       }
     }  // if (!prev_inst_flops.empty())
