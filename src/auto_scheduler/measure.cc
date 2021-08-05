@@ -391,9 +391,25 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
   // <bojian/DietCode>
   if (IsDynTask(task)) {
+
+    std::vector<std::string> candidate_states_str_repr;
+    std::ostringstream strout;
+    for (const State & state : candidate_states) {
+      strout << "  " << OptionalMatrixToString(state.GetSplitFactors())
+             << std::endl;
+      candidate_states_str_repr.push_back(strout.str());
+      strout.str("");
+      strout.clear();
+    }
+    LOG(INFO) << "candidate_states="
+              << ArrayToString(candidate_states_str_repr);
+    LOG(INFO) << "candidate_flops=" << ArrayToString(candidate_flops);
+
     // calculate the adapted score of each candidate state
     float occupancy_penalty, padding_penalty;
-    std::vector<float> adapted_candidate_flops(candidate_states.size() * task->shape_values.size());
+    // [num_insts x num_states]
+    std::vector<float> adapted_candidate_flops(
+        task->shape_values.size() * candidate_states.size());
 
     for (size_t state_id = 0; state_id < candidate_states.size(); ++state_id) {
       for (size_t inst_id = 0; inst_id < task->shape_values.size(); ++inst_id) {
@@ -448,7 +464,7 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
         std::move(best_inst_flops[task->workload_key]);
 
     std::vector<std::string> best_states_str_repr;
-    std::ostringstream strout;
+    // std::ostringstream strout;
     for (const State& state : selected_candidate_states) {
       strout << "  " << OptionalMatrixToString(state.GetSplitFactors())
              << std::endl;
@@ -456,7 +472,6 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       strout.str("");
       strout.clear();
     }
-    strout << "]";
     Map<Array<IntImm>, Integer> shape_value_disp_map;
     for (const std::pair<size_t, size_t>& inst_state_pair : inst_disp_map) {
       shape_value_disp_map.Set(task->shape_values[inst_state_pair.first],
