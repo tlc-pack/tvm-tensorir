@@ -16,14 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include <tvm/arith/analyzer.h>
+
+#include <tvm/tir/op.h>
 
 #include "../utils.h"
 
 namespace tvm {
 namespace tir {
 
-/*! \brief The auxilary info used for normalization. */
+/*! \brief The auxiliary info used for normalization. */
 struct NormalizerInfo {
   /*! \brief the map from Variable to loop min */
   std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_map;
@@ -79,22 +80,25 @@ class LoopNormalizer : public StmtExprMutator {
 };
 
 void Normalize(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
-  CHECK(!loop_srefs.empty()) << "ValueError: 'normalize' expects 'loop_srefs' "
-                                "to be an non-empty list.";
+  if (loop_srefs.empty()) {  // input length is zero.
+    return;
+  }
   NormalizerInfo info;
+  const StmtSRef& root = GetScopeRoot(loop_srefs[0]).value();
   for (const StmtSRef& loop_sref : loop_srefs) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-    info.var_map[loop->loop_var] = Integer(0);  // placeholder
-    CHECK(GetScopeRoot(loop_sref).get() == GetScopeRoot(loop_srefs[0]).get())
+    if (!is_zero(loop->min)) {
+      info.var_map[loop->loop_var] = Integer(0);  // placeholder
+    }
+    CHECK(GetScopeRoot(loop_sref).get() == root.get())
         << "Normalize expects input loops to be in the same scope.";
   }
 
   LoopNormalizer normalizer(&info);
-  const BlockNode* root =
-      TVM_SREF_TO_BLOCK(root, GetScopeRoot(loop_srefs[0]).value());
-  Block old_block = GetRef<Block>(root);
-  auto new_block = normalizer(old_block);
-  self->Replace(GetScopeRoot(loop_srefs[0]).value(), new_block, info.block_map);
+  const BlockNode* root_blk = TVM_SREF_TO_BLOCK(root_blk, root);
+  Block old_blk = GetRef<Block>(root_blk);
+  auto new_blk = normalizer(old_blk);
+  self->Replace(root, new_blk, info.block_map);
 }
 
 struct NormalizeTraits : public UnpackedInstTraits<NormalizeTraits> {

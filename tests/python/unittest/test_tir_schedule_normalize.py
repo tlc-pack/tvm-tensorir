@@ -104,7 +104,7 @@ def test_multi_level():
     i, = sch.get_loops(blk_i)
     sch.normalize(i)
     sch.normalize(j)
-    jo, ji = sch.split(j, factor=1)
+    jo, ji = sch.split(j, factors=[None, 1])
     sch.bind(ji, 'threadIdx.x')
     sch.bind(i, 'blockIdx.x')
     print(tvm.lower(sch.mod['main']))
@@ -123,9 +123,9 @@ def test_spmm():
     else:
         assert "Should throw error"
     sch.normalize(k)
-    io, vi = sch.split(i, factor=4)
-    jo, ji = sch.split(j, factor=1024)
-    ko, ki = sch.split(k, factor=32)
+    io, vi = sch.split(i, factors=[None, 4])
+    jo, ji = sch.split(j, factors=[None, 1024])
+    ko, ki = sch.split(k, factors=[None, 32])
     sch.bind(io, 'blockIdx.x')
     sch.bind(ji, 'threadIdx.x')
     print(tvm.lower(sch.mod['main']))
