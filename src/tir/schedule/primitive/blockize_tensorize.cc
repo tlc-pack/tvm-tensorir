@@ -495,6 +495,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
     std::vector<PrimExpr> init_bindings;
     std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> binding_replace_map;
     std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> bv_replace_map;
+    std::unordered_map<const IterVarNode*, int> new_block_vars2old_index;
     for (size_t i = 0; i < inner_block_vars.size(); ++i) {
       if (inner_block_vars[i]->iter_type == IterVarType::kDataPar &&
           StmtExprContainsVar(block->init.value(), inner_block_vars[i]->var)) {
@@ -504,17 +505,21 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
         init_block_var.CopyOnWrite()->var = inner_block_vars[i]->var.copy_with_suffix("_init");
         init_block_vars_copy.push_back(init_block_var);
         bv_replace_map[inner_block_vars[i]->var] = init_block_var->var;
+        new_block_vars2old_index[init_block_var.get()] = i;
       }
     }
     for (const ForNode* inner_loop : inner_loops) {
       for (size_t i = 0; i < init_block_vars.size(); ++i) {
-        if (StmtExprContainsVar(inner_bindings[i], inner_loop->loop_var)) {
+        if (StmtExprContainsVar(
+                inner_bindings[new_block_vars2old_index[init_block_vars_copy[i].get()]],
+                inner_loop->loop_var)) {
           // copy loops related to init block vars
           For init_loop = GetRef<For>(inner_loop);
           init_loop.CopyOnWrite()->loop_var = inner_loop->loop_var.copy_with_suffix("");
           // replace loop vars with copied loop vars
           binding_replace_map[inner_loop->loop_var] = init_loop->loop_var;
           init_loops.push_back(init_loop);
+          break;
         }
       }
     }
