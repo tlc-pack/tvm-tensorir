@@ -295,13 +295,13 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
         // <bojian/DietCode> Estimate the FLOPs for synthetic workloads.
         if (IsDynTask(task)) {
-          enable_verbose_logging = true;
+          // enable_verbose_logging = true;
           std::tie(flop_ct, adaption_penalty) =
               // GetSyntheticWorkloadFlopCtFromState(
               //   task, input_batch[j]->state);
               GetCherryPickedWklInstFlopCtFromState(
                 task, input_batch[j]->state);
-          enable_verbose_logging = false;
+          // enable_verbose_logging = false;
         } else {
           flop_ct = task->compute_dag->flop_ct;
           adaption_penalty = 1.;
@@ -401,9 +401,9 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       strout.str("");
       strout.clear();
     }
-    LOG(INFO) << "candidate_states="
-              << ArrayToString(candidate_states_str_repr);
-    LOG(INFO) << "candidate_flops=" << ArrayToString(candidate_flops);
+    // LOG(INFO) << "candidate_states="
+    //           << ArrayToString(candidate_states_str_repr);
+    // LOG(INFO) << "candidate_flops=" << ArrayToString(candidate_flops);
 
     // calculate the adapted score of each candidate state
     float occupancy_penalty, padding_penalty;
@@ -423,15 +423,30 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
       }
     }  // for (state_id ∈ candidate_states.size())
 
+    // strout.str("");
+    // strout.clear();
+    // strout << "[";
+    // for (size_t i = 0; i < adapted_candidate_flops.size(); ++i) {
+    //   if (i % candidate_states.size() == 0) {
+    //     strout << task->shape_values[i / candidate_states.size()] << ": ";
+    //   }
+    //   strout << adapted_candidate_flops[i] << ", ";
+    //   if ((i + 1) % candidate_states.size() == 0) {
+    //     strout << std::endl;
+    //   }
+    // }
+    // strout << "]";
+    // LOG(INFO) << "adapted_candidate_flops=" << strout.str();
+
     // Top-K Dispatch
     TopKDispatcher dispatcher;
-    enable_verbose_logging = true;
+    // enable_verbose_logging = true;
     std::unordered_map<size_t, size_t> raw_inst_disp_map =
         dispatcher.dispatch(adapted_candidate_flops, candidate_states.size());
-    enable_verbose_logging = false;
+    // enable_verbose_logging = false;
     // record the selected candidate states
     std::vector<size_t> selected_candidate_state_ids;
-    std::vector<float>  inst_predicted_flops;
+    std::vector<float>  inst_predicted_flops(task->shape_values.size());
     std::unordered_map<size_t, size_t> inst_disp_map;
 
     // gather all the non-duplicate state_ids
@@ -447,11 +462,11 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
             selected_candidate_state_ids.size();
         selected_candidate_state_ids.push_back(inst_state_pair.second);
       }
-      inst_predicted_flops.push_back(
+      CHECK(inst_state_pair.first < task->shape_values.size());
+      inst_predicted_flops[inst_state_pair.first] =
           adapted_candidate_flops[
             inst_state_pair.first * candidate_states.size() +
-            inst_state_pair.second]
-          );
+            inst_state_pair.second];
     }
     std::vector<State> selected_candidate_states;
     std::vector<float> selected_candidate_flops;
@@ -467,6 +482,8 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
     std::vector<std::string> best_states_str_repr;
     // std::ostringstream strout;
+    strout.str("");
+    strout.clear();
     for (const State& state : selected_candidate_states) {
       strout << "  " << OptionalMatrixToString(state.GetSplitFactors())
              << std::endl;

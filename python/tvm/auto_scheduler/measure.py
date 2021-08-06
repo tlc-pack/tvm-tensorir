@@ -627,7 +627,7 @@ def _timed_func(inp_serialized, build_func, verbose):
         # )
         if task.shape_vars is not None:
             # dynamic search task
-            _ffi_api.PrintStateSplitFactors(task.compute_dag, inp.state)
+            # _ffi_api.PrintStateSplitFactors(task.compute_dag, inp.state)
             sch, args = task.compute_dag.cherry_pick_workload_instance(inp.state, task)
             # sch, args = task.compute_dag.generate_synthetic_workload(inp.state, task)
             # print("Generated synthetic workload={}"
