@@ -116,7 +116,15 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
       block_var_map[iter_var->var.get()] = new_iter_var->var.get();
     }
     // Step 2. After copying block vars, substitute them in init block
-    init_block->body = SubstituteInScope(block->init.value(), block_var_map);
+    init_block->body =
+        Substitute(block->init.value(), [&block_var_map](const Var& var) -> Optional<PrimExpr> {
+          auto it = block_var_map.find(var.get());
+          if (it != block_var_map.end()) {
+            return GetRef<PrimExpr>(it->second);
+          } else {
+            return NullOpt;
+          }
+        });
     for (const BufferRegion& write : block->writes) {
       init_block->writes.push_back(SubstituteBufferRegion(write, block_var_map));
     }
