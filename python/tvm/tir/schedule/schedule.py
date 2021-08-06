@@ -730,7 +730,7 @@ class Schedule(Object):
         offset : int
             The required offset factor.
         """
-        _ffi_api_schedule.ScheduleStorageAlign(self, block, buffer_index, axis, factor, offset)  # type: ignore # pylint: disable=no-member
+        _ffi_api.ScheduleStorageAlign(self, block, buffer_index, axis, factor, offset)  # type: ignore # pylint: disable=no-member
 
     ########## Schedule: Blockize & Tensorize ##########
 
