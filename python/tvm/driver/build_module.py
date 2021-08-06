@@ -187,9 +187,9 @@ def _build_for_device(input_mod, target, target_host):
             ),
             tvm.tir.transform.LowerIntrin(),
             tvm.tir.transform.UnifyThreadAxis(),
-        tvm.ir.transform.PrintIR(),
             tvm.tir.transform.LowerWarpMemory(),
             tvm.tir.transform.Simplify(),
+        tvm.ir.transform.PrintIR(),
             tvm.tir.transform.LowerDeviceStorageAccessInfo(),
             tvm.tir.transform.LowerCustomDatatypes(),
         ]
