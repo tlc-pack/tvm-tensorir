@@ -1741,9 +1741,9 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
     shape_var_value_map.Set(shape_vars[i], shape_values[i]);
   }
 
-  if (enable_verbose_logging) {
-    LOG(INFO) << MapToString(shape_var_value_map, true);
-  }
+  // if (enable_verbose_logging) {
+  //   LOG(INFO) << MapToString(shape_var_value_map, true);
+  // }
 
   DynamicAxisReplacer replacer(
       [&shape_var_value_map](const DynamicAxisNode* op) -> PrimExpr {
@@ -1863,9 +1863,9 @@ void AdaptStateToWorkload(const SearchTask& task, const State& state,
 
   // temporarily assign the occupancy penalty to be 1.0
   *adapted_score = score * (*occupancy_penalty) * (*padding_penalty);
-  if (enable_verbose_logging) {
-    LOG(INFO) << "adapted_score=" << *adapted_score;
-  }
+  // if (enable_verbose_logging) {
+  //   LOG(INFO) << "adapted_score=" << *adapted_score;
+  // }
 }
 
 
