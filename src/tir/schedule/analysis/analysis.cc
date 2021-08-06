@@ -531,7 +531,7 @@ BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sr
 
 Buffer GetNthWriteBuffer(const ScheduleState& self, const Block& block, int n) {
   class WriteBufferIndexOutOfRangeError : public ScheduleError {
-  public:
+   public:
     explicit WriteBufferIndexOutOfRangeError(IRModule mod, Block block, int buffer_index)
         : mod_(std::move(mod)), block_(std::move(block)), buffer_index_(buffer_index) {}
 
@@ -551,22 +551,19 @@ Buffer GetNthWriteBuffer(const ScheduleState& self, const Block& block, int n) {
       return os.str();
     }
 
-    static Buffer CheckAndGetBuffer(const IRModule& mod, const Block& block, int buffer_index) {
-      if (buffer_index < 0 || buffer_index > block->writes.size()) {
-        throw WriteBufferIndexOutOfRangeError(mod, block, buffer_index);
-      }
-      return block->writes[buffer_index]->buffer;
-    }
-
     IRModule mod() const final { return mod_; }
     Array<ObjectRef> LocationsOfInterest() const final { return {mod_}; }
 
-  private:
+   private:
     IRModule mod_;
     Block block_;
     int buffer_index_;
   };
-  return WriteBufferIndexOutOfRangeError::CheckAndGetBuffer(self->mod, block, n);
+
+  if (n < 0 || n > block->writes.size()) {
+    throw WriteBufferIndexOutOfRangeError(self->mod, block, n);
+  }
+  return block->writes[n]->buffer;
 }
 
 /******** Annotation ********/

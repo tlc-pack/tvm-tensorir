@@ -191,7 +191,7 @@ class StorageAlignInvalidAnnotationError : public ScheduleError {
     // Get existing annotation value.
     auto it = block->annotations.find(attr::buffer_dim_align);
     if (it != block->annotations.end()) {
-      if (!IsValidAnnotatoin(block, (*it).second)) {
+      if (!IsValidAnnotation(block, (*it).second)) {
         throw StorageAlignInvalidAnnotationError(mod, block);
       }
       return Downcast<Array<Array<Array<Integer>>>>((*it).second);
@@ -207,7 +207,7 @@ class StorageAlignInvalidAnnotationError : public ScheduleError {
   IRModule mod() const final { return mod_; }
 
  private:
-  static bool IsValidAnnotatoin(const Block& block, const ObjectRef& anno_value) {
+  static bool IsValidAnnotation(const Block& block, const ObjectRef& anno_value) {
     if (!anno_value->IsInstance<ArrayNode>()) {
       return false;
     }
@@ -215,18 +215,24 @@ class StorageAlignInvalidAnnotationError : public ScheduleError {
     if (buffer_annotations.size() != block->writes.size()) {
       return false;
     }
-    for (const ObjectRef buffer_annotation: buffer_annotations) {
+    for (const ObjectRef& buffer_annotation: buffer_annotations) {
       if (!buffer_annotation->IsInstance<ArrayNode>()) {
         return false;
       }
       const auto& dim_annotations = Downcast<Array<ObjectRef>>(buffer_annotation);
-      // Check if the annotations are consist of 3-tuples.
-      if (dim_annotations.size() != 3) {
-        return false;
-      }
-      for (const ObjectRef& dim_anno_element : dim_annotations) {
-        if (!dim_anno_element->IsInstance<IntImmNode>()) {
+      for (const ObjectRef& dim_annotation : dim_annotations) {
+        if (!dim_annotation->IsInstance<ArrayNode>()) {
           return false;
+        }
+        const auto& dim_anno = Downcast<Array<ObjectRef>>(dim_annotation);
+        // Check if the annotations are consist of 3-tuples.
+        if (dim_anno.size() != 3) {
+          return false;
+        }
+        for (const ObjectRef& dim_anno_element : dim_anno) {
+          if (!dim_anno_element->IsInstance<IntImmNode>()) {
+            return false;
+          }
         }
       }
     }
@@ -272,29 +278,32 @@ void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_ind
 /******** Instruction Registration ********/
 
 struct StorageAlignTraits : public UnpackedInstTraits<StorageAlignTraits> {
-  static constexpr const char* kName = "RFactor";
-   static constexpr bool kIsPure = false;
+  static constexpr const char* kName = "StorageAlign";
+  static constexpr bool kIsPure = false;
 
-  private:
-   static constexpr size_t kNumInputs = 1;
-   static constexpr size_t kNumAttrs = 4;
-   static constexpr size_t kNumDecisions = 0;
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 4;
+  static constexpr size_t kNumDecisions = 0;
 
-   static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, Integer buffer_index, Integer axis, Integer factor, Integer offset) {
-     return sch->StorageAlign(block_rv, buffer_index->value, axis->value, factor->value, offset->value);
-   }
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, Integer buffer_index,
+                                      Integer axis, Integer factor, Integer offset) {
+    return sch->StorageAlign(block_rv, buffer_index->value, axis->value, factor->value,
+                             offset->value);
+  }
 
-   static String UnpackedAsPython(Array<String> outputs, BlockRV block_rv, Integer buffer_index, Integer axis, Integer factor, Integer offset) {
-     PythonAPICall py("storage_align");
-     py.Input("buffer_index", buffer_index);
-     py.Input("axis", axis);
-     py.Input("factor", factor);;
-     py.Input("offset", offset);
-     return py.Str();
-   }
+  static String UnpackedAsPython(Array<String> outputs, BlockRV block_rv, Integer buffer_index,
+                                 Integer axis, Integer factor, Integer offset) {
+    PythonAPICall py("storage_align");
+    py.Input("buffer_index", buffer_index);
+    py.Input("axis", axis);
+    py.Input("factor", factor);
+    py.Input("offset", offset);
+    return py.Str();
+  }
 
-   template <typename>
-   friend struct ::tvm::tir::UnpackedInstTraits;
+  template <typename>
+  friend struct ::tvm::tir::UnpackedInstTraits;
 };
 
 TVM_REGISTER_INST_KIND_TRAITS(StorageAlignTraits);
