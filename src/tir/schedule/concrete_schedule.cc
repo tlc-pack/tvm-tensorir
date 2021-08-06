@@ -361,6 +361,7 @@ void ConcreteScheduleNode::ReverseComputeInline(const BlockRV& block_rv) {
   this->state_->DebugVerify();
 }
 
+/******** Schedule: loop binding/annotation ********/
 /******** Schedule: block annotation ********/
 
 void ConcreteScheduleNode::StorageAlign(const BlockRV& block_rv, int buffer_index, int axis,
