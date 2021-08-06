@@ -151,13 +151,14 @@ class TVMScriptParser(Transformer):
         ast.BuiltinOp.Not: tvm.tir.Not,
     }
 
-    def __init__(self, base_lienno):
+    def __init__(self, base_lienno, prefix):
         self.context = None
 
         self.base_lineno = base_lienno
         self.current_lineno = 0
         self.current_col_offset = 0
         self.meta = None
+        self.prefix = prefix
 
     def init_function_parsing_env(self):
         """Initialize function parsing environment"""
@@ -852,7 +853,7 @@ class TVMScriptParser(Transformer):
         """
 
         if isinstance(node.object, ast.Var):
-            if node.object.id.name in ["tir", "T"]:
+            if node.object.id.name == self.prefix:
                 func_name = "tir." + node.field.name
                 res = Registry.lookup(func_name)
                 if res is not None:
@@ -981,7 +982,7 @@ class TVMScriptParser(Transformer):
         )
 
 
-def from_source(src):
+def from_source(src, prefix):
     """Parse function or string into TIR.
 
     If possible, pass the TVM script in as a function so that line numbers and
@@ -991,6 +992,8 @@ def from_source(src):
     ----------
     src : [str, function, class]
         Pruned source of original script
+    prefix : str
+        The namespace of tir built-in's
 
     Returns
     -------
@@ -1001,7 +1004,7 @@ def from_source(src):
         start_line = 0
     else:
         _, start_line = inspect.getsourcelines(src)
-    parser = TVMScriptParser(start_line)
+    parser = TVMScriptParser(start_line, prefix)
     return to_ast(src, TVMDiagnosticCtx(), parser)
 
 
@@ -1042,7 +1045,7 @@ def asscript(input_ir, show_meta=False):
     return _ffi_api.AsTVMScript(input_ir, show_meta)
 
 
-def tir(script_in):
+def tir(*args):
     """Decorate a python function or class as tvm script.
 
     The tvm function or parsing support parsing to the internal TIR.
@@ -1052,19 +1055,25 @@ def tir(script_in):
     output : Union[Function, Module]
         The Function or Module in IR.
     """
-
-    if inspect.isfunction(script_in):
-        result = from_source(script_in)
-    elif inspect.isclass(script_in):
-        result = TVMScriptClass(script_in)
+    def _tir(script_in):
+        if inspect.isfunction(script_in):
+            result = from_source(script_in, prefix)
+        elif inspect.isclass(script_in):
+            result = TVMScriptClass(script_in, prefix)
+        else:
+            raise TypeError("Only function and class definitions are supported.")
+        result.__name__ = script_in.__name__
+        result.__qualname__ = script_in.__qualname__
+        return result
+    if len(args) == 1 and callable(args[0]):
+        prefix = "tir"
+        return _tir(args[0])
     else:
-        raise TypeError("Only function and class definitions are supported.")
-    result.__name__ = script_in.__name__
-    result.__qualname__ = script_in.__qualname__
-    return result
+        prefix = args[0]
+        return _tir
 
 
-def module(script_in):
+def module(*args):
     """Decorate a python function or class as tvm script.
 
     Alias for tvm.script.tir for now.
@@ -1074,15 +1083,16 @@ def module(script_in):
     output : Union[Function, Module]
         The Function or Module in IR.
     """
-    return tir(script_in)
+    return tir(*args)
 
 
 class TVMScriptClass:
     """Helper class for decorating a class"""
 
-    def __init__(self, script_in):
+    def __init__(self, script_in, prefix):
         self.script = script_in
+        self.prefix = prefix
 
     def __call__(self, *args, **kwargs):
         # call the parser to transform tvm script into TIR
-        return from_source(self.script)
+        return from_source(self.script, self.prefix)
