@@ -16,22 +16,86 @@
 # under the License.
 """Stub of keywords in TIR scripts, used for type hinting."""
 
-from typing import ContextManager, Dict, Iterable, Optional, Tuple, Union, Sequence
-from tvm.ir.expr import PrimExpr
+from typing import ContextManager, Dict, Iterable, Optional, Tuple, Union, Sequence, overload
 from tvm.script import ty
-from tvm.tir.buffer import Buffer
-from tvm.tir.expr import IterVar, Var
+
+
+"""
+Redefine types
+"""
+
+
+class PrimExpr:
+    def __init__(self: PrimExpr) -> None: ...
+    @overload
+    def __add__(self: PrimExpr, other: PrimExpr) -> PrimExpr: ...
+    @overload
+    def __sub__(self: PrimExpr, other: PrimExpr) -> PrimExpr: ...
+    @overload
+    def __mul__(self: PrimExpr, other: PrimExpr) -> PrimExpr: ...
+    @overload
+    def __div__(self: PrimExpr, other: PrimExpr) -> PrimExpr: ...
+    @overload
+    def __add__(self: PrimExpr, other: Union[int, float]) -> PrimExpr: ...
+    @overload
+    def __radd__(self: PrimExpr, other: Union[int, float]) -> PrimExpr: ...
+    @overload
+    def __sub__(self: PrimExpr, other: Union[int, float]) -> PrimExpr: ...
+    @overload
+    def __rsub__(self: PrimExpr, other: Union[int, float]) -> PrimExpr: ...
+    @overload
+    def __mul__(self: PrimExpr, other: Union[int, float]) -> PrimExpr: ...
+    @overload
+    def __rmul__(self: PrimExpr, other: Union[int, float]) -> PrimExpr: ...
+    @overload
+    def __div__(self: PrimExpr, other: Union[int, float]) -> PrimExpr: ...
+    @overload
+    def __rdiv__(self: PrimExpr, other: Union[int, float]) -> PrimExpr: ...
+
+
+class Var(PrimExpr):
+    ...
+
+
+class IterVar(Var):
+    ...
+
+
+class Buffer(PrimExpr):
+    def __getitem__(
+        self: Buffer, pos: Tuple[Union[int, PrimExpr]]) -> Buffer: ...
+
 
 """
 Variables and constants
 """
+
+
 def var(dtype: str) -> Var: ...
 
 
 def int8(imm: int) -> PrimExpr: ...
 
 
-def uint(imm: int) -> PrimExpr: ...
+def int16(imm: int) -> PrimExpr: ...
+
+
+def int32(imm: int) -> PrimExpr: ...
+
+
+def int64(imm: int) -> PrimExpr: ...
+
+
+def uint8(imm: int) -> PrimExpr: ...
+
+
+def uint16(imm: int) -> PrimExpr: ...
+
+
+def uint32(imm: int) -> PrimExpr: ...
+
+
+def uint64(imm: int) -> PrimExpr: ...
 
 
 def float8(imm: float) -> PrimExpr: ...
@@ -44,6 +108,11 @@ def float32(imm: float) -> PrimExpr: ...
 
 
 def float64(imm: float) -> PrimExpr: ...
+
+
+"""
+Operators
+"""
 
 
 def floormod(x: PrimExpr, y: PrimExpr) -> PrimExpr: ...
@@ -74,10 +143,11 @@ def min(a: PrimExpr, b: PrimExpr) -> PrimExpr: ...
 def if_then_else(cond: PrimExpr, t: PrimExpr,
                  f: PrimExpr, dtype: str) -> PrimExpr: ...
 
-
 """
 Loops
 """
+
+
 def serial(begin: Union[PrimExpr, int],
            end: Union[PrimExpr, int]) -> Iterable[IterVar]: ...
 
@@ -104,9 +174,12 @@ def range(begin: Union[PrimExpr, int],
 def thread_binding(begin: Union[PrimExpr, int],
                    end: Union[PrimExpr, int], thread: str) -> Iterable[IterVar]: ...
 
+
 """
 Axis
 """
+
+
 def reduce_axis(begin: Union[PrimExpr, int],
                 end: Union[PrimExpr, int]) -> IterVar: ...
 
@@ -122,20 +195,28 @@ def scan_axis(begin: Union[PrimExpr, int],
 def opaque_axis(begin: Union[PrimExpr, int],
                 end: Union[PrimExpr, int]) -> IterVar: ...
 
+
 """
 Buffers
 """
+
+
 def match_buffer(param: Union[ty.handle, Buffer], shape: Sequence[Union[PrimExpr, int]], dtype: str = "float32", data=None, strides: Optional[Sequence[int]]
                  = None, elem_offset: Optional[int] = None, scope: str = "global", align: int = -1, offset_factor: int = 0, buffer_type: str = "default") -> Buffer: ...
 
 # NOTE(zihao): buffer_decl or decl_buffer? I see both
 # what's data used for?
+
+
 def buffer_decl(shape: Sequence[Union[PrimExpr, int]], dtype: str = "float32", data=None, strides: Optional[Sequence[int]] = None,
                 elem_offset: Optional[int] = None, scope: str = "global", align: int = -1, offset_factor: int = 0, buffer_type: str = "default") -> Buffer: ...
 
 # looks like the same as above?
+
+
 def alloc_buffer(shape: Sequence[Union[PrimExpr, int]], dtype: str = "float32", data=None, strides: Optional[Sequence[int]] = None,
                  elem_offset: Optional[int] = None, scope: str = "global", align: int = -1, offset_factor: int = 0, buffer_type: str = "default") -> Buffer: ...
+
 
 """
 Reads/Writes
@@ -145,9 +226,12 @@ def reads(*args: Buffer) -> None: ...
 
 def writes(*args: Buffer) -> None: ...
 
+
 """
 Block
 """
+
+
 class block(ContextManager):
     def __init__(
         self, axes: Sequence[Union[int, PrimExpr]], name: str = "") -> None: ...
@@ -158,6 +242,7 @@ class block(ContextManager):
 class init(ContextManager):
     def __init__(self) -> None: ...
 
+
 """
 Threads and Bindings
 """
@@ -165,6 +250,7 @@ def env_thread(thread: str) -> IterVar: ...
 
 
 def bind(iter_var: IterVar, expr: PrimExpr) -> None: ...
+
 
 """
 Annotations

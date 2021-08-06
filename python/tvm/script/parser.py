@@ -852,7 +852,7 @@ class TVMScriptParser(Transformer):
         """
 
         if isinstance(node.object, ast.Var):
-            if node.object.id.name == "tir":
+            if node.object.id.name in ["tir", "T"]:
                 func_name = "tir." + node.field.name
                 res = Registry.lookup(func_name)
                 if res is not None:
