@@ -269,5 +269,35 @@ void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int buffer_ind
   self->Replace(block_sref, new_block, {{GetRef<Block>(block_ptr), new_block}});
 }
 
+/******** Instruction Registration ********/
+
+struct StorageAlignTraits : public UnpackedInstTraits<StorageAlignTraits> {
+  static constexpr const char* kName = "RFactor";
+   static constexpr bool kIsPure = false;
+
+  private:
+   static constexpr size_t kNumInputs = 1;
+   static constexpr size_t kNumAttrs = 4;
+   static constexpr size_t kNumDecisions = 0;
+
+   static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, Integer buffer_index, Integer axis, Integer factor, Integer offset) {
+     return sch->StorageAlign(block_rv, buffer_index->value, axis->value, factor->value, offset->value);
+   }
+
+   static String UnpackedAsPython(Array<String> outputs, BlockRV block_rv, Integer buffer_index, Integer axis, Integer factor, Integer offset) {
+     PythonAPICall py("storage_align");
+     py.Input("buffer_index", buffer_index);
+     py.Input("axis", axis);
+     py.Input("factor", factor);;
+     py.Input("offset", offset);
+     return py.Str();
+   }
+
+   template <typename>
+   friend struct ::tvm::tir::UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND_TRAITS(StorageAlignTraits);
+
 }  // namespace tir
 }  // namespace tvm
