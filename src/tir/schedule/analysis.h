@@ -202,7 +202,7 @@ BlockRealize CheckGetSingleChildBlockRealizeOnSRefTree(const ScheduleState& self
  */
 BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sref);
 
-/******** Block-block relation ********/
+/******** Block-buffer relation ********/
 
 /*!
  * \brief Get the BlockRealize of the single child block of the block or loop specified by
