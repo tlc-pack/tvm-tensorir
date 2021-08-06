@@ -209,6 +209,7 @@ BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sr
  * `parent_sref` on SRef tree, or throw an exception if there is 0 or multiple child blocks
  * \param self The schedule state
  * \param block The queried block
+ * \param n The index of the queried buffer
  * \return The buffer of the n-th write region of the block.
  * \throw ScheduleError If the buffer index is out of bound.
  */
