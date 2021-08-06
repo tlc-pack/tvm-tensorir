@@ -425,8 +425,10 @@ Array<MeasureResult> ProgramMeasurerNode::Measure(const SearchTask& task,
 
     // Top-K Dispatch
     TopKDispatcher dispatcher;
+    enable_verbose_logging = true;
     std::unordered_map<size_t, size_t> raw_inst_disp_map =
         dispatcher.dispatch(adapted_candidate_flops, candidate_states.size());
+    enable_verbose_logging = false;
     // record the selected candidate states
     std::vector<size_t> selected_candidate_state_ids;
     std::vector<float>  inst_predicted_flops;

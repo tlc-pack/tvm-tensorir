@@ -72,6 +72,9 @@ TopKDispatcher::dispatch(const std::vector<float>& scores,
     std::unordered_map<size_t, Scoreboard> inst_topK_candidates;
 
     for (size_t inst_id = 0; inst_id < num_instances; ++inst_id) {
+      if (enable_verbose_logging) {
+        LOG(INFO) << "inst_id=" << inst_id;
+      }
       // ∀inst, pick its k most-preferred states
       Scoreboard& topK_candidates = inst_topK_candidates[inst_id];
       for (size_t state_id = 0; state_id < num_states; ++state_id) {
@@ -83,21 +86,20 @@ TopKDispatcher::dispatch(const std::vector<float>& scores,
           //                scoreboard_item_gt_cmp);
         } else {
           if (score > topK_candidates.front().score) {
-            if (enable_verbose_logging) {
-              LOG(INFO) << "min score before popping="
-                        << topK_candidates.front().score << " w/ "
-                           "state_id=" << topK_candidates.front().state_id;
-            }
+            // if (enable_verbose_logging) {
+            //   LOG(INFO) << "min score before popping="
+            //             << topK_candidates.front().score << " w/ "
+            //                "state_id=" << topK_candidates.front().state_id;
+            // }
             std::pop_heap(topK_candidates.begin(), topK_candidates.end(),
                           scoreboard_item_gt_cmp);
-            topK_candidates.pop_back();
-            topK_candidates.push_back({state_id, score});
+            topK_candidates.back() = ScoreboardItem{state_id, score};
             std::push_heap(topK_candidates.begin(), topK_candidates.end(),
                            scoreboard_item_gt_cmp);
             if (enable_verbose_logging) {
-              LOG(INFO) << "min score after popping="
-                        << topK_candidates.front().score << " w/ "
-                           "state_id=" << topK_candidates.front().state_id;
+              LOG(INFO) << "min score =>" << topK_candidates.front().score
+                        << " w/ " "state_id="
+                        << topK_candidates.front().state_id;
             }
           }  // if (score > topK_candidates.front().score)
         }    // if (topK_candidates.size() < k)
