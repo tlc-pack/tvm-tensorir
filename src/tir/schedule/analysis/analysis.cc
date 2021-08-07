@@ -315,6 +315,43 @@ void CheckReductionBlock(const ScheduleState& self, const StmtSRef& block_sref,
   }
 }
 
+void CheckSRefSubtreeCompactDataFlow(const ScheduleState& self, const StmtSRef& subtree_root_sref) {
+  class NotCompactDataFlowError : public ScheduleError {
+   public:
+    explicit NotCompactDataFlowError(IRModule mod, Stmt subtree_root, Block violate_block)
+        : mod_(std::move(mod)),
+          subtree_root_(std::move(subtree_root)),
+          violate_block_(std::move(violate_block)) {
+      ICHECK(subtree_root_->IsInstance<BlockNode>() || subtree_root_->IsInstance<ForNode>());
+    }
+    String FastErrorString() const final {
+      return "ScheduleError: The queried subtree root in SRef tree does not have compact data "
+             "flow, because some of its child block on SRef tree is neither a complete block nor a "
+             "reduction block";
+    }
+    String DetailRenderTemplate() const final {
+      return "The queried subtree root {0} in SRef tree does not have compact data flow, because "
+             "its child block {1} on SRef tree is neither a complete block nor a reduction block";
+    }
+    IRModule mod() const final { return mod_; }
+    Array<ObjectRef> LocationsOfInterest() const final { return {subtree_root_, violate_block_}; }
+
+    IRModule mod_;
+    Stmt subtree_root_;
+    Block violate_block_;
+  };
+
+  StmtSRef scope_root = GetScopeRoot(self, subtree_root_sref, /*require_stage_pipeline=*/true);
+  Array<StmtSRef> child_blocks = GetChildBlockSRefOnSRefTree(self, scope_root);
+  for (const StmtSRef& block : child_blocks) {
+    if (!IsCompleteBlock(self, block, scope_root) && !IsReductionBlock(self, block, scope_root)) {
+      const BlockNode* violate_block = TVM_SREF_TO_BLOCK(violate_block, block);
+      throw NotCompactDataFlowError(self->mod, GetRef<Stmt>(subtree_root_sref->stmt),
+                                    GetRef<Block>(violate_block));
+    }
+  }
+}
+
 /******** Binding ********/
 
 bool IsAffineBinding(const BlockRealize& realize, const Map<Var, Range>& loop_var_ranges,
