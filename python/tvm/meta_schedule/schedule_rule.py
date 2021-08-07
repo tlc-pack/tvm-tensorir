@@ -60,16 +60,16 @@ class PyScheduleRule(ScheduleRule):
     ]
 
     def __init__(self, name, rule_func: RULE_FN_TYPE):
-        def init_with_tune_context_func(context: "TuneContext"):
-            self.init_with_tune_context(context)
+        def initialize_with_tune_context_func(context: "TuneContext"):
+            self.initialize_with_tune_context(context)
 
         def apply_func(schedule: Schedule, block: BlockRV):
             return self.apply(schedule, block)
 
         self.__init_handle_by_constructor__(
-            _ffi_api.PyScheduleRuleNew,  # pylint: disable=no-member
+            _ffi_api.PyScheduleRule,  # pylint: disable=no-member
             name,
-            init_with_tune_context_func,
+            initialize_with_tune_context_func,
             apply_func,
         )
         self.rule_func = rule_func

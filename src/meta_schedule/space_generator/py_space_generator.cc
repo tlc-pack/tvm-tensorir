@@ -34,14 +34,14 @@ namespace meta_schedule {
 class PySpaceGeneratorNode : public SpaceGeneratorNode {
  public:
   /*! \brief Pointer to the Init funcion in python */
-  runtime::TypedPackedFunc<FInitWithTuneContext> init_with_tune_context_func;
+  runtime::TypedPackedFunc<FInitializeWithTuneContext> initialize_with_tune_context_func;
   /*! \brief Pointer to the Generate funcion in python */
   runtime::TypedPackedFunc<FGenerate> generate_func;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
   void InitializeWithTuneContext(const TuneContext& context) override {
-    this->init_with_tune_context_func(context);
+    this->initialize_with_tune_context_func(context);
   }
 
   Array<Schedule> Generate(const IRModule& workload) override {
@@ -58,11 +58,11 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
  */
 class PySpaceGenerator : public SpaceGenerator {
  public:
-  explicit PySpaceGenerator(runtime::TypedPackedFunc<SpaceGeneratorNode::FInitWithTuneContext>
-                                init_with_tune_context_func,
+  explicit PySpaceGenerator(runtime::TypedPackedFunc<SpaceGeneratorNode::FInitializeWithTuneContext>
+                                initialize_with_tune_context_func,
                             runtime::TypedPackedFunc<SpaceGeneratorNode::FGenerate> generate_func) {
     ObjectPtr<PySpaceGeneratorNode> n = make_object<PySpaceGeneratorNode>();
-    n->init_with_tune_context_func = std::move(init_with_tune_context_func);
+    n->initialize_with_tune_context_func = std::move(initialize_with_tune_context_func);
     n->generate_func = std::move(generate_func);
     data_ = std::move(n);
   }
@@ -72,13 +72,14 @@ class PySpaceGenerator : public SpaceGenerator {
 };
 
 SpaceGenerator SpaceGenerator::PySpaceGenerator(
-    runtime::TypedPackedFunc<SpaceGeneratorNode::FInitWithTuneContext> init_with_tune_context_func,
+    runtime::TypedPackedFunc<SpaceGeneratorNode::FInitializeWithTuneContext>
+        initialize_with_tune_context_func,
     runtime::TypedPackedFunc<SpaceGeneratorNode::FGenerate> generate_func) {
-  return meta_schedule::PySpaceGenerator(init_with_tune_context_func, generate_func);
+  return meta_schedule::PySpaceGenerator(initialize_with_tune_context_func, generate_func);
 }
 
 TVM_REGISTER_NODE_TYPE(PySpaceGeneratorNode);
-TVM_REGISTER_GLOBAL("meta_schedule.PySpaceGeneratorNew")
+TVM_REGISTER_GLOBAL("meta_schedule.PySpaceGenerator")
     .set_body_typed(SpaceGenerator::PySpaceGenerator);
 
 }  // namespace meta_schedule

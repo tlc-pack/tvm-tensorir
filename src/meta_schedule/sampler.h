@@ -139,7 +139,10 @@ class RandEngine {
 
   RandEngine() { rand_state_ptr = nullptr; }
 
-  explicit RandEngine(int64_t* random_state) { rand_state_ptr = random_state; }
+  explicit RandEngine(int64_t* random_state) {
+    rand_state_ptr = random_state;
+    seed(*random_state);
+  }
 
   void seed(int64_t s = 1) {
     s %= modulus;

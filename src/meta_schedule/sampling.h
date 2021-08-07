@@ -28,19 +28,19 @@ namespace meta_schedule {
 
 /******** Sampling Instructions ********/
 
-TVM_DLL std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler,
+TVM_DLL std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, int64_t* random_state,
                                                const tir::StmtSRef& loop_sref,  //
                                                int n,                           //
                                                int max_innermost_factor,        //
                                                Optional<Array<Integer>>* decision);
 
-TVM_DLL int64_t SampleCategorical(tir::ScheduleState self, Sampler* sampler,  //
-                                  const Array<Integer>& candidates,           //
-                                  const Array<FloatImm>& probs,               //
+TVM_DLL int64_t SampleCategorical(tir::ScheduleState self, int64_t* random_state,  //
+                                  const Array<Integer>& candidates,                //
+                                  const Array<FloatImm>& probs,                    //
                                   Optional<Integer>* decision);
 
-TVM_DLL tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, Sampler* sampler,  //
-                                            const tir::StmtSRef& block_sref,            //
+TVM_DLL tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, int64_t* random_state,  //
+                                            const tir::StmtSRef& block_sref,                 //
                                             Optional<Integer>* decision);
 
 }  // namespace meta_schedule

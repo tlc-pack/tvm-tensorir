@@ -33,7 +33,7 @@ class TuneContext;
 
 class ScheduleRuleNode : public runtime::Object {
  public:
-  using FInitWithTuneContext = void(const TuneContext&);
+  using FInitializeWithTuneContext = void(const TuneContext&);
   using FApply = Array<Schedule>(const Schedule&, const BlockRV&);
 
   /*! \brief Virtual destructor */
@@ -66,7 +66,8 @@ class ScheduleRule : public runtime::ObjectRef {
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ScheduleRule, ObjectRef, ScheduleRuleNode);
   static ScheduleRule PyScheduleRule(
       String name,
-      runtime::TypedPackedFunc<ScheduleRuleNode::FInitWithTuneContext> init_with_tune_context_func,
+      runtime::TypedPackedFunc<ScheduleRuleNode::FInitializeWithTuneContext>
+          initialize_with_tune_context_func,
       runtime::TypedPackedFunc<ScheduleRuleNode::FApply> apply_func);
 };
 

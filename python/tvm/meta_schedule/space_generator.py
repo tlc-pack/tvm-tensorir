@@ -42,13 +42,13 @@ class SpaceGenerator(Object):
         context: "TuneContext",
     ) -> None:
         return _ffi_api.SpaceGeneratorInitializeWithTuneContext(  # pylint: disable=no-member
-            self, context
+            context
         )
 
     def generate(self, workload: IRModule) -> List[Schedule]:
-        return _ffi_api.SpaceGeneratorGenerate(self, workload)  # pylint: disable=no-member
+        return _ffi_api.SpaceGeneratorGenerate(workload)  # pylint: disable=no-member
 
-    def initialize(self, **kwargs):
+    def initialize(self, **kwargs) -> None:
         raise NotImplementedError
 
 
@@ -57,15 +57,15 @@ class PySpaceGenerator(SpaceGenerator):
     """Design space generator that is implemented in python"""
 
     def __init__(self):
-        def init_with_tune_context_func(context: "TuneContext"):
-            self.init_with_tune_context(context)
+        def initialize_with_tune_context_func(context: "TuneContext") -> None:
+            self.initialize_with_tune_context(context)
 
-        def generate_func(workload: IRModule):
+        def generate_func(workload: IRModule) -> List[Schedule]:
             return self.generate(workload)
 
         self.__init_handle_by_constructor__(
-            _ffi_api.PySpaceGeneratorNew,  # pylint: disable=no-member
-            init_with_tune_context_func,
+            _ffi_api.PySpaceGenerator,  # pylint: disable=no-member
+            initialize_with_tune_context_func,
             generate_func,
         )
 
@@ -141,5 +141,5 @@ class SpaceGeneratorUnion(SpaceGenerator):
             workload = IRModule({"main": workload})
         return _ffi_api.SpaceGeneratorUnionGenerate(self, workload)  # pylint: disable=no-member
 
-    def initialize(self, **kwargs):
+    def initialize(self, **kwargs) -> None:
         raise NotImplementedError

@@ -26,7 +26,7 @@
 namespace tvm {
 namespace meta_schedule {
 
-std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler,
+std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, int64_t* random_state,
                                        const tir::StmtSRef& loop_sref, int n,
                                        int max_innermost_factor,
                                        Optional<Array<Integer>>* decision) {
@@ -56,7 +56,8 @@ std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler
     result[0] = len;
   } else {
     // Case 3. Use fresh new sampling result
-    std::vector<int> sampled = sampler->SamplePerfectTile(n, extent, max_innermost_factor);
+    std::vector<int> sampled =
+        Sampler(random_state).SamplePerfectTile(n, extent, max_innermost_factor);
     result = std::vector<int64_t>(sampled.begin(), sampled.end());
     ICHECK_LE(sampled.back(), max_innermost_factor);
   }
@@ -64,7 +65,7 @@ std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler
   return result;
 }
 
-int64_t SampleCategorical(tir::ScheduleState self, Sampler* sampler,
+int64_t SampleCategorical(tir::ScheduleState self, int64_t* random_state,
                           const Array<Integer>& candidates, const Array<FloatImm>& probs,
                           Optional<Integer>* decision) {
   int i = -1;
@@ -75,14 +76,14 @@ int64_t SampleCategorical(tir::ScheduleState self, Sampler* sampler,
     CHECK(0 <= i && i < n) << "ValueError: Wrong decision value, where n = " << n
                            << ", but decision is: " << i;
   } else {
-    i = sampler->MakeMultinomial(AsVector<FloatImm, double>(probs))();
+    i = Sampler(random_state).MakeMultinomial(AsVector<FloatImm, double>(probs))();
     ICHECK(0 <= i && i < n);
   }
   *decision = Integer(i);
   return candidates[i];
 }
 
-tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, Sampler* sampler,
+tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, int64_t* random_state,
                                     const tir::StmtSRef& block_sref, Optional<Integer>* decision) {
   // Find all possible compute-at locations
   Array<tir::StmtSRef> loop_srefs = tir::CollectComputeLocation(self, block_sref);
@@ -115,7 +116,7 @@ tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, Sampler* sampler,
     }
   } else {
     // Sample possible combinations
-    i = sampler->SampleInt(-2, choices.size());
+    i = Sampler(random_state).SampleInt(-2, choices.size());
     if (i >= 0) {
       i = choices[i];
     }

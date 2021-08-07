@@ -49,8 +49,8 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
  public:
   /*! \brief The trace of the program execution */
   Trace trace;
-  /*! \brief The random number sampler */
-  Sampler sampler;
+  /*! \brief The random number sampler state */
+  int64_t random_state;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     // `state_` is not visited

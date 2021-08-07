@@ -17,4 +17,6 @@
 """ Meta Schedule """
 from .space_generator import SpaceGenerator, PySpaceGenerator, ScheduleFn, SpaceGeneratorUnion
 from .schedule_rule import ScheduleRule, PyScheduleRule, as_schedule_rule
+from .search_strategy import SearchStrategy, PySearchStrategy, ReplaySearchStrategy
 from .schedule import Schedule
+from .trace import Trace

@@ -34,12 +34,12 @@ namespace meta_schedule {
 class PyScheduleRuleNode : public ScheduleRuleNode {
  public:
   /*! \brief Pointer to the Init funcion in python */
-  runtime::TypedPackedFunc<FInitWithTuneContext> init_with_tune_context_func;
+  runtime::TypedPackedFunc<FInitializeWithTuneContext> initialize_with_tune_context_func;
   /*! \brief Pointer to the Generate funcion in python */
   runtime::TypedPackedFunc<FApply> apply_func;
 
   void InitializeWithTuneContext(const TuneContext& context) override {
-    this->init_with_tune_context_func(context);
+    this->initialize_with_tune_context_func(context);
   }
 
   Array<Schedule> Apply(const Schedule& schedule, const BlockRV& block) override {
@@ -56,16 +56,16 @@ class PyScheduleRuleNode : public ScheduleRuleNode {
  */
 class PyScheduleRule : public ScheduleRule {
  public:
-  using FInitWithTuneContext = PyScheduleRuleNode::FInitWithTuneContext;
+  using FInitializeWithTuneContext = PyScheduleRuleNode::FInitializeWithTuneContext;
   using FApply = PyScheduleRuleNode::FApply;
 
-  explicit PyScheduleRule(
-      String name,
-      runtime::TypedPackedFunc<ScheduleRuleNode::FInitWithTuneContext> init_with_tune_context_func,
-      runtime::TypedPackedFunc<ScheduleRuleNode::FApply> apply_func) {
+  explicit PyScheduleRule(String name,
+                          runtime::TypedPackedFunc<ScheduleRuleNode::FInitializeWithTuneContext>
+                              initialize_with_tune_context_func,
+                          runtime::TypedPackedFunc<ScheduleRuleNode::FApply> apply_func) {
     ObjectPtr<PyScheduleRuleNode> n = make_object<PyScheduleRuleNode>();
     n->name = name;
-    n->init_with_tune_context_func = std::move(init_with_tune_context_func);
+    n->initialize_with_tune_context_func = std::move(initialize_with_tune_context_func);
     n->apply_func = std::move(apply_func);
     data_ = std::move(n);
   }
@@ -76,13 +76,14 @@ class PyScheduleRule : public ScheduleRule {
 
 ScheduleRule ScheduleRule::PyScheduleRule(
     String name,
-    runtime::TypedPackedFunc<ScheduleRuleNode::FInitWithTuneContext> init_with_tune_context_func,
+    runtime::TypedPackedFunc<ScheduleRuleNode::FInitializeWithTuneContext>
+        initialize_with_tune_context_func,
     runtime::TypedPackedFunc<ScheduleRuleNode::FApply> apply_func) {
-  return meta_schedule::PyScheduleRule(name, init_with_tune_context_func, apply_func);
+  return meta_schedule::PyScheduleRule(name, initialize_with_tune_context_func, apply_func);
 }
 
 TVM_REGISTER_NODE_TYPE(PyScheduleRuleNode);
-TVM_REGISTER_GLOBAL("meta_schedule.PyScheduleRuleNew").set_body_typed(ScheduleRule::PyScheduleRule);
+TVM_REGISTER_GLOBAL("meta_schedule.PyScheduleRule").set_body_typed(ScheduleRule::PyScheduleRule);
 
 }  // namespace meta_schedule
 }  // namespace tvm

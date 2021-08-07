@@ -34,7 +34,7 @@ class TuneContext;
 
 class SpaceGeneratorNode : public runtime::Object {
  public:
-  using FInitWithTuneContext = void(const TuneContext&);
+  using FInitializeWithTuneContext = void(const TuneContext&);
   using FGenerate = Array<Schedule>(const IRModule&);
 
   /*! \brief Virtual destructor */
@@ -62,8 +62,8 @@ class SpaceGenerator : public runtime::ObjectRef {
  public:
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SpaceGenerator, ObjectRef, SpaceGeneratorNode);
   static SpaceGenerator PySpaceGenerator(
-      runtime::TypedPackedFunc<SpaceGeneratorNode::FInitWithTuneContext>
-          init_with_tune_context_func,
+      runtime::TypedPackedFunc<SpaceGeneratorNode::FInitializeWithTuneContext>
+          initialize_with_tune_context_func,
       runtime::TypedPackedFunc<SpaceGeneratorNode::FGenerate> generate_func);
   static SpaceGenerator SpaceGeneratorUnion(runtime::Array<ObjectRef> space_generators);
 };
