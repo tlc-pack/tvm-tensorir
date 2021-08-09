@@ -131,6 +131,51 @@ class IterMapSimplifyBlockBinding : public StmtExprMutator {
   Map<Var, Range> loop_var2extent_;
 };
 
+class BlockVarTypeError : public ScheduleError{
+ public:
+  static void checkBlockVarType(const ScheduleState& state, const StmtSRefNode* sref){
+    class BlockVarTypeChecker : public StmtVisitor{
+     public:
+      explicit BlockVarTypeChecker(const ScheduleState& state): state_(state){}
+     private:
+      void VisitStmt_(const BlockRealizeNode *op) final {
+        if (op->iter_values.empty()) {
+          StmtVisitor::VisitStmt_(op);
+        } else {
+          for (const IterVar& iterVar : op->block->iter_vars) {
+            if (iterVar->iter_type != kDataPar && iterVar->iter_type != kCommReduce) {
+              throw BlockVarTypeError(state_->mod, op->block);
+            }
+          }
+        }
+      }
+      const ScheduleState& state_;
+    };
+    
+    BlockVarTypeChecker checker(state);
+    checker(runtime::GetRef<Stmt>(sref->stmt));
+  }
+  
+  explicit BlockVarTypeError(IRModule mod, Block block) : mod_(mod), block_(std::move(block)) {}
+
+  String FastErrorString() const final {
+    return "ScheduleError: The block under the loops to be reordered have block var type other than"
+           "data-parallel or reduction";
+  }
+
+  String DetailRenderTemplate() const final {
+    return "The block {0} under the loops to be reordered have block var type other than "
+           "data-parallel or reduction";
+  }
+
+  IRModule mod() const final { return mod_; }
+  Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
+
+  IRModule mod_;
+  Block block_;
+};
+
+
 class HasAnnotationOrThreadBindingError : public ScheduleError {
  public:
   explicit HasAnnotationOrThreadBindingError(IRModule mod, For loop)
@@ -252,6 +297,90 @@ class WrongFactorProductError : public ScheduleError {
   IRModule mod_;
   For loop_;
 };
+
+class NonUniqueLoopsError : public ScheduleError {
+ public:
+  explicit NonUniqueLoopsError(IRModule mod) : mod_(mod) {}
+
+  String FastErrorString() const final {
+    return "ScheduleError: some duplicate loops have been passed to the primitive.";
+  }
+
+  String DetailRenderTemplate() const final {
+    return "Some duplicate loops have been passed to the primitive.";
+  }
+
+  IRModule mod() const final { return mod_; }
+  Array<ObjectRef> LocationsOfInterest() const final { return {}; }
+
+  IRModule mod_;
+};
+
+class LoopsNotALineError : public ScheduleError {
+ public:
+  enum ProblemKind{
+    kNotUnderAScope,
+    kHaveNonSingleBranchLoop
+  };
+  
+  explicit LoopsNotALineError(IRModule mod, Optional<For> problematic_loop, ProblemKind kind)
+      : mod_(mod), problematic_loop_(std::move(problematic_loop)), kind_(kind) {}
+
+  String FastErrorString() const final {
+    return "ScheduleError: the loops are not in a line";
+  }
+
+  String DetailRenderTemplate() const final {
+    std::stringstream ss;
+    ss << "The loops are not in a line because";
+    if (kind_ == kNotUnderAScope) {
+      ss << " they are not under the same scope.";
+    } else {
+      ss << " there is a non-single-branch loop in between. Problematic loop: {0}";
+    }
+    return ss.str();
+  }
+
+  IRModule mod() const final { return mod_; }
+  Array<ObjectRef> LocationsOfInterest() const final {
+    if (kind_ == kNotUnderAScope) {
+      return {};
+    } else {
+      return {problematic_loop_.value()};
+    }
+  }
+
+  IRModule mod_;
+  Optional<For> problematic_loop_;
+  ProblemKind kind_;
+  
+};
+
+/*!
+ * \brief Collect all loops under a specific block scope
+ * \param self The state of the schedule
+ * \param root_sref the sref to the root of block scope
+ */
+std::vector<const StmtSRefNode*> GetLoopsInversePreOrderUnderScope(const ScheduleState self,
+                                                   const StmtSRef& root_sref) {
+  std::vector<const StmtSRefNode*> loops;
+  const BlockNode* root_block= TVM_SREF_TO_BLOCK(root_block, root_sref);
+  // Gather all the loops under parent_block
+  PreOrderVisit(root_block->body, [&loops, self](const ObjectRef& node) {
+    // Stops at a new BlockNode
+    if (node->IsInstance<BlockNode>()) {
+      return false;
+    }
+    // Collects every LoopNode
+    if (const auto* loop = node.as<ForNode>()) {
+      loops.push_back(self->stmt2ref.at(loop).operator->());
+    }
+    return true;
+  });
+  // Reverse to get inverse preorder
+  std::reverse(loops.begin(), loops.end());
+  return loops;
+}
 
 Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
                       const Array<PrimExpr>& factors) {
@@ -385,6 +514,98 @@ StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
   return self->stmt2ref.at(new_stmt.get());
 }
 
+void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
+  // Step 1. type check and uniqueness check
+  std::unordered_set<const StmtSRefNode*> loop_srefs;
+  loop_srefs.reserve(ordered_loop_srefs.size());
+  for (const StmtSRef& loop_sref : ordered_loop_srefs) {
+    // check it is an sref to loop
+    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+    // uniqueness check
+    const StmtSRefNode* loop_sref_ptr = loop_sref.operator->();
+    if (loop_srefs.count(loop_sref_ptr)) {
+      throw NonUniqueLoopsError(self->mod);
+    }
+    loop_srefs.insert(loop_sref_ptr);
+  }
+  // Step 2. gather loops to be reordered
+  // The algorithm is to scan the inverse preorder of the whole loop tree in the scope.
+  // For some Loop x, it is potentially in the reorder range if
+  //   - x is in the reorder list
+  //   - exactly 1 son of x is potentially in the reorder range
+  //     (If there are more, then the loops are not in the same line).
+  // After the inverse DFS, we can know the exact reorder range
+  // Top and bottom denotes the bound of loop ranges that need reordering
+  const StmtSRefNode* top = nullptr;
+  const StmtSRefNode* bottom = nullptr;
+  // Maps a parent to its child
+  std::unordered_map<const StmtSRefNode*, const StmtSRefNode*> successor;
+  // Gather all the loops under parent_block
+  int n_loops_not_found = ordered_loop_srefs.size();
+  
+  for (const StmtSRefNode* loop :
+       GetLoopsInversePreOrderUnderScope(self, GetScopeRoot(self, ordered_loop_srefs[0], true))) {
+    bool is_in_reorder_list = loop_srefs.count(loop);
+    bool has_successor_in_reorder_list = successor.count(loop);
+    if (is_in_reorder_list || has_successor_in_reorder_list) {
+      const StmtSRefNode* parent = loop->parent;
+      // If the successor of `parent` exists, then `parent` can't be a single-branch loop
+      if(successor.count(parent)){
+        const ForNode* parent_loop= TVM_SREF_TO_FOR(parent_loop, runtime::GetRef<StmtSRef>(parent));
+        throw LoopsNotALineError(self->mod,runtime::GetRef<For>(parent_loop),
+                                 LoopsNotALineError::kHaveNonSingleBranchLoop);
+      }
+      successor[parent] = loop;
+      // `bottom` is the first loop encountered
+      if (bottom == nullptr) {
+        bottom = loop;
+      }
+      // `top` is the last loop encountered
+      if (is_in_reorder_list) {
+        top = loop;
+        --n_loops_not_found;
+      }
+    }
+  }
+  // Step 3. Check loops are in the same block scope
+  if (n_loops_not_found != 0) {
+    throw LoopsNotALineError(self->mod, NullOpt,LoopsNotALineError::kNotUnderAScope);
+  }
+  // Step 4. Check loops are single-branch
+  const ForNode* outer_loop= TVM_SREF_TO_FOR(outer_loop,runtime::GetRef<StmtSRef>(top));
+  for (const StmtSRefNode* loop_sref = top; loop_sref !=bottom ;) {
+    loop_sref = successor[loop_sref];
+    const ForNode* inner_loop = TVM_SREF_TO_FOR(inner_loop, runtime::GetRef<StmtSRef>
+        (loop_sref));
+    if (outer_loop->body.get() != inner_loop) {
+      throw LoopsNotALineError(self->mod,GetRef<For>(outer_loop),
+                               LoopsNotALineError::kHaveNonSingleBranchLoop);
+    }
+    outer_loop=inner_loop;
+  }
+  // Step 5. Check the block below has all its block_var to be data-parallel or reduction
+  BlockVarTypeError::checkBlockVarType(self, bottom);
+  // Step 6. Replace the original loops with the reordered loops
+  std::function<Stmt(const StmtSRefNode*, int index)> f_reorder =
+      [&bottom, &loop_srefs, &successor, &ordered_loop_srefs, &f_reorder](const StmtSRefNode* loop,
+          int index) -> Stmt {
+    const ForNode* copy =
+        loop_srefs.count(loop) ? ordered_loop_srefs[index++]->StmtAs<ForNode>() : loop->StmtAs<ForNode>();
+    ObjectPtr<ForNode> n = make_object<ForNode>(*copy);
+    if (loop == bottom) {
+      // stop recursion at bottom loop
+      n->body = loop->StmtAs<ForNode>()->body;
+    } else {
+      // reorder recursively
+      n->body = f_reorder(successor.at(loop), index);
+    }
+    return Stmt(n);
+  };
+  self->Replace(GetRef<StmtSRef>(top), f_reorder(top, 0), {});
+}
+
+
+
 /******** Instruction Registration ********/
 
 struct SplitTraits : public UnpackedInstTraits<SplitTraits> {
@@ -456,8 +677,40 @@ struct FuseTraits : public UnpackedInstTraits<FuseTraits> {
   friend struct ::tvm::tir::UnpackedInstTraits;
 };
 
+struct ReorderTraits : public UnpackedInstTraits<ReorderTraits> {
+  static constexpr const char* kName = "Reorder";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  template <size_t delta>
+  static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
+                                           const Array<ObjectRef>& inputs) {
+    setter(delta, inputs);
+  }
+
+  static void UnpackedApplyToSchedule(Schedule sch, Array<LoopRV> loop_rvs) {
+    return sch->Reorder(loop_rvs);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, Array<String> loop_rvs) {
+    PythonAPICall py("reorder");
+    for (const String& loop_rv : loop_rvs) {
+      py.Input("", loop_rv);
+    }
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
 TVM_REGISTER_INST_KIND_TRAITS(SplitTraits);
 TVM_REGISTER_INST_KIND_TRAITS(FuseTraits);
+TVM_REGISTER_INST_KIND_TRAITS(ReorderTraits);
+
 
 }  // namespace tir
 }  // namespace tvm

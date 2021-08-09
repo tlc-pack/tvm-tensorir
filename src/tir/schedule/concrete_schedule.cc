@@ -346,6 +346,13 @@ Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
   return CreateRV<LoopRV>(results);
 }
 
+void ConcreteScheduleNode::Reorder(const Array<LoopRV>& ordered_loop_rvs) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::Reorder(state_, GetSRefs(ordered_loop_rvs));
+  TVM_TIR_SCHEDULE_END("reorder", this->error_render_level_);
+  this->state_->DebugVerify();
+}
+
 /******** Schedule: Manipulate ForKind ********/
 
 void ConcreteScheduleNode::Parallel(const LoopRV& loop_rv) {
@@ -366,7 +373,7 @@ void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread_axis
   TVM_TIR_SCHEDULE_BEGIN();
   tir::Bind(state_, this->GetSRef(loop_rv),
             IterVar(/*dom=*/Range(nullptr), /*var=*/Var(thread_axis), /*iter_type=*/kThreadIndex,
-                    /*thread_tag=*/thread_axis));
+                            /*thread_tag=*/thread_axis));
   this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("bind", this->error_render_level_);
 }
@@ -379,7 +386,7 @@ void ConcreteScheduleNode::Unroll(const LoopRV& loop_rv) {
 }
 
 /******** Schedule: Insert cache stages ********/
-/******** Schedule: Compute location ********/
+/******** Schedule: compute location ********/
 
 void ConcreteScheduleNode::ComputeInline(const BlockRV& block_rv) {
   TVM_TIR_SCHEDULE_BEGIN();
