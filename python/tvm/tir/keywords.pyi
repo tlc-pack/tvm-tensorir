@@ -59,9 +59,16 @@ class IterVar(Var):
     ...
 
 
-class Buffer(PrimExpr):
+class Buffer(Var):
     def __getitem__(
         self: Buffer, pos: Tuple[Union[int, PrimExpr]]) -> Buffer: ...
+    @property
+    def data(self: Buffer) -> Ptr: ...
+
+
+class Ptr:
+    ...
+
 
 """
 Variables and constants
@@ -104,6 +111,7 @@ def float32(imm: float) -> PrimExpr: ...
 
 def float64(imm: float) -> PrimExpr: ...
 
+
 """
 Intrinsic
 """
@@ -119,11 +127,11 @@ def truncmod(x: PrimExpr, y: PrimExpr) -> PrimExpr: ...
 def truncdiv(x: PrimExpr, y: PrimExpr) -> PrimExpr: ...
 
 
-def load(dtype: str, buffer_var: Var, index: PrimExpr,
+def load(dtype: str, buffer_var: Buffer, index: PrimExpr,
          predicate: Union[bool, PrimExpr] = True) -> PrimExpr: ...
 
 
-def store(var: Buffer, val: PrimExpr,
+def store(var: Buffer, index: PrimExpr, val: PrimExpr,
           predicate: Union[bool, PrimExpr] = True) -> None: ...
 
 
@@ -144,6 +152,9 @@ def min(a: PrimExpr, b: PrimExpr) -> PrimExpr: ...
 
 def if_then_else(cond: PrimExpr, t: PrimExpr,
                  f: PrimExpr, dtype: str) -> PrimExpr: ...
+
+
+def evaluate(value: PrimExpr) -> PrimExpr: ...
 
 
 """
@@ -247,6 +258,7 @@ def range(begin: Union[PrimExpr, int],
 def thread_binding(begin: Union[PrimExpr, int],
                    end: Union[PrimExpr, int], thread: str) -> Iterable[IterVar]: ...
 
+
 """
 Axis
 """
@@ -265,6 +277,7 @@ def scan_axis(begin: Union[PrimExpr, int],
 def opaque_axis(begin: Union[PrimExpr, int],
                 end: Union[PrimExpr, int]) -> IterVar: ...
 
+
 """
 Buffers
 """
@@ -279,6 +292,7 @@ def buffer_decl(shape: Sequence[Union[PrimExpr, int]], dtype: str = "float32", d
 def alloc_buffer(shape: Sequence[Union[PrimExpr, int]], dtype: str = "float32", data=None, strides: Optional[Sequence[int]] = None,
                  elem_offset: Optional[int] = None, scope: str = "global", align: int = -1, offset_factor: int = 0, buffer_type: str = "default") -> Buffer: ...
 
+
 """
 Reads/Writes
 """
@@ -287,12 +301,13 @@ def reads(*args: Buffer) -> None: ...
 
 def writes(*args: Buffer) -> None: ...
 
+
 """
 Scope handler
 """
 class block(ContextManager):
     def __init__(
-        self, axes: Sequence[Union[int, PrimExpr]], name: str = "") -> None: ...
+        self, axes: Sequence[Union[int, PrimExpr, slice]], name: str = "") -> None: ...
 
     def __enter__(self) -> Sequence[IterVar]: ...
 
@@ -301,7 +316,15 @@ class init(ContextManager):
     def __init__(self) -> None: ...
 
 
+class let(ContextManager):
+    def __init__(self, var: Var, value: PrimExpr) -> None: ...
+
+
 def where(cond: PrimExpr) -> None: ...
+
+
+def realize(x: Buffer, scope: str, condition: bool = True) -> None: ...
+
 
 """
 Threads and Bindings
@@ -319,3 +342,6 @@ def func_attr(attrs: Dict) -> None: ...
 
 
 def block_attr(attrs: Dict) -> None: ...
+
+
+def attr(node: PrimExpr, attr_key: str, value: PrimExpr) -> None: ...
