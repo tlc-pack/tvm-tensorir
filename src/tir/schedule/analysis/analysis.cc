@@ -552,7 +552,7 @@ Buffer GetNthWriteBuffer(const ScheduleState& self, const Block& block, int n) {
     }
 
     IRModule mod() const final { return mod_; }
-    Array<ObjectRef> LocationsOfInterest() const final { return {mod_}; }
+    Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
 
    private:
     IRModule mod_;
