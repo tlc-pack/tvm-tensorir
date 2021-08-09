@@ -23,8 +23,6 @@ from tvm.script import ty
 """
 Redefine types
 """
-
-
 class PrimExpr:
     def __init__(self: PrimExpr) -> None: ...
     @overload
@@ -68,8 +66,6 @@ class Buffer(PrimExpr):
 """
 Variables and constants
 """
-
-
 def var(dtype: str) -> Var: ...
 
 
@@ -109,7 +105,7 @@ def float32(imm: float) -> PrimExpr: ...
 def float64(imm: float) -> PrimExpr: ...
 
 """
-Binary/N-ary Operators
+Intrinsic
 """
 def floormod(x: PrimExpr, y: PrimExpr) -> PrimExpr: ...
 
@@ -124,7 +120,17 @@ def truncdiv(x: PrimExpr, y: PrimExpr) -> PrimExpr: ...
 
 
 def load(dtype: str, buffer_var: Var, index: PrimExpr,
-         predicate: Optional[PrimExpr] = None) -> PrimExpr: ...
+         predicate: Union[bool, PrimExpr] = True) -> PrimExpr: ...
+
+
+def store(var: Buffer, val: PrimExpr,
+          predicate: Union[bool, PrimExpr] = True) -> None: ...
+
+
+def ramp(base: PrimExpr, stride: int, lanes: int) -> PrimExpr: ...
+
+
+def broadcast(value: PrimExpr, lanes: int) -> PrimExpr: ...
 
 
 def cast(val: PrimExpr, dtype: str) -> PrimExpr: ...
@@ -215,8 +221,6 @@ def rsqrt(x: PrimExpr) -> PrimExpr: ...
 """
 Loops
 """
-
-
 def serial(begin: Union[PrimExpr, int],
            end: Union[PrimExpr, int]) -> Iterable[IterVar]: ...
 
@@ -246,8 +250,6 @@ def thread_binding(begin: Union[PrimExpr, int],
 """
 Axis
 """
-
-
 def reduce_axis(begin: Union[PrimExpr, int],
                 end: Union[PrimExpr, int]) -> IterVar: ...
 
@@ -266,8 +268,6 @@ def opaque_axis(begin: Union[PrimExpr, int],
 """
 Buffers
 """
-
-
 def match_buffer(param: Union[ty.handle, Buffer], shape: Sequence[Union[PrimExpr, int]], dtype: str = "float32", data=None, strides: Optional[Sequence[int]]
                  = None, elem_offset: Optional[int] = None, scope: str = "global", align: int = -1, offset_factor: int = 0, buffer_type: str = "default") -> Buffer: ...
 
@@ -290,8 +290,6 @@ def writes(*args: Buffer) -> None: ...
 """
 Scope handler
 """
-
-
 class block(ContextManager):
     def __init__(
         self, axes: Sequence[Union[int, PrimExpr]], name: str = "") -> None: ...
@@ -302,6 +300,9 @@ class block(ContextManager):
 class init(ContextManager):
     def __init__(self) -> None: ...
 
+
+def where(cond: PrimExpr) -> None: ...
+
 """
 Threads and Bindings
 """
@@ -309,9 +310,6 @@ def env_thread(thread: str) -> IterVar: ...
 
 
 def bind(iter_var: IterVar, expr: PrimExpr) -> None: ...
-
-
-def where(cond: PrimExpr) -> None: ...
 
 
 """
