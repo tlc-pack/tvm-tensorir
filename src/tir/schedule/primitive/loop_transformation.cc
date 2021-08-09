@@ -593,7 +593,7 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
       // reorder recursively
       n->body = f_reorder(successor.at(loop), index);
     }
-    return Stmt(n);
+    return Stmt(std::move(n));
   };
   self->Replace(GetRef<StmtSRef>(top), f_reorder(top, 0), {});
 }
