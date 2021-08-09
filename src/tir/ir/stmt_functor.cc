@@ -699,6 +699,10 @@ Array<Range> Substitute(const Array<Range>& region, const Map<Var, PrimExpr>& vm
   return result;
 }
 
+BufferRegion Substitute(const BufferRegion& buffer_region, const Map<Var, PrimExpr>& vmap) {
+  return BufferRegion(buffer_region->buffer, Substitute(buffer_region->region, vmap));
+}
+
 void PreOrderVisit(const ObjectRef& stmt_or_expr,
                    const std::function<bool(const ObjectRef&)>& fvisit) {
   class PreOrderVisitor : public StmtExprVisitor {

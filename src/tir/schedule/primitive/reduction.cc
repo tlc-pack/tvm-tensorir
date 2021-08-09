@@ -21,6 +21,226 @@
 namespace tvm {
 namespace tir {
 
+bool ListContainsElement(const Array<StmtSRef>& list, const StmtSRef& element) {
+  for (const StmtSRef& ele : list) {
+    if (ele.same_as(element)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+class DecomposeReductionBlockReplacer : public StmtMutator {
+ public:
+  static std::pair<Block, Block> Replace(Block old_scope_root, For target_loop,
+                                         Stmt decomposed_body, Block old_reduction_block) {
+    DecomposeReductionBlockReplacer replacer(std::move(target_loop), std::move(decomposed_body),
+                                             std::move(old_reduction_block));
+    return std::make_pair(Downcast<Block>(replacer(std::move(old_scope_root))),
+                          replacer.new_reduction_block_);
+  }
+
+ private:
+  explicit DecomposeReductionBlockReplacer(For target_loop, Stmt decomposed_body,
+                                           Block old_reduction_block)
+      : target_loop_(std::move(target_loop)),
+        decomposed_body_(std::move(decomposed_body)),
+        old_reduction_block_(std::move(old_reduction_block)) {}
+
+  Stmt VisitStmt_(const ForNode* loop) final {
+    Stmt mutated_stmt = StmtMutator::VisitStmt_(loop);
+    if (loop == target_loop_.get()) {
+      return SeqStmt({decomposed_body_, mutated_stmt});
+    } else {
+      return mutated_stmt;
+    }
+  }
+
+  Stmt VisitStmt_(const BlockNode* block) final {
+    if (block == old_reduction_block_.get()) {
+      ObjectPtr<BlockNode> p_new_block = CopyOnWrite(block);
+      p_new_block->name_hint = p_new_block->name_hint + "_update";
+      p_new_block->init = NullOpt;
+      new_reduction_block_ = Block(p_new_block);
+      return new_reduction_block_;
+    } else {
+      return StmtMutator::VisitStmt_(block);
+    }
+  }
+
+  Stmt VisitStmt_(const SeqStmtNode* seq) final {
+    Array<Stmt> new_stmts;
+    new_stmts.reserve(static_cast<int>(seq->seq.size()));
+
+    for (const Stmt old_stmt : seq->seq) {
+      new_stmts.push_back(VisitStmt(old_stmt));
+    }
+    return SeqStmt::Flatten(new_stmts);
+  }
+
+ private:
+  For target_loop_;
+  Stmt decomposed_body_;
+  Block old_reduction_block_;
+  Block new_reduction_block_;
+};
+
+StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
+                            const Optional<StmtSRef>& loop_sref_opt) {
+  /*!
+   *  Check
+   *    - block is reduction
+   *    - loop is higher than all the loops related to reduce block var, or loop is None
+   *  Mutate
+   *    - If loop is not None:
+   *      - generate loops related to data par block vars
+   *      - generate corresponding init block and update block
+   *    - If loop is None:
+   *      - substitute `tir.init()` with IfThenElse statement
+   */
+  // A bunch of type checking
+  ICHECK(block_sref.defined())
+      << "ValueError: 'decompose_reduction' expect a block as first argument, but get value 'None'";
+  const auto* block = block_sref->StmtAs<BlockNode>();
+  if (loop_sref_opt) {
+    // 'loop' is not 'None'.
+    StmtSRef loop_sref = loop_sref_opt.value();
+    const auto* loop = loop_sref->StmtAs<ForNode>();
+    CHECK(block != nullptr)
+        << "TypeError: 'decompose_reduction' expect a block as first argument, but get type: "
+        << block_sref->stmt->GetTypeKey();
+    CHECK(loop != nullptr)
+        << "TypeError: 'decompose_reduction' expect a loop as second argument, but get type: "
+        << loop_sref->stmt->GetTypeKey();
+    CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
+                                    "but the block has no init block";
+    Array<StmtSRef> loops = GetLoops(block_sref);
+    const BlockRealizeNode* realize = GetBlockRealize(self, block_sref).get();
+    // Cond 0. Check loop_sref is an ancestor of block_sref
+    CHECK(ListContainsElement(loops, loop_sref))
+        << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
+    // Cond 1. Check block is reduction
+    const StmtSRef& scope_root_sref = GetScopeRoot(self, block_sref, false);
+    CHECK(IsReductionBlock(self, block_sref, scope_root_sref))
+        << "decompose_reduction expect the block to be a reduction block";
+    // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
+    for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
+      // For each block var of type kCommReduce, check its binding
+      const IterVar& iter_var = block->iter_vars[i];
+      const PrimExpr& binding = realize->iter_values[i];
+      if (iter_var->iter_type != IterVarType::kCommReduce) {
+        continue;
+      }
+      for (const StmtSRef& higher_loop : loops) {
+        // Only check loops higher than the target loop
+        if (higher_loop.same_as(loop_sref)) {
+          break;
+        }
+        // loop_var of a higher loop shouldn't contain loop var
+        const Var& loop_var = higher_loop->StmtAs<ForNode>()->loop_var;
+        CHECK(!UsesVar(binding, [v = loop_var.get()](const VarNode* var) { return var == v; }))
+            << "ValueError: 'decompose_reduction' expect the loop to be higher "
+               "than all the loops related to reduce block var";
+      }
+    }
+    // Mutate
+    ObjectPtr<BlockNode> init_block = make_object<BlockNode>();
+    ObjectPtr<BlockRealizeNode> init_realize = make_object<BlockRealizeNode>();
+    init_block->name_hint = block->name_hint + "_init";
+    init_realize->iter_values = {};
+    init_realize->predicate = realize->predicate;
+    init_realize->block = Block(init_block);
+    // Step 1. Create new block vars and their bindings
+    // Maps an old block var to the new corresponding block var
+    std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> block_var_map;
+    for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
+      const IterVar& iter_var = block->iter_vars[i];
+      const PrimExpr& binding = realize->iter_values[i];
+      // Only process data parallel block vars
+      if (iter_var->iter_type != IterVarType::kDataPar) {
+        continue;
+      }
+      // Create a new block var
+      IterVar new_iter_var(/*dom=*/iter_var->dom,
+                           /*var=*/iter_var->var.copy_with_suffix("_init"),
+                           /*iter_type=*/iter_var->iter_type,
+                           /*thread_tag=*/iter_var->thread_tag);
+      // Add a block var and its binding
+      init_block->iter_vars.push_back(new_iter_var);
+      init_realize->iter_values.push_back(binding);
+      // Add a mapping from old block vars to new block vars
+      block_var_map[iter_var->var] = new_iter_var->var;
+    }
+    // Step 2. After copying block vars, substitute them in init block
+    init_block->body = Substitute(block->init.value(), block_var_map);
+    for (const BufferRegion& write : block->writes) {
+      init_block->writes.push_back(Substitute(write, block_var_map));
+    }
+    // Step 3. Create loops above the init block
+    Stmt body = BlockRealize(init_realize);
+    for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
+      const auto* higher_loop = loops[i]->StmtAs<ForNode>();
+      for (const PrimExpr& expr : init_realize->iter_values) {
+        // Skip irrelevant loops
+        if (!UsesVar(expr,
+                     [v = higher_loop->loop_var.get()](const VarNode* var) { return var == v; })) {
+          continue;
+        }
+        // Create a new equivalent to the loop
+        Var old_loop_var = higher_loop->loop_var;
+        Var new_loop_var = old_loop_var.copy_with_suffix("_init");
+        std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_map{
+            {old_loop_var, new_loop_var}};
+        body = For(/*loop_var=*/new_loop_var,
+                   /*min=*/higher_loop->min,
+                   /*extent=*/higher_loop->extent,
+                   /*kind=*/ForKind::kSerial,
+                   /*body=body*/ Substitute(body, var_map));
+      }
+      // Only consider loops higher than the given loop
+      if (loops[i].same_as(loop_sref)) {
+        break;
+      }
+    }
+    // Step 4. Mutate IR
+    const BlockNode* old_scope_root = TVM_SREF_TO_BLOCK(old_scope_root, scope_root_sref);
+    Block new_scope_root;
+    Block new_reduction_block;
+    std::tie(new_scope_root, new_reduction_block) = DecomposeReductionBlockReplacer::Replace(
+        GetRef<Block>(old_scope_root), GetRef<For>(loop), body, GetRef<Block>(block));
+    self->Replace(scope_root_sref, new_scope_root,
+                  {{GetRef<Block>(old_scope_root), new_scope_root},
+                   {GetRef<Block>(block), new_reduction_block}});
+    self->UpdateBlockInfo(new_scope_root);
+    StmtSRef init_block_sref = self->stmt2ref.at(init_block.get());
+    return init_block_sref;
+  } else {
+    // 'loop' is 'None'. Convert `tir.init()` to a conjunction of conditions.
+    CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
+                                    "but the block has no init block";
+    PrimExpr condition = const_true();
+    for (const IterVar& var : block->iter_vars) {
+      if (var->iter_type == IterVarType::kCommReduce) {
+        condition = And(condition, EQ(var, var->dom->min));
+      }
+    }
+    condition = arith::Analyzer().Simplify(condition);
+    Stmt body;
+    if (is_one(condition)) {
+      body = block->body;
+    } else {
+      body = SeqStmt({IfThenElse(condition, block->init.value()), block->body});
+    }
+    auto block_node = make_object<BlockNode>(*block);
+    block_node->name_hint = block->name_hint + "_update";
+    block_node->init = NullOpt;
+    block_node->body = body;
+    Block new_block(block_node);
+    self->Replace(block_sref, new_block, {{GetRef<Block>(block), new_block}});
+    return self->stmt2ref.at(new_block.get());
+  }
+}
+
 /******** Commutative Reducer ********/
 
 /*!
@@ -958,6 +1178,30 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& rf_loop_sref, int factor_ax
 
 /******** InstructionKind Registration ********/
 
+struct DecomposeReductionTraits : public UnpackedInstTraits<DecomposeReductionTraits> {
+  static constexpr const char* kName = "DecomposeReduction";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 2;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, Optional<LoopRV> loop_rv) {
+    return sch->DecomposeReduction(block_rv, loop_rv);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block_rv, String loop_rv) {
+    PythonAPICall py("decompose_reduction");
+    py.Input("block", block_rv);
+    py.Input("loop", loop_rv);
+    py.SingleOutput(outputs);
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
 struct RFactorTraits : public UnpackedInstTraits<RFactorTraits> {
   static constexpr const char* kName = "RFactor";
   static constexpr bool kIsPure = false;
@@ -984,6 +1228,7 @@ struct RFactorTraits : public UnpackedInstTraits<RFactorTraits> {
 };
 
 TVM_REGISTER_INST_KIND_TRAITS(RFactorTraits);
+TVM_REGISTER_INST_KIND_TRAITS(DecomposeReductionTraits);
 
 /******** FFI ********/
 

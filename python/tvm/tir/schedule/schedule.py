@@ -1223,6 +1223,10 @@ class Schedule(Object):
 
     ########## Schedule: Reduction ##########
 
+    def decompose_reduction(self, block: BlockRV, loop: Optional[LoopRV]) -> BlockRV:
+        
+        _ffi_api.ScheduleDecomposeReduction(self, block, loop) # type: ignore # pylint: disable=no-member
+
     def rfactor(self, loop: LoopRV, factor_axis: int) -> LoopRV:
         """Factorize an associative reduction block by the specified loop.
 

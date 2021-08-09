@@ -363,6 +363,13 @@ class ScheduleNode : public runtime::Object {
    * \param block The block to be inlined to its producer
    */
   virtual void ReverseComputeInline(const BlockRV& block) = 0;
+  /*!
+   * \brief Decompose a reduction block into init block and update block
+   * \param block_rv The reduction block
+   * \param loop_rv The position where init block is inserted
+   * \return The init block
+   */
+  virtual BlockRV DecomposeReduction(const BlockRV& block_rv, const Optional<LoopRV>& loop_rv) = 0;
   /******** Schedule: Reduction ********/
   /*!
    * \brief Factorize an associative reduction block by the specified loop.

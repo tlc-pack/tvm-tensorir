@@ -224,6 +224,8 @@ TVM_DLL void ComputeInline(ScheduleState self, const StmtSRef& block_sref);
  */
 TVM_DLL void ReverseComputeInline(ScheduleState self, const StmtSRef& block_sref);
 /******** Schedule: Reduction ********/
+TVM_DLL StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
+                                    const Optional<StmtSRef>& loop_sref);
 /*!
  * \brief Factor a reduction block by the specified loop
  * \details See python/tvm/tir/schedule/schedule.py

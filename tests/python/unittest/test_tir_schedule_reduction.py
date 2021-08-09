@@ -354,6 +354,26 @@ def rowsum_zero_dim_rfactor(a: ty.handle, b: ty.handle) -> None:
 
 
 @tvm.script.tir
+def rowsum_blockized(a: ty.handle, b: ty.handle) -> None:
+    B = tir.match_buffer(b, [32, 4])
+    A = tir.match_buffer(a, [32, 4, 128])
+    for i0, i2_0 in tir.grid(32, 16):
+        with tir.block([32, tir.reduce_axis(0, 16)], "blockized_B") as [io, ko]:
+            tir.bind(io, i0)
+            tir.bind(ko, i2_0)
+            with tir.init():
+                for i1 in tir.serial(0, 4):
+                    with tir.block([4], "B_init") as [ii_init]:
+                        tir.bind(ii_init, i1)
+                        B[io, ii_init] = 0.0
+            for i1_1, i2_1 in tir.grid(4, 8):
+                with tir.block([4, tir.reduce_axis(0, 128)], "B") as [ii, k]:
+                    tir.bind(ii, i1_1)
+                    tir.bind(k, ko * 8 + i2_1)
+                    B[io, ii] = B[io, ii] + A[io, ii, k]
+
+                    
+@tvm.script.tir
 def multiple_reduction_blocks(a: ty.handle, f: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16, 16))
     C = tir.alloc_buffer((16, 16))
@@ -453,7 +473,65 @@ def multiple_reduction_blocks_rfactor(a: ty.handle, f: ty.handle) -> None:
                     F[fi, fj] = (F[fi, fj] + A[fi, fj, fk]) + E[fi, fj]
 
 
+@tvm.script.tir
+def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128, 128])
+    C = tir.match_buffer(c, [128, 128])
+
+    with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
+
+
+@tvm.script.tir
+def matmul_decompose0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128, 128])
+    C = tir.match_buffer(c, [128, 128])
+
+    with tir.block([128, 128], "init") as [vi, vj]:
+        C[vi, vj] = 0.0
+
+    with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
+
+
+@tvm.script.tir
+def matmul_decompose1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128, 128])
+    C = tir.match_buffer(c, [128, 128])
+
+    with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
+        if vk == 0:
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
+
+
 # pylint: enable=no-member,invalid-name,unused-variable,unexpected-keyword-arg
+
+def test_reduction_decompose1():
+    s = tir.Schedule(matmul, debug_mode=True)
+    C = s.get_block("update")
+    i, _, _ = s.get_loops(C)
+    s.decompose_reduction(C, i)
+    tvm.ir.assert_structural_equal(matmul_decompose0, s.mod["main"])
+
+
+def test_reduction_decompose2():
+    s = tir.Schedule(matmul, debug_mode=True)
+    C = s.get_block("update")
+    s.decompose_reduction(C, loop=None)
+    tvm.ir.assert_structural_equal(matmul_decompose1, s.mod["main"])
+
+
+def test_reduction_decompose3():
+    s = tir.Schedule(rowsum_blockized, debug_mode=True)
+    blockized_B = s.get_block("blockized_B")
+    io, ko = s.get_loops(blockized_B)
+    s.decompose_reduction(blockized_B, ko)
 
 
 def test_reduction_rfactor_matmul():
