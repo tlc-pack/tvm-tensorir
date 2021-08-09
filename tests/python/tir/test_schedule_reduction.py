@@ -247,6 +247,48 @@ def rowsum_allreduce(a: ty.handle, b: ty.handle) -> None:
 
 
 @tvm.script.tir
+def rowsum_blockized(a: ty.handle, b: ty.handle) -> None:
+    B = tir.match_buffer(b, [32, 4])
+    A = tir.match_buffer(a, [32, 4, 128])
+    for i0, i2_0 in tir.grid(32, 16):
+        with tir.block([32, tir.reduce_axis(0, 16)], "blockized_B") as [io, ko]:
+            tir.bind(io, i0)
+            tir.bind(ko, i2_0)
+            with tir.init():
+                for i1 in tir.serial(0, 4):
+                    with tir.block([4], "B_init") as [ii_init]:
+                        tir.bind(ii_init, i1)
+                        B[io, ii_init] = 0.0
+            for i1_1, i2_1 in tir.grid(4, 8):
+                with tir.block([4, tir.reduce_axis(0, 128)], "B") as [ii, k]:
+                    tir.bind(ii, i1_1)
+                    tir.bind(k, ko * 8 + i2_1)
+                    B[io, ii] = B[io, ii] + A[io, ii, k]
+
+
+@tvm.script.tir
+def func(a: ty.handle, b: ty.handle) -> None:
+    B = tir.match_buffer(b, [32, 4])
+    A = tir.match_buffer(a, [32, 4, 128])
+    for i0_init in tir.serial(0, 32):
+        with tir.block([32], "blockized_B_init") as [io_init]:
+            tir.bind(io_init, i0_init)
+            for i1 in tir.serial(0, 4):
+                with tir.block([4], "B_init") as [ii_init]:
+                    tir.bind(ii_init, i1)
+                    B[io_init, ii_init] = 0.0
+    for i0, i2_0 in tir.grid(32, 16):
+        with tir.block([32, tir.reduce_axis(0, 16)], "blockized_B_update") as [io, ko]:
+            tir.bind(io, i0)
+            tir.bind(ko, i2_0)
+            for i1_1, i2_1 in tir.grid(4, 8):
+                with tir.block([4, tir.reduce_axis(0, 128)], "B") as [ii, k]:
+                    tir.bind(ii, i1_1)
+                    tir.bind(k, ko * 8 + i2_1)
+                    B[io, ii] = B[io, ii] + A[io, ii, k]
+
+
+@tvm.script.tir
 def non_multiple_allreduce(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (256, 250), "float32")
     B = tir.match_buffer(b, (256,), "float32")
@@ -269,18 +311,26 @@ def test_reduction_roundtrip():
     tvm.ir.assert_structural_equal(matmul, func_rt)
 
 
-def test_reduction_decompose():
-    # Test 1
+def test_reduction_decompose1():
     s = tir.Schedule(matmul, debug_mode=True)
     C = s.get_block("update")
     i, _, _ = s.get_loops(C)
     s.decompose_reduction(C, i)
     tvm.ir.assert_structural_equal(matmul_decompose0, s.mod["main"])
-    # Test 2
+
+
+def test_reduction_decompose2():
     s = tir.Schedule(matmul, debug_mode=True)
     C = s.get_block("update")
     s.decompose_reduction(C, loop=None)
     tvm.ir.assert_structural_equal(matmul_decompose1, s.mod["main"])
+
+
+def test_reduction_decompose3():
+    s = tir.Schedule(rowsum_blockized, debug_mode=True)
+    blockized_B = s.get_block("blockized_B")
+    io, ko = s.get_loops(blockized_B)
+    s.decompose_reduction(blockized_B, ko)
 
 
 def test_reduction_merge():
@@ -457,7 +507,9 @@ def test_reduction_allreduce_5():
 
 if __name__ == "__main__":
     test_reduction_roundtrip()
-    test_reduction_decompose()
+    test_reduction_decompose1()
+    test_reduction_decompose2()
+    test_reduction_decompose3()
     test_reduction_merge()
     test_reduction_blockize()
     test_reduction_compute_inline()

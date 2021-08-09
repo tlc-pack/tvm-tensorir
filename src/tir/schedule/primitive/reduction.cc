@@ -30,6 +30,61 @@ bool ListContainsElement(const Array<StmtSRef>& list, const StmtSRef& element) {
   return false;
 }
 
+class DecomposeReductionBlockReplacer : public StmtMutator {
+ public:
+  static std::pair<Block, Block> Replace(Block old_scope_root, For target_loop,
+                                         Stmt decomposed_body, Block old_reduction_block) {
+    DecomposeReductionBlockReplacer replacer(std::move(target_loop), std::move(decomposed_body),
+                                             std::move(old_reduction_block));
+    return std::make_pair(Downcast<Block>(replacer(std::move(old_scope_root))),
+                          replacer.new_reduction_block_);
+  }
+
+ private:
+  explicit DecomposeReductionBlockReplacer(For target_loop, Stmt decomposed_body,
+                                           Block old_reduction_block)
+      : target_loop_(std::move(target_loop)),
+        decomposed_body_(std::move(decomposed_body)),
+        old_reduction_block_(std::move(old_reduction_block)) {}
+
+  Stmt VisitStmt_(const ForNode* loop) final {
+    Stmt mutated_stmt = StmtMutator::VisitStmt_(loop);
+    if (loop == target_loop_.get()) {
+      return SeqStmt({decomposed_body_, mutated_stmt});
+    } else {
+      return mutated_stmt;
+    }
+  }
+
+  Stmt VisitStmt_(const BlockNode* block) final {
+    if (block == old_reduction_block_.get()) {
+      ObjectPtr<BlockNode> p_new_block = CopyOnWrite(block);
+      p_new_block->name_hint = p_new_block->name_hint + "_update";
+      p_new_block->init = NullOpt;
+      new_reduction_block_ = Block(p_new_block);
+      return new_reduction_block_;
+    } else {
+      return StmtMutator::VisitStmt_(block);
+    }
+  }
+
+  Stmt VisitStmt_(const SeqStmtNode* seq) final {
+    Array<Stmt> new_stmts;
+    new_stmts.reserve(static_cast<int>(seq->seq.size()));
+
+    for (const Stmt old_stmt : seq->seq) {
+      new_stmts.push_back(VisitStmt(old_stmt));
+    }
+    return SeqStmt::Flatten(new_stmts);
+  }
+
+ private:
+  For target_loop_;
+  Stmt decomposed_body_;
+  Block old_reduction_block_;
+  Block new_reduction_block_;
+};
+
 StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
                             const Optional<StmtSRef>& loop_sref_opt) {
   /*!
@@ -65,7 +120,8 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     CHECK(ListContainsElement(loops, loop_sref))
         << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
     // Cond 1. Check block is reduction
-    CHECK(ReductionBlock(self, block_sref, GetScopeRoot(block_sref).value()))
+    const StmtSRef& scope_root_sref = GetScopeRoot(block_sref).value();
+    CHECK(ReductionBlock(self, block_sref, scope_root_sref))
         << "decompose_reduction expect the block to be a reduction block";
     // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
@@ -153,40 +209,15 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
         break;
       }
     }
-    // Step 4. Create the parent of the new loop
-    if (const auto* parent = loop_sref->parent->StmtAs<ForNode>()) {
-      self->Replace(GetRef<StmtSRef>(loop_sref->parent),
-                    For(/*loop_var=*/parent->loop_var,
-                        /*min=*/parent->min,
-                        /*extent=*/parent->extent,
-                        /*kind=*/parent->kind,
-                        /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body}),
-                        /*thread_binding*/ parent->thread_binding,
-                        /*annotations*/ parent->annotations),
-                    {});
-    } else if (const auto* parent = loop_sref->parent->StmtAs<BlockNode>()) {
-      auto block_node = make_object<BlockNode>(*parent);
-      block_node->body = SeqStmt::Flatten(Array<Stmt>{body, parent->body});
-      block_node->init = NullOpt;
-      Block new_block = Block(block_node);
-      self->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
-                    {{GetRef<Block>(parent), new_block}});
-      UpdateAffineFlag(self, GetRef<StmtSRef>(loop_sref->parent));
-    } else {
-      LOG(FATAL)
-          << "TypeError: 'decompose_reduction' is applied to loop whose parent's type is not "
-             "unsupported: "
-          << loop_sref->parent->stmt->GetTypeKey();
-    }
-    // Step 5. Change the reduction block to update block
-    auto update_block_node = make_object<BlockNode>(*block);
-    update_block_node->name_hint = block->name_hint + "_update";
-    update_block_node->init = NullOpt;
-    Block update_block(update_block_node);
-    self->Replace(block_sref, update_block, {{GetRef<Block>(block), update_block}});
-    // Update scope information
-    UpdateScope(self, block_sref);
-    UpdateAffineFlag(self, block_sref);
+    // Step 4. Mutate IR
+    const BlockNode* old_scope_root = TVM_SREF_TO_BLOCK(old_scope_root, scope_root_sref);
+    Block new_scope_root;
+    Block new_reduction_block;
+    std::tie(new_scope_root, new_reduction_block) = DecomposeReductionBlockReplacer::Replace(
+        GetRef<Block>(old_scope_root), GetRef<For>(loop), body, GetRef<Block>(block));
+    self->Replace(scope_root_sref, new_scope_root,
+                  {{GetRef<Block>(old_scope_root), new_scope_root},
+                   {GetRef<Block>(block), new_reduction_block}});
     StmtSRef init_block_sref = self->stmt2ref.at(init_block.get());
     UpdateAffineFlag(self, init_block_sref);
     return init_block_sref;
@@ -233,13 +264,8 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
    *   - generate reduction block
    */
   // Type checks
-  const auto* init = init_sref->StmtAs<BlockNode>();
-  const auto* update = update_sref->StmtAs<BlockNode>();
-  CHECK(init != nullptr) << "TypeError: 'merge_reduction' expects 'init' of type Block, but get: "
-                         << init_sref->stmt->GetTypeKey();
-  CHECK(update != nullptr)
-      << "TypeError: 'merge_reduction' expects 'update' of type Block, but get: "
-      << update_sref->stmt->GetTypeKey();
+  const BlockNode* init = TVM_SREF_TO_BLOCK(init, init_sref);
+  const BlockNode* update = TVM_SREF_TO_BLOCK(update, update_sref);
   const auto* init_body = init->body.as<BufferStoreNode>();
   const auto* update_body = update->body.as<BufferStoreNode>();
   CHECK(init_body != nullptr && update_body != nullptr)
