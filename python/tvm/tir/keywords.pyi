@@ -65,7 +65,6 @@ class Buffer(PrimExpr):
     def __getitem__(
         self: Buffer, pos: Tuple[Union[int, PrimExpr]]) -> Buffer: ...
 
-
 """
 Variables and constants
 """
@@ -109,12 +108,9 @@ def float32(imm: float) -> PrimExpr: ...
 
 def float64(imm: float) -> PrimExpr: ...
 
-
 """
-Operators
+Binary/N-ary Operators
 """
-
-
 def floormod(x: PrimExpr, y: PrimExpr) -> PrimExpr: ...
 
 
@@ -142,6 +138,79 @@ def min(a: PrimExpr, b: PrimExpr) -> PrimExpr: ...
 
 def if_then_else(cond: PrimExpr, t: PrimExpr,
                  f: PrimExpr, dtype: str) -> PrimExpr: ...
+
+
+"""
+Unary operator
+"""
+def exp2(x: PrimExpr) -> PrimExpr: ...
+
+
+def exp10(x: PrimExpr) -> PrimExpr: ...
+
+
+def erf(x: PrimExpr) -> PrimExpr: ...
+
+
+def tanh(x: PrimExpr) -> PrimExpr: ...
+
+
+def sigmoid(x: PrimExpr) -> PrimExpr: ...
+
+
+def log(x: PrimExpr) -> PrimExpr: ...
+
+
+def log2(x: PrimExpr) -> PrimExpr: ...
+
+
+def log10(x: PrimExpr) -> PrimExpr: ...
+
+
+def log1p(x: PrimExpr) -> PrimExpr: ...
+
+
+def tan(x: PrimExpr) -> PrimExpr: ...
+
+
+def cos(x: PrimExpr) -> PrimExpr: ...
+
+
+def cosh(x: PrimExpr) -> PrimExpr: ...
+
+
+def acos(x: PrimExpr) -> PrimExpr: ...
+
+
+def acosh(x: PrimExpr) -> PrimExpr: ...
+
+
+def sin(x: PrimExpr) -> PrimExpr: ...
+
+
+def sinh(x: PrimExpr) -> PrimExpr: ...
+
+
+def asin(x: PrimExpr) -> PrimExpr: ...
+
+
+def asinh(x: PrimExpr) -> PrimExpr: ...
+
+
+def atan(x: PrimExpr) -> PrimExpr: ...
+
+
+def atanh(x: PrimExpr) -> PrimExpr: ...
+
+
+def atan2(x: PrimExpr) -> PrimExpr: ...
+
+
+def sqrt(x: PrimExpr) -> PrimExpr: ...
+
+
+def rsqrt(x: PrimExpr) -> PrimExpr: ...
+
 
 """
 Loops
@@ -174,7 +243,6 @@ def range(begin: Union[PrimExpr, int],
 def thread_binding(begin: Union[PrimExpr, int],
                    end: Union[PrimExpr, int], thread: str) -> Iterable[IterVar]: ...
 
-
 """
 Axis
 """
@@ -195,7 +263,6 @@ def scan_axis(begin: Union[PrimExpr, int],
 def opaque_axis(begin: Union[PrimExpr, int],
                 end: Union[PrimExpr, int]) -> IterVar: ...
 
-
 """
 Buffers
 """
@@ -204,19 +271,13 @@ Buffers
 def match_buffer(param: Union[ty.handle, Buffer], shape: Sequence[Union[PrimExpr, int]], dtype: str = "float32", data=None, strides: Optional[Sequence[int]]
                  = None, elem_offset: Optional[int] = None, scope: str = "global", align: int = -1, offset_factor: int = 0, buffer_type: str = "default") -> Buffer: ...
 
-# NOTE(zihao): buffer_decl or decl_buffer? I see both
-# what's data used for?
-
 
 def buffer_decl(shape: Sequence[Union[PrimExpr, int]], dtype: str = "float32", data=None, strides: Optional[Sequence[int]] = None,
                 elem_offset: Optional[int] = None, scope: str = "global", align: int = -1, offset_factor: int = 0, buffer_type: str = "default") -> Buffer: ...
 
-# looks like the same as above?
-
 
 def alloc_buffer(shape: Sequence[Union[PrimExpr, int]], dtype: str = "float32", data=None, strides: Optional[Sequence[int]] = None,
                  elem_offset: Optional[int] = None, scope: str = "global", align: int = -1, offset_factor: int = 0, buffer_type: str = "default") -> Buffer: ...
-
 
 """
 Reads/Writes
@@ -226,9 +287,8 @@ def reads(*args: Buffer) -> None: ...
 
 def writes(*args: Buffer) -> None: ...
 
-
 """
-Block
+Scope handler
 """
 
 
@@ -242,7 +302,6 @@ class block(ContextManager):
 class init(ContextManager):
     def __init__(self) -> None: ...
 
-
 """
 Threads and Bindings
 """
@@ -252,7 +311,13 @@ def env_thread(thread: str) -> IterVar: ...
 def bind(iter_var: IterVar, expr: PrimExpr) -> None: ...
 
 
+def where(cond: PrimExpr) -> None: ...
+
+
 """
 Annotations
 """
 def func_attr(attrs: Dict) -> None: ...
+
+
+def block_attr(attrs: Dict) -> None: ...
