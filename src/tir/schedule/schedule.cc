@@ -218,8 +218,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma")  //
 
 /******** (FFI) Misc ********/
 
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostProc")
-    .set_body_method<Schedule>(&ScheduleNode::EnterPostProc);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostproc")
+    .set_body_method<Schedule>(&ScheduleNode::EnterPostproc);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDoubleBuffer")
     .set_body_method<Schedule>(&ScheduleNode::DoubleBuffer);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSetScope")

@@ -25,7 +25,7 @@ namespace tir {
 
 Trace::Trace() { data_ = make_object<TraceNode>(); }
 
-Trace::Trace(Array<Inst> insts, Map<Inst, ObjectRef> decisions) {
+Trace::Trace(Array<Instruction> insts, Map<Instruction, ObjectRef> decisions) {
   ObjectPtr<TraceNode> n = make_object<TraceNode>();
   n->insts = std::move(insts);
   n->decisions = std::move(decisions);
@@ -34,18 +34,18 @@ Trace::Trace(Array<Inst> insts, Map<Inst, ObjectRef> decisions) {
 
 /**************** Utilities  ****************/
 
-bool IsPostproc(const Inst& inst) {
-  static InstKind inst_enter_postproc = InstKind::Get("EnterPostProc");
-  return inst->kind.same_as(inst_enter_postproc);
+bool IsPostproc(const InstructionKind& inst_kind) {
+  static InstructionKind inst_enter_postproc = InstructionKind::Get("EnterPostproc");
+  return inst_kind.same_as(inst_enter_postproc);
 }
 
-int IndexLastInst(const Array<Inst>& insts, bool remove_postproc) {
+int GetNumValidInstructions(const Array<Instruction>& insts, bool remove_postproc) {
   if (!remove_postproc) {
     return insts.size();
   }
   int n_insts = 0;
-  for (const Inst& inst : insts) {
-    if (!IsPostproc(inst)) {
+  for (const Instruction& inst : insts) {
+    if (!IsPostproc(inst->kind)) {
       ++n_insts;
     } else {
       break;
@@ -206,20 +206,25 @@ void TranslateAddOutputRVs(const Array<String>& old_outputs, const Array<ObjectR
   }
 }
 
-/**************** Add/Remove ****************/
+/**************** Add/Remove/Get ****************/
 
-void TraceNode::Append(const Inst& inst) { insts.push_back(inst); }
-
-void TraceNode::Append(const Inst& inst, const ObjectRef& decision) {
-  insts.push_back(inst);
-  decisions.Set(inst, decision);
+Optional<ObjectRef> TraceNode::GetDecision(const Instruction& inst) const {
+  auto it = this->decisions.find(inst);
+  return it == this->decisions.end() ? Optional<ObjectRef>(NullOpt) : (*it).second;
 }
 
-Optional<Inst> TraceNode::Pop() {
+void TraceNode::Append(Instruction inst) { insts.push_back(std::move(inst)); }
+
+void TraceNode::Append(Instruction inst, ObjectRef decision) {
+  decisions.Set(inst, std::move(decision));
+  insts.push_back(std::move(inst));
+}
+
+Optional<Instruction> TraceNode::Pop() {
   if (insts.empty()) {
     return NullOpt;
   }
-  Inst inst = insts.back();
+  Instruction inst = insts.back();
   insts.pop_back();
   if (decisions.count(inst)) {
     decisions.erase(inst);
@@ -227,23 +232,23 @@ Optional<Inst> TraceNode::Pop() {
   return inst;
 }
 
-/**************** Interfacing with InstKind ****************/
+/**************** Interfacing with InstructionKind ****************/
 
 void TraceNode::ApplyToSchedule(
-    const Schedule& sch, bool remove_postproc,
-    std::function<ObjectRef(const Inst& inst, const Array<ObjectRef>& inputs,  //
-                            const Array<ObjectRef>& attrs,                     //
-                            const ObjectRef& decision)>
+    Schedule sch, bool remove_postproc,
+    runtime::TypedPackedFunc<ObjectRef(const Instruction& inst, const Array<ObjectRef>& inputs,  //
+                                       const Array<ObjectRef>& attrs,                            //
+                                       const Optional<ObjectRef>& decision)>
         decision_provider) const {
   std::unordered_map<const Object*, const Object*> rv_map;
-  for (const Inst& inst : this->insts) {
-    if (remove_postproc && IsPostproc(inst)) {
+  for (const Instruction& inst : this->insts) {
+    if (remove_postproc && IsPostproc(inst->kind)) {
       break;
     }
     Array<ObjectRef> inputs = TranslateInputRVs(inst->inputs, rv_map);
     Array<ObjectRef> attrs = inst->attrs;
-    ObjectRef decision = this->decisions.Get(inst);
-    if (decision_provider) {
+    Optional<ObjectRef> decision = this->GetDecision(inst);
+    if (decision_provider != nullptr) {
       decision = decision_provider(inst, inputs, attrs, decision);
     }
     Array<ObjectRef> outputs = inst->kind->f_apply_to_schedule(sch, inputs, attrs, decision);
@@ -251,7 +256,7 @@ void TraceNode::ApplyToSchedule(
   }
 }
 
-ObjectRef TraceNode::AsJSON() const {
+ObjectRef TraceNode::AsJSON(bool remove_postproc) const {
   std::unordered_map<ObjectRef, String, ObjectPtrHash, ObjectPtrEqual> rv_names;
   Array<ObjectRef> json_insts;
   Array<ObjectRef> json_decisions;
@@ -259,15 +264,19 @@ ObjectRef TraceNode::AsJSON() const {
   json_decisions.reserve(this->insts.size());
 
   int i = 0;
-  for (const Inst& inst : this->insts) {
-    const InstKind& kind = inst->kind;
+  for (const Instruction& inst : this->insts) {
+    const InstructionKind& kind = inst->kind;
+    if (remove_postproc && IsPostproc(kind)) {
+      break;
+    }
     json_insts.push_back(Array<ObjectRef>{
         /* 0: inst name */ kind->name,
         /* 1: inputs    */ TranslateInputRVs(inst->inputs, rv_names),
-        /* 2: attrs     */ kind->f_attrs_as_json ? kind->f_attrs_as_json(inst->attrs) : inst->attrs,
+        /* 2: attrs     */ kind->f_attrs_as_json != nullptr ? kind->f_attrs_as_json(inst->attrs)
+                                                            : ObjectRef(inst->attrs),
         /* 3: outputs   */ TranslateAddOutputRVs(inst->outputs, &rv_names),
     });
-    if (Optional<ObjectRef> decision = this->decisions.Get(inst)) {
+    if (Optional<ObjectRef> decision = this->GetDecision(inst)) {
       json_decisions.push_back(Array<ObjectRef>{
           /* 0: index    */ Integer(i),
           /* 1: decision */ decision.value(),
@@ -281,11 +290,14 @@ ObjectRef TraceNode::AsJSON() const {
   };
 }
 
-Array<String> TraceNode::AsPython() const {
+Array<String> TraceNode::AsPython(bool remove_postproc) const {
   std::unordered_map<ObjectRef, String, ObjectPtrHash, ObjectPtrEqual> rv_names;
   Array<String> py_trace;
   py_trace.reserve(this->insts.size());
-  for (const Inst& inst : this->insts) {
+  for (const Instruction& inst : this->insts) {
+    if (remove_postproc && IsPostproc(inst->kind)) {
+      break;
+    }
     Array<ObjectRef> attrs;
     attrs.reserve(inst->attrs.size());
     for (const ObjectRef& obj : inst->attrs) {
@@ -298,13 +310,13 @@ Array<String> TraceNode::AsPython() const {
     py_trace.push_back(
         inst->kind->f_as_python(/*inputs=*/TranslateInputRVs(inst->inputs, rv_names),
                                 /*attrs=*/attrs,
-                                /*decision=*/this->decisions.Get(inst),
+                                /*decision=*/this->GetDecision(inst),
                                 /*outputs=*/TranslateAddOutputRVs(inst->outputs, &rv_names)));
   }
   return py_trace;
 }
 
-void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
+void Trace::ApplyJSONToSchedule(ObjectRef json, Schedule sch) {
   Array<ObjectRef> json_insts{nullptr};
   Array<ObjectRef> json_decisions{nullptr};
   // Parse `json` into `json_insts` and `json_decisions`
@@ -346,7 +358,7 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
   std::unordered_map<std::string, ObjectRef> named_rvs{{"None", ObjectRef{nullptr}}};
   int i = 0;
   for (const ObjectRef& inst_entry : json_insts) {
-    InstKind kind{nullptr};
+    InstructionKind kind{nullptr};
     Array<ObjectRef> inputs{nullptr};
     Array<ObjectRef> attrs{nullptr};
     Array<String> outputs{ObjectPtr<Object>{nullptr}};
@@ -362,7 +374,7 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
       for (const ObjectRef& str : *arr3) {
         ICHECK(str->IsInstance<StringObj>());
       }
-      kind = InstKind::Get(arr0->data);
+      kind = InstructionKind::Get(arr0->data);
       inputs = GetRef<Array<ObjectRef>>(arr1);
       attrs = GetRef<Array<ObjectRef>>(arr2);
       outputs = GetRef<Array<String>>(arr3);
@@ -375,7 +387,7 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
     // Parse inputs
     inputs = TranslateInputRVs(inputs, named_rvs);
     // Parse attrs
-    if (kind->f_attrs_from_json) {
+    if (kind->f_attrs_from_json != nullptr) {
       attrs = kind->f_attrs_from_json(attrs);
     }
     // Apply to the schedule
@@ -388,24 +400,24 @@ void Trace::ApplyJSONToSchedule(const ObjectRef& json, const Schedule& sch) {
 
 /**************** Creation ****************/
 
-Trace TraceNode::WithDecision(const Inst& inst, const ObjectRef& decision,
-                              bool remove_postproc) const {
-  int n_insts = IndexLastInst(this->insts, remove_postproc);
-  Array<Inst> new_insts = Array<Inst>{this->insts.begin(), this->insts.begin() + n_insts};
-  Map<Inst, ObjectRef> new_decisions{this->decisions.begin(), this->decisions.end()};
-  new_decisions.Set(inst, decision);
+Trace TraceNode::WithDecision(Instruction inst, ObjectRef decision, bool remove_postproc) const {
+  int n_insts = GetNumValidInstructions(this->insts, remove_postproc);
+  Array<Instruction> new_insts =
+      Array<Instruction>{this->insts.begin(), this->insts.begin() + n_insts};
+  Map<Instruction, ObjectRef> new_decisions{this->decisions.begin(), this->decisions.end()};
+  new_decisions.Set(std::move(inst), std::move(decision));
   return Trace(new_insts, new_decisions);
 }
 
 Trace TraceNode::Simplified(bool remove_postproc) const {
-  int n_insts = IndexLastInst(this->insts, remove_postproc);
+  int n_insts = GetNumValidInstructions(this->insts, remove_postproc);
   std::unordered_set<const Object*> used_rvs;
-  std::vector<Inst> new_insts;
-  std::unordered_map<Inst, ObjectRef, ObjectPtrHash, ObjectPtrEqual> new_decisions;
+  std::vector<Instruction> new_insts;
+  std::unordered_map<Instruction, ObjectRef, ObjectPtrHash, ObjectPtrEqual> new_decisions;
   new_insts.reserve(n_insts);
   new_decisions.reserve(this->decisions.size());
   for (int inst_idx = n_insts - 1; inst_idx >= 0; --inst_idx) {
-    const Inst& inst = this->insts[inst_idx];
+    const Instruction& inst = this->insts[inst_idx];
     // Check if all the variables the instruction defined are dead
     // If so, and the instruction is pure, we can safely remove this instruction
     bool all_defs_dead = inst->kind->is_pure;
@@ -423,7 +435,7 @@ Trace TraceNode::Simplified(bool remove_postproc) const {
     }
     // Otherwise this instruction is not dead
     new_insts.push_back(inst);
-    if (Optional<ObjectRef> decision = this->decisions.Get(inst)) {
+    if (Optional<ObjectRef> decision = this->GetDecision(inst)) {
       new_decisions.emplace(inst, std::move(decision));
     }
     // Add its inputs as "used" ones
@@ -441,8 +453,8 @@ Trace TraceNode::Simplified(bool remove_postproc) const {
       }
     }
   }
-  return Trace(Array<Inst>(new_insts.rbegin(), new_insts.rend()),
-               Map<Inst, ObjectRef>(new_decisions));
+  return Trace(Array<Instruction>(new_insts.rbegin(), new_insts.rend()),
+               Map<Instruction, ObjectRef>(new_decisions));
 }
 
 /**************** Repr ****************/
@@ -451,7 +463,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<TraceNode>([](const ObjectRef& obj, ReprPrinter* p) {
       const auto* self = obj.as<TraceNode>();
       ICHECK_NOTNULL(self);
-      Array<String> repr = self->AsPython();
+      Array<String> repr = self->AsPython(/*remove_postproc=*/false);
       bool is_first = true;
       for (const String& line : repr) {
         if (is_first) {
@@ -463,15 +475,43 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       }
     });
 
+/**************** Instruction Registration ****************/
+
+struct EnterPostprocTraits : public UnpackedInstTraits<EnterPostprocTraits> {
+  static constexpr const char* kName = "EnterPostproc";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 0;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch) { return sch->EnterPostproc(); }
+
+  static String UnpackedAsPython(Array<String> outputs) {
+    PythonAPICall py("enter_postproc");
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct ::tvm::tir::UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND_TRAITS(EnterPostprocTraits);
+
 /**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(TraceNode);
 TVM_REGISTER_GLOBAL("tir.schedule.Trace")
-    .set_body_typed([](Optional<Array<Inst>> insts, Optional<Map<Inst, ObjectRef>> decisions) {
-      return Trace(insts.value_or(Array<Inst>()), decisions.value_or(Map<Inst, ObjectRef>()));
+    .set_body_typed([](Optional<Array<Instruction>> insts,
+                       Optional<Map<Instruction, ObjectRef>> decisions) {
+      return Trace(insts.value_or(Array<Instruction>()),
+                   decisions.value_or(Map<Instruction, ObjectRef>()));
     });
+TVM_REGISTER_GLOBAL("tir.schedule.TraceGetDecision")
+    .set_body_method<Trace>(&TraceNode::GetDecision);
 TVM_REGISTER_GLOBAL("tir.schedule.TraceAppend")
-    .set_body_typed([](Trace self, Inst inst, Optional<ObjectRef> decision) {
+    .set_body_typed([](Trace self, Instruction inst, Optional<ObjectRef> decision) {
       if (decision.defined()) {
         return self->Append(inst, decision.value());
       } else {
@@ -480,9 +520,7 @@ TVM_REGISTER_GLOBAL("tir.schedule.TraceAppend")
     });
 TVM_REGISTER_GLOBAL("tir.schedule.TracePop").set_body_method<Trace>(&TraceNode::Pop);
 TVM_REGISTER_GLOBAL("tir.schedule.TraceApplyToSchedule")
-    .set_body_typed([](Trace self, Schedule sch, bool remove_postproc) {
-      return self->ApplyToSchedule(sch, remove_postproc, nullptr);
-    });
+    .set_body_method<Trace>(&TraceNode::ApplyToSchedule);
 TVM_REGISTER_GLOBAL("tir.schedule.TraceAsJSON").set_body_method<Trace>(&TraceNode::AsJSON);
 TVM_REGISTER_GLOBAL("tir.schedule.TraceAsPython").set_body_method<Trace>(&TraceNode::AsPython);
 TVM_REGISTER_GLOBAL("tir.schedule.TraceWithDecision")

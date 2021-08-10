@@ -597,9 +597,9 @@ struct ReorderTraits : public UnpackedInstTraits<ReorderTraits> {
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(FuseTraits);
-TVM_REGISTER_INST_KIND(SplitTraits);
-TVM_REGISTER_INST_KIND(ReorderTraits);
+TVM_REGISTER_INST_KIND_TRAITS(FuseTraits);
+TVM_REGISTER_INST_KIND_TRAITS(SplitTraits);
+TVM_REGISTER_INST_KIND_TRAITS(ReorderTraits);
 
 }  // namespace tir
 }  // namespace tvm

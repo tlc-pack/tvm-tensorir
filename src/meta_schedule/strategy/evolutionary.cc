@@ -510,7 +510,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
     Sampler* sampler = &thread_samplers[thread_id];
     for (;;) {
       Trace support_trace = support[sampler->SampleInt(0, support.size())]->trace().value();
-      Map<Inst, ObjectRef> decisions;
+      Map<Instruction, ObjectRef> decisions;
       try {
         if (Optional<Schedule> opt_sch = ReplayTrace(Trace(support_trace->insts, decisions), task,
                                                      space, sampler, thread_workloads[thread_id])) {

@@ -436,7 +436,7 @@ class ScheduleNode : public runtime::Object {
 
   /******** Schedule: Misc ********/
   /*! \brief An NOP indicating entrance of post processing */
-  virtual void EnterPostProc() = 0;
+  virtual void EnterPostproc() = 0;
   /*!
    * \brief Add `double_buffer` annotation to a block
    * \param block_rv The block to be annotated

@@ -214,9 +214,9 @@ struct SampleComputeLocationTraits : public UnpackedInstTraits<SampleComputeLoca
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(SamplePerfectTileTraits);
-TVM_REGISTER_INST_KIND(SampleCategoricalTraits);
-TVM_REGISTER_INST_KIND(SampleComputeLocationTraits);
+TVM_REGISTER_INST_KIND_TRAITS(SamplePerfectTileTraits);
+TVM_REGISTER_INST_KIND_TRAITS(SampleCategoricalTraits);
+TVM_REGISTER_INST_KIND_TRAITS(SampleComputeLocationTraits);
 
 }  // namespace tir
 }  // namespace tvm

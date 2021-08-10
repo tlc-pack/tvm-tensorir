@@ -717,8 +717,8 @@ struct ReverseComputeInlineTraits : public UnpackedInstTraits<ReverseComputeInli
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(ComputeInlineTraits);
-TVM_REGISTER_INST_KIND(ReverseComputeInlineTraits);
+TVM_REGISTER_INST_KIND_TRAITS(ComputeInlineTraits);
+TVM_REGISTER_INST_KIND_TRAITS(ReverseComputeInlineTraits);
 
 }  // namespace tir
 }  // namespace tvm

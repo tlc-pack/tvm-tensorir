@@ -37,8 +37,8 @@ using LoopRVNode = tir::LoopRVNode;
 using ExprRV = tir::ExprRV;
 using ExprRVNode = tir::ExprRVNode;
 using Trace = tir::Trace;
-using Inst = tir::Inst;
-using InstKind = tir::InstKind;
+using Instruction = tir::Instruction;
+using InstructionKind = tir::InstructionKind;
 
 }  // namespace meta_schedule
 }  // namespace tvm

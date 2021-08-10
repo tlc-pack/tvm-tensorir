@@ -920,8 +920,8 @@ struct TensorizeTraits : public UnpackedInstTraits<TensorizeTraits> {
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(BlockizeTraits);
-TVM_REGISTER_INST_KIND(TensorizeTraits);
+TVM_REGISTER_INST_KIND_TRAITS(BlockizeTraits);
+TVM_REGISTER_INST_KIND_TRAITS(TensorizeTraits);
 
 }  // namespace tir
 }  // namespace tvm

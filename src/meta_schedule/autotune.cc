@@ -57,7 +57,7 @@ void TuneContextNode::Init(Optional<Integer> seed) {
 }
 
 bool TuneContextNode::Postprocess(const Schedule& sch) {
-  sch->EnterPostProc();
+  sch->EnterPostproc();
   for (const Postproc& postproc : postprocs) {
     if (!postproc->Apply(task.value(), sch, &sampler)) {
       return false;

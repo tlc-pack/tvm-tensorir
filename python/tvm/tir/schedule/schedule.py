@@ -412,9 +412,9 @@ class Schedule(Object):
         return _ffi_api_schedule.ScheduleFuse(self, loops)  # type: ignore # pylint: disable=no-member
 
     def split(
-            self,
-            loop: LoopRV,
-            factors: List[Union[ExprRV, None]],
+        self,
+        loop: LoopRV,
+        factors: List[Union[ExprRV, None]],
     ) -> List[LoopRV]:
         """Split a loop into a list of consecutive loops. It requires:
         1) The loop can't have annotation or thread binding.
@@ -759,10 +759,16 @@ class Schedule(Object):
     def inline_argument(self, i: int, func_name: str = "main"):
         _ffi_api_schedule.ScheduleInlineArgument(self, i, func_name)  # pylint: disable=no-member
 
+    def software_pipeline(self, loop: LoopRV, num_stages: int) -> None:
+        _ffi_api_schedule.ScheduleSoftwarePipeline(  # pylint: disable=no-member
+            self, loop, num_stages
+        )
+
 
 @_register_object("tir.ConcreteSchedule")
 class ConcreteSchedule(Schedule):
     """A concrete schedule class of TensorIR. Do not use directly, use tvm.tir.Schedule instead."""
+
     def tensorize(self, loop: LoopRV, intrin: Union[str, TensorIntrin]) -> None:
         if isinstance(intrin, str):
             intrin = String(intrin)
@@ -825,8 +831,6 @@ class ConcreteSchedule(Schedule):
     def inline_argument(self, i: int, func_name: str = "main"):
         _ffi_api_schedule.ScheduleInlineArgument(self, i, func_name)  # pylint: disable=no-member
 
-    def software_pipeline(self, loop: LoopRV, num_stages: int) -> None:
-        _ffi_api_schedule.ScheduleSoftwarePipeline(self, loop, num_stages)  # pylint: disable=no-member
 
 @_register_object("tir.ConcreteSchedule")
 class ConcreteSchedule(Schedule):
