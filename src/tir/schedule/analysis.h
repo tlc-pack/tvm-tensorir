@@ -130,6 +130,7 @@ void CheckReductionBlock(const ScheduleState& self, const StmtSRef& block_sref,
  * \param self The schedule state
  * \param subtree_root_sref The root of the subtree to be checked in the SRef tree
  * \throw ScheduleError If the subtree does not have compact data flow
+ * \sa IsCompleteBlock, IsReductionBlock
  */
 void CheckSRefSubtreeCompactDataFlow(const ScheduleState& self, const StmtSRef& subtree_root_sref);
 
@@ -144,6 +145,15 @@ void CheckSRefSubtreeCompactDataFlow(const ScheduleState& self, const StmtSRef& 
  */
 bool IsAffineBinding(const BlockRealize& realize, const Map<Var, Range>& loop_var_ranges,
                      arith::Analyzer* analyzer);
+
+/*!
+ * \brief Check whether a block has an affine binding using the cached flag, and throw an exception
+ * if the block does not have an affine binding.
+ * \param self The schedule state
+ * \param block The block to be checked
+ * \throw ScheduleError If the input block does not have an affine binding
+ */
+void CheckAffineBinding(const ScheduleState& self, Block block);
 
 /*!
  * \brief Extracts the ranges of loop variables in a path of the sref tree

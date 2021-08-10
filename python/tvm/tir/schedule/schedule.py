@@ -556,7 +556,7 @@ class Schedule(Object):
         """
         _ffi_api.ScheduleVectorize(self, loop)  # type: ignore # pylint: disable=no-member
 
-    def bind(self, loop: LoopRV, thread: str) -> None:
+    def bind(self, loop: LoopRV, thread_axis: str) -> None:
         """Bind the input loop to the given thread axis. It requires:
         1) The scope block that the loop is in should have stage-pipeline property
         2) All the blocks under the loop are complete blocks or reduction blocks, and have affine
@@ -569,8 +569,12 @@ class Schedule(Object):
         ----------
         loop : LoopRV
             The loop to be bound to the thread axis
-        thread : str
-            The given thread axis
+        thread_axis : str
+            The thread axis to be bound to the loop. Possible candidates:
+            - blockIdx.x/y/z
+            - threadIdx.x/y/z
+            - vthread
+            - vthread.x/y/z
 
         Examples
         --------
@@ -614,7 +618,7 @@ class Schedule(Object):
                             B[vi, vj] = A[vi, vj] * 2.0
 
         """
-        _ffi_api.ScheduleBind(self, loop, String(thread))  # type: ignore # pylint: disable=no-member
+        _ffi_api.ScheduleBind(self, loop, String(thread_axis))  # type: ignore # pylint: disable=no-member
 
     def unroll(self, loop: LoopRV) -> None:
         """Unroll the input loop. It requires nothing

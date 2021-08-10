@@ -21,51 +21,46 @@
 namespace tvm {
 namespace tir {
 
-class NotAffineBindingError : public ScheduleError {
+class WrongBlockIterTypeError : public ScheduleError {
  public:
-  explicit NotAffineBindingError(IRModule mod, Block block)
-      : mod_(std::move(mod)), block_(std::move(block)) {}
-  String FastErrorString() const override {
-    return "ScheduleError: The blocks underlying the loop to be parallelized are required to have "
-           "affine bindings, but some such block does not have";
+  explicit WrongBlockIterTypeError(IRModule mod, ForKind for_kind, Var loop_var, Block block)
+      : mod_(std::move(mod)), loop_var_(std::move(loop_var)), block_(std::move(block)) {
+    op_str_ = for_kind == ForKind::kParallel     ? "parallel"
+              : for_kind == ForKind::kVectorized ? "vectorize"
+                                                 : "bind";
   }
-  String DetailRenderTemplate() const override {
-    return "The blocks underlying the loop to be parallelized are required to have affine "
-           "bindings, however block {0} does not have affine bindings";
-  }
-  IRModule mod() const override { return mod_; }
-  Array<ObjectRef> LocationsOfInterest() const override { return {block_}; }
-  IRModule mod_;
-  Block block_;
-};
-
-class CannotParallelizeError : public ScheduleError {
- public:
-  explicit CannotParallelizeError(IRModule mod, Var loop_var, Block block)
-      : mod_(std::move(mod)), loop_var_(std::move(loop_var)), block_(std::move(block)) {}
-  String FastErrorString() const override {
-    return "ScheduleError: The parallelization cannot be fulfilled because the loop cannot be "
-           "parallelized with regard to some of its underlying block";
-  }
-  String DetailRenderTemplate() const override {
+  String FastErrorString() const final {
     std::ostringstream os;
-    os << "The loop cannot be parallelized with regard to block {0}, because one of the two "
-          "following reasons:\n1) some block iter whose binding contains the loop var "
-       << loop_var_ << " is neither data-parallel nor reduction block iter\n2) the loop var "
-       << loop_var_
-       << " is contained in some reduction block iter's binding, while the context thread is not "
-          "`threadIdx`";
+    os << "ScheduleError: The \"" << op_str_
+       << "\" cannot be fulfilled with regard to some of its underlying block";
     return os.str();
   }
-  IRModule mod() const override { return mod_; }
-  Array<ObjectRef> LocationsOfInterest() const override { return {block_}; }
+  String DetailRenderTemplate() const final {
+    std::ostringstream os;
+    if (op_str_ != "bind") {
+      os << "The \"" << op_str_
+         << "\" cannot be fulfilled with regard to block {0} because some block iter whose block "
+            "binding contains the loop var is not a data parallel block iter";
+    } else {
+      os << "The \"bind\" cannot be fulfilled with regard to block {0}. This is because some of its"
+            " block iter whose block binding contains "
+         << loop_var_
+         << " does not meet any of the conditions:\n1) the block iter is data parallel;\n2) the "
+            "block iter is a reduction block iter, and the thread axis to be bound is "
+            "\"threadIdx.x/y/z\"";
+    }
+    return os.str();
+  }
+  IRModule mod() const final { return mod_; }
+  Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
   IRModule mod_;
+  std::string op_str_;
   Var loop_var_;
   Block block_;
 };
 
 /*!
- * \brief Check if a loop is parallelizable with regard to a specific block
+ * \brief Check if a loop can be parallelized/vectorized/bound with regard to a specific block
  * \details There are two conditions:
  * 1) The block is required to have affine bindings, and
  * 2) For each block iter whose binding contains the input loop variable, either
@@ -73,21 +68,22 @@ class CannotParallelizeError : public ScheduleError {
  *   - the block iter is a reduction block iter, and the input `thread_tag` starts with "threadIdx"
  *   in case of cross-thread reduction.
  * \param self The schedule state
+ * \param for_kind The desired ForKind (only `kParallel`, `kVectorized` and `kThreadBinding` are
+ * allowed)
  * \param loop_var The loop variable of the loop to be checked
  * \param block_realize The block-realize of the block to be checked
- * \param thread_tag The tag of the thread in GPU to be bound, which is an empty string if the
- * parallelization is not for GPU
- * \throws ScheduleError If the input loop is not parallelizable with regard to the input block
+ * \param thread_scope The thread scope of the thread axis to be bound, which is an invalid value if
+ * the operation is not "bind"
+ * \throws ScheduleError If the input loop cannot be parallelized/vectorized/bound with regard to
+ * the input block
  */
-void CheckLoopParallelizableInBlock(const ScheduleState& self, const Var& loop_var,
-                                    const BlockRealize& block_realize,
-                                    const std::string& thread_tag) {
+void CheckLoopParallelizableInBlock(const ScheduleState& self, ForKind for_kind,
+                                    const Var& loop_var, const BlockRealize& block_realize,
+                                    runtime::ThreadScope thread_scope) {
   const Block& block = block_realize->block;
 
   // Cond 1. The block is required to have affine bindings.
-  if (!self->IsAffineBlockBinding(self->stmt2ref.at(block_realize->block.get()))) {
-    throw NotAffineBindingError(self->mod, block);
-  }
+  CheckAffineBinding(self, block);
 
   // Cond 2. For each block iter whose binding contains `loop_var`, only two cases are allowed.
   ICHECK_EQ(block->iter_vars.size(), block_realize->iter_values.size());
@@ -101,72 +97,73 @@ void CheckLoopParallelizableInBlock(const ScheduleState& self, const Var& loop_v
     }
     // Only two cases are allowed:
     // - The block iter is data parallel, or
-    // - The block iter is a reduction block iter, and the `thread_tag` starts with "threadIdx"
+    // - The block iter is a reduction block iter, and the `thread_scope` is "threadIdx.x/y/z"
     // in case of cross-thread reduction.
     IterVarType iter_type = iter_var->iter_type;
     if (!(iter_type == kDataPar ||
-          (iter_type == kCommReduce && thread_tag.substr(0, 9) == "threadIdx"))) {
-      throw CannotParallelizeError(self->mod, loop_var, block);
+          (iter_type == kCommReduce && thread_scope.rank == 1 && thread_scope.dim_index != -1))) {
+      throw WrongBlockIterTypeError(self->mod, for_kind, loop_var, block);
     }
   }
 }
 
 /*!
- * \brief For each block (recursive) under the given loop, check whether the input loop is
- * parallelizable with regard to the block
+ * \brief For each block (recursive) under the given loop, check whether the input loop can be
+ * parallelized/vectorized/bound with regard to the block
  * \param self The schedule state
- * \param loop The loop to be checked
- * \param thread_tag The tag of the thread in GPU to be bound, which is an empty string if the
- * parallelization is not for GPU
+ * \param loop The loop to be parallelized/vectorized/bound
+ * \param for_kind The desired ForKind (only `kParallel`, `kVectorized` and `kThreadBinding` are
+ * allowed)
+ * \param thread_scope The thread scope of the thread axis to be bound, which is an invalid value if
+ * the operation is not "bind"
  */
-void CheckParallelizability(const ScheduleState& self, const For& loop,
-                            const std::string& thread_tag) {
-  PreOrderVisit(loop, [self, loop_var = loop->loop_var, thread_tag](const ObjectRef& node) {
+void CheckParallelizability(const ScheduleState& self, const For& loop, ForKind for_kind,
+                            runtime::ThreadScope thread_scope) {
+  PreOrderVisit(loop, [&](const ObjectRef& node) {
     if (const auto* realize = node.as<BlockRealizeNode>()) {
-      CheckLoopParallelizableInBlock(self, loop_var, GetRef<BlockRealize>(realize), thread_tag);
-      return false;
+      CheckLoopParallelizableInBlock(self, for_kind, loop->loop_var, GetRef<BlockRealize>(realize),
+                                     thread_scope);
     }
     return true;
   });
 }
 
 /*!
- * \brief Parallelize a given loop using the given kind of parallelization
+ * \brief The implementation of parallelizing/vectorizing/binding a given loop
  * \param self The schedule state
- * \param loop_sref The sref of the loop to be parallelized
- * \param for_kind The type of the parallelization (only `kParallel`, `kVectorized` and
- * `kThreadBinding` are allowed)
- * \param thread The context thread that the input loop is bound to, which is not `NullOpt`
- * only when `for_kind` is `kThreadBinding`
+ * \param loop_sref The sref of the loop to be parallelized/vectorized/bound
+ * \param for_kind The type of the operation (only `kParallel`, `kVectorized` and `kThreadBinding`
+ * are allowed)
+ * \param thread_axis The thread axis that the input loop is bound to, which is defined only when
+ * `for_kind` is `kThreadBinding`
  */
-void ParallelizeComputation(const ScheduleState& self, const StmtSRef& loop_sref,
-                            const ForKind& for_kind, const Optional<IterVar>& thread) {
+void ParallelizeComputation(const ScheduleState& self, const StmtSRef& loop_sref, ForKind for_kind,
+                            Optional<IterVar> thread_axis) {
   const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-  // If `loop` has extent 1, and `for_kind` is `kParallel` or `kVectorized`, just return.
-  if (is_one(loop->extent) &&
-      (for_kind == ForKind::kParallel || for_kind == ForKind::kVectorized)) {
-    return;
-  }
 
   /*
    * Check:
    * - 1. the subtree rooted from the input loop in sref tree has compact data flow
    * - 2. all the blocks under the given loop have affine block bindings
-   * - 3. the input loop can be only bound to data-parallel block iters, or the loop can be bound to
+   * - 3. the input loop can be only bound to data parallel block iters, or the loop can be bound to
    * reduction block iter if `thread` is `threadIdx.x/y/z` in case of cross-thread reduction
-   * When the above conditions are all satisfied, this input loop can be parallelized.
+   * When the above conditions are all satisfied, this input loop can be
+   * parallelized/vectorized/bound.
    */
   // Step 1. Check whether the subtree rooted from the `loop` in sref tree has compact data flow.
   CheckSRefSubtreeCompactDataFlow(self, loop_sref);
 
-  // Step 2. Check whether the loop can be parallelized with regard to each underlying block.
-  CheckParallelizability(self, GetRef<For>(loop),
-                         thread.defined() ? thread.value()->thread_tag : "");
+  // Step 2. Check whether the loop can be parallelized/vectorized/bound with regard to each
+  // underlying block.
+  CheckParallelizability(self, GetRef<For>(loop), for_kind,
+                         thread_axis.defined()
+                             ? runtime::ThreadScope::Create(thread_axis.value()->thread_tag)
+                             : runtime::ThreadScope{-1, -1});
 
   // Step 3. Loop update and IR replacement
   ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop);
   new_loop->kind = for_kind;
-  new_loop->thread_binding = thread;
+  new_loop->thread_binding = std::move(thread_axis);
   self->Replace(loop_sref, For(new_loop), {});
 }
 
@@ -178,17 +175,15 @@ void Vectorize(ScheduleState self, const StmtSRef& loop_sref) {
   ParallelizeComputation(self, loop_sref, ForKind::kVectorized, NullOpt);
 }
 
-void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread) {
-  ParallelizeComputation(self, loop_sref, ForKind::kThreadBinding, thread);
+void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread_axis) {
+  ParallelizeComputation(self, loop_sref, ForKind::kThreadBinding, thread_axis);
 }
 
 void Unroll(ScheduleState self, const StmtSRef& loop_sref) {
   const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-  if (is_one(loop->extent)) {
-    return;
-  }
   ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop);
   new_loop->kind = ForKind::kUnrolled;
+  new_loop->thread_binding = NullOpt;
   self->Replace(loop_sref, For(new_loop), {});
 }
 

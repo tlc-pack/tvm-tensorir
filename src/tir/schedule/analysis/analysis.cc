@@ -377,6 +377,28 @@ bool IsAffineBinding(const BlockRealize& realize, const Map<Var, Range>& loop_va
   return true;
 }
 
+void CheckAffineBinding(const ScheduleState& self, Block block) {
+  class NotAffineBindingError : public ScheduleError {
+   public:
+    explicit NotAffineBindingError(IRModule mod, Block block)
+    : mod_(std::move(mod)), block_(std::move(block)) {}
+    String FastErrorString() const final {
+      return "ScheduleError: The block is required to have an affine binding";
+    }
+    String DetailRenderTemplate() const final {
+      return "The block {0} is required to have an affine binding";
+    }
+    IRModule mod() const final { return mod_; }
+    Array<ObjectRef> LocationsOfInterest() const final { return {block_}; }
+    IRModule mod_;
+    Block block_;
+  };
+
+  if (!self->IsAffineBlockBinding(self->stmt2ref.at(block.get()))) {
+    throw NotAffineBindingError(self->mod, std::move(block));
+  }
+}
+
 Map<Var, Range> LoopDomainOfSRefTreePath(const StmtSRef& low_inclusive,
                                          const Optional<StmtSRef>& high_exclusive,
                                          const runtime::StorageScope& extra_relax_scope) {
@@ -597,7 +619,7 @@ Buffer GetNthWriteBuffer(const ScheduleState& self, const Block& block, int n) {
     int buffer_index_;
   };
 
-  if (n < 0 || n > block->writes.size()) {
+  if (n < 0 || n > static_cast<int>(block->writes.size())) {
     throw WriteBufferIndexOutOfRangeError(self->mod, block, n);
   }
   return block->writes[n]->buffer;

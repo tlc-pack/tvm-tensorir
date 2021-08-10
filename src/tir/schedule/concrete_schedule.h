@@ -84,7 +84,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   /******** Schedule: Manipulate ForKind ********/
   void Parallel(const LoopRV& loop_rv) override;
   void Vectorize(const LoopRV& loop_rv) override;
-  void Bind(const LoopRV& loop_rv, const String& thread) override;
+  void Bind(const LoopRV& loop_rv, const String& thread_axis) override;
   void Unroll(const LoopRV& loop_rv) override;
   /******** Schedule: Insert cache stages ********/
   /******** Schedule: Compute location ********/

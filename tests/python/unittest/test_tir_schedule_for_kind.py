@@ -192,60 +192,83 @@ def rowsum_cross_thread_reduction(a: ty.handle, b: ty.handle) -> None:
                 B[vi] = B[vi] + A[vi, vk]
 
 
+@tvm.script.tir
+def opaque_block(a: ty.handle) -> None:
+    A = tir.match_buffer(a, (16,))
+    for i in tir.serial(0, 15):
+        with tir.block([], "opaque"):
+            A[i + 1] = A[i + 1] + A[i]
+
+
 # pylint: enable=no-member,invalid-name,unused-variable
 
 
 def test_parallel():
-    s = tir.Schedule(element_wise, debug_mode=True)
+    s = tir.Schedule(element_wise, debug_mask="all")
     i, _ = s.get_loops(s.get_block("B"))
     s.parallel(i)
     tvm.ir.assert_structural_equal(s.mod["main"], element_wise_parallelized)
 
 
 def test_parallel_reduction_block_iter():
-    s = tir.Schedule(matmul, debug_mode=True)
+    s = tir.Schedule(matmul, debug_mask="all")
     _, _, k = s.get_loops(s.get_block("C"))
     with pytest.raises(tvm.tir.ScheduleError):
         s.parallel(k)
 
 
 def test_parallel_not_quasi_affine():
-    s = tir.Schedule(rowsum_not_quasi_affine, debug_mode=True)
+    s = tir.Schedule(rowsum_not_quasi_affine, debug_mask="all")
     i, _ = s.get_loops(s.get_block("B"))
     with pytest.raises(tvm.tir.ScheduleError):
         s.parallel(i)
 
 
 def test_parallel_not_compact_data_flow():
-    s = tir.Schedule(rowsum_not_compact_data_flow, debug_mode=True)
+    s = tir.Schedule(rowsum_not_compact_data_flow, debug_mask="all")
     i, _ = s.get_loops(s.get_block("B"))
     with pytest.raises(tvm.tir.ScheduleError):
         s.parallel(i)
 
 
 def test_vectorize():
-    s = tir.Schedule(element_wise_compute_at_split, debug_mode=True)
+    s = tir.Schedule(element_wise_compute_at_split, debug_mask="all")
     _, _, j1i = s.get_loops(s.get_block("C"))
     s.vectorize(j1i)
     tvm.ir.assert_structural_equal(s.mod["main"], element_wise_compute_at_split_vectorized)
 
 
+def test_vectorize_opaque_block():
+    s = tir.Schedule(opaque_block, debug_mask="all")
+    i, = s.get_loops(s.get_block("opaque"))
+    with pytest.raises(tvm.tir.ScheduleError):
+        s.vectorize(i)
+
+
 def test_unroll():
-    s = tir.Schedule(rowsum, debug_mode=True)
+    s = tir.Schedule(rowsum, debug_mask="all")
     i, _ = s.get_loops(s.get_block("B"))
     s.unroll(i)
     tvm.ir.assert_structural_equal(s.mod["main"], rowsum_unrolled)
 
 
+def test_unroll_after_bind():
+    s = tir.Schedule(rowsum, debug_mask="all")
+    i, _ = s.get_loops(s.get_block("B"))
+    s.bind(i, "blockIdx.x")
+    s.unroll(i)
+    tvm.ir.assert_structural_equal(s.mod["main"], rowsum_unrolled)
+
+
 def test_bind1():
-    s = tir.Schedule(element_wise, debug_mode=True)
+    s = tir.Schedule(element_wise, debug_mask="all")
     i, _ = s.get_loops(s.get_block("B"))
     s.bind(i, "threadIdx.x")
     tvm.ir.assert_structural_equal(s.mod["main"], element_wise_i_bound)
 
 
 def test_bind2():
-    s = tir.Schedule(element_wise_compute_at_split, debug_mode=True)
+    s = tir.Schedule(element_wise_compute_at_split, debug_mask="all")
     _, j0 = s.get_loops(s.get_block("B"))
     _, j1o, _ = s.get_loops(s.get_block("C"))
     s.bind(j0, "threadIdx.x")
@@ -254,17 +277,33 @@ def test_bind2():
 
 
 def test_bind_cross_thread_reduction():
-    s = tir.Schedule(rowsum, debug_mode=True)
+    s = tir.Schedule(rowsum, debug_mask="all")
     _, k = s.get_loops(s.get_block("B"))
     s.bind(k, "threadIdx.x")
     tvm.ir.assert_structural_equal(s.mod["main"], rowsum_cross_thread_reduction)
 
 
 def test_bind_not_cross_thread_reduction():
-    s = tir.Schedule(rowsum, debug_mode=True)
+    s = tir.Schedule(rowsum, debug_mask="all")
     _, k = s.get_loops(s.get_block("B"))
     with pytest.raises(tvm.tir.ScheduleError):
         s.bind(k, "blockIdx.x")
+
+
+def test_bind_after_parallel():
+    s = tir.Schedule(element_wise, debug_mask="all")
+    i, _ = s.get_loops(s.get_block("B"))
+    s.parallel(i)
+    s.bind(i, "threadIdx.x")
+    tvm.ir.assert_structural_equal(s.mod["main"], element_wise_i_bound)
+
+
+def test_bind_after_bind():
+    s = tir.Schedule(element_wise, debug_mask="all")
+    i, _ = s.get_loops(s.get_block("B"))
+    s.bind(i, "blockIdx.x")
+    s.bind(i, "threadIdx.x")
+    tvm.ir.assert_structural_equal(s.mod["main"], element_wise_i_bound)
 
 
 if __name__ == "__main__":

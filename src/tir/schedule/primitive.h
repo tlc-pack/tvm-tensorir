@@ -96,9 +96,9 @@ TVM_DLL void Vectorize(ScheduleState self, const StmtSRef& loop_sref);
  * loop can only be contained in data-parallel block iters' bindings
  * \param self The state of the schedule
  * \param loop_sref The sref of the loop to be bound to the thread axis
- * \param thread The given thread axis
+ * \param thread_axis The given thread axis
  */
-TVM_DLL void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread);
+TVM_DLL void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread_axis);
 /*!
  * \brief Unroll the input loop. It requires nothing
  * \param self The state of the schedule
