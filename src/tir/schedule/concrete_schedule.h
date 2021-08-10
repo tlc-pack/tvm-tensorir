@@ -150,7 +150,7 @@ class ConcreteScheduleNode : public ScheduleNode {
 
   /******** Schedule: Misc ********/
 
-  void EnterPostProc() override {}  // no-op
+  void EnterPostproc() override {}  // no-op
   void DoubleBuffer(const BlockRV& block_rv) override;
   void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) override;
   void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,

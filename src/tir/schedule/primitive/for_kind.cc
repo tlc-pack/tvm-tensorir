@@ -632,13 +632,13 @@ struct StorageAlignTraits : public UnpackedInstTraits<StorageAlignTraits> {
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(VectorizeTraits);
-TVM_REGISTER_INST_KIND(ParallelTraits);
-TVM_REGISTER_INST_KIND(UnrollTraits);
-TVM_REGISTER_INST_KIND(BindTraits);
-TVM_REGISTER_INST_KIND(DoubleBufferTraits);
-TVM_REGISTER_INST_KIND(SetScopeTraits);
-TVM_REGISTER_INST_KIND(StorageAlignTraits);
+TVM_REGISTER_INST_KIND_TRAITS(VectorizeTraits);
+TVM_REGISTER_INST_KIND_TRAITS(ParallelTraits);
+TVM_REGISTER_INST_KIND_TRAITS(UnrollTraits);
+TVM_REGISTER_INST_KIND_TRAITS(BindTraits);
+TVM_REGISTER_INST_KIND_TRAITS(DoubleBufferTraits);
+TVM_REGISTER_INST_KIND_TRAITS(SetScopeTraits);
+TVM_REGISTER_INST_KIND_TRAITS(StorageAlignTraits);
 
 }  // namespace tir
 }  // namespace tvm

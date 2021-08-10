@@ -229,11 +229,11 @@ struct GetConsumersTraits : public UnpackedInstTraits<GetConsumersTraits> {
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(GetBlockTraits);
-TVM_REGISTER_INST_KIND(GetLoopsTraits);
-TVM_REGISTER_INST_KIND(GetChildBlocksTraits);
-TVM_REGISTER_INST_KIND(GetProducersTraits);
-TVM_REGISTER_INST_KIND(GetConsumersTraits);
+TVM_REGISTER_INST_KIND_TRAITS(GetBlockTraits);
+TVM_REGISTER_INST_KIND_TRAITS(GetLoopsTraits);
+TVM_REGISTER_INST_KIND_TRAITS(GetChildBlocksTraits);
+TVM_REGISTER_INST_KIND_TRAITS(GetProducersTraits);
+TVM_REGISTER_INST_KIND_TRAITS(GetConsumersTraits);
 
 }  // namespace tir
 }  // namespace tvm

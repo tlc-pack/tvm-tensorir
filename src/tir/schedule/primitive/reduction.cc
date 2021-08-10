@@ -781,9 +781,9 @@ struct MergeReductionTraits : public UnpackedInstTraits<MergeReductionTraits> {
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(RFactorTraits);
-TVM_REGISTER_INST_KIND(DecomposeReductionTraits);
-TVM_REGISTER_INST_KIND(MergeReductionTraits);
+TVM_REGISTER_INST_KIND_TRAITS(RFactorTraits);
+TVM_REGISTER_INST_KIND_TRAITS(DecomposeReductionTraits);
+TVM_REGISTER_INST_KIND_TRAITS(MergeReductionTraits);
 
 }  // namespace tir
 }  // namespace tvm

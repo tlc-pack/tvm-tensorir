@@ -70,7 +70,7 @@ def _fix_sampling_tile_size(
             new_decisions[inst] = decision
         trace = tir.schedule.Trace(sch.trace.insts, new_decisions)
         new_sch = tir.Schedule(func, traced=True)
-        trace.apply_to_schedule(new_sch)
+        trace.apply_to_schedule(new_sch, remove_postproc=True)
         results = [tvm.ir.structural_equal(new_sch.mod["main"], i) for i in expected]
         if sum(results) >= 1:
             return

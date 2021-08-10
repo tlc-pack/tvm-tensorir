@@ -120,7 +120,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
 
   /******** Schedule: Misc ********/
 
-  void EnterPostProc() final;
+  void EnterPostproc() final;
   void DoubleBuffer(const BlockRV& block_rv) final;
   void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) final;
   void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,

@@ -671,8 +671,8 @@ struct CacheWriteTraits : public UnpackedInstTraits<CacheWriteTraits> {
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(CacheReadTraits);
-TVM_REGISTER_INST_KIND(CacheWriteTraits);
+TVM_REGISTER_INST_KIND_TRAITS(CacheReadTraits);
+TVM_REGISTER_INST_KIND_TRAITS(CacheWriteTraits);
 
 }  // namespace tir
 }  // namespace tvm

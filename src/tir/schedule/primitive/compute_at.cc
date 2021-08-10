@@ -639,8 +639,8 @@ struct ReverseComputeAtTraits : public UnpackedInstTraits<ReverseComputeAtTraits
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(ComputeAtTraits);
-TVM_REGISTER_INST_KIND(ReverseComputeAtTraits);
+TVM_REGISTER_INST_KIND_TRAITS(ComputeAtTraits);
+TVM_REGISTER_INST_KIND_TRAITS(ReverseComputeAtTraits);
 
 }  // namespace tir
 }  // namespace tvm

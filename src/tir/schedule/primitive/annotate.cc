@@ -167,10 +167,10 @@ struct SoftwarePipelineTraits : public UnpackedInstTraits<SoftwarePipelineTraits
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(PragmaTraits);
-TVM_REGISTER_INST_KIND(MarkLoopTraits);
-TVM_REGISTER_INST_KIND(MarkBlockTraits);
-TVM_REGISTER_INST_KIND(SoftwarePipelineTraits);
+TVM_REGISTER_INST_KIND_TRAITS(PragmaTraits);
+TVM_REGISTER_INST_KIND_TRAITS(MarkLoopTraits);
+TVM_REGISTER_INST_KIND_TRAITS(MarkBlockTraits);
+TVM_REGISTER_INST_KIND_TRAITS(SoftwarePipelineTraits);
 
 }  // namespace tir
 }  // namespace tvm

@@ -67,7 +67,7 @@ struct InlineArgumentTraits : public UnpackedInstTraits<InlineArgumentTraits> {
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(InlineArgumentTraits);
+TVM_REGISTER_INST_KIND_TRAITS(InlineArgumentTraits);
 
 }  // namespace tir
 }  // namespace tvm

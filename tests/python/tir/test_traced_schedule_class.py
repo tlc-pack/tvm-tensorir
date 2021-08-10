@@ -387,7 +387,7 @@ def matmul_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 def _check_serialization(sch: tir.Schedule, mod: Union[PrimFunc, IRModule]) -> tir.Schedule:
     record = sch.trace.as_json()
     new_sch = tir.Schedule(mod=mod, traced=True)
-    Trace.apply_json_to_schedule(json=record, sch=new_sch)
+    Trace.apply_json_to_schedule(record, sch=new_sch)
     assert tvm.ir.structural_equal(new_sch.mod, sch.mod)
     py_repr = "\n".join(sch.trace.as_python())
     new_py_repr = "\n".join(new_sch.trace.as_python())
