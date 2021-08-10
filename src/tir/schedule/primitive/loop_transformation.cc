@@ -318,9 +318,9 @@ class NonUniqueLoopsError : public ScheduleError {
 
 class LoopsNotALineError : public ScheduleError {
  public:
-  enum ProblemKind { kNotUnderAScope, kHaveNonSingleBranchLoop };
+  enum ProblemKind { kNotUnderAScope, kHaveNonSingleBranchStmt };
 
-  explicit LoopsNotALineError(IRModule mod, Optional<For> problematic_loop, ProblemKind kind)
+  explicit LoopsNotALineError(IRModule mod, Optional<Stmt> problematic_loop, ProblemKind kind)
       : mod_(mod), problematic_loop_(std::move(problematic_loop)), kind_(kind) {}
 
   String FastErrorString() const final { return "ScheduleError: the loops are not in a line"; }
@@ -331,7 +331,7 @@ class LoopsNotALineError : public ScheduleError {
     if (kind_ == kNotUnderAScope) {
       ss << " they are not under the same scope.";
     } else {
-      ss << " there is a non-single-branch loop in between. Problematic loop: {0}";
+      ss << " there is a non-single-branch stmt in between. Problematic stmt: {0}";
     }
     return ss.str();
   }
@@ -346,7 +346,7 @@ class LoopsNotALineError : public ScheduleError {
   }
 
   IRModule mod_;
-  Optional<For> problematic_loop_;
+  Optional<Stmt> problematic_loop_;
   ProblemKind kind_;
 };
 
@@ -545,10 +545,8 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
       const StmtSRefNode* parent = loop->parent;
       // If the successor of `parent` exists, then `parent` can't be a single-branch loop
       if (successor.count(parent)) {
-        const ForNode* parent_loop =
-            TVM_SREF_TO_FOR(parent_loop, runtime::GetRef<StmtSRef>(parent));
-        throw LoopsNotALineError(self->mod, runtime::GetRef<For>(parent_loop),
-                                 LoopsNotALineError::kHaveNonSingleBranchLoop);
+        throw LoopsNotALineError(self->mod, runtime::GetRef<Stmt>(parent->stmt),
+                                 LoopsNotALineError::kHaveNonSingleBranchStmt);
       }
       successor[parent] = loop;
       // `bottom` is the first loop encountered
@@ -573,7 +571,7 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
     const ForNode* inner_loop = TVM_SREF_TO_FOR(inner_loop, runtime::GetRef<StmtSRef>(loop_sref));
     if (outer_loop->body.get() != inner_loop) {
       throw LoopsNotALineError(self->mod, GetRef<For>(outer_loop),
-                               LoopsNotALineError::kHaveNonSingleBranchLoop);
+                               LoopsNotALineError::kHaveNonSingleBranchStmt);
     }
     outer_loop = inner_loop;
   }
