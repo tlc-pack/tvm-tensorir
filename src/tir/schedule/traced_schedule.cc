@@ -156,6 +156,29 @@ void TracedScheduleNode::Unroll(const LoopRV& loop_rv) {
 }
 
 /******** Schedule: Insert cache stages ********/
+BlockRV TracedScheduleNode::CacheRead(const BlockRV& block_rv, int buffer_index,
+                                      const String& storage_scope) {
+  BlockRV result = ConcreteScheduleNode::CacheRead(block_rv, buffer_index, storage_scope);
+
+  static const InstructionKind& kind = InstructionKind::Get("CacheRead");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{block_rv},
+                                      /*attrs=*/{Integer(buffer_index), storage_scope},
+                                      /*outputs=*/{result}));
+  return result;
+}
+
+BlockRV TracedScheduleNode::CacheWrite(const BlockRV& block_rv, int buffer_index,
+                                       const String& storage_scope) {
+  BlockRV result = ConcreteScheduleNode::CacheWrite(block_rv, buffer_index, storage_scope);
+
+  static const InstructionKind& kind = InstructionKind::Get("CacheWrite");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{block_rv},
+                                      /*attrs=*/{Integer(buffer_index), storage_scope},
+                                      /*outputs=*/{result}));
+  return result;
+}
 
 /******** Schedule: Compute location ********/
 

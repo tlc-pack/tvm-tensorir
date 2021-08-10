@@ -269,6 +269,26 @@ class ScheduleNode : public runtime::Object {
    */
   virtual void Unroll(const LoopRV& loop_rv) = 0;
   /******** Schedule: Insert cache stages ********/
+  /*!
+   * \brief Create a block that reads a buffer region into a read cache. It requires:
+   * 1) There is at least one block read the buffer in the scope.
+   * 2) There is at most one block who write the buffer in the scope.
+   * \param block_rv The consumer block of the target buffer.
+   * \param buffer_index The index of the buffer in block's read region.
+   * \param storage_scope The target storage scope.
+   * \return The cache stage block.
+   */
+  virtual BlockRV CacheRead(const BlockRV& block_rv, int buffer_index, const String& storage_scope) = 0;
+  /*!
+   * \brief Create a block that writes a buffer region into a write cache. It requires:
+   * 1) There is only one block who writes the target buffer.
+   * 2) The target buffer is not an input buffer.
+   * \param block_rv The producer of the buffer
+   * \param buffer_index The index of the buffer in block's write region
+   * \param storage_scope The target storage scope
+   * \return The cache stage block.
+   */
+  virtual BlockRV CacheWrite(const BlockRV& block_rv, int buffer_index, const String& storage_scope) = 0;
   /******** Schedule: Compute location ********/
   /*!
    * \brief Inline a block into its consumer(s). It requires:

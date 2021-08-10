@@ -120,6 +120,30 @@ TVM_DLL void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& 
  */
 TVM_DLL void Unroll(ScheduleState self, const StmtSRef& loop_sref);
 /******** Schedule: Insert cache stages ********/
+/*!
+ * \brief Create a block that reads a buffer region into a read cache. It requires:
+ * 1) There is at least one block read the buffer in the scope.
+ * 2) There is at most one block who write the buffer in the scope.
+ * \param self The state of the schedule
+ * \param block_sref The consumer block of the target buffer.
+ * \param buffer_index The index of the buffer in block's read region.
+ * \param storage_scope The target storage scope.
+ * \return The cache stage block.
+ */
+TVM_DLL StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
+                           const String& storage_scope);
+/*!
+ * \brief Create a block that writes a buffer region into a write cache. It requires:
+ * 1) There is only one block who writes the target buffer.
+ * 2) The target buffer is not an input buffer.
+ * \param self The state of the schedule
+ * \param block_sref The producer of the buffer
+ * \param buffer_index The index of the buffer in block's write region
+ * \param storage_scope The target storage scope
+ * \return The cache stage block.
+ */
+TVM_DLL StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
+                            const String& storage_scope);
 /******** Schedule: Compute location ********/
 /*!
  * \brief Inline a block into its consumer(s). It requires:
