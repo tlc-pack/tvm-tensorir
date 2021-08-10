@@ -84,7 +84,7 @@ void Normalize(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
     return;
   }
   NormalizerInfo info;
-  const StmtSRef& root = GetScopeRoot(loop_srefs[0]).value();
+  StmtSRef root = GetScopeRoot(loop_srefs[0]).value();
   for (const StmtSRef& loop_sref : loop_srefs) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     if (!is_zero(loop->min)) {
