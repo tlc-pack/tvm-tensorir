@@ -200,7 +200,10 @@ def lower(
         ]
     else:
         pass_list += [
-            tvm.tir.transform.AllreduceTransform(),
+            
+            # FIXME(bojian) Comment out the problematic AllreduceTransform
+            # tvm.tir.transform.AllreduceTransform(),
+
             tvm.tir.transform.LowerInitBlock(),
             tvm.tir.transform.PlanAndUpdateBufferAllocationLocation(),
             tvm.tir.transform.ConvertBlocksToOpaque(),
