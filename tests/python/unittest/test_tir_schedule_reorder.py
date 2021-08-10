@@ -171,7 +171,7 @@ def opaque_access_reorder(a: ty.handle, b: ty.handle) -> None:
 
 
 def test_reorder():
-    sch = tir.Schedule(elementwise, debug_mode=True)
+    sch = tir.Schedule(elementwise, debug_mask="all")
     block_b = sch.get_block("B")
     i, j, k, l = sch.get_loops(block_b)
     sch.reorder(l, i)
@@ -180,7 +180,7 @@ def test_reorder():
 
 
 def test_reorder_with_opaque_block():
-    sch = tir.Schedule(elementwise_with_opaque_block, debug_mode=True)
+    sch = tir.Schedule(elementwise_with_opaque_block, debug_mask="all")
     block_opaque = sch.get_block("opaque")
     i, j, k = sch.get_loops(block_opaque)
     sch.reorder(k, i)
@@ -189,7 +189,7 @@ def test_reorder_with_opaque_block():
 
 
 def test_reorder_with_opaque_access():
-    sch = tir.Schedule(opaque_access, debug_mode=True)
+    sch = tir.Schedule(opaque_access, debug_mask="all")
     block_a = sch.get_block("A")
     i, j = sch.get_loops(block_a)
     sch.reorder(j, i)
@@ -201,7 +201,7 @@ def test_reorder_with_opaque_access():
 
 
 def test_reorder_fail_with_nonunique_loops():
-    sch = tir.Schedule(elementwise, debug_mode=True)
+    sch = tir.Schedule(elementwise, debug_mask="all")
     block_b = sch.get_block("B")
     i, j, k, l = sch.get_loops(block_b)
     with pytest.raises(tvm.tir.ScheduleError):
@@ -209,7 +209,7 @@ def test_reorder_fail_with_nonunique_loops():
 
 
 def test_reorder_fail_with_non_single_branch_loop():
-    sch = tir.Schedule(elementwise_non_single_branch, debug_mode=True)
+    sch = tir.Schedule(elementwise_non_single_branch, debug_mask="all")
     block_b = sch.get_block("B")
     i, j, k = sch.get_loops(block_b)
     with pytest.raises(tvm.tir.ScheduleError):
@@ -217,7 +217,7 @@ def test_reorder_fail_with_non_single_branch_loop():
 
 
 def test_reorder_fail_with_loops_not_under_same_scope():
-    sch = tir.Schedule(elementwise_with_loops_not_same_scope, debug_mode=True)
+    sch = tir.Schedule(elementwise_with_loops_not_same_scope, debug_mask="all")
     block_b = sch.get_block("B")
     block_opaque = sch.get_block("opaque")
     i, j = sch.get_loops(block_opaque)
@@ -227,7 +227,7 @@ def test_reorder_fail_with_loops_not_under_same_scope():
 
 
 def test_reorder_fail_with_wrong_block_var_type():
-    sch = tir.Schedule(elementwise_with_wrong_block_var_type, debug_mode=True)
+    sch = tir.Schedule(elementwise_with_wrong_block_var_type, debug_mask="all")
     block_opaque = sch.get_block("opaque")
     i, j, k = sch.get_loops(block_opaque)
     with pytest.raises(tvm.tir.ScheduleError):
