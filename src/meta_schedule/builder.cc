@@ -30,12 +30,10 @@ BuildInput::BuildInput(IRModule mod, Target target) {
   data_ = std::move(n);
 }
 
-BuildResult::BuildResult(Optional<String> artifact_path, Optional<String> error_msg,
-                         double build_secs) {
+BuildResult::BuildResult(Optional<String> artifact_path, Optional<String> error_msg) {
   ObjectPtr<BuildResultNode> n = make_object<BuildResultNode>();
   n->artifact_path = std::move(artifact_path);
   n->error_msg = std::move(error_msg);
-  n->build_secs = build_secs;
   data_ = std::move(n);
 }
 
@@ -56,9 +54,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.BuildInput")
       return BuildInput(mod, target);
     });
 TVM_REGISTER_GLOBAL("meta_schedule.BuildResult")
-    .set_body_typed([](Optional<String> artifact_path, Optional<String> error_msg,
-                       double build_secs) -> BuildResult {
-      return BuildResult(artifact_path, error_msg, build_secs);
+    .set_body_typed([](Optional<String> artifact_path, Optional<String> error_msg) -> BuildResult {
+      return BuildResult(artifact_path, error_msg);
     });
 TVM_REGISTER_GLOBAL("meta_schedule.PyBuilder")
     .set_body_typed([](BuilderNode::FBuild f_build) -> Builder {

@@ -49,12 +49,10 @@ class BuildResultNode : public runtime::Object {
  public:
   Optional<String> artifact_path;
   Optional<String> error_msg;
-  double build_secs;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("artifact_path", &artifact_path);
     v->Visit("error_msg", &error_msg);
-    v->Visit("build_secs", &build_secs);
   }
 
   static constexpr const char* _type_key = "meta_schedule.BuildResult";
@@ -63,8 +61,7 @@ class BuildResultNode : public runtime::Object {
 
 class BuildResult : public runtime::ObjectRef {
  public:
-  TVM_DLL explicit BuildResult(Optional<String> artifact_path, Optional<String> error_msg,
-                               double build_secs);
+  TVM_DLL explicit BuildResult(Optional<String> artifact_path, Optional<String> error_msg);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BuildResult, runtime::ObjectRef, BuildResultNode);
 };
 
