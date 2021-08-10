@@ -21,7 +21,6 @@ import logging
 import re
 from tvm import topi
 from tvm.auto_scheduler import is_auto_scheduler_enabled
-from tvm.meta_schedule import is_meta_schedule_enabled
 from tvm.te import SpecializedCondition
 from tvm.relay.ty import is_dynamic
 from .generic import *

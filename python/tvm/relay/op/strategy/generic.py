@@ -237,13 +237,9 @@ def schedule_bitpack(attrs, outs, target):
         return topi.generic.schedule_bitpack(outs)
 
 
-get_auto_scheduler_rewritten_layout = _ffi.get_global_func(
-    "relay.attrs.get_auto_scheduler_rewritten_layout"
-)
+get_auto_scheduler_rewritten_layout = None
 
-get_meta_schedule_original_layout = _ffi.get_global_func(
-    "relay.attrs.get_meta_schedule_original_layout"
-)
+get_meta_schedule_original_layout = None
 
 # conv2d
 def wrap_compute_conv2d(

@@ -26,25 +26,4 @@
 #ifndef TVM_RELAY_TRANSFORMS_META_SCHEDULE_LAYOUT_REWRITE_H
 #define TVM_RELAY_TRANSFORMS_META_SCHEDULE_LAYOUT_REWRITE_H
 
-#include <tvm/relay/expr_functor.h>
-
-#include <deque>
-#include <string>
-
-#include "../../meta_schedule/space/postproc.h"
-
-namespace tvm {
-namespace relay {
-
-class MetaScheduleLayoutRewriter : public ExprMutator {
- public:
-  Expr VisitExpr_(const CallNode* n) final;
-  static std::mutex mutex;
-  // global variable for receiving layout information from post-processor
-  static std::deque<meta_schedule::LayoutRewriteHint> global_layout_rewrite_queue;
-};
-
-}  // namespace relay
-}  // namespace tvm
-
 #endif  // TVM_RELAY_TRANSFORMS_META_SCHEDULE_LAYOUT_REWRITE_H

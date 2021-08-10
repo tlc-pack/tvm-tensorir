@@ -426,21 +426,6 @@ class RelayBuildModule : public runtime::ModuleNode {
       }
     }
 
-    if (backend::IsMetaScheduleEnabled() && targets.size() == 1) {
-      const auto& target = (*targets.begin()).second;
-      Pass major_pass = transform::MetaScheduleLayoutRewrite();
-
-      if (target->kind->device_type == kDLCPU && pass_ctx.PassEnabled(major_pass->Info())) {
-        With<Target> tctx(target);
-        relay_module = major_pass(relay_module);
-        // Defuse ops to fold constants, then fuse them again
-
-        relay_module = transform::DefuseOps()(relay_module);
-        relay_module = transform::FoldConstant()(relay_module);
-        relay_module = transform::FuseOps()(relay_module);
-      }
-    }
-
     relay_module = transform::InferType()(relay_module);
 
     // Inline the functions that have been lifted by the module scope.

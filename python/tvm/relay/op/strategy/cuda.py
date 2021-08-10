@@ -18,7 +18,6 @@
 # pylint: disable=invalid-name,unused-argument,wildcard-import,unused-wildcard-import
 from tvm import topi
 from tvm.auto_scheduler import is_auto_scheduler_enabled
-from tvm.meta_schedule import is_meta_schedule_enabled
 from tvm.contrib import nvcc
 from tvm.contrib.thrust import can_use_thrust
 from tvm.te import SpecializedCondition
