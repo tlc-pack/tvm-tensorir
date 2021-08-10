@@ -228,15 +228,15 @@ BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sr
 /******** Block-buffer relation ********/
 
 /*!
- * \brief Get the BlockRealize of the single child block of the block or loop specified by
- * `parent_sref` on SRef tree, or throw an exception if there is 0 or multiple child blocks
- * \param self The schedule state
- * \param block The queried block
- * \param n The index of the queried buffer
- * \return The buffer of the n-th write region of the block.
+ * \brief Get the n-th read or write buffer of the given the block.
+ * \param self The schedule state.
+ * \param block The queried block.
+ * \param n The index of the queried buffer.
+ * \param is_write A flag to indicate querying read or write buffer.
+ * \return The buffer of the n-th read/write region of the block.
  * \throw ScheduleError If the buffer index is out of bound.
  */
-Buffer GetNthWriteBuffer(const ScheduleState& self, const Block& block, int n);
+Buffer GetNthAccessBuffer(const ScheduleState& self, const Block& block, int n, bool is_write);
 
 /******** Commutative Reducer ********/
 
@@ -260,6 +260,24 @@ std::vector<TypedPackedFunc<CommReducer(DataType)>> GetReducerGetters();
 bool FromIdentityCombiner(const PrimExpr& identity, const BufferStore& combiner,
                           CommReducer* result_reducer, PrimExpr* lhs, PrimExpr* rhs);
 
+/******** Annotation ********/
+
+/*!
+ * \brief Create a new block with the given annotation added
+ * \param block The block with original annotation
+ * \param attr_key The annotation key to be added
+ * \param attr_value The annotation value to be added
+ * \return A new block with the given annotation as its last annotation
+ */
+Block WithAnnotation(const BlockNode* block, const String& attr_key, const ObjectRef& attr_value);
+
+/******** SRef Tree Related ********/
+/*!
+ * \brief Get the root node of the sref tree. It's usually the root block of the PrimFunc.
+ * \param sref The given sref.
+ * \return The root node of the sref tree which contains the given node.
+ */
+StmtSRef GetSRefTreeRoot(const StmtSRef& sref);
 }  // namespace tir
 }  // namespace tvm
 
