@@ -99,7 +99,7 @@ PostOrderApply::PostOrderApply(Array<SearchRule> stages, Array<Postproc> postpro
 
 bool PostOrderApplyNode::Postprocess(const SearchTask& task, const Schedule& sch,
                                      tir::TRandState* rand_state) {
-  sch->EnterPostProc();
+  sch->EnterPostproc();
   for (const Postproc& postproc : postprocs) {
     if (!postproc->Apply(task, sch, rand_state)) {
       return false;
