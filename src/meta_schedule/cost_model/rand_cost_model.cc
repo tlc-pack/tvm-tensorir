@@ -27,7 +27,7 @@ namespace meta_schedule {
 /*! \brief The cost model returning random value for all predictions */
 class RandCostModelNode : public CostModelNode {
  public:
-  /*! \brief A random state for sampler to generate random numbers */
+  /*! \brief A random state for sampling functions to generate random numbers */
   tir::TRandState rand_state;
 
   void VisitAttrs(tvm::AttrVisitor* v) {

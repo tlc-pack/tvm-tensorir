@@ -99,9 +99,9 @@ def get_relay_batchmm(batch=4, m=128, n=128, k=128):
     return mod, data, weight
 
 
-RPC_KEY = "raspi4b-aarch64"
-TARGET = tvm.target.Target("raspberry-pi/4b-64")
-TARGET_HOST = tvm.target.Target("raspberry-pi/4b-64")
+RPC_KEY = "test"
+TARGET = tvm.target.Target("llvm")
+TARGET_HOST = tvm.target.Target("llvm")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=True),
@@ -200,9 +200,7 @@ def tune_and_check(log, mod, data, weight):
             lib.export_library(tmp.relpath(filename))
             # Upload module to device
             print("Upload...")
-            remote = auto_scheduler.utils.request_remote(
-                RPC_KEY, "172.16.2.241", 4445, timeout=10000
-            )
+            remote = auto_scheduler.utils.request_remote(RPC_KEY, "localhost", 4728, timeout=10000)
             remote.upload(tmp.relpath(filename))
             rlib = remote.load_module(filename)
 

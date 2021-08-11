@@ -96,13 +96,13 @@ def get_network(name, batch_size, layout="NHWC", dtype="float32"):
     return mod, params, input_shape, output_shape
 
 
-RPC_KEY = "raspi4b-aarch64"
+RPC_KEY = "local"
 network = "resnet-50"
 batch_size = 1
 layout = "NHWC"
-target = tvm.target.Target("raspberry-pi/4b-64")
+target = tvm.target.Target("llvm")
 dtype = "float32"
-TARGET_HOST = tvm.target.Target("raspberry-pi/4b-64")
+TARGET_HOST = tvm.target.Target("llvm")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=True),
