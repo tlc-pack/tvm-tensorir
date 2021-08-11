@@ -23,13 +23,13 @@
 namespace tvm {
 namespace tir {
 
-Schedule Schedule::Concrete(IRModule mod, Sampler::TRandState seed, int debug_mode,
+Schedule Schedule::Concrete(IRModule mod, tir::TRandState seed, int debug_mode,
                             ScheduleErrorRenderLevel error_render_level) {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
   n->error_render_level_ = error_render_level;
   if (seed == -1) seed = std::random_device()();
-  Sampler(&n->rand_state_).Seed(seed);
+  tir::RandEngine(&n->rand_state_).Seed(seed);
   n->symbol_table_ = {};
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   return Schedule(std::move(n));
@@ -181,13 +181,13 @@ void ConcreteScheduleNode::Copy(ScheduleState* new_state, TSymbolTable* new_symb
   ScheduleCopier::Copy(this, new_state, new_symbol_table);
 }
 
-Schedule ConcreteScheduleNode::Copy(Sampler::TRandState new_seed) const {
+Schedule ConcreteScheduleNode::Copy(tir::TRandState new_seed) const {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   Copy(&n->state_, &n->symbol_table_);
   n->error_render_level_ = this->error_render_level_;
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   if (new_seed == -1) new_seed = std::random_device()();
-  Sampler(&n->rand_state_).Seed(new_seed);
+  tir::RandEngine(&n->rand_state_).Seed(new_seed);
   return Schedule(std::move(n));
 }
 
@@ -668,7 +668,7 @@ void ConcreteScheduleNode::SoftwarePipeline(const LoopRV& loop_rv, int num_stage
 
 TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);
 TVM_REGISTER_GLOBAL("tir.schedule.ConcreteSchedule")
-    .set_body_typed([](IRModule mod, Sampler::TRandState seed, int debug_mode,
+    .set_body_typed([](IRModule mod, tir::TRandState seed, int debug_mode,
                        int error_render_level) -> Schedule {
       return Schedule::Concrete(mod, seed, debug_mode,
                                 static_cast<ScheduleErrorRenderLevel>(error_render_level));

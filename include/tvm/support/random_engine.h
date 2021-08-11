@@ -19,7 +19,7 @@
 
 /*!
  * \file random_engine.h
- * \brief Random number generator, for Sampler and Sampling functions.
+ * \brief Random number generator, for Sampling functions.
  */
 
 #ifndef TVM_SUPPORT_RANDOM_ENGINE_H_
@@ -63,13 +63,13 @@ class LinearCongruentialEngine {
    * \brief The minimum possible value of random state here.
    * \note The function name is uncapilized because it is used in STL's distribution inferface.
    */
-  result_type min() { return 0; }
+  static constexpr result_type min() { return 0; }
 
   /*!
    * \brief The maximum possible value of random state here.
    * \note The function name is uncapilized because it is used in STL's distribution inferface.
    */
-  result_type max() { return modulus - 1; }
+  static constexpr result_type max() { return modulus - 1; }
 
   /*!
    * \brief Operator to move the random state to the next and return the new random state. According

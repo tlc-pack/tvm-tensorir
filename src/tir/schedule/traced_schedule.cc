@@ -21,26 +21,26 @@
 namespace tvm {
 namespace tir {
 
-Schedule Schedule::Traced(IRModule mod, Sampler::TRandState seed, int debug_mode,
+Schedule Schedule::Traced(IRModule mod, tir::TRandState seed, int debug_mode,
                           ScheduleErrorRenderLevel error_render_level) {
   ObjectPtr<TracedScheduleNode> n = make_object<TracedScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
   n->error_render_level_ = error_render_level;
   if (seed == -1) seed = std::random_device()();
-  Sampler(&n->rand_state_).Seed(seed);
+  tir::RandEngine(&n->rand_state_).Seed(seed);
   n->symbol_table_ = {};
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   n->trace_ = Trace();
   return Schedule(std::move(n));
 }
 
-Schedule TracedScheduleNode::Copy(Sampler::TRandState new_seed) const {
+Schedule TracedScheduleNode::Copy(tir::TRandState new_seed) const {
   ObjectPtr<TracedScheduleNode> n = make_object<TracedScheduleNode>();
   ConcreteScheduleNode::Copy(&n->state_, &n->symbol_table_);
   n->error_render_level_ = this->error_render_level_;
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   if (new_seed == -1) new_seed = std::random_device()();
-  Sampler(&n->rand_state_).Seed(new_seed);
+  tir::RandEngine(&n->rand_state_).Seed(new_seed);
   n->trace_ = Trace(this->trace_->insts, this->trace_->decisions);
   return Schedule(std::move(n));
 }
@@ -453,7 +453,7 @@ void TracedScheduleNode::InlineArgument(int i, const String& func_name) {
 
 TVM_REGISTER_NODE_TYPE(TracedScheduleNode);
 TVM_REGISTER_GLOBAL("tir.schedule.TracedSchedule")
-    .set_body_typed([](IRModule mod, Sampler::TRandState seed, int debug_mode,
+    .set_body_typed([](IRModule mod, tir::TRandState seed, int debug_mode,
                        int error_render_level) -> Schedule {
       return Schedule::Traced(mod, seed, debug_mode,
                               static_cast<ScheduleErrorRenderLevel>(error_render_level));

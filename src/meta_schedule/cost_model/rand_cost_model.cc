@@ -28,7 +28,7 @@ namespace meta_schedule {
 class RandCostModelNode : public CostModelNode {
  public:
   /*! \brief A random state for sampler to generate random numbers */
-  Sampler::TRandState rand_state;
+  tir::TRandState rand_state;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     // sampler is not visited
@@ -48,7 +48,7 @@ class RandCostModelNode : public CostModelNode {
    * \return The predicted scores for all states
    */
   std::vector<double> Predict(const SearchTask& task, const Array<Schedule>& states) override {
-    return Sampler(&rand_state).SampleUniform(states.size(), 0.0, 1.0);
+    return tir::SampleUniform(&rand_state, states.size(), 0.0, 1.0);
   }
 
   static constexpr const char* _type_key = "meta_schedule.RandCostModel";
@@ -64,7 +64,7 @@ class RandCostModel : public CostModel {
   explicit RandCostModel(int seed = -1) {
     ObjectPtr<RandCostModelNode> n = make_object<RandCostModelNode>();
     if (seed == -1) seed = std::random_device()();
-    Sampler(&n->rand_state).Seed(seed);
+    tir::RandEngine(&n->rand_state).Seed(seed);
     data_ = std::move(n);
   }
 

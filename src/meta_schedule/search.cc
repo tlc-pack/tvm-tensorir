@@ -58,9 +58,9 @@ SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, 
  */
 TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
                                     ProgramMeasurer measurer, Optional<Integer> seed, int verbose) {
-  Sampler::TRandState rand_state = std::random_device()();
+  tir::TRandState rand_state = std::random_device()();
   if (seed.defined()) {
-    Sampler(&rand_state).Seed(seed.value());
+    tir::RandEngine(&rand_state).Seed(seed.value());
   }
 
   if (verbose) {
@@ -108,9 +108,9 @@ struct Internal {
    */
   static bool SearchSpacePostprocess(SearchSpace space, SearchTask task, Schedule sch,
                                      Optional<Integer> seed) {
-    Sampler::TRandState rand_state = std::random_device()();
+    tir::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
-      Sampler(&rand_state).Seed(seed.value());
+      tir::RandEngine(&rand_state).Seed(seed.value());
     }
     return space->Postprocess(task, sch, &rand_state);
   }
@@ -123,9 +123,9 @@ struct Internal {
    */
   static Schedule SearchSpaceSampleSchedule(SearchSpace space, SearchTask task,
                                             Optional<Integer> seed) {
-    Sampler::TRandState rand_state = std::random_device()();
+    tir::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
-      Sampler(&rand_state).Seed(seed.value());
+      tir::RandEngine(&rand_state).Seed(seed.value());
     }
     return space->SampleSchedule(task, &rand_state);
   }
@@ -139,9 +139,9 @@ struct Internal {
    */
   static Array<Schedule> SearchSpaceGetSupport(SearchSpace space, SearchTask task,
                                                Optional<Integer> seed) {
-    Sampler::TRandState rand_state = std::random_device()();
+    tir::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
-      Sampler(&rand_state).Seed(seed.value());
+      tir::RandEngine(&rand_state).Seed(seed.value());
     }
     return space->GetSupport(task, &rand_state);
   }
@@ -157,9 +157,9 @@ struct Internal {
   static Optional<Schedule> SearchStrategySearch(SearchStrategy strategy, SearchTask task,
                                                  SearchSpace space, ProgramMeasurer measurer,
                                                  Optional<Integer> seed, int verbose) {
-    Sampler::TRandState rand_state = std::random_device()();
+    tir::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
-      Sampler(&rand_state).Seed(seed.value());
+      tir::RandEngine(&rand_state).Seed(seed.value());
     }
     return strategy->Search(task, space, measurer, &rand_state, verbose);
   }

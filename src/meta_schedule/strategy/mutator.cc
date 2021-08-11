@@ -36,7 +36,7 @@ Mutator::Mutator(String name, FApply apply) {
 /********** Mutator **********/
 
 Optional<Trace> MutatorNode::Apply(const SearchTask& task, const Trace& trace,
-                                   Sampler::TRandState* rand_state) {
+                                   tir::TRandState* rand_state) {
   return apply_(task, trace, rand_state);
 }
 
@@ -78,18 +78,17 @@ class MutatorTileSize {
     return candidates;
   }
 
-  Optional<Trace> Apply(const SearchTask& task, const Trace& trace,
-                        Sampler::TRandState* rand_state) {
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, tir::TRandState* rand_state) {
     // Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
     std::vector<Instruction> candidates = FindCandidates(trace);
     if (candidates.empty()) {
       return NullOpt;
     }
-    const Instruction& inst = candidates[Sampler(rand_state).SampleInt(0, candidates.size())];
+    const Instruction& inst = candidates[tir::SampleInt(rand_state, 0, candidates.size())];
     std::vector<int> tiles = CastDecision(trace->decisions.at(inst));
     int n_splits = tiles.size();
     // Choose two loops
-    int x = Sampler(rand_state).SampleInt(0, n_splits);
+    int x = tir::SampleInt(rand_state, 0, n_splits);
     int y;
     if (tiles[x] == 1) {
       // need to guarantee that tiles[x] * tiles[y] > 1
@@ -100,10 +99,10 @@ class MutatorTileSize {
           idx.push_back(i);
         }
       }
-      y = idx[Sampler(rand_state).SampleInt(0, idx.size())];
+      y = idx[tir::SampleInt(rand_state, 0, idx.size())];
     } else {
       // sample without replacement
-      y = Sampler(rand_state).SampleInt(0, n_splits - 1);
+      y = tir::SampleInt(rand_state, 0, n_splits - 1);
       if (y >= x) {
         ++y;
       }
@@ -117,7 +116,7 @@ class MutatorTileSize {
     int len_x, len_y;
     if (y != n_splits - 1) {
       do {
-        std::vector<int> result = Sampler(rand_state).SamplePerfectTile(2, tiles[x] * tiles[y]);
+        std::vector<int> result = tir::SamplePerfectTile(rand_state, 2, tiles[x] * tiles[y]);
         len_x = result[0];
         len_y = result[1];
       } while (len_y == tiles[y]);
@@ -134,7 +133,7 @@ class MutatorTileSize {
       if (len_y_space.empty()) {
         return NullOpt;
       }
-      len_y = len_y_space[Sampler(rand_state).SampleInt(0, len_y_space.size())];
+      len_y = len_y_space[tir::SampleInt(rand_state, 0, len_y_space.size())];
       len_x = prod / len_y;
     }
     tiles[x] = len_x;
@@ -146,7 +145,7 @@ class MutatorTileSize {
 Mutator MutateTileSize() {
   auto f_apply = [](SearchTask task, Trace trace, void* rand_state) -> Optional<Trace> {
     MutatorTileSize mutator;
-    return mutator.Apply(task, trace, static_cast<Sampler::TRandState*>(rand_state));
+    return mutator.Apply(task, trace, static_cast<tir::TRandState*>(rand_state));
   };
   return Mutator("mutate_tile_size", f_apply);
 }
@@ -218,14 +217,13 @@ class MutatorComputeLocation {
     return candidates;
   }
 
-  Optional<Trace> Apply(const SearchTask& task, const Trace& trace,
-                        Sampler::TRandState* rand_state) {
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, tir::TRandState* rand_state) {
     std::vector<Candidate> candidates = FindCandidates(trace, task->workload);
     if (candidates.empty()) {
       return NullOpt;
     }
-    const Candidate& candidate = candidates[Sampler(rand_state).SampleInt(0, candidates.size())];
-    int loc = candidate.locs[Sampler(rand_state).SampleInt(0, candidate.locs.size())];
+    const Candidate& candidate = candidates[tir::SampleInt(rand_state, 0, candidates.size())];
+    int loc = candidate.locs[tir::SampleInt(rand_state, 0, candidate.locs.size())];
     return trace->WithDecision(candidate.inst, Integer(loc), /*remove_postproc=*/true);
   }
 };
@@ -233,7 +231,7 @@ class MutatorComputeLocation {
 Mutator MutateComputeLocation() {
   auto f_apply = [](SearchTask task, Trace trace, void* rand_state) -> Optional<Trace> {
     MutatorComputeLocation mutator;
-    return mutator.Apply(task, trace, static_cast<Sampler::TRandState*>(rand_state));
+    return mutator.Apply(task, trace, static_cast<tir::TRandState*>(rand_state));
   };
   return Mutator("mutate_compute_location", f_apply);
 }
@@ -311,14 +309,13 @@ class MutatorAutoUnroll {
     return candidates;
   }
 
-  Optional<Trace> Apply(const SearchTask& task, const Trace& trace,
-                        Sampler::TRandState* rand_state) {
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, tir::TRandState* rand_state) {
     std::vector<Candidate> candidates = FindCandidates(trace);
     if (candidates.empty()) {
       return NullOpt;
     }
-    const Candidate& candidate = candidates[Sampler(rand_state).SampleInt(0, candidates.size())];
-    int result = Sampler(rand_state).MakeMultinomial(candidate.weights)();
+    const Candidate& candidate = candidates[tir::SampleInt(rand_state, 0, candidates.size())];
+    int result = tir::MakeMultinomial(rand_state, candidate.weights)();
     if (result >= candidate.ori_decision) {
       result++;
     }
@@ -329,7 +326,7 @@ class MutatorAutoUnroll {
 Mutator MutateAutoUnroll() {
   auto f_apply = [](SearchTask task, Trace trace, void* rand_state) -> Optional<Trace> {
     MutatorAutoUnroll mutator;
-    return mutator.Apply(task, trace, static_cast<Sampler::TRandState*>(rand_state));
+    return mutator.Apply(task, trace, static_cast<tir::TRandState*>(rand_state));
   };
   return Mutator("mutate_unroll_depth", f_apply);
 }
@@ -434,7 +431,7 @@ class MutatorParallel {
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace,
-                        Sampler::TRandState* rand_state) const {
+                        tir::TRandState* rand_state) const {
     static InstructionKind inst_enter_postproc = InstructionKind::Get("EnterPostproc");
     int max_extent =
         GetTargetNumCores(task->target, &warned_num_cores_missing) * max_jobs_per_core - 1;
@@ -444,8 +441,7 @@ class MutatorParallel {
     }
     const BlockRV& block = Downcast<BlockRV>(candidate.inst->inputs[0]);
     const std::vector<int>& extent_candidates = candidate.extent_candidates;
-    int parallel_size =
-        extent_candidates[Sampler(rand_state).SampleInt(0, extent_candidates.size())];
+    int parallel_size = extent_candidates[tir::SampleInt(rand_state, 0, extent_candidates.size())];
 
     std::vector<Instruction> new_insts;
     for (const Instruction& inst : trace->insts) {
@@ -471,7 +467,7 @@ class MutatorParallel {
 Mutator MutateParallel(const int& max_jobs_per_core) {
   MutatorParallel mutator(max_jobs_per_core);
   auto f_apply = [mutator](SearchTask task, Trace trace, void* rand_state) -> Optional<Trace> {
-    return mutator.Apply(task, trace, static_cast<Sampler::TRandState*>(rand_state));
+    return mutator.Apply(task, trace, static_cast<tir::TRandState*>(rand_state));
   };
   return Mutator("mutate_parallel", f_apply);
 }
@@ -485,9 +481,9 @@ struct Internal {
    */
   static Optional<Trace> Apply(Mutator mutator, SearchTask task, Trace trace,
                                Optional<Integer> seed) {
-    Sampler::TRandState rand_state = std::random_device()();
+    tir::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
-      Sampler(&rand_state).Seed(seed.value());
+      tir::RandEngine(&rand_state).Seed(seed.value());
     }
     return mutator->Apply(task, trace, &rand_state);
   }

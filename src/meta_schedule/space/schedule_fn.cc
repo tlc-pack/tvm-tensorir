@@ -50,20 +50,20 @@ class ScheduleFnNode : public SearchSpaceNode {
    * \param rand_state The sampler's random state
    */
   bool Postprocess(const SearchTask& task, const Schedule& sch,
-                   Sampler::TRandState* rand_state) override;
+                   tir::TRandState* rand_state) override;
   /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from
    * \return The schedule sampled
    */
-  Schedule SampleSchedule(const SearchTask& task, Sampler::TRandState* rand_state) override;
+  Schedule SampleSchedule(const SearchTask& task, tir::TRandState* rand_state) override;
   /*!
    * \brief Get support of the search space
    * \param task The search task to be sampled from
    * \return An array with a single element returned from SampleSchedule
    * \sa ScheduleFnNode::SampleSchedule
    */
-  Array<Schedule> GetSupport(const SearchTask& task, Sampler::TRandState* rand_state) override;
+  Array<Schedule> GetSupport(const SearchTask& task, tir::TRandState* rand_state) override;
 
   static constexpr const char* _type_key = "meta_schedule.ScheduleFn";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleFnNode, SearchSpaceNode);
@@ -96,7 +96,7 @@ ScheduleFn::ScheduleFn(PackedFunc sch_fn, Array<Postproc> postprocs) {
 /********** Sampling **********/
 
 bool ScheduleFnNode::Postprocess(const SearchTask& task, const Schedule& sch,
-                                 Sampler::TRandState* rand_state) {
+                                 tir::TRandState* rand_state) {
   sch->EnterPostProc();
   for (const Postproc& postproc : postprocs) {
     if (!postproc->Apply(task, sch, rand_state)) {
@@ -106,17 +106,16 @@ bool ScheduleFnNode::Postprocess(const SearchTask& task, const Schedule& sch,
   return true;
 }
 
-Schedule ScheduleFnNode::SampleSchedule(const SearchTask& task, Sampler::TRandState* rand_state) {
+Schedule ScheduleFnNode::SampleSchedule(const SearchTask& task, tir::TRandState* rand_state) {
   Schedule sch = Schedule::Traced(/*mod=*/IRModule({{GlobalVar("main"), task->workload}}),
-                                  /*seed=*/Sampler(rand_state).ForkSeed(),
+                                  /*seed=*/tir::ForkSeed(rand_state),
                                   /*debug_mode=*/false,
                                   /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
   this->sch_fn_(sch);
   return sch;
 }
 
-Array<Schedule> ScheduleFnNode::GetSupport(const SearchTask& task,
-                                           Sampler::TRandState* rand_state) {
+Array<Schedule> ScheduleFnNode::GetSupport(const SearchTask& task, tir::TRandState* rand_state) {
   return {SampleSchedule(task, rand_state)};
 }
 

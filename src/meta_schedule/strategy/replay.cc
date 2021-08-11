@@ -51,7 +51,7 @@ class ReplayNode : public SearchStrategyNode {
    * \return The best schedule found, NullOpt if no valid schedule is found
    */
   Optional<Schedule> Search(const SearchTask& task, const SearchSpace& space,
-                            const ProgramMeasurer& measurer, Sampler::TRandState* rand_state,
+                            const ProgramMeasurer& measurer, tir::TRandState* rand_state,
                             int verbose) override;
 
   static constexpr const char* _type_key = "meta_schedule.Replay";
@@ -86,18 +86,18 @@ Replay::Replay(int batch_size, int num_trials) {
 /********** Search **********/
 
 Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
-                                      const ProgramMeasurer& measurer,
-                                      Sampler::TRandState* rand_state, int verbose) {
-  std::vector<Sampler::TRandState> thread_rand_states;
+                                      const ProgramMeasurer& measurer, tir::TRandState* rand_state,
+                                      int verbose) {
+  std::vector<tir::TRandState> thread_rand_states;
   std::vector<MeasureInput> thread_measure_inputs;
   thread_rand_states.reserve(this->batch_size);
   thread_measure_inputs.reserve(this->batch_size);
   for (int i = 0; i < batch_size; ++i) {
-    thread_rand_states.emplace_back(Sampler(rand_state).ForkSeed());
+    thread_rand_states.emplace_back(tir::ForkSeed(rand_state));
     thread_measure_inputs.emplace_back(nullptr);
   }
   auto worker = [&task, &space, &thread_rand_states, &thread_measure_inputs](int thread_id, int i) {
-    Sampler::TRandState* rand_state = &thread_rand_states[i];
+    tir::TRandState* rand_state = &thread_rand_states[i];
     for (;;) {
       Schedule sch = space->SampleSchedule(task, rand_state);
       if (space->Postprocess(task, sch, rand_state)) {

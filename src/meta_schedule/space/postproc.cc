@@ -38,8 +38,7 @@ Postproc::Postproc(String name, FProc proc) {
 
 /********** Postproc **********/
 
-bool PostprocNode::Apply(const SearchTask& task, const Schedule& sch,
-                         Sampler::TRandState* rand_state) {
+bool PostprocNode::Apply(const SearchTask& task, const Schedule& sch, tir::TRandState* rand_state) {
   return proc_(task, sch, rand_state);
 }
 
@@ -1119,9 +1118,9 @@ struct Internal {
    * \sa PostProcNode::Apply
    */
   static bool Apply(Postproc self, SearchTask task, Schedule sch, Optional<Integer> seed) {
-    Sampler::TRandState rand_state = std::random_device()();
+    tir::TRandState rand_state = std::random_device()();
     if (seed.defined()) {
-      Sampler(&rand_state).Seed(seed.value());
+      tir::RandEngine(&rand_state).Seed(seed.value());
     }
     return self->Apply(task, sch, &rand_state);
   }

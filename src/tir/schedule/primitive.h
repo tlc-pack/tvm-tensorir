@@ -19,29 +19,219 @@
 #ifndef TVM_TIR_SCHEDULE_PRIMITIVES_PRIMITIVES_H_
 #define TVM_TIR_SCHEDULE_PRIMITIVES_PRIMITIVES_H_
 
+#include <tvm/target/target.h>
+#include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/schedule/state.h>
 
+#include <random>
 #include <vector>
-
-#include "sampler.h"
 
 namespace tvm {
 namespace tir {
 
-class Sampler;
+struct PrimeTable {
+  /*! \brief The table contains prime numbers in [2, kMaxPrime) */
+  static constexpr const int kMaxPrime = 65536;
+  /*! \brief The exact number of prime numbers in the table */
+  static constexpr const int kNumPrimes = 6542;
+  /*!
+   * \brief For each number in [2, kMaxPrime), the index of its min factor.
+   * For example, if min_factor_idx[x] = i, then the min factor of x is primes[i].
+   */
+  int min_factor_idx[kMaxPrime];
+  /*! \brief The prime numbers in [2, kMaxPrime) */
+  std::vector<int> primes;
+  /*!
+   * \brief The power of each prime number.
+   * pow_table[i, j] stores the result of pow(prime[i], j + 1)
+   */
+  std::vector<std::vector<int>> pow_tab;
+
+  /*! \brief Get a global instance of the prime table */
+  static const PrimeTable* Global() {
+    static const PrimeTable table;
+    return &table;
+  }
+
+  /*! \brief Constructor, pre-computes all info in the prime table */
+  PrimeTable() {
+    constexpr const int64_t int_max = std::numeric_limits<int>::max();
+    // Euler's sieve: prime number in linear time
+    for (int i = 0; i < kMaxPrime; ++i) {
+      min_factor_idx[i] = -1;
+    }
+    primes.reserve(kNumPrimes);
+    for (int x = 2; x < kMaxPrime; ++x) {
+      if (min_factor_idx[x] == -1) {
+        min_factor_idx[x] = primes.size();
+        primes.push_back(x);
+      }
+      for (size_t i = 0; i < primes.size(); ++i) {
+        int factor = primes[i];
+        int y = x * factor;
+        if (y >= kMaxPrime) {
+          break;
+        }
+        min_factor_idx[y] = i;
+        if (x % factor == 0) {
+          break;
+        }
+      }
+    }
+    ICHECK_EQ(static_cast<int>(primes.size()), int(kNumPrimes));
+    // Calculate the power table for each prime number
+    pow_tab.reserve(primes.size());
+    for (int prime : primes) {
+      std::vector<int> tab;
+      tab.reserve(32);
+      for (int64_t pow = prime; pow <= int_max; pow *= prime) {
+        tab.push_back(pow);
+      }
+      tab.shrink_to_fit();
+      pow_tab.emplace_back(std::move(tab));
+    }
+  }
+  /*!
+   * \brief Factorize a number n, and return in a cryptic format
+   * \param n The number to be factorized
+   * \return A list of integer pairs [(i_1, j_1), (i_2, j_2), ..., (i_l, j_l)]
+   * For each pair (i, j), we define
+   *    (a, b) = (j, 1)             if i == -1 (in this case j must be a prime number)
+   *             (primes[i], j)     if i != -1
+   * Then the factorization is
+   *    n = (a_1 ^ b_1) * (a_2 ^ b_2) ... (a_l ^ b_l)
+   */
+  std::vector<std::pair<int, int>> Factorize(int n) const {
+    std::vector<std::pair<int, int>> result;
+    result.reserve(16);
+    int i = 0, n_primes = primes.size();
+    // Phase 1: n >= kMaxPrime
+    for (int j; n >= kMaxPrime && i < n_primes && primes[i] * primes[i] <= n; ++i) {
+      for (j = 0; n % primes[i] == 0; n /= primes[i], ++j) {
+      }
+      if (j != 0) {
+        result.emplace_back(i, j);
+      }
+    }
+    // if i >= n_primes or primes[i] > sqrt(n), then n must be a prime number
+    if (n >= kMaxPrime) {
+      result.emplace_back(-1, n);
+      return result;
+    }
+    // Phase 2: n < kMaxPrime
+    for (int j; n > 1;) {
+      int i = min_factor_idx[n];
+      for (j = 0; n % primes[i] == 0; n /= primes[i], ++j) {
+      }
+      result.emplace_back(i, j);
+    }
+    return result;
+  }
+};
 
 /******** Schedule: Sampling ********/
 
-TVM_DLL std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self,
-                                               Sampler::TRandState* rand_state,
+/*! \brief Return a seed that can be used to create a new sampler */
+TRandState ForkSeed(TRandState* rand_state);
+/*!
+ * \brief Sample an integer in [min_inclusive, max_exclusive)
+ * \param min_inclusive The left boundary, inclusive
+ * \param max_exclusive The right boundary, exclusive
+ * \return The integer sampled
+ */
+int SampleInt(TRandState* rand_state, int min_inclusive, int max_exclusive);
+/*!
+ * \brief Sample n integers in [min_inclusive, max_exclusive)
+ * \param min_inclusive The left boundary, inclusive
+ * \param max_exclusive The right boundary, exclusive
+ * \return The list of integers sampled
+ */
+std::vector<int> SampleInts(TRandState* rand_state, int n, int min_inclusive, int max_exclusive);
+/*!
+ * \brief Random shuffle from the begin iterator to the end.
+ * \param begin_it The begin iterator
+ * \param end_it The end iterator
+ */
+template <typename RandomAccessIterator>
+void SampleShuffle(TRandState* rand_state, RandomAccessIterator begin_it,
+                   RandomAccessIterator end_it);
+/*!
+ * \brief Sample n tiling factors of the specific extent
+ * \param n The number of parts the loop is split
+ * \param extent Length of the loop
+ * \param candidates The possible tiling factors
+ * \return A list of length n, the tiling factors sampled
+ */
+std::vector<int> SampleTileFactor(TRandState* rand_state, int n, int extent,
+                                  const std::vector<int>& candidates);
+/*!
+ * \brief Sample perfect tiling factor of the specific extent
+ * \param n_splits The number of parts the loop is split
+ * \param extent Length of the loop
+ * \return A list of length n_splits, the tiling factors sampled, the product of which strictly
+ * equals to extent
+ */
+std::vector<int> SamplePerfectTile(TRandState* rand_state, int n_splits, int extent);
+/*!
+ * \brief Sample perfect tiling factor of the specific extent
+ * \param n_splits The number of parts the loop is split
+ * \param extent Length of the loop
+ * \param max_innermost_factor A small number indicating the max length of the innermost loop
+ * \return A list of length n_splits, the tiling factors sampled, the product of which strictly
+ * equals to extent
+ */
+std::vector<int> SamplePerfectTile(TRandState* rand_state, int n_splits, int extent,
+                                   int max_innermost_factor);
+/*!
+ * \brief Sample shape-generic tiling factors that are determined by the hardware constraints.
+ * \param n_splits The number of parts the loops are split
+ * \param max_extents Maximum length of the loops
+ * \param is_spatial Whether each loop is a spatial axis or not
+ * \param target Hardware target
+ * \param max_innermost_factor A small number indicating the max length of the innermost loop
+ * \return A list of list of length n_splits, the tiling factors sampled, all satisfying the
+ * maximum extents and the hardware constraints
+ */
+std::vector<std::vector<int>> SampleShapeGenericTiles(TRandState* rand_state,
+                                                      const std::vector<int>& n_splits,
+                                                      const std::vector<int>& max_extents,
+                                                      const Target& target,
+                                                      int max_innermost_factor);
+/*!
+ * \brief Sample n floats uniformly in [min, max)
+ * \param min The left boundary
+ * \param max The right boundary
+ * \return The list of floats sampled
+ */
+std::vector<double> SampleUniform(TRandState* rand_state, int n, double min, double max);
+/*!
+ * \brief Sample from a Bernoulli distribution
+ * \param p Parameter in the Bernoulli distribution
+ * \return return true with probability p, and false with probability (1 - p)
+ */
+bool SampleBernoulli(TRandState* rand_state, double p);
+/*!
+ * \brief Create a multinomial sampler based on the specific weights
+ * \param weights The weights, event probabilities
+ * \return The multinomial sampler
+ */
+std::function<int()> MakeMultinomial(TRandState* rand_state, const std::vector<double>& weights);
+/*!
+ * \brief Classic sampling without replacement
+ * \param n The population size
+ * \param k The number of samples to be drawn from the population
+ * \return A list of indices, samples drawn, unsorted and index starting from 0
+ */
+std::vector<int> SampleWithoutReplacement(TRandState* rand_state, int n, int k);
+
+TVM_DLL std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, tir::TRandState* rand_state,
                                                const tir::StmtSRef& loop_sref, int n,
                                                int max_innermost_factor,
                                                Optional<Array<Integer>>* decision);
-TVM_DLL int64_t SampleCategorical(tir::ScheduleState self, Sampler::TRandState* rand_state,
+TVM_DLL int64_t SampleCategorical(tir::ScheduleState self, tir::TRandState* rand_state,
                                   const Array<Integer>& candidates, const Array<FloatImm>& probs,
                                   Optional<Integer>* decision);
-TVM_DLL tir::StmtSRef SampleComputeLocation(tir::ScheduleState self,
-                                            Sampler::TRandState* rand_state,
+TVM_DLL tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, tir::TRandState* rand_state,
                                             const tir::StmtSRef& block_sref,
                                             Optional<Integer>* decision);
 

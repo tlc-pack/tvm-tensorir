@@ -44,7 +44,7 @@ class TuneContextNode : public runtime::Object {
   Array<MeasureCallback> measure_callbacks;
   int num_threads;
 
-  Sampler::TRandState rand_state;
+  tir::TRandState rand_state;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("task", &task);

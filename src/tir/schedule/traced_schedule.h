@@ -47,7 +47,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
 
  public:
   Optional<Trace> trace() const final { return trace_; }
-  Schedule Copy(Sampler::TRandState new_seed = -1) const final;
+  Schedule Copy(tir::TRandState new_seed = -1) const final;
 
  public:
   /******** Schedule: Sampling ********/
