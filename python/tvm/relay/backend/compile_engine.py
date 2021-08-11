@@ -206,12 +206,15 @@ def select_implementation(op, attrs, inputs, out_type, target, use_autotvm=True)
 
     # If not use autotvm, always return the implementation with the highest priority
     if not use_autotvm or with_tir:
-        logger.info(
-            "Using %s for %s based on highest priority (%d)",
-            best_plevel_impl.name,
-            op.name,
-            best_plevel_impl.plevel,
-        )
+
+        # <bojian/DietCode> Comment out the logging.
+        # logger.info(
+        #     "Using %s for %s based on highest priority (%d)",
+        #     best_plevel_impl.name,
+        #     op.name,
+        #     best_plevel_impl.plevel,
+        # )
+
         outs = best_plevel_impl.compute(attrs, inputs, out_type)
         return best_plevel_impl, outs
 

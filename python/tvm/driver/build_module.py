@@ -201,7 +201,7 @@ def lower(
     else:
         pass_list += [
             
-            # FIXME(bojian) Comment out the problematic AllreduceTransform
+            # <bojian/DietCode> Comment out the problematic AllreduceTransform.
             # tvm.tir.transform.AllreduceTransform(),
 
             tvm.tir.transform.LowerInitBlock(),
