@@ -23,6 +23,7 @@ import tvm
 import tvm.testing
 from tvm import tir
 from tvm.script import ty
+from tvm.tir.schedule.testing import verify_trace_roundtrip
 
 # pylint: disable=no-member,invalid-name,unused-variable
 
@@ -208,6 +209,7 @@ def test_parallel():
     i, _ = s.get_loops(s.get_block("B"))
     s.parallel(i)
     tvm.ir.assert_structural_equal(s.mod["main"], element_wise_parallelized)
+    verify_trace_roundtrip(s, mod=element_wise)
 
 
 def test_parallel_reduction_block_iter():
@@ -236,6 +238,7 @@ def test_vectorize():
     _, _, j1i = s.get_loops(s.get_block("C"))
     s.vectorize(j1i)
     tvm.ir.assert_structural_equal(s.mod["main"], element_wise_compute_at_split_vectorized)
+    verify_trace_roundtrip(s, mod=element_wise_compute_at_split)
 
 
 def test_vectorize_opaque_block():
@@ -250,6 +253,7 @@ def test_unroll():
     i, _ = s.get_loops(s.get_block("B"))
     s.unroll(i)
     tvm.ir.assert_structural_equal(s.mod["main"], rowsum_unrolled)
+    verify_trace_roundtrip(s, mod=rowsum)
 
 
 def test_unroll_after_bind():
@@ -258,6 +262,7 @@ def test_unroll_after_bind():
     s.bind(i, "blockIdx.x")
     s.unroll(i)
     tvm.ir.assert_structural_equal(s.mod["main"], rowsum_unrolled)
+    verify_trace_roundtrip(s, mod=rowsum)
 
 
 def test_bind1():
@@ -265,6 +270,7 @@ def test_bind1():
     i, _ = s.get_loops(s.get_block("B"))
     s.bind(i, "threadIdx.x")
     tvm.ir.assert_structural_equal(s.mod["main"], element_wise_i_bound)
+    verify_trace_roundtrip(s, mod=element_wise)
 
 
 def test_bind2():
@@ -274,6 +280,7 @@ def test_bind2():
     s.bind(j0, "threadIdx.x")
     s.bind(j1o, "threadIdx.x")
     tvm.ir.assert_structural_equal(s.mod["main"], element_wise_compute_at_split_j0_j1o_bound)
+    verify_trace_roundtrip(s, mod=element_wise_compute_at_split)
 
 
 def test_bind_cross_thread_reduction():
@@ -281,6 +288,7 @@ def test_bind_cross_thread_reduction():
     _, k = s.get_loops(s.get_block("B"))
     s.bind(k, "threadIdx.x")
     tvm.ir.assert_structural_equal(s.mod["main"], rowsum_cross_thread_reduction)
+    verify_trace_roundtrip(s, mod=rowsum)
 
 
 def test_bind_not_cross_thread_reduction():
@@ -296,6 +304,7 @@ def test_bind_after_parallel():
     s.parallel(i)
     s.bind(i, "threadIdx.x")
     tvm.ir.assert_structural_equal(s.mod["main"], element_wise_i_bound)
+    verify_trace_roundtrip(s, mod=element_wise)
 
 
 def test_bind_after_bind():
@@ -304,6 +313,7 @@ def test_bind_after_bind():
     s.bind(i, "blockIdx.x")
     s.bind(i, "threadIdx.x")
     tvm.ir.assert_structural_equal(s.mod["main"], element_wise_i_bound)
+    verify_trace_roundtrip(s, mod=element_wise)
 
 
 if __name__ == "__main__":
