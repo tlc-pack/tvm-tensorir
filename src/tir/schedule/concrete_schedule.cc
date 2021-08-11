@@ -373,7 +373,7 @@ void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread_axis
   TVM_TIR_SCHEDULE_BEGIN();
   tir::Bind(state_, this->GetSRef(loop_rv),
             IterVar(/*dom=*/Range(nullptr), /*var=*/Var(thread_axis), /*iter_type=*/kThreadIndex,
-                            /*thread_tag=*/thread_axis));
+                    /*thread_tag=*/thread_axis));
   this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("bind", this->error_render_level_);
 }
@@ -386,7 +386,7 @@ void ConcreteScheduleNode::Unroll(const LoopRV& loop_rv) {
 }
 
 /******** Schedule: Insert cache stages ********/
-/******** Schedule: compute location ********/
+/******** Schedule: Compute location ********/
 
 void ConcreteScheduleNode::ComputeInline(const BlockRV& block_rv) {
   TVM_TIR_SCHEDULE_BEGIN();
