@@ -63,13 +63,15 @@ def multilevel_normalized(a: ty.handle, offset: ty.handle, b: ty.handle) -> None
     Off = tir.match_buffer(offset, [10], 'int32')
     B = tir.match_buffer(b, [9], 'float32')
 
-    with tir.block([9], 'i') as [vi]:
-        with tir.init():
-            B[vi] = 0.
-        for j in tir.serial(0, Off[vi + 1] - Off[vi]):
-            with tir.block([tir.reduce_axis(0, Off[vi + 1] - Off[vi])], 'j') as [vj]:
-                tir.bind(vj, j + Off[vi])
-                B[vi] = B[vi] + A[vj]
+    for i in tir.serial(0, 9):
+        with tir.block([9], 'i') as [vi]:
+            tir.bind(vi, (i + 1) - 1)
+            with tir.init():
+                B[vi] = 0.
+            for j in tir.serial(0, Off[vi + 1] - Off[vi]):
+                with tir.block([tir.reduce_axis(Off[vi], Off[vi + 1])], 'j') as [vj]:
+                    tir.bind(vj, j + Off[vi])
+                    B[vi] = B[vi] + A[vj]
 
 
 @tvm.script.tir
@@ -126,7 +128,8 @@ def test_multi_level():
     i, = sch.get_loops(blk_i)
     sch.normalize(i)
     sch.normalize(j)
-    tvm.ir.assert_structural_equal(multilevel_normalized, sch.mod['main'])
+    f = sch.mod['main']
+    tvm.ir.assert_structural_equal(multilevel_normalized, f)
 
 
 def test_spmm():

@@ -29,7 +29,7 @@ struct NormalizerInfo {
   /*! \brief the map from Variable to loop min */
   std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_map;
   /*! \brief The map used for ScheduleStateNode::Replace */
-  std::unordered_map<Block, Block, ObjectPtrHash, ObjectPtrEqual> block_map;
+  Map<Block, Block> block_map;
 };
 
 class LoopNormalizer : public StmtExprMutator {
@@ -46,16 +46,11 @@ class LoopNormalizer : public StmtExprMutator {
     }
     Stmt body = this->VisitStmt(op->body);
 
-    if (!normalize && new_min.same_as(op->min) && extent.same_as(op->extent) &&
-        body.same_as(op->body)) {
-      return GetRef<Stmt>(op);
-    } else {
-      auto n = CopyOnWrite(op);
-      n->min = std::move(new_min);
-      n->extent = std::move(extent);
-      n->body = std::move(body);
-      return Stmt(n);
-    }
+    auto n = CopyOnWrite(op);
+    n->min = std::move(new_min);
+    n->extent = std::move(extent);
+    n->body = std::move(body);
+    return Stmt(n);
   }
 
   PrimExpr VisitExpr_(const VarNode* v) final {
@@ -71,7 +66,7 @@ class LoopNormalizer : public StmtExprMutator {
   Stmt VisitStmt_(const BlockNode* op) final {
     Block old_stmt = GetRef<Block>(op);
     Block new_stmt = Downcast<Block>(StmtMutator::VisitStmt_(op));
-    info_->block_map[old_stmt] = new_stmt;
+    info_->block_map.Set(old_stmt, new_stmt);
     return std::move(new_stmt);
   }
 
