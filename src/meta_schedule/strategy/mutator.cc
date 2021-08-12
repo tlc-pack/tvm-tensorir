@@ -482,7 +482,7 @@ struct Internal {
   static Optional<Trace> Apply(Mutator mutator, SearchTask task, Trace trace,
                                Optional<Integer> seed) {
     tir::TRandState rand_state;
-    if (seed.defined() && seed.value()->value > 0) {
+    if (seed.defined() && seed.value()->value != -1) {
       tir::RandEngine(&rand_state).Seed(seed.value()->value);
     } else {
       tir::RandEngine(&rand_state).Seed(std::random_device()());

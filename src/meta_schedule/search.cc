@@ -59,7 +59,7 @@ SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, 
 TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
                                     ProgramMeasurer measurer, Optional<Integer> seed, int verbose) {
   tir::TRandState rand_state;
-  if (seed.defined() && seed.value()->value > 0) {
+  if (seed.defined() && seed.value()->value != -1) {
     tir::RandEngine(&rand_state).Seed(seed.value()->value);
   } else {
     tir::RandEngine(&rand_state).Seed(std::random_device()());
@@ -111,7 +111,7 @@ struct Internal {
   static bool SearchSpacePostprocess(SearchSpace space, SearchTask task, Schedule sch,
                                      Optional<Integer> seed) {
     tir::TRandState rand_state;
-    if (seed.defined() && seed.value()->value > 0) {
+    if (seed.defined() && seed.value()->value != -1) {
       tir::RandEngine(&rand_state).Seed(seed.value()->value);
     } else {
       tir::RandEngine(&rand_state).Seed(std::random_device()());
@@ -128,7 +128,7 @@ struct Internal {
   static Schedule SearchSpaceSampleSchedule(SearchSpace space, SearchTask task,
                                             Optional<Integer> seed) {
     tir::TRandState rand_state;
-    if (seed.defined() && seed.value()->value > 0) {
+    if (seed.defined() && seed.value()->value != -1) {
       tir::RandEngine(&rand_state).Seed(seed.value()->value);
     } else {
       tir::RandEngine(&rand_state).Seed(std::random_device()());
@@ -146,7 +146,7 @@ struct Internal {
   static Array<Schedule> SearchSpaceGetSupport(SearchSpace space, SearchTask task,
                                                Optional<Integer> seed) {
     tir::TRandState rand_state;
-    if (seed.defined() && seed.value()->value > 0) {
+    if (seed.defined() && seed.value()->value != -1) {
       tir::RandEngine(&rand_state).Seed(seed.value()->value);
     } else {
       tir::RandEngine(&rand_state).Seed(std::random_device()());
@@ -166,7 +166,7 @@ struct Internal {
                                                  SearchSpace space, ProgramMeasurer measurer,
                                                  Optional<Integer> seed, int verbose) {
     tir::TRandState rand_state;
-    if (seed.defined() && seed.value()->value > 0) {
+    if (seed.defined() && seed.value()->value != -1) {
       tir::RandEngine(&rand_state).Seed(seed.value()->value);
     } else {
       tir::RandEngine(&rand_state).Seed(std::random_device()());
