@@ -224,7 +224,8 @@ class ScheduleNode : public runtime::Object {
    * It requires:
    * 1) The loops are in the same line. That means: the loops can be ordered to [l_1, l_2, ... ,
    *     l_n] where l_i is an ancestor of l_{i+1} and there are only single-branch loops between
-   *     l_1 and l_n (which also indicates they are under the same scope).
+   *     l_1 and l_n (which also indicates they are under the same scope). For all the loops in
+   *     the line, the inner loops' `min` and `extent` can't contain outer loop vars.
    * 2) The block below the loops have affine bindings and only have data-parallel or reduction block
    *     iters
    * \param ordered_loop_rvs The loops in the new order

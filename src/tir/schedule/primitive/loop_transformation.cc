@@ -356,6 +356,29 @@ class LoopsNotALineError : public ScheduleError {
   ProblemKind kind_;
 };
 
+class DependentLoopError : public ScheduleError {
+ public:
+  explicit DependentLoopError(IRModule mod, For outer_loop, For inner_loop)
+      : mod_(std::move(mod)),
+        outer_loop_(std::move(outer_loop)),
+        inner_loop_(std::move(inner_loop)) {}
+
+  String FastErrorString() const final {
+    return "ScheduleError: An inner loop's `min` or `extent` is dependent on the outer loop";
+  }
+
+  String DetailRenderTemplate() const final {
+    return "Inner Loop {1}'s `min` or `extent` is dependent on the outer loop {0}";
+  }
+
+  IRModule mod() const final { return mod_; }
+  Array<ObjectRef> LocationsOfInterest() const final { return {outer_loop_, inner_loop_}; }
+
+  IRModule mod_;
+  For outer_loop_;
+  For inner_loop_;
+};
+
 /*!
  * \brief Collect all loops under a specific block scope in the inverse pre-order
  * \param self The state of the schedule
@@ -573,7 +596,8 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
   if (n_loops_not_found != 0) {
     throw LoopsNotALineError(self->mod, NullOpt, LoopsNotALineError::kNotUnderAScope);
   }
-  // Step 4. Check loops are single-branch
+  // Step 4. Check that loops are single-branch and inner loops don't rely on outer loops.
+  std::unordered_set<const VarNode*> outer_vars;
   const ForNode* outer_loop = TVM_SREF_TO_FOR(outer_loop, GetRef<StmtSRef>(top));
   for (const StmtSRefNode* loop_sref = top; loop_sref != bottom;) {
     loop_sref = successor[loop_sref];
@@ -581,6 +605,11 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
     if (outer_loop->body.get() != inner_loop) {
       throw LoopsNotALineError(self->mod, GetRef<For>(outer_loop),
                                LoopsNotALineError::kHaveNonSingleBranchStmt);
+    }
+    outer_vars.insert(outer_loop->loop_var.get());
+    auto f_contain = [&outer_vars](const VarNode* var) { return outer_vars.count(var); };
+    if (UsesVar(inner_loop->min, f_contain) || UsesVar(inner_loop->extent, f_contain)) {
+      throw DependentLoopError(self->mod, GetRef<For>(outer_loop), GetRef<For>(inner_loop));
     }
     outer_loop = inner_loop;
   }

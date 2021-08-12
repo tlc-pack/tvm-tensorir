@@ -35,6 +35,29 @@ def elementwise(a: ty.handle, b: ty.handle) -> None:
 
 
 @tvm.script.tir
+def elementwise_not_affine(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128, 128, 128))
+    B = tir.match_buffer(b, (128, 128, 128, 128))
+    for i, j, k, l in tir.grid(128, 128, 128, 8):
+        with tir.block([128, 128, 128, 128], "B") as [vi, vj, vk, vl]:
+            tir.bind(vi, i)
+            tir.bind(vj, j)
+            tir.bind(vk, k)
+            tir.bind(vl, l * 16)
+            B[vi, vj, vk, vl] = A[vi, vj, vk, vl] * 2.0
+
+
+@tvm.script.tir
+def elementwise_dependent_loop(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128, 128, 128))
+    B = tir.match_buffer(b, (128, 128, 128, 128))
+    for i in tir.serial(0, 128):
+        for j, k, l in tir.grid(128, 128, i):
+            with tir.block([128, 128, 128, i], "B") as [vi, vj, vk, vl]:
+                B[vi, vj, vk, vl] = A[vi, vj, vk, vl] * 2.0
+
+
+@tvm.script.tir
 def elementwise_predicate(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128, 128, 128))
     B = tir.match_buffer(b, (128, 128, 128, 128))
@@ -193,7 +216,9 @@ def opaque_access_reorder(a: ty.handle, b: ty.handle) -> None:
             tir.writes([B[0:16, 0:16]])
             tir.evaluate(tir.tvm_fill_fragment(B.data, 16, 16, 16, 0, vi * 16 + vj, dtype="handle"))
 
+
 # pylint: enable=no-member,invalid-name,unused-variable
+
 
 def test_reorder():
     sch = tir.Schedule(elementwise, debug_mask="all")
@@ -266,6 +291,22 @@ def test_reorder_fail_with_wrong_block_var_type():
     i, j, k = sch.get_loops(block_opaque)
     with pytest.raises(tvm.tir.ScheduleError):
         sch.reorder(k, i)
+
+
+def test_reorder_fail_with_dependent_loops():
+    sch = tir.Schedule(elementwise_dependent_loop, debug_mask="all")
+    block_b = sch.get_block("B")
+    i, j, k, l = sch.get_loops(block_b)
+    with pytest.raises(tvm.tir.ScheduleError):
+        sch.reorder(l, i)
+
+
+def test_reorder_fail_not_affine_bindings():
+    sch = tir.Schedule(elementwise_not_affine, debug_mask="all")
+    block_b = sch.get_block("B")
+    i, j, k, l = sch.get_loops(block_b)
+    with pytest.raises(tvm.tir.ScheduleError):
+        sch.reorder(l, i)
 
 
 if __name__ == "__main__":
