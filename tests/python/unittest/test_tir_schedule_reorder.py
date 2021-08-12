@@ -35,6 +35,16 @@ def elementwise(a: ty.handle, b: ty.handle) -> None:
 
 
 @tvm.script.tir
+def elementwise_predicate(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128, 128, 128))
+    B = tir.match_buffer(b, (128, 128, 128, 128))
+    for i, j, k, l in tir.grid(128, 128, 128, 128):
+        with tir.block([128, 128, 128, 128], "B") as [vi, vj, vk, vl]:
+            tir.where(i * 2097152 + j * 16384 + k * 128 + l < 100)
+            B[vi, vj, vk, vl] = A[vi, vj, vk, vl] * 2.0
+
+
+@tvm.script.tir
 def elementwise_with_opaque_block(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128, 128))
     B = tir.match_buffer(b, (128, 128, 128))
@@ -120,6 +130,20 @@ def elementwise_reordered(a: ty.handle, b: ty.handle) -> None:
 
 
 @tvm.script.tir
+def elementwise_reordered_with_predicate(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128, 128, 128))
+    B = tir.match_buffer(b, (128, 128, 128, 128))
+    for l, j, k, i in tir.grid(128, 128, 128, 128):
+        with tir.block([128, 128, 128, 128], "B") as [vi, vj, vk, vl]:
+            tir.where(i * 2097152 + j * 16384 + k * 128 + l < 100)
+            tir.bind(vi, i)
+            tir.bind(vj, j)
+            tir.bind(vk, k)
+            tir.bind(vl, l)
+            B[vi, vj, vk, vl] = A[vi, vj, vk, vl] * 2.0
+
+
+@tvm.script.tir
 def elementwise_reorder_with_opaque_block(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128, 128))
     B = tir.match_buffer(b, (128, 128, 128))
@@ -169,6 +193,7 @@ def opaque_access_reorder(a: ty.handle, b: ty.handle) -> None:
             tir.writes([B[0:16, 0:16]])
             tir.evaluate(tir.tvm_fill_fragment(B.data, 16, 16, 16, 0, vi * 16 + vj, dtype="handle"))
 
+# pylint: enable=no-member,invalid-name,unused-variable
 
 def test_reorder():
     sch = tir.Schedule(elementwise, debug_mask="all")
@@ -198,6 +223,15 @@ def test_reorder_with_opaque_access():
     sch.reorder(j, i)
     tvm.ir.assert_structural_equal(opaque_access_reorder, sch.mod["main"])
     verify_trace_roundtrip(sch=sch, mod=opaque_access)
+
+
+def test_reorder_with_predicate():
+    sch = tir.Schedule(elementwise_predicate, debug_mask="all")
+    block_b = sch.get_block("B")
+    i, j, k, l = sch.get_loops(block_b)
+    sch.reorder(l, i)
+    tvm.ir.assert_structural_equal(elementwise_reordered_with_predicate, sch.mod["main"])
+    verify_trace_roundtrip(sch=sch, mod=elementwise_predicate)
 
 
 def test_reorder_fail_with_nonunique_loops():

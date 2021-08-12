@@ -133,31 +133,34 @@ class IterMapSimplifyBlockBinding : public StmtExprMutator {
 
 class BlockVarTypeError : public ScheduleError {
  public:
-  static void checkBlockVarType(const ScheduleState& state, const StmtSRefNode* sref) {
-    class BlockVarTypeChecker : public StmtVisitor {
+  static void CheckBlockVarTypeAndAffineBinding(const ScheduleState& self,
+                                                const StmtSRefNode* sref) {
+    class BlockVarTypeAndAffineBindingChecker : public StmtVisitor {
      public:
-      explicit BlockVarTypeChecker(const ScheduleState& state) : state_(state) {}
+      explicit BlockVarTypeAndAffineBindingChecker(const ScheduleState& state) : state_(state) {}
 
      private:
       void VisitStmt_(const BlockRealizeNode* op) final {
         if (op->iter_values.empty()) {
           StmtVisitor::VisitStmt_(op);
         } else {
-          for (const IterVar& iterVar : op->block->iter_vars) {
-            if (iterVar->iter_type != kDataPar && iterVar->iter_type != kCommReduce) {
+          for (const IterVar& iter_var : op->block->iter_vars) {
+            if (iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
               throw BlockVarTypeError(state_->mod, op->block);
             }
+            CheckAffineBinding(state_, op->block);
           }
         }
       }
       const ScheduleState& state_;
     };
 
-    BlockVarTypeChecker checker(state);
-    checker(runtime::GetRef<Stmt>(sref->stmt));
+    BlockVarTypeAndAffineBindingChecker checker(self);
+    checker(GetRef<Stmt>(sref->stmt));
   }
 
-  explicit BlockVarTypeError(IRModule mod, Block block) : mod_(mod), block_(std::move(block)) {}
+  explicit BlockVarTypeError(IRModule mod, Block block)
+      : mod_(std::move(mod)), block_(std::move(block)) {}
 
   String FastErrorString() const final {
     return "ScheduleError: The block under the loops to be reordered have block var type other than"
@@ -179,7 +182,7 @@ class BlockVarTypeError : public ScheduleError {
 class HasAnnotationOrThreadBindingError : public ScheduleError {
  public:
   explicit HasAnnotationOrThreadBindingError(IRModule mod, For loop)
-      : mod_(mod), loop_(std::move(loop)) {}
+      : mod_(std::move(mod)), loop_(std::move(loop)) {}
 
   String FastErrorString() const final {
     return "ScheduleError: The primitive can't be applied because the loop has annotation or "
@@ -200,7 +203,7 @@ class HasAnnotationOrThreadBindingError : public ScheduleError {
 class OuterNotInnerParent : public ScheduleError {
  public:
   explicit OuterNotInnerParent(IRModule mod, For outer, For inner)
-      : mod_(mod), outer_(std::move(outer)), inner_(std::move(inner)) {}
+      : mod_(std::move(mod)), outer_(std::move(outer)), inner_(std::move(inner)) {}
 
   String FastErrorString() const final {
     return "ScheduleError: The outer loop is not the parent of the inner loop";
@@ -222,7 +225,7 @@ class OuterNotInnerParent : public ScheduleError {
 class NotOnlyChildError : public ScheduleError {
  public:
   explicit NotOnlyChildError(IRModule mod, For outer, For inner)
-      : mod_(mod), outer_(std::move(outer)), inner_(std::move(inner)) {}
+      : mod_(std::move(mod)), outer_(std::move(outer)), inner_(std::move(inner)) {}
 
   String FastErrorString() const final {
     return "ScheduleError: The inner loop is not the only child of outer loop";
@@ -243,7 +246,8 @@ class NotOnlyChildError : public ScheduleError {
 
 class LoopNotStartWithZeroError : public ScheduleError {
  public:
-  explicit LoopNotStartWithZeroError(IRModule mod, For loop) : mod_(mod), loop_(std::move(loop)) {}
+  explicit LoopNotStartWithZeroError(IRModule mod, For loop)
+      : mod_(std::move(mod)), loop_(std::move(loop)) {}
 
   String FastErrorString() const final {
     return "ScheduleError: The primitive only supports loop starting with 0";
@@ -262,7 +266,7 @@ class LoopNotStartWithZeroError : public ScheduleError {
 
 class NotSingleInferFactorError : public ScheduleError {
  public:
-  explicit NotSingleInferFactorError(IRModule mod) : mod_(mod) {}
+  explicit NotSingleInferFactorError(IRModule mod) : mod_(std::move(mod)) {}
 
   String FastErrorString() const final {
     return "ScheduleError: only one factor can be specified as -1 or none";
@@ -280,7 +284,8 @@ class NotSingleInferFactorError : public ScheduleError {
 
 class WrongFactorProductError : public ScheduleError {
  public:
-  explicit WrongFactorProductError(IRModule mod, For loop) : mod_(mod), loop_(std::move(loop)) {}
+  explicit WrongFactorProductError(IRModule mod, For loop)
+      : mod_(std::move(mod)), loop_(std::move(loop)) {}
 
   String FastErrorString() const final {
     return "ScheduleError: The product of factors is not larger than or equal to the extent of "
@@ -300,20 +305,21 @@ class WrongFactorProductError : public ScheduleError {
 
 class NonUniqueLoopsError : public ScheduleError {
  public:
-  explicit NonUniqueLoopsError(IRModule mod) : mod_(mod) {}
+  explicit NonUniqueLoopsError(IRModule mod, For loop) : mod_(std::move(mod)), loop_(loop) {}
 
   String FastErrorString() const final {
-    return "ScheduleError: some duplicate loops have been passed to the primitive.";
+    return "ScheduleError: Some loop is passed to the primitive for multiple times.";
   }
 
   String DetailRenderTemplate() const final {
-    return "Some duplicate loops have been passed to the primitive.";
+    return "Loop {0} is passed to the primitive for multiple times.";
   }
 
   IRModule mod() const final { return mod_; }
-  Array<ObjectRef> LocationsOfInterest() const final { return {}; }
+  Array<ObjectRef> LocationsOfInterest() const final { return {loop_}; }
 
   IRModule mod_;
+  For loop_;
 };
 
 class LoopsNotALineError : public ScheduleError {
@@ -321,7 +327,7 @@ class LoopsNotALineError : public ScheduleError {
   enum ProblemKind { kNotUnderAScope, kHaveNonSingleBranchStmt };
 
   explicit LoopsNotALineError(IRModule mod, Optional<Stmt> problematic_loop, ProblemKind kind)
-      : mod_(mod), problematic_loop_(std::move(problematic_loop)), kind_(kind) {}
+      : mod_(std::move(mod)), problematic_loop_(std::move(problematic_loop)), kind_(kind) {}
 
   String FastErrorString() const final { return "ScheduleError: the loops are not in a line"; }
 
@@ -351,21 +357,21 @@ class LoopsNotALineError : public ScheduleError {
 };
 
 /*!
- * \brief Collect all loops under a specific block scope
+ * \brief Collect all loops under a specific block scope in the inverse pre-order
  * \param self The state of the schedule
- * \param root_sref the sref to the root of block scope
+ * \param root_block_sref the sref to the root of block scope
  */
-std::vector<const StmtSRefNode*> GetLoopsInversePreOrderUnderScope(const ScheduleState self,
-                                                                   const StmtSRef& root_sref) {
+std::vector<const StmtSRefNode*> GetLoopsInversePreOrderUnderScope(
+    const ScheduleState self, const StmtSRef& root_block_sref) {
   std::vector<const StmtSRefNode*> loops;
-  const BlockNode* root_block = TVM_SREF_TO_BLOCK(root_block, root_sref);
+  const BlockNode* root_block = TVM_SREF_TO_BLOCK(root_block, root_block_sref);
   // Gather all the loops under parent_block
   PreOrderVisit(root_block->body, [&loops, self](const ObjectRef& node) {
     // Stops at a new BlockNode
     if (node->IsInstance<BlockNode>()) {
       return false;
     }
-    // Collects every LoopNode
+    // Collects every ForNode
     if (const auto* loop = node.as<ForNode>()) {
       loops.push_back(self->stmt2ref.at(loop).operator->());
     }
@@ -512,13 +518,16 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
   // Step 1. type check and uniqueness check
   std::unordered_set<const StmtSRefNode*> loop_srefs;
   loop_srefs.reserve(ordered_loop_srefs.size());
+  if (ordered_loop_srefs.empty() || ordered_loop_srefs.size() == 1) {
+    return;
+  }
   for (const StmtSRef& loop_sref : ordered_loop_srefs) {
     // check it is an sref to loop
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     // uniqueness check
     const StmtSRefNode* loop_sref_ptr = loop_sref.operator->();
     if (loop_srefs.count(loop_sref_ptr)) {
-      throw NonUniqueLoopsError(self->mod);
+      throw NonUniqueLoopsError(self->mod, GetRef<For>(loop));
     }
     loop_srefs.insert(loop_sref_ptr);
   }
@@ -537,15 +546,15 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
   // Gather all the loops under parent_block
   int n_loops_not_found = ordered_loop_srefs.size();
 
-  for (const StmtSRefNode* loop :
-       GetLoopsInversePreOrderUnderScope(self, GetScopeRoot(self, ordered_loop_srefs[0], true))) {
+  for (const StmtSRefNode* loop : GetLoopsInversePreOrderUnderScope(
+           self, GetScopeRoot(self, ordered_loop_srefs[0], /*require_stage_pipeline=*/true))) {
     bool is_in_reorder_list = loop_srefs.count(loop);
     bool has_successor_in_reorder_list = successor.count(loop);
     if (is_in_reorder_list || has_successor_in_reorder_list) {
       const StmtSRefNode* parent = loop->parent;
       // If the successor of `parent` exists, then `parent` can't be a single-branch loop
       if (successor.count(parent)) {
-        throw LoopsNotALineError(self->mod, runtime::GetRef<Stmt>(parent->stmt),
+        throw LoopsNotALineError(self->mod, GetRef<Stmt>(parent->stmt),
                                  LoopsNotALineError::kHaveNonSingleBranchStmt);
       }
       successor[parent] = loop;
@@ -565,10 +574,10 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
     throw LoopsNotALineError(self->mod, NullOpt, LoopsNotALineError::kNotUnderAScope);
   }
   // Step 4. Check loops are single-branch
-  const ForNode* outer_loop = TVM_SREF_TO_FOR(outer_loop, runtime::GetRef<StmtSRef>(top));
+  const ForNode* outer_loop = TVM_SREF_TO_FOR(outer_loop, GetRef<StmtSRef>(top));
   for (const StmtSRefNode* loop_sref = top; loop_sref != bottom;) {
     loop_sref = successor[loop_sref];
-    const ForNode* inner_loop = TVM_SREF_TO_FOR(inner_loop, runtime::GetRef<StmtSRef>(loop_sref));
+    const ForNode* inner_loop = TVM_SREF_TO_FOR(inner_loop, GetRef<StmtSRef>(loop_sref));
     if (outer_loop->body.get() != inner_loop) {
       throw LoopsNotALineError(self->mod, GetRef<For>(outer_loop),
                                LoopsNotALineError::kHaveNonSingleBranchStmt);
@@ -576,7 +585,7 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
     outer_loop = inner_loop;
   }
   // Step 5. Check the block below has all its block_var to be data-parallel or reduction
-  BlockVarTypeError::checkBlockVarType(self, bottom);
+  BlockVarTypeError::CheckBlockVarTypeAndAffineBinding(self, bottom);
   // Step 6. Replace the original loops with the reordered loops
   std::function<Stmt(const StmtSRefNode*, int index)> f_reorder =
       [&bottom, &loop_srefs, &successor, &ordered_loop_srefs, &f_reorder](const StmtSRefNode* loop,

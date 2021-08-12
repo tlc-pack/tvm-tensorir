@@ -445,14 +445,12 @@ class Schedule(Object):
     def reorder(self, *loops: List[LoopRV]) -> None:
         """
         Reorder a list of unique loops. It doesn't require the loops to be consecutive.
-
         It requires:
-
         1) The loops are in the same line. That means: the loops can be ordered to [l_1, l_2, ... ,
             l_n] where l_i is an ancestor of l_{i+1} and there are only single-branch loops between
             l_1 and l_n (which also indicates they are under the same scope).
-
-        2) The block below the loops only have data-parallel or reduction block iters.
+        2) The block below the loops have affine bindings and only have data-parallel or reduction block
+            iters
 
         Parameters
         ----------
@@ -463,6 +461,7 @@ class Schedule(Object):
         --------
 
         Before reorder, in TensorIR, the IR is:
+
         .. code-block:: python
 
             @tvm.script.tir
@@ -490,14 +489,13 @@ class Schedule(Object):
             def after_reorder(a: ty.handle, b: ty.handle) -> None:
                 A = tir.match_buffer(a, (128, 128))
                 B = tir.match_buffer(b, (128, 128))
-                #here j and i are reordered
+                # Here j and i are reordered
                 for j, i in tir.grid(128, 128):
                     with tir.block([128, 128], "B") as [vi, vj]:
                         tir.bind(vi, i)
                         tir.bind(vj, j)
                         B[vi, vj] = A[vi, vj] * 2.0
         """
-
         _ffi_api.ScheduleReorder(self, loops)  # type: ignore # pylint: disable=no-member
 
     ########## Schedule: Manipulate ForKind ##########

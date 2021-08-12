@@ -225,7 +225,8 @@ class ScheduleNode : public runtime::Object {
    * 1) The loops are in the same line. That means: the loops can be ordered to [l_1, l_2, ... ,
    *     l_n] where l_i is an ancestor of l_{i+1} and there are only single-branch loops between
    *     l_1 and l_n (which also indicates they are under the same scope).
-   * 2) The block below the loops only have data-parallel or reduction block iters.
+   * 2) The block below the loops have affine bindings and only have data-parallel or reduction block
+   *     iters
    * \param ordered_loop_rvs The loops in the new order
    */
   virtual void Reorder(const Array<LoopRV>& ordered_loop_rvs) = 0;
