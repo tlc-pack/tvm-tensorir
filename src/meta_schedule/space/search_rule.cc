@@ -27,8 +27,8 @@ namespace tvm {
 namespace meta_schedule {
 
 /**************** TIR Nodes ****************/
-using tir::ForNode;
 using tir::BlockNode;
+using tir::ForNode;
 
 /********** Constructors **********/
 

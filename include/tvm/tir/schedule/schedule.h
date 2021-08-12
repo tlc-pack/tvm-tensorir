@@ -19,10 +19,14 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_H_
 
+#include <tvm/support/random_engine.h>
 #include <tvm/tir/schedule/state.h>
 
 namespace tvm {
 namespace tir {
+
+using TRandState = support::LinearCongruentialEngine::TRandState;
+using RandEngine = support::LinearCongruentialEngine;
 
 /*! \brief The level of detailed error message rendering */
 enum class ScheduleErrorRenderLevel : int32_t {
@@ -113,12 +117,12 @@ class ScheduleNode : public runtime::Object {
    * 3) All the random variables are valid in the copy, pointing to the correpsonding sref
    * reconstructed
    */
-  virtual Schedule Copy(int64_t seed = -1) const = 0;
+  virtual Schedule Copy(tir::TRandState seed = -1) const = 0;
   /*!
    * \brief Seed the randomness
    * \param seed The new random seed, -1 if use device random, otherwise non-negative
    */
-  virtual void Seed(int64_t seed = -1) = 0;
+  virtual void Seed(tir::TRandState seed = -1) = 0;
   /*! \brief Fork the random state */
   virtual int64_t ForkSeed() = 0;
 
@@ -502,11 +506,11 @@ class Schedule : public runtime::ObjectRef {
    * 1) VerifySRefTree
    * 2) VerifyCachedFlags
    */
-  TVM_DLL static Schedule Concrete(IRModule mod, int64_t seed, int debug_mode,
+  TVM_DLL static Schedule Concrete(IRModule mod, tir::TRandState seed, int debug_mode,
                                    ScheduleErrorRenderLevel error_render_level);
-  TVM_DLL static Schedule Meta(IRModule mod, int64_t seed, int debug_mode,
+  TVM_DLL static Schedule Meta(IRModule mod, tir::TRandState seed, int debug_mode,
                                ScheduleErrorRenderLevel error_render_level);
-  TVM_DLL static Schedule Traced(IRModule mod, int64_t seed, int debug_mode,
+  TVM_DLL static Schedule Traced(IRModule mod, tir::TRandState seed, int debug_mode,
                                  ScheduleErrorRenderLevel error_render_level);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };

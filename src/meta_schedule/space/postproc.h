@@ -44,10 +44,10 @@ class PostprocNode : public Object {
   /*!
    * \brief Apply the postprocessor
    * \param sch The schedule to be processed
-   * \param sampler The random number sampler
+   * \param rand_state The random state for sampling
    * \return If the post-processing succeeds
    */
-  bool Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler);
+  bool Apply(const SearchTask& task, const Schedule& sch, tir::TRandState* rand_state);
 
   static constexpr const char* _type_key = "meta_schedule.Postproc";
   TVM_DECLARE_BASE_OBJECT_INFO(PostprocNode, Object);

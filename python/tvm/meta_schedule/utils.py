@@ -46,7 +46,7 @@ MAX_TIME_COST = 1e10
 
 
 def make_error_msg() -> str:
-    """ Get the error message from traceback. """
+    """Get the error message from traceback."""
     error_msg = str(traceback.format_exc())
     if len(error_msg) > MAX_ERROR_MSG_LEN:
         error_msg = (
@@ -408,7 +408,7 @@ def local_builder_worker(
     timeout: int,
     verbose: int,
 ) -> BuildResult.TYPE:
-    """ Local worker for ProgramBuilder """
+    """Local worker for ProgramBuilder"""
     # deal with build_func
     build_func = {
         "tar": build_func_tar.tar,  # export to tar
@@ -603,7 +603,7 @@ def rpc_runner_worker(
     f_create_args: Callable[[Device], List[NDArray]],
     verbose: int,
 ) -> MeasureResult.TYPE:
-    """ RPC worker for ProgramRunner """
+    """RPC worker for ProgramRunner"""
     measure_input = measure_inputs[index]
     build_result = build_results[index]
 
@@ -653,13 +653,13 @@ def rpc_runner_worker(
                 else:
                     rpc_eval_repeat = 1
                 if f_create_args is not None:
-                    args_set = [f_create_args(ctx) for _ in range(rpc_eval_repeat)]
+                    args_set = [f_create_args(dev) for _ in range(rpc_eval_repeat)]
                 else:
                     args_set = [
-                        realize_arguments(remote, ctx, measure_input.sch.mod["main"])
+                        realize_arguments(remote, dev, measure_input.sch.mod["main"])
                         for _ in range(rpc_eval_repeat)
                     ]
-                ctx.sync()
+                dev.sync()
                 costs = sum([time_f(*args).results for args in args_set], ())
                 # clean up remote files
                 remote.remove(build_result.filename)

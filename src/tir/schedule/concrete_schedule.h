@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-#include "./sampler.h"
+#include "./primitive.h"
 #include "./utils.h"
 
 namespace tvm {
@@ -42,7 +42,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   /*! \brief The level of error rendering */
   ScheduleErrorRenderLevel error_render_level_;
   /*! \brief Source of randomness */
-  Sampler sampler_;
+  tir::TRandState rand_state_;
   /*! \brief A symbol table that maps random variables to concrete StmtSRef/Integers */
   TSymbolTable symbol_table_;
   /*! \brief A persistent stateless arithmetic analyzer. */
@@ -53,7 +53,7 @@ class ConcreteScheduleNode : public ScheduleNode {
     // `error_render_level_` is not visited
     // `state_` is not visited
     // `error_render_level_` is not visited
-    // `sampler_` is not visited
+    // `rand_state_` is not visited
     // `symbol_table_` is not visited
     // `analyzer_` is not visitied
   }
@@ -66,9 +66,12 @@ class ConcreteScheduleNode : public ScheduleNode {
  public:
   ScheduleState state() const final { return state_; }
   Optional<Trace> trace() const override { return NullOpt; }
-  Schedule Copy(int64_t new_seed = -1) const override;
-  void Seed(int64_t new_seed = -1) final { this->sampler_.Seed(new_seed); }
-  int64_t ForkSeed() final { return this->sampler_.ForkSeed(); }
+  Schedule Copy(tir::TRandState new_seed = -1) const override;
+  void Seed(tir::TRandState new_seed = -1) final {
+    if (new_seed == -1) new_seed = std::random_device()();
+    RandEngine(&this->rand_state_).Seed(new_seed);
+  }
+  tir::TRandState ForkSeed() final { return tir::ForkSeed(&this->rand_state_); }
 
  public:
   /******** Lookup random variables ********/
@@ -83,7 +86,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   void RemoveRV(const LoopRV& loop_rv) final { RemoveFromSymbolTable(loop_rv); }
   void RemoveRV(const ExprRV& expr_rv) final { RemoveFromSymbolTable(expr_rv); }
   using ScheduleNode::GetSRef;
- 
+
  public:
   /******** Schedule: Sampling ********/
   Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,

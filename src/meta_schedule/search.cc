@@ -58,17 +58,20 @@ SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, 
  */
 TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
                                     ProgramMeasurer measurer, Optional<Integer> seed, int verbose) {
-  Sampler seeded;
-  if (seed.defined()) {
-    seeded.Seed(seed.value());
+  tir::TRandState rand_state;
+  if (seed.defined() && seed.value()->value != -1) {
+    tir::RandEngine(&rand_state).Seed(seed.value()->value);
+  } else {
+    tir::RandEngine(&rand_state).Seed(std::random_device()());
   }
+
   if (verbose) {
     LOG(INFO) << "Tuning for task: " << task;
   }
   space->Init(task);
   strategy->Init(task);
   measurer->Init(task);
-  return strategy->Search(task, space, measurer, &seeded, verbose);
+  return strategy->Search(task, space, measurer, &rand_state, verbose);
 }
 
 /********** Printer **********/
@@ -101,17 +104,19 @@ struct Internal {
    * \brief Apply postprocessors onto the schedule
    * \param space The search space
    * \param sch The schedule to be postprocessed
-   * \param sampler The random number generator
+   * \param rand_state The random state for sampling
    * \return Whether postprocessing has succeeded
    * \sa SearchSpaceNode::Postprocess
    */
   static bool SearchSpacePostprocess(SearchSpace space, SearchTask task, Schedule sch,
                                      Optional<Integer> seed) {
-    Sampler seeded;
-    if (seed.defined()) {
-      seeded.Seed(seed.value());
+    tir::TRandState rand_state;
+    if (seed.defined() && seed.value()->value != -1) {
+      tir::RandEngine(&rand_state).Seed(seed.value()->value);
+    } else {
+      tir::RandEngine(&rand_state).Seed(std::random_device()());
     }
-    return space->Postprocess(task, sch, &seeded);
+    return space->Postprocess(task, sch, &rand_state);
   }
   /*!
    * \brief Sample a schedule out of the search space, calls SearchSpaceNode::SampleSchedule
@@ -122,11 +127,13 @@ struct Internal {
    */
   static Schedule SearchSpaceSampleSchedule(SearchSpace space, SearchTask task,
                                             Optional<Integer> seed) {
-    Sampler seeded;
-    if (seed.defined()) {
-      seeded.Seed(seed.value());
+    tir::TRandState rand_state;
+    if (seed.defined() && seed.value()->value != -1) {
+      tir::RandEngine(&rand_state).Seed(seed.value()->value);
+    } else {
+      tir::RandEngine(&rand_state).Seed(std::random_device()());
     }
-    return space->SampleSchedule(task, &seeded);
+    return space->SampleSchedule(task, &rand_state);
   }
   /*!
    * \brief Get support of the search space, calls SearchSpaceNode::GetSupport
@@ -138,11 +145,13 @@ struct Internal {
    */
   static Array<Schedule> SearchSpaceGetSupport(SearchSpace space, SearchTask task,
                                                Optional<Integer> seed) {
-    Sampler seeded;
-    if (seed.defined()) {
-      seeded.Seed(seed.value());
+    tir::TRandState rand_state;
+    if (seed.defined() && seed.value()->value != -1) {
+      tir::RandEngine(&rand_state).Seed(seed.value()->value);
+    } else {
+      tir::RandEngine(&rand_state).Seed(std::random_device()());
     }
-    return space->GetSupport(task, &seeded);
+    return space->GetSupport(task, &rand_state);
   }
   /*!
    * \brief Explore the search space and find the best schedule
@@ -156,11 +165,13 @@ struct Internal {
   static Optional<Schedule> SearchStrategySearch(SearchStrategy strategy, SearchTask task,
                                                  SearchSpace space, ProgramMeasurer measurer,
                                                  Optional<Integer> seed, int verbose) {
-    Sampler seeded;
-    if (seed.defined()) {
-      seeded.Seed(seed.value());
+    tir::TRandState rand_state;
+    if (seed.defined() && seed.value()->value != -1) {
+      tir::RandEngine(&rand_state).Seed(seed.value()->value);
+    } else {
+      tir::RandEngine(&rand_state).Seed(std::random_device()());
     }
-    return strategy->Search(task, space, measurer, &seeded, verbose);
+    return strategy->Search(task, space, measurer, &rand_state, verbose);
   }
 };
 
