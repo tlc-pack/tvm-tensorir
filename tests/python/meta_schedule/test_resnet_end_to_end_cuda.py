@@ -96,11 +96,11 @@ def get_network(name, batch_size, layout="NHWC", dtype="float32"):
     return mod, params, input_shape, output_shape
 
 
-RPC_KEY = "rtx-2080ti"
+RPC_KEY = "rtx-3080"
 network = "resnet-50"
 batch_size = 1
 layout = "NHWC"
-target = tvm.target.Target("nvidia/geforce-rtx-2080-ti")
+target = tvm.target.Target("nvidia/geforce-rtx-3080")
 dtype = "float32"
 TARGET_HOST = tvm.target.Target("llvm")
 SPACE = ms.space.PostOrderApply(
