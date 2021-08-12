@@ -29,7 +29,7 @@ from tvm import te
 logging.basicConfig()
 logging.getLogger("meta_schedule").setLevel(logging.DEBUG)
 
-RPC_KEY = "rtx-3070"
+RPC_KEY = "rtx-2080ti"
 TARGET = tvm.target.Target("nvidia/geforce-rtx-2080-ti")
 TARGET_HOST = tvm.target.Target("llvm")
 SPACE = ms.space.PostOrderApply(

@@ -96,7 +96,7 @@ def get_network(name, batch_size, layout="NHWC", dtype="float32"):
     return mod, params, input_shape, output_shape
 
 
-RPC_KEY = "local"
+RPC_KEY = "test"
 network = "resnet-50"
 batch_size = 1
 layout = "NHWC"
