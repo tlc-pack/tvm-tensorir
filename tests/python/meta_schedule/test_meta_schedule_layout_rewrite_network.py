@@ -99,9 +99,9 @@ def get_relay_batchmm(batch=4, m=128, n=128, k=128):
     return mod, data, weight
 
 
-RPC_KEY = "test"
-TARGET = tvm.target.Target("llvm")
-TARGET_HOST = tvm.target.Target("llvm")
+RPC_KEY = "raspi4b-aarch64"
+TARGET = tvm.target.Target("raspberry-pi/4b-64")
+TARGET_HOST = tvm.target.Target("raspberry-pi/4b-64")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=True),
