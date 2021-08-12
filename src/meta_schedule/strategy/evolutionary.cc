@@ -780,7 +780,7 @@ struct Internal {
                                            SearchTask task, SearchSpace space,
                                            Optional<Integer> seed) {
     tir::TRandState rand_state;
-    if (seed.defined() && (seed.value() != -1)) {
+    if (seed.defined() && seed.value()->value > 0) {
       tir::RandEngine(&rand_state).Seed(seed.value()->value);
     } else {
       tir::RandEngine(&rand_state).Seed(std::random_device()());
@@ -800,7 +800,7 @@ struct Internal {
   static Array<Trace> EvolveWithCostModel(Evolutionary self, Array<Trace> inits, SearchTask task,
                                           SearchSpace space, Optional<Integer> seed) {
     tir::TRandState rand_state;
-    if (seed.defined() && (seed.value() != -1)) {
+    if (seed.defined() && seed.value()->value > 0) {
       tir::RandEngine(&rand_state).Seed(seed.value()->value);
     } else {
       tir::RandEngine(&rand_state).Seed(std::random_device()());
@@ -820,7 +820,7 @@ struct Internal {
                                         SearchTask task, SearchSpace space,
                                         Optional<Integer> seed) {
     tir::TRandState rand_state;
-    if (seed.defined() && (seed.value() != -1)) {
+    if (seed.defined() && seed.value()->value > 0) {
       tir::RandEngine(&rand_state).Seed(seed.value()->value);
     } else {
       tir::RandEngine(&rand_state).Seed(std::random_device()());
