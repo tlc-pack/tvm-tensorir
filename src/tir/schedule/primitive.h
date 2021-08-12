@@ -131,7 +131,7 @@ struct PrimeTable {
 
 /******** Schedule: Sampling ********/
 
-/*! \brief Return a seed that can be used to create a new sampler */
+/*! \brief Return a seed that can be used as a new random state. */
 TRandState ForkSeed(TRandState* rand_state);
 /*!
  * \brief Sample an integer in [min_inclusive, max_exclusive)

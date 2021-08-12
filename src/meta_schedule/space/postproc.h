@@ -44,7 +44,7 @@ class PostprocNode : public Object {
   /*!
    * \brief Apply the postprocessor
    * \param sch The schedule to be processed
-   * \param rand_state The sampler's random state
+   * \param rand_state The random state for sampling
    * \return If the post-processing succeeds
    */
   bool Apply(const SearchTask& task, const Schedule& sch, tir::TRandState* rand_state);

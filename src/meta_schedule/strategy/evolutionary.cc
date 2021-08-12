@@ -134,7 +134,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \param task The search task
    * \param space The search space
    * \param measurer The measurer that builds, runs and profiles sampled programs
-   * \param rand_state The sampler's random state
+   * \param rand_state The random state for sampling
    * \param verbose Whether or not in verbose mode
    * \return The best schedule found, NullOpt if no valid schedule is found
    */
@@ -151,7 +151,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \param support The support to be sampled from
    * \param task The search task
    * \param space The search space
-   * \param rand_state The sampler's random state
+   * \param rand_state The random state for sampling
    * \return The generated samples, all of which are not post-processed
    */
   Array<Trace> SampleInitPopulation(const Array<Schedule>& support, const SearchTask& task,
@@ -162,7 +162,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \param inits The initial population
    * \param task The search task
    * \param space The search space
-   * \param rand_state The sampler's random state
+   * \param rand_state The random state for sampling
    * \return An array of schedules, the sampling result
    */
   Array<Trace> EvolveWithCostModel(const Array<Trace>& inits, const SearchTask& task,
@@ -174,7 +174,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \param bests The best populations according to the cost model when picking top states
    * \param task The search task
    * \param space The search space
-   * \param rand_state The sampler's random state
+   * \param rand_state The random state for sampling
    * \return A list of schedules, result of epsilon-greedy sampling
    */
   Array<Trace> PickWithEpsGreedy(const Array<Trace>& inits, const Array<Trace>& bests,
@@ -200,12 +200,12 @@ class EvolutionaryNode : public SearchStrategyNode {
   friend class Evolutionary;
 
   /*!
-   * \brief Fork a sampler into `n` samplers
-   * \param n The number of samplers to be forked
-   * \param rand_state The sampler's random state
+   * \brief Fork a random state into `n` random states
+   * \param n The number of random states to be forked
+   * \param rand_state The random state for sampling
    * \return A list of random states, the result of forking
    */
-  static std::vector<tir::TRandState> ForkSamplers(int n, tir::TRandState* rand_state) {
+  static std::vector<tir::TRandState> ForkRandStates(int n, tir::TRandState* rand_state) {
     std::vector<tir::TRandState> result;
     result.reserve(n);
     for (int i = 0; i < n; ++i) {
@@ -243,7 +243,7 @@ class EvolutionaryNode : public SearchStrategyNode {
 
   /*!
    * \brief Create a sampler function that picks mutators according to the mass function
-   * \param rand_state The sampler's random state
+   * \param rand_state The random state for sampling
    * \return The sampler created
    */
   static std::function<Optional<Mutator>()> MakeMutatorSampler(
@@ -477,7 +477,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   results.reserve(this->population);
   // Threading RNG
   int num_threads = std::thread::hardware_concurrency();
-  std::vector<tir::TRandState> thread_rand_states = ForkSamplers(num_threads, global_rand_state);
+  std::vector<tir::TRandState> thread_rand_states = ForkRandStates(num_threads, global_rand_state);
   std::vector<tir::PrimFunc> thread_workloads = ForkWorkload(num_threads, task->workload);
   // Pick measured states
   int num_measured = this->population * this->init_measured_ratio;
@@ -550,7 +550,7 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
   SizedHeap heap(this->num_measures_per_iteration);
   // Threading RNG
   int num_threads = std::thread::hardware_concurrency();
-  std::vector<tir::TRandState> thread_rand_states = ForkSamplers(num_threads, global_rand_state);
+  std::vector<tir::TRandState> thread_rand_states = ForkRandStates(num_threads, global_rand_state);
   std::vector<tir::PrimFunc> thread_workloads = ForkWorkload(num_threads, task->workload);
   std::vector<std::function<int()>> thread_trace_samplers(num_threads);
   std::vector<std::function<Optional<Mutator>()>> thread_mutator_samplers(num_threads);

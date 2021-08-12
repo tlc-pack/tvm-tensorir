@@ -44,7 +44,7 @@ class MutatorNode : public Object {
    * \brief Mutate the schedule by applying the mutation
    * \param task The search task
    * \param trace The trace to be mutated
-   * \param rand_state The sampler's random state
+   * \param rand_state The random state for sampling
    * \return The new schedule after mutation, NullOpt if mutation fails
    */
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace, tir::TRandState* rand_state);

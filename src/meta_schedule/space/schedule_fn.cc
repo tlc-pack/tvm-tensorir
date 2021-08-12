@@ -47,7 +47,7 @@ class ScheduleFnNode : public SearchSpaceNode {
    * \brief Apply postprocessors onto the schedule
    * \param task The search task
    * \param sch The schedule to be postprocessed
-   * \param rand_state The sampler's random state
+   * \param rand_state The random state for sampling
    */
   bool Postprocess(const SearchTask& task, const Schedule& sch,
                    tir::TRandState* rand_state) override;

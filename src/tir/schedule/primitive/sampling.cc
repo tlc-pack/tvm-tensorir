@@ -25,7 +25,7 @@ namespace tvm {
 namespace tir {
 
 TRandState ForkSeed(TRandState* rand_state) {
-  // In order for reproducibility, we computer the new seed using sampler's RNG's random state and a
+  // In order for reproducibility, we computer the new seed using RNG's random state and a
   // different set of parameters. Note that both 32767 and 1999999973 are prime numbers.
   TRandState ret = (RandEngine(rand_state)() * 32767) % 1999999973;
   return ret;

@@ -30,9 +30,7 @@ class RandCostModelNode : public CostModelNode {
   /*! \brief A random state for sampling functions to generate random numbers */
   tir::TRandState rand_state;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    // sampler is not visited
-  }
+  void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
    * \brief Update the cost model according to new measurement results (training data).
