@@ -779,9 +779,11 @@ struct Internal {
   static Array<Trace> SampleInitPopulation(Evolutionary self, Array<Schedule> support,
                                            SearchTask task, SearchSpace space,
                                            Optional<Integer> seed) {
-    tir::TRandState rand_state = std::random_device()();
-    if (seed.defined()) {
-      tir::RandEngine(&rand_state).Seed(seed.value());
+    tir::TRandState rand_state;
+    if (seed.defined() && (seed.value() != -1)) {
+      tir::RandEngine(&rand_state).Seed(seed.value()->value);
+    } else {
+      tir::RandEngine(&rand_state).Seed(std::random_device()());
     }
     return self->SampleInitPopulation(support, task, space, &rand_state);
   }
@@ -797,9 +799,11 @@ struct Internal {
    */
   static Array<Trace> EvolveWithCostModel(Evolutionary self, Array<Trace> inits, SearchTask task,
                                           SearchSpace space, Optional<Integer> seed) {
-    tir::TRandState rand_state = std::random_device()();
-    if (seed.defined()) {
-      tir::RandEngine(&rand_state).Seed(seed.value());
+    tir::TRandState rand_state;
+    if (seed.defined() && (seed.value() != -1)) {
+      tir::RandEngine(&rand_state).Seed(seed.value()->value);
+    } else {
+      tir::RandEngine(&rand_state).Seed(std::random_device()());
     }
     return self->EvolveWithCostModel(inits, task, space, &rand_state);
   }
@@ -815,9 +819,11 @@ struct Internal {
   static Array<Trace> PickWithEpsGreedy(Evolutionary self, Array<Trace> inits, Array<Trace> bests,
                                         SearchTask task, SearchSpace space,
                                         Optional<Integer> seed) {
-    tir::TRandState rand_state = std::random_device()();
-    if (seed.defined()) {
-      tir::RandEngine(&rand_state).Seed(seed.value());
+    tir::TRandState rand_state;
+    if (seed.defined() && (seed.value() != -1)) {
+      tir::RandEngine(&rand_state).Seed(seed.value()->value);
+    } else {
+      tir::RandEngine(&rand_state).Seed(std::random_device()());
     }
     return self->PickWithEpsGreedy(inits, bests, task, space, &rand_state);
   }

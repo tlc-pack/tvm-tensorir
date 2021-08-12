@@ -1118,9 +1118,11 @@ struct Internal {
    * \sa PostProcNode::Apply
    */
   static bool Apply(Postproc self, SearchTask task, Schedule sch, Optional<Integer> seed) {
-    tir::TRandState rand_state = std::random_device()();
-    if (seed.defined()) {
-      tir::RandEngine(&rand_state).Seed(seed.value());
+    tir::TRandState rand_state;
+    if (seed.defined() && (seed.value() != -1)) {
+      tir::RandEngine(&rand_state).Seed(seed.value()->value);
+    } else {
+      tir::RandEngine(&rand_state).Seed(std::random_device()());
     }
     return self->Apply(task, sch, &rand_state);
   }
