@@ -362,7 +362,7 @@ class LoopsNotALineError : public ScheduleError {
  * \param root_block_sref the sref to the root of block scope
  */
 std::vector<const StmtSRefNode*> GetLoopsInversePreOrderUnderScope(
-    const ScheduleState self, const StmtSRef& root_block_sref) {
+    const ScheduleState& self, const StmtSRef& root_block_sref) {
   std::vector<const StmtSRefNode*> loops;
   const BlockNode* root_block = TVM_SREF_TO_BLOCK(root_block, root_block_sref);
   // Gather all the loops under parent_block
