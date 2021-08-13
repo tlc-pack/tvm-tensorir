@@ -163,6 +163,12 @@ def make_workload_key(func, args):
     return tvm.ir.save_json((func_name,) + args)
 
 
+def workload_key_to_func_and_args(workload_key):
+    global WORKLOAD_FUNC_REGISTRY
+    workload = tvm.ir.load_json(workload_key)
+    return WORKLOAD_FUNC_REGISTRY[workload[0]], deserialize_args(workload[1:])
+
+
 @tvm._ffi.register_func("auto_scheduler.workload_key_to_tensors")
 def workload_key_to_tensors(workload_key):
     """Get the input/output tensors from the workload key.
@@ -193,14 +199,17 @@ def workload_key_to_tensors(workload_key):
     
     # <bojian/DietCode>
     # workload = json.loads(workload_key)
-    workload = tvm.ir.load_json(workload_key)
+    # The deserialization is moved to workload_key_to_func_and_args.
+    # workload = tvm.ir.load_json(workload_key)
 
-    name = workload[0]
-    value = WORKLOAD_FUNC_REGISTRY[name]
-    assert callable(value)
+    # name = workload[0]
+    # value = WORKLOAD_FUNC_REGISTRY[name]
+    # assert callable(value)
 
-    args = deserialize_args(workload[1:])
-    return value(*args)
+    # args = deserialize_args(workload[1:])
+    # return value(*args)
+    func, args = workload_key_to_func_and_args(workload_key)
+    return func(*args)
 
 
 def serialize_workload_registry_entry(workload_key):

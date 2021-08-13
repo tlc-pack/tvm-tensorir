@@ -46,6 +46,7 @@ from .measure import (
 from .measure_record import RecordToFile, RecordReader, load_best_record, load_records, save_records
 from .relay_integration import (
     extract_tasks,
+    extract_dyn_tasks,  # <bojian/DietCode>
     remove_index_check,
     rewrite_compute_body,
     is_auto_scheduler_enabled,

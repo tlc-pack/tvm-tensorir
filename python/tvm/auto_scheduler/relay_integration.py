@@ -40,7 +40,8 @@ from .compute_dag import ComputeDAG, LayoutRewriteOption
 from .dispatcher import DispatchContext
 from .search_task import SearchTask
 from .utils import get_const_tuple
-from .workload_registry import register_workload_tensors
+from .workload_registry import register_workload_tensors, \
+                               workload_key_to_func_and_args  # <bojian/DietCode>
 
 logger = logging.getLogger("auto_scheduler")
 
@@ -152,6 +153,27 @@ def extract_tasks(
         weights.append(weight)
 
     return tasks, weights
+
+
+# <bojian/DietCode>
+def extract_dyn_tasks(mod, params, target):
+    target, _ = Target.check_and_update_host_consist(target, None)
+    env = TracingEnvironment(TracingMode.EXTRACT_COMPLEX_TASK_ONLY)
+    dispatch_ctx = DispatchContext.current
+    old_disp_ctx_verbose = dispatch_ctx.verbose
+    dispatch_ctx.verbose = 0
+    with env:
+        build_thread = threading.Thread(target=call_all_topi_funcs,
+                                        args=(mod, params, target))
+        build_thread.start()
+        build_thread.join()
+    dispatch_ctx.verbose = old_disp_ctx_verbose
+    
+    tasks, task_weights = [], []
+    for (func_name, wkl_key), weight in env.wkl_key_to_weight.items():
+        print(tvm.ir.load_json(wkl_key))
+        func, args = workload_key_to_func_and_args(wkl_key)
+        print("func={}, args={}".format(func, args))
 
 
 class TracingMode:
