@@ -24,8 +24,10 @@ namespace tvm {
 namespace meta_schedule {
 
 void TuneContextNode::Init(Optional<Integer> seed) {
-  if (seed.defined()) {
-    this->sampler.Seed(seed.value()->value);
+  if (seed.defined() && seed.value()->value != -1) {
+    tir::RandEngine(&this->rand_state).Seed(seed.value()->value);
+  } else {
+    tir::RandEngine(&this->rand_state).Seed(std::random_device()());
   }
   if (task.defined()) {
     task.value()->Init(this);
@@ -59,7 +61,7 @@ void TuneContextNode::Init(Optional<Integer> seed) {
 bool TuneContextNode::Postprocess(const Schedule& sch) {
   sch->EnterPostproc();
   for (const Postproc& postproc : postprocs) {
-    if (!postproc->Apply(task.value(), sch, &sampler)) {
+    if (!postproc->Apply(task.value(), sch, &rand_state)) {
       return false;
     }
   }

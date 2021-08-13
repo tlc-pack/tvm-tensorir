@@ -34,7 +34,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   void VisitAttrs(tvm::AttrVisitor* v) {
     // `state_` is not visited
     // `error_render_level_` is not visited
-    // `sampler_` is not visited
+    // `rand_state_` is not visited
     // `symbol_table_` is not visited
     // `analyzer_` is not visitied
     // `trace_` is not visited
@@ -47,7 +47,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
 
  public:
   Optional<Trace> trace() const final { return trace_; }
-  Schedule Copy(int64_t new_seed = -1) const final;
+  Schedule Copy(tir::TRandState new_seed = -1) const final;
 
  public:
   /******** Schedule: Sampling ********/

@@ -16,28 +16,22 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_SCHEDULE_H_
-#define SRC_META_SCHEDULE_SCHEDULE_H_
 
-#include <tvm/tir/schedule/schedule.h>
-#include <tvm/tir/schedule/trace.h>
+#include <dmlc/logging.h>
+#include <gtest/gtest.h>
 
-namespace tvm {
-namespace meta_schedule {
+#include "../../../src/tir/schedule/primitive.h"
 
-using ScheduleNode = tir::TraceNode;
-using Schedule = tir::Schedule;
-using BlockRV = tir::BlockRV;
-using BlockRVNode = tir::BlockRVNode;
-using LoopRV = tir::LoopRV;
-using LoopRVNode = tir::LoopRVNode;
-using ExprRV = tir::ExprRV;
-using ExprRVNode = tir::ExprRVNode;
-using Trace = tir::Trace;
-using Instruction = tir::Instruction;
-using InstructionKind = tir::InstructionKind;
+TEST(Simplify, Sampling) {
+  int64_t current = 100;
+  for (int i = 0; i < 10; i++) {
+    tvm::tir::SampleInt(&current, 0, 100);
+    tvm::tir::SampleUniform(&current, 3, -1, 0);
+  }
+}
 
-}  // namespace meta_schedule
-}  // namespace tvm
-
-#endif  // SRC_META_SCHEDULE_SCHEDULE_H_
+int main(int argc, char** argv) {
+  testing::InitGoogleTest(&argc, argv);
+  testing::FLAGS_gtest_death_test_style = "threadsafe";
+  return RUN_ALL_TESTS();
+}

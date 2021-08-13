@@ -200,9 +200,7 @@ def tune_and_check(log, mod, data, weight):
             lib.export_library(tmp.relpath(filename))
             # Upload module to device
             print("Upload...")
-            remote = auto_scheduler.utils.request_remote(
-                RPC_KEY, "172.16.2.241", 4445, timeout=10000
-            )
+            remote = auto_scheduler.utils.request_remote(RPC_KEY, "localhost", 4728, timeout=10000)
             remote.upload(tmp.relpath(filename))
             rlib = remote.load_module(filename)
 
