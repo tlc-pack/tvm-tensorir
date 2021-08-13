@@ -568,11 +568,11 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
   const StmtSRefNode* bottom = nullptr;
   // Maps a parent sref to its child sref
   std::unordered_map<const StmtSRefNode*, const StmtSRefNode*> successor;
-  // Gather all the loops under parent_block
   int n_loops_not_found = ordered_loop_srefs.size();
-
-  for (const StmtSRefNode* loop : GetLoopsInversePreOrderUnderScope(
-           self, GetScopeRoot(self, ordered_loop_srefs[0], /*require_stage_pipeline=*/true))) {
+  // Gather all the loops under the block scope
+  std::vector<const StmtSRefNode*> inverse_preorder_loops = GetLoopsInversePreOrderUnderScope(
+      self, GetScopeRoot(self, ordered_loop_srefs[0], /*require_stage_pipeline=*/true));
+  for (const StmtSRefNode* loop : inverse_preorder_loops) {
     bool is_in_reorder_list = loop_srefs.count(loop);
     bool has_successor_in_reorder_list = successor.count(loop);
     if (is_in_reorder_list || has_successor_in_reorder_list) {
