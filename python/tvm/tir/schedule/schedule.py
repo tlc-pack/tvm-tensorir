@@ -22,6 +22,7 @@ from tvm._ffi import register_object as _register_object
 from tvm.error import TVMError, register_error
 from tvm.ir import IRModule, PrimExpr
 from tvm.runtime import Object, String
+from tvm.target import Target
 from tvm.tir import Block, For, IntImm, PrimFunc, IterVar, TensorIntrin
 
 from . import _ffi_api_schedule
@@ -323,6 +324,23 @@ class Schedule(Object):
             self,
             loop,
             n,
+            max_innermost_factor,
+            decision,
+        )
+
+    def sample_shape_generic_tile(
+        self,
+        loops: List[LoopRV],
+        ns: int,
+        target: Target,
+        max_innermost_factor: int = 16,
+        decision: Optional[List[List[int]]] = None
+    ) -> List[List[ExprRV]]:
+        return _ffi_api_schedule.ScheduleSamplePerfectTile(  # pylint: disable=no-member
+            self,
+            loops,
+            ns,
+            target,
             max_innermost_factor,
             decision,
         )
