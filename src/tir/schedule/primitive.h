@@ -69,7 +69,7 @@ TVM_DLL StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs);
  * 1) The loops are in the same line. That means: the loops can be ordered to [l_1, l_2, ... ,
  *     l_n] where l_i is an ancestor of l_{i+1} and there are only single-branch loops between
  *     l_1 and l_n (which also indicates they are under the same scope).
- * 2) For all the input loops, an outer loop cannot depend on inner loops in the new order.
+ * 2) In the new order, an outer loop cannot depend on inner loops.
  * 3) The block below the loops have affine bindings and only have data-parallel or reduction block
  *     iters
  * 4) A loop cannot appear multiple times in the input array.

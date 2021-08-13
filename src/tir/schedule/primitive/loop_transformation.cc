@@ -547,10 +547,8 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
   if (ordered_loop_srefs.empty() || ordered_loop_srefs.size() == 1) {
     return;
   }
-  // Step 1. check uniqueness and check that outer loop is not dependent on inner loop
-  std::unordered_set<const VarNode*> inner_vars;
-  for (auto iter = ordered_loop_srefs.rbegin(); iter != ordered_loop_srefs.rend(); ++iter) {
-    StmtSRef loop_sref = *iter;
+  // Step 1. check uniqueness
+  for (const StmtSRef loop_sref : ordered_loop_srefs) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     // uniqueness check
     const StmtSRefNode* loop_sref_ptr = loop_sref.operator->();
@@ -558,12 +556,6 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
       throw LoopMultiAppearanceError(self->mod, GetRef<For>(loop));
     }
     loop_srefs.insert(loop_sref_ptr);
-    // check dependency
-    auto f_contain = [&inner_vars](const VarNode* var) { return inner_vars.count(var); };
-    if (UsesVar(loop->min, f_contain) || UsesVar(loop->extent, f_contain)) {
-      throw DependentLoopError(self->mod, GetRef<For>(loop));
-    }
-    inner_vars.insert(loop->loop_var.get());
   }
   // Step 2. gather loops to be reordered
   // The algorithm is to scan the inverse preorder of the whole loop tree in the scope.
@@ -619,12 +611,19 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
   }
   // Step 5. Check the block below has all its block_var to be data-parallel or reduction
   CheckBlockIterTypeAndAffineBinding(self, bottom);
-  // Step 6. Replace the original loops with the reordered loops
+  // Step 6. Replace the original loops with the reordered loops and check that outer loop is
+  // not dependent on inner loop
+  std::unordered_set<const VarNode*> outer_vars;
   std::function<Stmt(const StmtSRefNode*, int index)> f_reorder =
-      [&bottom, &loop_srefs, &successor, &ordered_loop_srefs, &f_reorder](const StmtSRefNode* loop,
-                                                                          int index) -> Stmt {
+      [&bottom, &loop_srefs, &successor, &ordered_loop_srefs, &outer_vars, &self, &f_reorder](
+          const StmtSRefNode* loop, int index) -> Stmt {
     const ForNode* copy = loop_srefs.count(loop) ? ordered_loop_srefs[index++]->StmtAs<ForNode>()
                                                  : loop->StmtAs<ForNode>();
+    auto f_contain = [&outer_vars](const VarNode* var) { return !outer_vars.count(var); };
+    if (UsesVar(copy->min, f_contain) || UsesVar(copy->extent, f_contain)) {
+      throw DependentLoopError(self->mod, GetRef<For>(copy));
+    }
+    outer_vars.insert(copy->loop_var.get());
     ObjectPtr<ForNode> n = make_object<ForNode>(*copy);
     if (loop == bottom) {
       // stop recursion at bottom loop

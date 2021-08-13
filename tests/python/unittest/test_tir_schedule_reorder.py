@@ -52,8 +52,8 @@ def elementwise_dependent_loop(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128, 128, 128))
     B = tir.match_buffer(b, (128, 128, 128, 128))
     for i in tir.serial(0, 128):
-        for j, k, l in tir.grid(128, 128, i):
-            with tir.block([128, 128, 128, i], "B") as [vi, vj, vk, vl]:
+        for j, k, l in tir.grid(128, i, 128):
+            with tir.block([128, 128, i, 128], "B") as [vi, vj, vk, vl]:
                 B[vi, vj, vk, vl] = A[vi, vj, vk, vl] * 2.0
 
 
@@ -259,7 +259,7 @@ def test_reorder_with_predicate():
     verify_trace_roundtrip(sch=sch, mod=elementwise_predicate)
 
 
-def test_reorder_fail_with_nonunique_loops():
+def test_reorder_fail_with_multi_appearance_loops():
     sch = tir.Schedule(elementwise, debug_mask="all")
     block_b = sch.get_block("B")
     i, j, k, l = sch.get_loops(block_b)
