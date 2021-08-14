@@ -551,11 +551,10 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
   for (const StmtSRef loop_sref : ordered_loop_srefs) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     // uniqueness check
-    const StmtSRefNode* loop_sref_ptr = loop_sref.operator->();
-    if (loop_srefs.count(loop_sref_ptr)) {
+    auto inserted = loop_srefs.insert(loop_sref.get());
+    if (!inserted.second) {
       throw LoopMultiAppearanceError(self->mod, GetRef<For>(loop));
     }
-    loop_srefs.insert(loop_sref_ptr);
   }
   // Step 2. gather loops to be reordered
   // The algorithm is to scan the inverse preorder of the whole loop tree in the scope.
@@ -578,11 +577,11 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
     if (is_in_reorder_list || has_successor_in_reorder_list) {
       const StmtSRefNode* parent = loop->parent;
       // If the successor of `parent` exists, then `parent` can't be a single-branch loop
-      if (successor.count(parent)) {
+      auto inserted = successor.insert({parent, loop});
+      if (!inserted.second) {
         throw LoopsNotALineError(self->mod, GetRef<Stmt>(parent->stmt),
                                  LoopsNotALineError::kHaveNonSingleBranchStmt);
       }
-      successor[parent] = loop;
       // `bottom` is the first loop encountered
       if (bottom == nullptr) {
         bottom = loop;
@@ -613,17 +612,12 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
   CheckBlockIterTypeAndAffineBinding(self, bottom);
   // Step 6. Replace the original loops with the reordered loops and check that outer loop is
   // not dependent on inner loop
-  std::unordered_set<const VarNode*> outer_vars;
+  std::unordered_set<const VarNode*> inner_vars;
   std::function<Stmt(const StmtSRefNode*, int index)> f_reorder =
-      [&bottom, &loop_srefs, &successor, &ordered_loop_srefs, &outer_vars, &self, &f_reorder](
+      [&bottom, &loop_srefs, &successor, &ordered_loop_srefs, &inner_vars, &self, &f_reorder](
           const StmtSRefNode* loop, int index) -> Stmt {
     const ForNode* copy = loop_srefs.count(loop) ? ordered_loop_srefs[index++]->StmtAs<ForNode>()
                                                  : loop->StmtAs<ForNode>();
-    auto f_contain = [&outer_vars](const VarNode* var) { return !outer_vars.count(var); };
-    if (UsesVar(copy->min, f_contain) || UsesVar(copy->extent, f_contain)) {
-      throw DependentLoopError(self->mod, GetRef<For>(copy));
-    }
-    outer_vars.insert(copy->loop_var.get());
     ObjectPtr<ForNode> n = make_object<ForNode>(*copy);
     if (loop == bottom) {
       // stop recursion at bottom loop
@@ -632,6 +626,11 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
       // reorder recursively
       n->body = f_reorder(successor.at(loop), index);
     }
+    auto f_contain = [&inner_vars](const VarNode* var) { return inner_vars.count(var); };
+    if (UsesVar(copy->min, f_contain) || UsesVar(copy->extent, f_contain)) {
+      throw DependentLoopError(self->mod, GetRef<For>(copy));
+    }
+    inner_vars.insert(copy->loop_var.get());
     return Stmt(std::move(n));
   };
   self->Replace(GetRef<StmtSRef>(top), f_reorder(top, 0), {});
