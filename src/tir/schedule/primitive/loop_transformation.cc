@@ -322,6 +322,7 @@ class LoopsNotALineError : public ScheduleError {
     if (kind_ == kNotUnderAScope) {
       return {};
     } else {
+      ICHECK(problematic_loop_.defined());
       return {problematic_loop_.value()};
     }
   }
