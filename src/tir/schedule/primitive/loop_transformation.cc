@@ -334,8 +334,8 @@ class LoopsNotALineError : public ScheduleError {
 
 class DependentLoopError : public ScheduleError {
  public:
-  explicit DependentLoopError(IRModule mod, For loop)
-      : mod_(std::move(mod)), loop_(std::move(loop)) {}
+  explicit DependentLoopError(IRModule mod, For loop, String inner_var)
+      : mod_(std::move(mod)), loop_(std::move(loop)), inner_var_(std::move(inner_var)) {}
 
   String FastErrorString() const final {
     return "ScheduleError: An outer loop's `min` or `extent` is dependent on an inner loop "
@@ -343,7 +343,8 @@ class DependentLoopError : public ScheduleError {
   }
 
   String DetailRenderTemplate() const final {
-    return "Outer Loop {0}'s `min` or `extent` is dependent on an inner loop in the new order";
+    return "Outer Loop {0}'s `min` or `extent` is dependent on an inner loop " + inner_var_ +
+           " in the new order";
   }
 
   IRModule mod() const final { return mod_; }
@@ -351,6 +352,7 @@ class DependentLoopError : public ScheduleError {
 
   IRModule mod_;
   For loop_;
+  String inner_var_;
 };
 
 /*!
@@ -623,9 +625,16 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
       // reorder recursively
       n->body = f_reorder(successor.at(loop), index);
     }
-    auto f_contain = [&inner_vars](const VarNode* var) { return inner_vars.count(var); };
+    const VarNode* used_var;
+    auto f_contain = [&inner_vars, &used_var](const VarNode* var) {
+      if (inner_vars.count(var)) {
+        used_var = var;
+        return true;
+      }
+      return false;
+    };
     if (UsesVar(copy->min, f_contain) || UsesVar(copy->extent, f_contain)) {
-      throw DependentLoopError(self->mod, GetRef<For>(copy));
+      throw DependentLoopError(self->mod, GetRef<For>(copy), used_var->name_hint);
     }
     inner_vars.insert(copy->loop_var.get());
     return Stmt(std::move(n));
