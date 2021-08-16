@@ -390,16 +390,12 @@ void CheckBlockIterTypeAndAffineBinding(const ScheduleState& self, const StmtSRe
     explicit BlockIterTypeAndAffineBindingChecker(const ScheduleState& state) : state_(state) {}
 
    private:
-    void VisitStmt_(const BlockRealizeNode* op) final {
-      if (op->iter_values.empty()) {
-        StmtVisitor::VisitStmt_(op);
-      } else {
-        for (const IterVar& iter_var : op->block->iter_vars) {
-          if (iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
-            throw BlockIterTypeError(state_->mod, op->block);
-          }
-          CheckAffineBinding(state_, op->block);
+    void VisitStmt_(const BlockNode* op) final {
+      for (const IterVar& iter_var : op->iter_vars) {
+        if (iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
+          throw BlockIterTypeError(state_->mod, GetRef<Block>(op));
         }
+        CheckAffineBinding(state_, GetRef<Block>(op));
       }
     }
     const ScheduleState& state_;
