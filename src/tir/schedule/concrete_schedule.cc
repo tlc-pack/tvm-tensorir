@@ -424,6 +424,12 @@ Array<LoopRV> ConcreteScheduleNode::Split(const LoopRV& loop_rv,
   return CreateRV<LoopRV>(results);
 }
 
+void ConcreteScheduleNode::Normalize(const Array<LoopRV>& loop_rvs) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::Normalize(state_, this->GetSRefs(loop_rvs));
+  TVM_TIR_SCHEDULE_END("normalize", this->error_render_level_);
+}
+
 void ConcreteScheduleNode::Reorder(const Array<LoopRV>& order) {
   TVM_TIR_SCHEDULE_BEGIN();
   tir::Reorder(state_, this->GetSRefs(order));

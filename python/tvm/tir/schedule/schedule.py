@@ -502,6 +502,9 @@ class Schedule(Object):
         # that there is at most one None in `factors`
         return _ffi_api_schedule.ScheduleSplit(self, loop, factors)  # type: ignore # pylint: disable=no-member
 
+    def normalize(self, *loops: List[LoopRV]):
+        _ffi_api_schedule.ScheduleNormalize(self, loops)  # pylint: disable=no-member 
+
     def reorder(self, *loops: List[LoopRV]) -> None:
         _ffi_api_schedule.ScheduleReorder(self, loops)  # pylint: disable=no-member
 

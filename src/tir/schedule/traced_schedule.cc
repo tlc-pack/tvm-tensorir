@@ -218,6 +218,16 @@ Array<LoopRV> TracedScheduleNode::Split(const LoopRV& loop_rv,
   return results;
 }
 
+void TracedScheduleNode::Normalize(const Array<LoopRV>& loop_rvs) {
+  ConcreteScheduleNode::Normalize(loop_rvs);
+
+  static const InstKind& kind = InstKind::Get("Normalize");
+  trace_->Append(/*inst=*/Inst(/*kind=*/kind,
+                               /*inputs=*/{loop_rvs.begin(), loop_rvs.end()},
+                               /*attrs=*/{},
+                               /*outputs=*/{}));
+}
+
 void TracedScheduleNode::Reorder(const Array<LoopRV>& order) {
   ConcreteScheduleNode::Reorder(order);
 
