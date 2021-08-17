@@ -36,10 +36,10 @@ class SpaceGeneratorUnionNode : public SpaceGeneratorNode {
     }
   }
 
-  Array<Trace> Generate(const IRModule& workload) override {
-    Array<Trace> result;
+  Array<Schedule> Generate(const IRModule& workload) override {
+    Array<Schedule> result;
     for (const SpaceGenerator& space_gen : space_generators) {
-      Array<Trace> partial = space_gen->Generate(workload);
+      Array<Schedule> partial = space_gen->Generate(workload);
       result.insert(result.end(), partial.begin(), partial.end());
     }
     return result;
@@ -71,7 +71,7 @@ SpaceGenerator SpaceGenerator::SpaceGeneratorUnion(runtime::Array<ObjectRef> spa
 }
 
 TVM_REGISTER_NODE_TYPE(SpaceGeneratorUnionNode);
-TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnionNew")
+TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnion")
     .set_body_typed(SpaceGenerator::SpaceGeneratorUnion);
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnionInitializeWithTuneContext")
     .set_body_method<SpaceGeneratorUnion>(&SpaceGeneratorUnionNode::InitializeWithTuneContext);

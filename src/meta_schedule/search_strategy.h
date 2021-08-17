@@ -40,7 +40,7 @@ class SearchStrategyNode : public runtime::Object {
   using FGenerateMeasureCandidates =
       runtime::TypedPackedFunc<Optional<runtime::Array<BuildInput>>()>;
   using FNotifyMeasureResults = runtime::TypedPackedFunc<void(const Array<MeasureResult>&)>;
-  using FPreTuning = runtime::TypedPackedFunc<void(const Array<Trace>&)>;
+  using FPreTuning = runtime::TypedPackedFunc<void(const Array<Schedule>&)>;
   using FPostTuning = runtime::TypedPackedFunc<void()>;
 
   /*! \brief Virtual destructor */
@@ -61,7 +61,7 @@ class SearchStrategyNode : public runtime::Object {
    */
   virtual void NotifyMeasureResults(const Array<MeasureResult>& results) = 0;
 
-  virtual void PreTuning(const Array<Trace>& design_spaces) = 0;
+  virtual void PreTuning(const Array<Schedule>& design_spaces) = 0;
 
   virtual void PostTuning() = 0;
 

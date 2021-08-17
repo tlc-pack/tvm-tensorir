@@ -39,7 +39,9 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
     this->initialize_with_tune_context_func(context);
   }
 
-  Array<Trace> Generate(const IRModule& workload) override { return this->generate_func(workload); }
+  Array<Schedule> Generate(const IRModule& workload) override {
+    return this->generate_func(workload);
+  }
 
   static constexpr const char* _type_key = "meta_schedule.PySpaceGenerator";
   TVM_DECLARE_FINAL_OBJECT_INFO(PySpaceGeneratorNode, SpaceGeneratorNode);

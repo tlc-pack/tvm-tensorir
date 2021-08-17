@@ -128,7 +128,7 @@ class SpaceGeneratorUnion(SpaceGenerator):
 
     def __init__(self, space_generators: List[SpaceGenerator]):
         self.__init_handle_by_constructor__(
-            _ffi_api.SpaceGeneratorUnionNew, space_generators  # pylint: disable=no-member
+            _ffi_api.SpaceGeneratorUnion, space_generators  # pylint: disable=no-member
         )
 
     def initialize_with_tune_context(self, context: "TuneContext") -> None:

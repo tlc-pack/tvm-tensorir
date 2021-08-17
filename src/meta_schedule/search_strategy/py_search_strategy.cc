@@ -53,7 +53,7 @@ class PySearchStrategyNode : public SearchStrategyNode {
     this->notify_measure_results_func(results);
   }
 
-  void PreTuning(const Array<Trace>& design_spaces) override {
+  void PreTuning(const Array<Schedule>& design_spaces) override {
     this->pre_tuning_func(design_spaces);
   }
 
