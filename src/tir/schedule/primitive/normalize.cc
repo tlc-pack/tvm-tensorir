@@ -79,13 +79,13 @@ void Normalize(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
     return;
   }
   NormalizerInfo info;
-  StmtSRef root = GetScopeRoot(loop_srefs[0]).value();
+  StmtSRef root = GetScopeRoot(self, loop_srefs[0], /*require_stage_pipeline=*/false);
   for (const StmtSRef& loop_sref : loop_srefs) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     if (!is_zero(loop->min)) {
       info.var_map[loop->loop_var] = Integer(0);  // placeholder
     }
-    CHECK(GetScopeRoot(loop_sref).get() == root.get())
+    CHECK(GetScopeRoot(self, loop_sref, /*require_stage_pipeline=*/false).get() == root.get())
         << "Normalize expects input loops to be in the same scope.";
   }
 
@@ -127,7 +127,7 @@ struct NormalizeTraits : public UnpackedInstTraits<NormalizeTraits> {
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(NormalizeTraits);
+TVM_REGISTER_INST_KIND_TRAITS(NormalizeTraits);
 
 }  // namespace tir
 }  // namespace tvm

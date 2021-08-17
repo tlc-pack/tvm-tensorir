@@ -550,7 +550,7 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& _block_sref, int i,
   BufferRegion cache_region(nullptr);
   if (!block_sref.same_as(root)) {
     // Find the parent scope
-    scope_sref = GetScopeRoot(block_sref).value();
+    scope_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false);
     // Check the block is not a output block
     ICHECK(!IsOutputBlock(block_sref, scope_sref));
     // Find the region to be cache_read
@@ -597,7 +597,7 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
   ICHECK(block_sref->parent != nullptr)
       << "ValueError: `cache_write` cannot be applied to an input buffer";
   // Find the parent scope
-  StmtSRef scope_sref = GetScopeRoot(block_sref).value();
+  StmtSRef scope_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false);
   CacheLocDetector::Detect(self, block_sref, scope_sref, &info);
   // Generate cache buffer
   Block cache_write_stage = MakeCacheStage(
