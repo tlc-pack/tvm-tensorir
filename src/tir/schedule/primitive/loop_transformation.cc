@@ -444,7 +444,8 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& order) {
   std::unordered_map<const StmtSRefNode*, const StmtSRefNode*> successor;
   // Gather all the loops under parent_block
   int n_loops_not_found = order.size();
-  for (const StmtSRefNode* loop : GetLoopsPostOrder(self, GetScopeRoot(order[0]).value())) {
+  for (const StmtSRefNode* loop :
+       GetLoopsPostOrder(self, GetScopeRoot(self, order[0], /*require_stage_pipeline=*/false))) {
     bool is_in_reorder_list = loops.count(loop);
     bool has_inner_loop = successor.count(loop);
     if (is_in_reorder_list || has_inner_loop) {

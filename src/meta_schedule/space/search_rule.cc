@@ -560,7 +560,8 @@ class RuleRandomComputeLocation {
       return false;
     }
     tir::ScheduleState state = sch->state();
-    if (!CompleteBlock(state, block_sref, tir::GetScopeRoot(block_sref).value())) {
+    if (!IsCompleteBlock(state, block_sref,
+                         GetScopeRoot(state, block_sref, /*require_stage_pipeline=*/false))) {
       return false;
     }
     Array<tir::StmtSRef> loop_srefs = tir::GetLoops(block_sref);
@@ -1124,8 +1125,9 @@ class RuleCrossThreadReduction {
       // split the loop before binding.
       if (!InThreadScope(tmp_sch, target_block_rv)) {
         const tir::StmtSRef& target_block_sref = tmp_sch->GetSRef(target_block_rv);
-        CHECK(!ReductionBlock(tmp_sch->state(), target_block_sref,
-                              GetScopeRoot(target_block_sref).value()))
+        CHECK(!IsReductionBlock(
+            tmp_sch->state(), target_block_sref,
+            GetScopeRoot(tmp_sch->state(), target_block_sref, /*require_stage_pipeline=*/false)))
             << "ValueError: In this case the target block is expected to be a complete block.";
         const LoopRV& loop_to_split = target_block_loops.back();
         Array<LoopRV> split_res = tmp_sch->Split(loop_to_split, {NullOpt, Integer(warp_size)});

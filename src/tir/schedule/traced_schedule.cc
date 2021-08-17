@@ -195,8 +195,8 @@ Array<LoopRV> TracedScheduleNode::Split(const LoopRV& loop_rv,
 void TracedScheduleNode::Normalize(const Array<LoopRV>& loop_rvs) {
   ConcreteScheduleNode::Normalize(loop_rvs);
 
-  static const InstKind& kind = InstKind::Get("Normalize");
-  trace_->Append(/*inst=*/Inst(/*kind=*/kind,
+  static const InstructionKind& kind = InstructionKind::Get("Normalize");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                /*inputs=*/{loop_rvs.begin(), loop_rvs.end()},
                                /*attrs=*/{},
                                /*outputs=*/{}));

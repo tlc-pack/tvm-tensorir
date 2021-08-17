@@ -1380,7 +1380,7 @@ constexpr const char* script_parsing_detect_access = "tir.script_parsing_detect_
 /*!
  * \brief Mark the scope of the software pipeline
  */
-constexpr const char* pipeline_scope="pipeline_scope";
+constexpr const char* pipeline_scope = "pipeline_scope";
 
 /*!
  * \brief Check if attr_key is a pragma key extension
@@ -1402,6 +1402,24 @@ TVM_DLL PrimExpr TypeAnnotation(DataType dtype, Span span = Span());
 
 // overload printing of for type.
 TVM_DLL std::ostream& operator<<(std::ostream& os, ForKind kind);
+
+// inline implementations
+inline const char* ForKind2String(ForKind t) {
+  switch (t) {
+    case ForKind::kSerial:
+      return "serial";
+    case ForKind::kParallel:
+      return "parallel";
+    case ForKind::kVectorized:
+      return "vectorized";
+    case ForKind::kUnrolled:
+      return "unroll";
+    case ForKind::kThreadBinding:
+      return "thread_binding";
+  }
+  LOG(FATAL) << "Unknown ForKind" << t;
+  return "Unknown";
+}
 
 }  // namespace tir
 }  // namespace tvm

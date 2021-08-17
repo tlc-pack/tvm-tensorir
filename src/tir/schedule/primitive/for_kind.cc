@@ -50,7 +50,8 @@ bool IsLoopVarParallelizable(const ScheduleState self, const Var& loop_var,
   for (int i = 0; i < n; ++i) {
     const IterVar& iter_var = block->iter_vars[i];
     const PrimExpr& binding = realize->iter_values[i];
-    bool contains = StmtExprContainsVar(binding, loop_var);
+    bool contains =
+        UsesVar(binding, [&loop_var](const VarNode* var) { return var == loop_var.get(); });
     if (contains && iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
       return false;
     }
@@ -123,7 +124,7 @@ void ParallelCompute(ScheduleState self, const StmtSRef& loop_sref, const ForKin
   // Now only support:
   //   1. All the blocks are complete below
   //   2. A single block below the loop
-  StmtSRef scope_root = GetScopeRoot(loop_sref).value();
+  StmtSRef scope_root = GetScopeRoot(self, loop_sref, /*require_stage_pipelin*/false);
   bool is_compact_dataflow = IsCompactDataFlow(self, scope_root, GetChildBlocks(self, loop_sref));
   if (!is_compact_dataflow) {
     Array<Stmt> single_child = GetChildren(GetRef<Stmt>(loop), true);
@@ -327,9 +328,9 @@ void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread) 
 void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref) {
   const auto* block_ptr = block_sref->StmtAs<BlockNode>();
   CHECK(block_ptr) << "TypeError: double_buffer expects 'block' as its argument";
-  StmtSRef parent_block_sref = GetScopeRoot(block_sref).value();
+  StmtSRef parent_block_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false);
   const auto* parent_block = parent_block_sref->StmtAs<BlockNode>();
-  CHECK(CompleteBlock(self, block_sref, parent_block_sref))
+  CHECK(IsCompleteBlock(self, block_sref, parent_block_sref))
       << "ValueError: 'double_buffer' expects 'block' to be a complete block";
   for (const BufferRegion& parent_write : parent_block->writes) {
     for (const BufferRegion& write : block_ptr->writes) {

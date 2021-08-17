@@ -517,25 +517,26 @@ void ConcreteScheduleNode::ReverseComputeAt(const BlockRV& block_rv, const LoopR
 void ConcreteScheduleNode::ComputeInline(const BlockRV& block_rv) {
   TVM_TIR_SCHEDULE_BEGIN();
   tir::ComputeInline(state_, this->GetSRef(block_rv));
-  this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("compute-inline", this->error_render_level_);
+  this->state_->DebugVerify();
 }
 
 void ConcreteScheduleNode::ReverseComputeInline(const BlockRV& block_rv) {
   TVM_TIR_SCHEDULE_BEGIN();
   tir::ReverseComputeInline(state_, this->GetSRef(block_rv));
-  this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("reverse-compute-inline", this->error_render_level_);
+  this->state_->DebugVerify();
 }
 
 /******** Schedule: Reduction ********/
 
 BlockRV ConcreteScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
+  StmtSRef result{nullptr};
   TVM_TIR_SCHEDULE_BEGIN();
-  StmtSRef result = tir::RFactor(state_, this->GetSRef(loop_rv), factor_axis);
+  result = tir::RFactor(state_, this->GetSRef(loop_rv), factor_axis);
+  TVM_TIR_SCHEDULE_END("rfactor", this->error_render_level_);
   this->state_->DebugVerify();
   return CreateRV<BlockRV>(result);
-  TVM_TIR_SCHEDULE_END("rfactor", this->error_render_level_);
 }
 
 BlockRV ConcreteScheduleNode::DecomposeReduction(const BlockRV& block_rv,

@@ -107,6 +107,21 @@ namespace tir {
       << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
       << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
 
+/*!
+ * \brief Convert an array of loop StmtSRefs to an array of loops
+ * \param loop_srefs The loop StmtSRefs to be converted
+ * \return The conversion result loops
+ */
+inline Array<For> LoopSRefs2Loops(const Array<StmtSRef>& loop_srefs) {
+  Array<For> loops;
+  loops.reserve(loop_srefs.size());
+  for (StmtSRef loop_sref : loop_srefs) {
+    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+    loops.push_back(GetRef<For>(loop));
+  }
+  return loops;
+}
+
 /******** Storage scope ********/
 
 /*!
@@ -150,6 +165,18 @@ inline Stmt RemoveFromSeqStmt(const SeqStmt& seq, const Stmt& to_remove) {
     new_stmts.push_back(stmt);
   }
   return SeqStmt::Flatten(new_stmts);
+}
+
+/*!
+ * \brief Create a new IterVar for the input For loop, with specified name and type
+ * \param loop The loop to be created from
+ * \param name The name of the new IterVar
+ * \param iter_var_type The type of the new IterVar
+ * \return The newly created IterVar
+ */
+inline IterVar IterVarFromLoop(const For& loop, String name, IterVarType iter_var_type) {
+  return IterVar(Range::FromMinExtent(loop->min, loop->extent),
+                 Var(std::move(name), loop->loop_var.dtype()), iter_var_type);
 }
 
 /******** Integer set ********/
@@ -322,30 +349,6 @@ BufferRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
  */
 std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
 
-/*!
- * \brief Inspect whether the stmt/expr contains any var of vars
- * \param obj the expected stmt/expr
- * \param vars the expected expr with vars
- * \return Whether any var appears in stmt/expr
- */
-bool StmtExprContainsVar(const ObjectRef& obj, const PrimExpr& vars);
-
-/*!
- * \brief Inspect whether the stmt/expr contains any var of vars
- * \param obj the expected stmt/expr
- * \param vars the vars to be inspected
- * \return Whether the stmt/expr contains any var of vars
- */
-bool StmtExprContainsVar(const ObjectRef& obj, const std::vector<Var>& vars);
-
-/*!
- * \brief Inspect whether the stmt/expr contains any var of vars
- * \param obj the expected stmt/expr
- * \param vars the vars to be inspected
- * \return Whether the stmt/expr contains any var of vars
- */
-bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*>& vars);
-
 void UpdateScope(ScheduleState self, const StmtSRef& block_sref);
 
 void UpdateAffineFlag(ScheduleState self, const StmtSRef& block_sref);
@@ -361,88 +364,6 @@ class StmtReplacer : public StmtMutator {
 };
 
 bool CheckOneLine(const Stmt& s);
-
-/*!
- * \brief PrimExpr pattern matcher.
- *
- * It is different from the pattern matcher in arith/pattern_match.h, which is dedicated
- * for compile-time constant patterns. This pattern matcher can work on dynamic user-specic
- * patterns.
- *
- * The code below shows how to use the pattern matcher.
- *
- * \code
- *
- * Var x("x"), y("y");
- * // use PrimExpr to declare patterns, x, y are holes that can be filled with
- * PatternMatcher pattern_matcher(x + y);
- * // expr = C[i,j] + A[i,k]*B[k,j], which is the expr we want to match
- * pattern_matcher.Match(expr);
- *
- * if (pattern_matcher.Success()) {
- *   pattern_matcher.Eval(x) // C[i,j]
- *   pattern_matcher.Eval(y) // A[i,k]*B[k,j]
- * }
- *
- * \endcode
- */
-class PatternMatcher : public ExprVisitor {
- public:
-  explicit PatternMatcher(const PrimExpr& pattern) : pattern_(pattern) {}
-
-  void VisitExpr_(const VarNode* op) final;
-  void VisitExpr_(const LoadNode* op) final;
-  void VisitExpr_(const LetNode* op) final;
-  void VisitExpr_(const CallNode* op) final;
-  void VisitExpr_(const AddNode* op) final;
-  void VisitExpr_(const SubNode* op) final;
-  void VisitExpr_(const MulNode* op) final;
-  void VisitExpr_(const DivNode* op) final;
-  void VisitExpr_(const ModNode* op) final;
-  void VisitExpr_(const FloorDivNode* op) final;
-  void VisitExpr_(const FloorModNode* op) final;
-  void VisitExpr_(const MinNode* op) final;
-  void VisitExpr_(const MaxNode* op) final;
-  void VisitExpr_(const EQNode* op) final;
-  void VisitExpr_(const NENode* op) final;
-  void VisitExpr_(const LTNode* op) final;
-  void VisitExpr_(const LENode* op) final;
-  void VisitExpr_(const GTNode* op) final;
-  void VisitExpr_(const GENode* op) final;
-  void VisitExpr_(const AndNode* op) final;
-  void VisitExpr_(const OrNode* op) final;
-  void VisitExpr_(const CastNode* op) final;
-  void VisitExpr_(const NotNode* op) final;
-  void VisitExpr_(const SelectNode* op) final;
-  void VisitExpr_(const RampNode* op) final;
-  void VisitExpr_(const BroadcastNode* op) final;
-  void VisitExpr_(const ShuffleNode* op) final;
-  void VisitExpr_(const IntImmNode* op) final;
-  void VisitExpr_(const FloatImmNode* op) final;
-  void VisitExpr_(const StringImmNode* op) final;
-  void VisitExpr_(const BufferLoadNode* op) final;
-
-  void Match(const PrimExpr& expr_to_match) {
-    this->match_success_ = true;
-    this->filled_map_.clear();
-    this->expr_to_match_ = expr_to_match;
-    this->operator()(pattern_);
-  }
-
-  PrimExpr Eval(const Var& var) {
-    auto it = filled_map_.find(var.operator->());
-    ICHECK(it != filled_map_.end()) << "Unknown pattern variable";
-    ICHECK(match_success_) << "Match failed";
-    return it->second;
-  }
-
-  bool Success() const { return match_success_; }
-
- private:
-  bool match_success_{true};
-  PrimExpr pattern_, expr_to_match_;
-  std::unordered_map<const VarNode*, PrimExpr> filled_map_;
-};
 
 /* \brief Auto calculate the block read write region */
 class BlockReadWriteCollector : public StmtExprVisitor {

@@ -698,8 +698,8 @@ class PostprocRewriteReductionBlock {
         const tir::IterVar& var = block->iter_vars[i];
         const PrimExpr& binding = block_realize->iter_values[i];
         if (var->iter_type == tir::kCommReduce &&
-            tir::ExprUseVar(
-                binding, [&](const tir::VarNode* node) { return bound_loop_vars_.count(node); })) {
+            tir::UsesVar(binding,
+                         [&](const tir::VarNode* node) { return bound_loop_vars_.count(node); })) {
           return false;
         }
       }
