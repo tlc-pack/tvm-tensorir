@@ -79,7 +79,7 @@ class BuilderNode : public runtime::Object {
 class Builder : public runtime::ObjectRef {
  public:
   static Builder PyBuilder(BuilderNode::FBuild f_build);
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Builder, runtime::ObjectRef, BuilderNode);
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Builder, runtime::ObjectRef, BuilderNode);
 };
 
 class PyBuilderNode : public BuilderNode {

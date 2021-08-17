@@ -28,10 +28,11 @@
 #include "builder.h"
 #include "runner.h"
 #include "schedule.h"
-#include "tune_context.h"
 
 namespace tvm {
 namespace meta_schedule {
+
+class TuneContext;
 
 class SearchStrategyNode : public runtime::Object {
  public:

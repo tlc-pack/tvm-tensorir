@@ -17,11 +17,6 @@
  * under the License.
  */
 
-#include <tvm/ir/module.h>
-#include <tvm/node/node.h>
-#include <tvm/runtime/packed_func.h>
-
-#include "../schedule.h"
 #include "../space_generator.h"
 #include "../tune_context.h"
 

@@ -33,21 +33,21 @@ class MeasureResultNode : public runtime::Object {
 
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("gflops", &gflops); }
 
-  static constexpr const char* _type_key = "meta_schedule.RunnerResult";
+  static constexpr const char* _type_key = "meta_schedule.MeasureResult";
   TVM_DECLARE_FINAL_OBJECT_INFO(MeasureResultNode, runtime::Object);
 };
 
 class MeasureResult : public runtime::ObjectRef {
  public:
-  TVM_DLL explicit MeasureResult(Optional<String> artifact_path, Optional<String> error_msg);
+  TVM_DLL explicit MeasureResult(Optional<FloatImm> gflops);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(MeasureResult, runtime::ObjectRef, MeasureResultNode);
 };
 
 class RunnerNode : public runtime::Object {
  public:
-  using RunnerResult = runtime::TypedPackedFunc<Optional<Array<MeasureResult>>()>;
+  using RunnerFuture = runtime::TypedPackedFunc<Optional<Array<MeasureResult>>()>;
   virtual ~RunnerNode() = default;
-  virtual RunnerResult Run(Array<BuildResult> Runner_inputs) = 0;
+  virtual RunnerFuture Run(const Array<BuildResult>& build_results) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.Runner";
   TVM_DECLARE_BASE_OBJECT_INFO(RunnerNode, runtime::Object);
@@ -55,7 +55,7 @@ class RunnerNode : public runtime::Object {
 
 class Runner : public runtime::ObjectRef {
  public:
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Runner, runtime::ObjectRef, RunnerNode);
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Runner, runtime::ObjectRef, RunnerNode);
 };
 
 }  // namespace meta_schedule

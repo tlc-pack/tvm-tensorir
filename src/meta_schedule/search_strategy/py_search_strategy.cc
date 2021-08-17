@@ -17,11 +17,8 @@
  * under the License.
  */
 
-#include <tvm/ir/module.h>
-#include <tvm/node/node.h>
-#include <tvm/runtime/packed_func.h>
-
 #include "../search_strategy.h"
+#include "../tune_context.h"
 
 namespace tvm {
 namespace meta_schedule {

@@ -22,8 +22,10 @@
 #include <tvm/runtime/object.h>
 #include <tvm/target/target.h>
 
-#include "./builder.h"
-#include "./runner.h"
+#include "builder.h"
+#include "runner.h"
+#include "search_strategy.h"
+#include "space_generator.h"
 
 #ifndef SRC_META_SCHEDULE_TUNE_CONTEXT_H_
 #define SRC_META_SCHEDULE_TUNE_CONTEXT_H_
@@ -37,9 +39,6 @@ using Database = ObjectRef;
 using CostModel = ObjectRef;
 using PostProc = ObjectRef;
 using MeasureCallback = ObjectRef;
-
-class SpaceGenerator;
-class SearchStrategy;
 
 class TuneContextNode : public runtime::Object {
  public:
@@ -78,10 +77,10 @@ class TuneContextNode : public runtime::Object {
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("target", &target); }
 
   /*! \brief The convenient function for post processings. */
-  virtual void CallPostProcessing() = 0;
+  virtual void CallPostProcessing();
 
   /*! \brief The convenient function for measure callbacks. */
-  virtual void CallMeasureCallback() = 0;
+  virtual void CallMeasureCallback();
 
   static constexpr const char* _type_key = "meta_schedule.TuneContext";
   TVM_DECLARE_BASE_OBJECT_INFO(TuneContextNode, Object);

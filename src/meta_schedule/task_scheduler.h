@@ -31,38 +31,36 @@
 namespace tvm {
 namespace meta_schedule {
 
-class Runner;
+struct TaskWithContext {
+  bool is_finished;
+  TuneContext tune_context;
+  RunnerNode::RunnerFuture runner_callback;
+
+  explicit TaskWithContext(const TuneContext& tune_context)
+      : is_finished(false), tune_context(tune_context), runner_callback(nullptr) {}
+};
 
 class TaskSchedulerNode : public runtime::Object {
  public:
-  using RunnerFuture = RunnerNode::RunnerResult;
+  using RunnerFuture = RunnerNode::RunnerFuture;
 
   /*! \brief Virtual destructor */
   virtual ~TaskSchedulerNode() = default;
 
   /*! \brief Tasks of the scheduler. */
-  Array<TaskWithContext> tasks;
+  std::vector<TaskWithContext> tasks;
 
   Optional<Builder> builder;
   Optional<Runner> runner;
 
   /*! \brief Run auot-tuning on all tasks. */
-  virtual void TuneAllTasks() = 0;
+  virtual void TuneAllTasks();
 
   /*! \brief Sort all tuning tasks, together with the runner_callback functions. */
-  virtual void SortAllTasks() = 0;
+  virtual void SortAllTasks();
 
   static constexpr const char* _type_key = "meta_schedule.TashScheduler";
   TVM_DECLARE_BASE_OBJECT_INFO(TaskSchedulerNode, Object);
-};
-
-struct TaskWithContext {
-  TuneContext tune_ctx;
-  TaskSchedulerNode::RunnerFuture runner_callback;
-  bool is_finished;
-
-  explicit TaskWithContext(TuneContext tune_ctx)
-      : tune_ctx(tune_ctx), is_finished(false), runner_callback(nullptr) {}
 };
 
 /*!

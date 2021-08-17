@@ -19,9 +19,7 @@
 
 #include "search_strategy.h"
 
-#include <tvm/ir/module.h>
-#include <tvm/runtime/container.h>
-#include <tvm/runtime/object.h>
+#include "tune_context.h"
 
 namespace tvm {
 namespace meta_schedule {

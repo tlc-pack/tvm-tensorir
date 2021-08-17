@@ -27,13 +27,13 @@ namespace meta_schedule {
 void TaskSchedulerNode::TuneAllTasks() {
   int num_unfinished = tasks.size();
   for (TaskWithContext task : tasks) {
-    ICHECK(task.tune_ctx->workload.defined()) << "Workload not set";
-    ICHECK(task.tune_ctx->space_generator.defined()) << "Design space generator not set";
-    ICHECK(task.tune_ctx->search_strategy.defined()) << "Search strategy not set";
+    ICHECK(task.tune_context->workload.defined()) << "Workload not set";
+    ICHECK(task.tune_context->space_generator.defined()) << "Design space generator not set";
+    ICHECK(task.tune_context->search_strategy.defined()) << "Search strategy not set";
 
     Array<Trace> design_spaces =
-        task.tune_ctx->space_generator.value()->Generate(task.tune_ctx->workload.value());
-    task.tune_ctx->search_strategy.value()->PreTuning(design_spaces);
+        task.tune_context->space_generator.value()->Generate(task.tune_context->workload.value());
+    task.tune_context->search_strategy.value()->PreTuning(design_spaces);
   }
   while (num_unfinished > 0) {
     SortAllTasks();
@@ -42,7 +42,7 @@ void TaskSchedulerNode::TuneAllTasks() {
 
       if (task.runner_callback == nullptr) {
         Optional<runtime::Array<BuildInput>> measure_candidates =
-            task.tune_ctx->search_strategy.value()->GenerateMeasureCandidates();
+            task.tune_context->search_strategy.value()->GenerateMeasureCandidates();
         if (measure_candidates.defined()) {
           ICHECK(builder.defined()) << "Builder not set";
           Array<BuildResult> builds = builder.value()->Build(measure_candidates.value());
@@ -50,13 +50,13 @@ void TaskSchedulerNode::TuneAllTasks() {
           task.runner_callback = runner.value()->Run(builds);
         } else {
           task.is_finished = true;
-          task.tune_ctx->search_strategy.value()->PostTuning();
+          task.tune_context->search_strategy.value()->PostTuning();
           --num_unfinished;
         }
       } else if (Optional<Array<MeasureResult>> results = task.runner_callback()) {
-        task.runner_callback = nullptr;
+        task.runner_callback = RunnerFuture(nullptr);
         // Search strategy already ICHECKed when called before.
-        task.tune_ctx->search_strategy.value()->NotifyMeasureResults(results.value());
+        task.tune_context->search_strategy.value()->NotifyMeasureResults(results.value());
       }
     }
   }

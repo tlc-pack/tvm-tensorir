@@ -25,11 +25,12 @@
 #include <tvm/runtime/object.h>
 #include <tvm/runtime/packed_func.h>
 
-#include "./schedule.h"
-#include "./tune_context.h"
+#include "schedule.h"
 
 namespace tvm {
 namespace meta_schedule {
+
+class TuneContext;
 
 class SpaceGeneratorNode : public runtime::Object {
  public:
