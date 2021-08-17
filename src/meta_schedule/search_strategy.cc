@@ -23,8 +23,6 @@
 #include <tvm/runtime/container.h>
 #include <tvm/runtime/object.h>
 
-#include "tune_context.h"
-
 namespace tvm {
 namespace meta_schedule {
 

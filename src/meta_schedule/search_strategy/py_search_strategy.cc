@@ -22,7 +22,6 @@
 #include <tvm/runtime/packed_func.h>
 
 #include "../search_strategy.h"
-#include "../tune_context.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -49,7 +48,7 @@ class PySearchStrategyNode : public SearchStrategyNode {
     this->initialize_with_tune_context_func(context);
   }
 
-  Optional<runtime::Array<BuilderInput>> GenerateMeasureCandidates() override {
+  Optional<runtime::Array<BuildInput>> GenerateMeasureCandidates() override {
     return this->generate_measure_candidates_func();
   }
 

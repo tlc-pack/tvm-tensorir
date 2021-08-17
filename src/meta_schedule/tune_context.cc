@@ -17,22 +17,12 @@
  * under the License.
  */
 
-#include "./space_generator.h"
-
-#include <tvm/ir/module.h>
-#include <tvm/runtime/container.h>
-#include <tvm/runtime/object.h>
+#include "tune_context.h"
 
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_OBJECT_TYPE(SpaceGeneratorNode);
-
-TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorInitializeWithTuneContext")
-    .set_body_method<SpaceGenerator>(&SpaceGeneratorNode::InitializeWithTuneContext);
-TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorGenerate")
-    .set_body_method<SpaceGenerator>(&SpaceGeneratorNode::Generate);
+TVM_REGISTER_OBJECT_TYPE(TuneContextNode);
 
 }  // namespace meta_schedule
-
 }  // namespace tvm

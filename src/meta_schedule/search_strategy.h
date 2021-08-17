@@ -25,6 +25,8 @@
 #include <tvm/runtime/object.h>
 #include <tvm/runtime/packed_func.h>
 
+#include "builder.h"
+#include "runner.h"
 #include "schedule.h"
 #include "tune_context.h"
 
@@ -33,10 +35,8 @@ namespace meta_schedule {
 
 class SearchStrategyNode : public runtime::Object {
  public:
-  using MeasureResult = ObjectRef;
-  using BuilderInput = ObjectRef;
   using FInitializeWithTuneContext = void(const TuneContext&);
-  using FGenerateMeasureCandidates = Optional<runtime::Array<BuilderInput>>();
+  using FGenerateMeasureCandidates = Optional<runtime::Array<BuildInput>>();
   using FNotifyMeasureResults = void(const Array<MeasureResult>&);
   using FPreTuning = void(const Array<Trace>&);
   using FPostTuning = void();
@@ -51,7 +51,7 @@ class SearchStrategyNode : public runtime::Object {
    * \brief Generate the candidates from design space in tune context for measurement
    * \return The next batch of candidates for measurements generated from the design space
    */
-  virtual Optional<runtime::Array<BuilderInput>> GenerateMeasureCandidates() = 0;
+  virtual Optional<runtime::Array<BuildInput>> GenerateMeasureCandidates() = 0;
 
   /*!
    * \brief Update the search strategy with meansurement results from the runners

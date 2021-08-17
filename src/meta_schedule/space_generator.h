@@ -26,16 +26,15 @@
 #include <tvm/runtime/packed_func.h>
 
 #include "./schedule.h"
+#include "./tune_context.h"
 
 namespace tvm {
 namespace meta_schedule {
 
-class TuneContext;
-
 class SpaceGeneratorNode : public runtime::Object {
  public:
   using FInitializeWithTuneContext = void(const TuneContext&);
-  using FGenerate = Array<Schedule>(const IRModule&);
+  using FGenerate = Array<Trace>(const IRModule&);
 
   /*! \brief Virtual destructor */
   virtual ~SpaceGeneratorNode() = default;
@@ -48,7 +47,7 @@ class SpaceGeneratorNode : public runtime::Object {
    * \return The generated schedule
    */
   // todo @ zxybazh: Change to Traces class
-  virtual runtime::Array<Schedule> Generate(const IRModule& workload) = 0;
+  virtual runtime::Array<Trace> Generate(const IRModule& workload) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SpaceGenerator";
   TVM_DECLARE_BASE_OBJECT_INFO(SpaceGeneratorNode, Object);
