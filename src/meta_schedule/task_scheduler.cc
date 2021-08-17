@@ -24,6 +24,9 @@
 namespace tvm {
 namespace meta_schedule {
 
+// Round robin task scheduler
+void TaskSchedulerNode::SortAllTasks() {}
+
 void TaskSchedulerNode::TuneAllTasks() {
   int num_unfinished = tasks.size();
   for (TaskWithContext task : tasks) {
@@ -63,6 +66,10 @@ void TaskSchedulerNode::TuneAllTasks() {
 }
 
 TVM_REGISTER_OBJECT_TYPE(TaskSchedulerNode);
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerTuneAllTasks")
+    .set_body_method<TaskScheduler>(&TaskSchedulerNode::TuneAllTasks);
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerSortAllTasks")
+    .set_body_method<TaskScheduler>(&TaskSchedulerNode::SortAllTasks);
 
 }  // namespace meta_schedule
 }  // namespace tvm

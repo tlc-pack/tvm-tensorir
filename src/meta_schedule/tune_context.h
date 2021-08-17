@@ -77,10 +77,10 @@ class TuneContextNode : public runtime::Object {
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("target", &target); }
 
   /*! \brief The convenient function for post processings. */
-  virtual void CallPostProcessing();
+  virtual void PostProcessFunc();
 
   /*! \brief The convenient function for measure callbacks. */
-  virtual void CallMeasureCallback();
+  virtual void MeasureCallbackFunc();
 
   static constexpr const char* _type_key = "meta_schedule.TuneContext";
   TVM_DECLARE_BASE_OBJECT_INFO(TuneContextNode, Object);
@@ -101,7 +101,7 @@ class TuneContext : public runtime::ObjectRef {
                        Optional<Array<PostProc>> post_procs,                //
                        Optional<Array<MeasureCallback>> measure_callbacks,  //
                        String name,                                         //
-                       int64_t seed,                                        //
+                       TRandState seed,                                     //
                        int num_threads,                                     //
                        int verbose) {
     ObjectPtr<TuneContextNode> n = make_object<TuneContextNode>();

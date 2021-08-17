@@ -16,11 +16,17 @@
 # under the License.
 """Tune Context"""
 
-from typing import Callable, List, Optional
 from tvm._ffi import register_object
 
 from . import _ffi_api
 
 
+@register_object("meta_schedule.TuneContext")
 class TuneContext:
-    pass
+    """Description and abstraction of a tune context class."""
+
+    def post_process(self) -> None:
+        return _ffi_api.TuneContextPostProcess()  # pylint: disable=no-member
+
+    def measure_callback(self) -> None:
+        return _ffi_api.TuneContextMeasureCallback()  # pylint: disable=no-member

@@ -43,9 +43,13 @@ struct TaskWithContext {
 class TaskSchedulerNode : public runtime::Object {
  public:
   using RunnerFuture = RunnerNode::RunnerFuture;
+  using FTuneAllTasks = runtime::TypedPackedFunc<void()>;
+  using FSortAllTasks = runtime::TypedPackedFunc<void()>;
 
   /*! \brief Virtual destructor */
   virtual ~TaskSchedulerNode() = default;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*! \brief Tasks of the scheduler. */
   std::vector<TaskWithContext> tasks;
@@ -82,6 +86,12 @@ class TaskScheduler : public runtime::ObjectRef {
     }
     data_ = std::move(n);
   }
+
+  static TaskScheduler PyTaskScheduler(Array<TuneContext> tune_contexts,                      //
+                                       Optional<Builder> builder,                             //
+                                       Optional<Runner> runner,                               //
+                                       TaskSchedulerNode::FSortAllTasks sort_all_tasks_func,  //
+                                       TaskSchedulerNode::FTuneAllTasks tune_all_tasks_func);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(TaskScheduler, ObjectRef, TaskSchedulerNode);
 };
 

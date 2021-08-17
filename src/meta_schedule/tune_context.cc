@@ -23,6 +23,10 @@ namespace tvm {
 namespace meta_schedule {
 
 TVM_REGISTER_OBJECT_TYPE(TuneContextNode);
+TVM_REGISTER_GLOBAL("tvm.meta_schedule.TuneContextPostProcess")
+    .set_body_method<TuneContext>(&TuneContextNode::PostProcessFunc);
+TVM_REGISTER_GLOBAL("tvm.meta_schedule.TuneContextMeasureCallback")
+    .set_body_method<TuneContext>(&TuneContextNode::MeasureCallbackFunc);
 
 }  // namespace meta_schedule
 }  // namespace tvm

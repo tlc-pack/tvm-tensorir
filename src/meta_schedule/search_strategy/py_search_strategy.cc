@@ -29,15 +29,15 @@ namespace meta_schedule {
 class PySearchStrategyNode : public SearchStrategyNode {
  public:
   /*! \brief Pointer to the TuneContext init funcion in python */
-  runtime::TypedPackedFunc<FInitializeWithTuneContext> initialize_with_tune_context_func;
+  FInitializeWithTuneContext initialize_with_tune_context_func;
   /*! \brief Pointer to the funcion to generate measure candidates in python */
-  runtime::TypedPackedFunc<FGenerateMeasureCandidates> generate_measure_candidates_func;
+  FGenerateMeasureCandidates generate_measure_candidates_func;
   /*! \brief Pointer to the function to update results in python */
-  runtime::TypedPackedFunc<FNotifyMeasureResults> notify_measure_results_func;
+  FNotifyMeasureResults notify_measure_results_func;
   /*! \brief Pointer to the pretuning function in python */
-  runtime::TypedPackedFunc<FPreTuning> pre_tuning_func;
+  FPreTuning pre_tuning_func;
   /*! \brief Pointer to the posttuning function in python */
-  runtime::TypedPackedFunc<FPostTuning> post_tuning_func;
+  FPostTuning post_tuning_func;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -70,14 +70,11 @@ class PySearchStrategyNode : public SearchStrategyNode {
 class PySearchStrategy : public SearchStrategy {
  public:
   explicit PySearchStrategy(
-      runtime::TypedPackedFunc<SearchStrategyNode::FInitializeWithTuneContext>
-          initialize_with_tune_context_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FGenerateMeasureCandidates>
-          generate_measure_candidates_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FNotifyMeasureResults>
-          notify_measure_results_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FPreTuning> pre_tuning_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FPostTuning> post_tuning_func) {
+      SearchStrategyNode::FInitializeWithTuneContext initialize_with_tune_context_func,
+      SearchStrategyNode::FGenerateMeasureCandidates generate_measure_candidates_func,
+      SearchStrategyNode::FNotifyMeasureResults notify_measure_results_func,
+      SearchStrategyNode::FPreTuning pre_tuning_func,
+      SearchStrategyNode::FPostTuning post_tuning_func) {
     ObjectPtr<PySearchStrategyNode> n = make_object<PySearchStrategyNode>();
     n->initialize_with_tune_context_func = std::move(initialize_with_tune_context_func);
     n->generate_measure_candidates_func = std::move(generate_measure_candidates_func);
@@ -92,13 +89,11 @@ class PySearchStrategy : public SearchStrategy {
 };
 
 SearchStrategy SearchStrategy::PySearchStrategy(
-    runtime::TypedPackedFunc<SearchStrategyNode::FInitializeWithTuneContext>
-        initialize_with_tune_context_func,
-    runtime::TypedPackedFunc<SearchStrategyNode::FGenerateMeasureCandidates>
-        generate_measure_candidates_func,
-    runtime::TypedPackedFunc<SearchStrategyNode::FNotifyMeasureResults> notify_measure_results_func,
-    runtime::TypedPackedFunc<SearchStrategyNode::FPreTuning> pre_tuning_func,
-    runtime::TypedPackedFunc<SearchStrategyNode::FPostTuning> post_tuning_func) {
+    SearchStrategyNode::FInitializeWithTuneContext initialize_with_tune_context_func,
+    SearchStrategyNode::FGenerateMeasureCandidates generate_measure_candidates_func,
+    SearchStrategyNode::FNotifyMeasureResults notify_measure_results_func,
+    SearchStrategyNode::FPreTuning pre_tuning_func,
+    SearchStrategyNode::FPostTuning post_tuning_func) {
   return meta_schedule::PySearchStrategy(
       initialize_with_tune_context_func, generate_measure_candidates_func,
       notify_measure_results_func, pre_tuning_func, post_tuning_func);

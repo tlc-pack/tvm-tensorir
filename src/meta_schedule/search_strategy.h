@@ -36,11 +36,12 @@ class TuneContext;
 
 class SearchStrategyNode : public runtime::Object {
  public:
-  using FInitializeWithTuneContext = void(const TuneContext&);
-  using FGenerateMeasureCandidates = Optional<runtime::Array<BuildInput>>();
-  using FNotifyMeasureResults = void(const Array<MeasureResult>&);
-  using FPreTuning = void(const Array<Trace>&);
-  using FPostTuning = void();
+  using FInitializeWithTuneContext = runtime::TypedPackedFunc<void(const TuneContext&)>;
+  using FGenerateMeasureCandidates =
+      runtime::TypedPackedFunc<Optional<runtime::Array<BuildInput>>()>;
+  using FNotifyMeasureResults = runtime::TypedPackedFunc<void(const Array<MeasureResult>&)>;
+  using FPreTuning = runtime::TypedPackedFunc<void(const Array<Trace>&)>;
+  using FPostTuning = runtime::TypedPackedFunc<void()>;
 
   /*! \brief Virtual destructor */
   virtual ~SearchStrategyNode() = default;
@@ -76,14 +77,11 @@ class SearchStrategy : public runtime::ObjectRef {
  public:
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
   static SearchStrategy PySearchStrategy(
-      runtime::TypedPackedFunc<SearchStrategyNode::FInitializeWithTuneContext>
-          initialize_with_tune_context_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FGenerateMeasureCandidates>
-          generate_measure_candidates_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FNotifyMeasureResults>
-          notify_measure_results_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FPreTuning> pre_tuning_func,
-      runtime::TypedPackedFunc<SearchStrategyNode::FPostTuning> post_tuning_func);
+      SearchStrategyNode::FInitializeWithTuneContext initialize_with_tune_context_func,
+      SearchStrategyNode::FGenerateMeasureCandidates generate_measure_candidates_func,
+      SearchStrategyNode::FNotifyMeasureResults notify_measure_results_func,
+      SearchStrategyNode::FPreTuning pre_tuning_func,
+      SearchStrategyNode::FPostTuning post_tuning_func);
 };
 
 }  // namespace meta_schedule
