@@ -19,7 +19,6 @@
 #include <tvm/target/target.h>
 #include <tvm/tir/schedule/schedule.h>
 
-#include "../sampler.h"
 #include "../utils.h"
 
 namespace tvm {
@@ -607,26 +606,6 @@ std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, TRandState* rand
   return result;
 }
 
-std::vector<std::vector<int64_t>> SampleShapeGenericTiles(
-    tir::ScheduleState self, Sampler* sampler, const Array<StmtSRef>& loop_srefs,
-    const std::vector<int>& ns, const Target& target, int max_innermost_factor,
-    Optional<Array<Array<Integer>>>* decision) {
-  std::vector<int> extents;
-  for (const StmtSRef& loop_sref : loop_srefs) {
-    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-    extents.push_back(GetLoopIntExtent(loop));
-  }
-  std::vector<std::vector<int>> sampled_tiles =
-      sampler->SampleShapeGenericTiles(ns, extents, target, max_innermost_factor);
-  std::vector<std::vector<int64_t>> result;
-  *decision = Array<Array<Integer>>();
-  for (const std::vector<int>& sampled : sampled_tiles) {
-    result.emplace_back(sampled.begin(), sampled.end());
-    decision->value().push_back(AsArray<int64_t, Integer>(result.back()));
-  }
-  return result;
-}
-
 int64_t SampleCategorical(tir::ScheduleState self, TRandState* rand_state,
                           const Array<Integer>& candidates, const Array<FloatImm>& probs,
                           Optional<Integer>* decision) {
@@ -714,43 +693,6 @@ struct SamplePerfectTileTraits : public UnpackedInstTraits<SamplePerfectTileTrai
     py.Input("loop", loop_rv);
     py.Input("n", n->value);
     py.Input("max_innermost_factor", max_innermost_factor->value);
-    py.Decision(decision);
-    py.OutputList(outputs);
-    return py.Str();
-  }
-
-  friend struct UnpackedInstTraits;
-};
-
-struct SampleShapeGenericTilesTraits : public UnpackedInstTraits<SampleShapeGenericTilesTraits> {
-  static constexpr const char* kName = "SampleShapeGenericTiles";
-  static constexpr bool kIsPure = true;
-
- private:
-  static constexpr size_t kNumInputs = 1;
-  static constexpr size_t kNumAttrs = 3;
-  static constexpr size_t kNumDecisions = 1;
-
-  static Array<Array<ExprRV>> UnpackedApplyToSchedule(Schedule sch, Array<LoopRV> loop_rvs,
-                                                      Array<Integer> ns, Target target,
-                                                      Integer max_innermost_factor,
-                                                      Optional<Array<Array<Integer>>> decision) {
-    std::vector<int> n_splits;
-    for (const Integer& n : ns) {
-      n_splits.push_back(n->value);
-    }
-    return sch->SampleShapeGenericTiles(loop_rvs, n_splits, target, max_innermost_factor->value,
-                                        decision);
-  }
-
-  static String UnpackedAsPython(Array<String> outputs, Array<String> loop_rvs, Array<Integer> ns,
-                                 Target target, Integer max_innermost_factor,
-                                 Optional<Array<Array<Integer>>> decision) {
-    PythonAPICall py("sample_shape_generic_tiles");
-    py.Input("loops", loop_rvs);
-    py.Input("ns", ns);
-    py.Input("max_innermost_factor", max_innermost_factor->value);
-    py.Input("target", target->str());
     py.Decision(decision);
     py.OutputList(outputs);
     return py.Str();

@@ -23,9 +23,6 @@
 #include <tvm/tir/schedule/state.h>
 
 namespace tvm {
-
-class Target;
-
 namespace tir {
 
 using TRandState = support::LinearCongruentialEngine::TRandState;
@@ -242,18 +239,6 @@ class ScheduleNode : public runtime::Object {
    */
   virtual Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
                                           Optional<Array<Integer>> decision = NullOpt) = 0;
-  /*!
-   * \brief Sample the factors to tile a list of LoopRV's
-   * \param loop_rvs The loops to be tiled
-   * \param ns The number of loops after tiling
-   * \param max_innermost_factor The maximum factor in the innermost loop, -1 if disabled
-   * \param decision The sampling decision
-   * \return An array of n random variables, the result of sampling
-   */
-  virtual Array<Array<ExprRV>> SampleShapeGenericTiles(const Array<LoopRV>& loop_rvs,
-                                                       const std::vector<int>& ns,
-                                                       const Target& target, int max_innermost_factor,
-                                                       Optional<Array<Array<Integer>>> decision = NullOpt) = 0;
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates
