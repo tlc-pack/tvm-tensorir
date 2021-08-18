@@ -108,7 +108,15 @@ class BufferFlattener : public StmtExprMutator {
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(op));
-    return store->buffer.vstore(store->indices, store->value);
+    Array<PrimExpr> indices = store->indices;
+    // DataType dtype = store->d
+    if (indices.size()) {
+      if (const auto* ramp = indices.back().as<RampNode>()) {
+        // dtype = dtype.with_lanes(ramp->lanes);
+        indices.Set(indices.size() - 1, ramp->base);
+      }
+    }
+    return store->buffer.vstore(indices, store->value);
   }
 
   PrimExpr VisitExpr_(const VarNode* op) final {
@@ -127,7 +135,17 @@ class BufferFlattener : public StmtExprMutator {
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(op));
-    return load->buffer.vload(load->indices, load->dtype);
+    // auto dtype = load->dtype;
+    // LOG(INFO) << load->indices;
+    Array<PrimExpr> indices = load->indices;
+    DataType dtype = load->dtype;
+    if (indices.size()) {
+      if (const auto* ramp = indices.back().as<RampNode>()) {
+        dtype = dtype.with_lanes(ramp->lanes);
+        indices.Set(indices.size() - 1, ramp->base);
+      }
+    }
+    return load->buffer.vload(indices, dtype);
   }
 
   PrimExpr VisitExpr_(const CallNode* op) final {

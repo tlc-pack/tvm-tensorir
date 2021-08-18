@@ -541,7 +541,7 @@ TVM_DLL Pass LowerLogicalLayout();
 
 TVM_DLL Pass UnifyThreadAxis();
 
-// TVM_DLL Pass LowerLogicalIntrin();
+TVM_DLL Pass LowerLogicalIntrin();
 
 }  // namespace transform
 }  // namespace tir
