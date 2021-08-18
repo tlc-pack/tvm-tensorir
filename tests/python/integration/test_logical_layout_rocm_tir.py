@@ -26,7 +26,7 @@ from tvm.ir import register_intrin_lowering, register_op_attr
 
 
 @tvm.script.tir
-def tvm_mfma_sync(d: ty.handle, index_d: ty.int32, num_groups_d: ty.int32, a: ty.handle, index_a: ty.int32, num_groups_a: ty.int32, b: ty.handle, index_b: ty.int32, num_groups_b: ty.int32, c:ty.handle, index_c: ty.int32, num_groups_c: ty.int32) -> None:
+def tvm_mfma_sync(d: ty.handle, index_d: ty.int32, a: ty.handle, index_a: ty.int32, b: ty.handle, index_b: ty.int32, c:ty.handle, index_c: ty.int32) -> None:
     tx = tir.env_thread("threadIdx.x")
     tir.launch_thread(tx, 64)
     num_warp_i = tir.var('int32')
@@ -277,13 +277,13 @@ def tensorcore_gemm(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                         tir.evaluate(
                                             tir.tvm_mfma_sync(
                                                 wmma_C1.data,
-                                                i * 4 + j, 8,
+                                                i * 4 + j,
                                                 wmma_A1.data,
-                                                i, 2,
+                                                i,
                                                 wmma_B1.data,
-                                                j, 4,
+                                                j,
                                                 wmma_C1.data,
-                                                i * 4 + j, 8,
+                                                i * 4 + j,
                                                 dtype="handle",
                                             )
                                         )
