@@ -20,22 +20,19 @@
 #ifndef SRC_META_SCHEDULE_SPACE_GENERATOR_H_
 #define SRC_META_SCHEDULE_SPACE_GENERATOR_H_
 
-#include <tvm/ir/module.h>
-#include <tvm/runtime/container/array.h>
-#include <tvm/runtime/object.h>
-#include <tvm/runtime/packed_func.h>
 #include <tvm/tir/schedule/schedule.h>
 
 namespace tvm {
 namespace meta_schedule {
 
+// Forward declaration
 class TuneContext;
-using Schedule = tir::Schedule;
 
 class SpaceGeneratorNode : public runtime::Object {
  public:
   using FInitializeWithTuneContext = void(const TuneContext&);
-  using FGenerate = Array<Schedule>(const IRModule&);
+  // TODO: change to tir::Trace
+  using FGenerate = Array<tir::Schedule>(const IRModule&);
 
   /*! \brief Virtual destructor */
   virtual ~SpaceGeneratorNode() = default;
@@ -47,8 +44,8 @@ class SpaceGeneratorNode : public runtime::Object {
    * \brief Generate a schedule out of the design space generator
    * \return The generated schedule
    */
-  // todo @ zxybazh: Change to Traces class
-  virtual runtime::Array<Schedule> Generate(const IRModule& workload) = 0;
+  // TODO(zxybazh): Change to Traces class
+  virtual runtime::Array<tir::Schedule> Generate(const IRModule& workload) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SpaceGenerator";
   TVM_DECLARE_BASE_OBJECT_INFO(SpaceGeneratorNode, Object);

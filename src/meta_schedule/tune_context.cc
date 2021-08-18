@@ -16,16 +16,42 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include "./tune_context.h"
 
-#include "tune_context.h"
+#include <utility>
 
 namespace tvm {
 namespace meta_schedule {
 
-void TuneContextNode::PostProcessFunc() {}
-void TuneContextNode::MeasureCallbackFunc() {}
+TuneContext::TuneContext(Optional<IRModule> workload,                         //
+                         Optional<SpaceGenerator> space_generator,            //
+                         Optional<SearchStrategy> search_strategy,            //
+                         Optional<Database> database,                         //
+                         Optional<CostModel> cost_model,                      //
+                         Optional<Target> target,                             //
+                         Optional<Array<PostProc>> postprocs,                 //
+                         Optional<Array<MeasureCallback>> measure_callbacks,  //
+                         String name,                                         //
+                         TRandState seed,                                     //
+                         int num_threads,                                     //
+                         int verbose) {
+  ObjectPtr<TuneContextNode> n = make_object<TuneContextNode>();
+  n->workload = workload;
+  n->space_generator = space_generator;
+  n->search_strategy = search_strategy;
+  n->database = database;
+  n->cost_model = cost_model;
+  n->target = target;
+  n->postprocs = postprocs;
+  n->measure_callbacks = measure_callbacks;
+  n->name = name;
+  n->seed = seed;  // TODO(zxybazh): Initialize the random seed.
+  n->num_threads = num_threads;
+  n->verbose = verbose;
+  data_ = std::move(n);
+}
 
-TVM_REGISTER_OBJECT_TYPE(TuneContextNode);
+TVM_REGISTER_NODE_TYPE(TuneContextNode);
 TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
     .set_body_typed([](Optional<IRModule> workload,                         //
                        Optional<SpaceGenerator> space_generator,            //
@@ -33,19 +59,15 @@ TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
                        Optional<Database> database,                         //
                        Optional<CostModel> cost_model,                      //
                        Optional<Target> target,                             //
-                       Optional<Array<PostProc>> post_procs,                //
+                       Optional<Array<PostProc>> postprocs,                 //
                        Optional<Array<MeasureCallback>> measure_callbacks,  //
                        String name,                                         //
                        TRandState seed,                                     //
                        int num_threads,                                     //
                        int verbose) -> TuneContext {
       return TuneContext(workload, space_generator, search_strategy, database, cost_model, target,
-                         post_procs, measure_callbacks, name, seed, num_threads, verbose);
+                         postprocs, measure_callbacks, name, seed, num_threads, verbose);
     });
-TVM_REGISTER_GLOBAL("tvm.meta_schedule.TuneContextPostProcess")
-    .set_body_method<TuneContext>(&TuneContextNode::PostProcessFunc);
-TVM_REGISTER_GLOBAL("tvm.meta_schedule.TuneContextMeasureCallback")
-    .set_body_method<TuneContext>(&TuneContextNode::MeasureCallbackFunc);
 
 }  // namespace meta_schedule
 }  // namespace tvm

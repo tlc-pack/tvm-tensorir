@@ -26,14 +26,14 @@
 #include <tvm/runtime/packed_func.h>
 #include <tvm/tir/schedule/schedule.h>
 
-#include "builder.h"
-#include "runner.h"
+#include "./builder.h"
+#include "./runner.h"
 
 namespace tvm {
 namespace meta_schedule {
 
+// Forward declaration
 class TuneContext;
-using Schedule = tir::Schedule;
 
 class SearchStrategyNode : public runtime::Object {
  public:
@@ -41,7 +41,7 @@ class SearchStrategyNode : public runtime::Object {
   using FGenerateMeasureCandidates =
       runtime::TypedPackedFunc<Optional<runtime::Array<BuildInput>>()>;
   using FNotifyMeasureResults = runtime::TypedPackedFunc<void(const Array<MeasureResult>&)>;
-  using FPreTuning = runtime::TypedPackedFunc<void(const Array<Schedule>&)>;
+  using FPreTuning = runtime::TypedPackedFunc<void(const Array<tir::Schedule>&)>;
   using FPostTuning = runtime::TypedPackedFunc<void()>;
 
   /*! \brief Virtual destructor */
@@ -62,7 +62,8 @@ class SearchStrategyNode : public runtime::Object {
    */
   virtual void NotifyMeasureResults(const Array<MeasureResult>& results) = 0;
 
-  virtual void PreTuning(const Array<Schedule>& design_spaces) = 0;
+  // TODO: change to trace
+  virtual void PreTuning(const Array<tir::Schedule>& design_spaces) = 0;
 
   virtual void PostTuning() = 0;
 

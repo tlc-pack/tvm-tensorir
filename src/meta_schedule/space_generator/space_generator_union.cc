@@ -36,10 +36,10 @@ class SpaceGeneratorUnionNode : public SpaceGeneratorNode {
     }
   }
 
-  Array<Schedule> Generate(const IRModule& workload) override {
-    Array<Schedule> result;
+  Array<tir::Schedule> Generate(const IRModule& workload) override {
+    Array<tir::Schedule> result;
     for (const SpaceGenerator& space_gen : space_generators) {
-      Array<Schedule> partial = space_gen->Generate(workload);
+      Array<tir::Schedule> partial = space_gen->Generate(workload);
       result.insert(result.end(), partial.begin(), partial.end());
     }
     return result;

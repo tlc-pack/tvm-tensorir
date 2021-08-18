@@ -16,6 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#ifndef SRC_META_SCHEDULE_TASK_SCHEDULER_H_
+#define SRC_META_SCHEDULE_TASK_SCHEDULER_H_
 
 #include <tvm/ir/module.h>
 #include <tvm/runtime/container/array.h>
@@ -24,9 +26,6 @@
 #include "./builder.h"
 #include "./runner.h"
 #include "./tune_context.h"
-
-#ifndef SRC_META_SCHEDULE_TASK_SCHEDULER_H_
-#define SRC_META_SCHEDULE_TASK_SCHEDULER_H_
 
 namespace tvm {
 namespace meta_schedule {
@@ -40,6 +39,7 @@ struct TaskWithContext {
       : is_finished(false), tune_context(tune_context), runner_callback(nullptr) {}
 };
 
+// TODO: make it abstract
 class TaskSchedulerNode : public runtime::Object {
  public:
   using RunnerFuture = RunnerNode::RunnerFuture;
@@ -57,7 +57,7 @@ class TaskSchedulerNode : public runtime::Object {
   Optional<Builder> builder;
   Optional<Runner> runner;
 
-  /*! \brief Run auot-tuning on all tasks. */
+  /*! \brief Run auto-tuning on all tasks. */
   virtual void TuneAllTasks();
 
   /*! \brief Sort all tuning tasks, together with the runner_callback functions. */
@@ -77,6 +77,7 @@ class TaskScheduler : public runtime::ObjectRef {
   explicit TaskScheduler(Array<TuneContext> tune_contexts,  //
                          Optional<Builder> builder,         //
                          Optional<Runner> runner) {
+    // TODO: move to .cc file
     ObjectPtr<TaskSchedulerNode> n = make_object<TaskSchedulerNode>();
     n->builder = builder;
     n->runner = runner;

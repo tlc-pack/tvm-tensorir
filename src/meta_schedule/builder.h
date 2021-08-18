@@ -25,6 +25,7 @@
 namespace tvm {
 namespace meta_schedule {
 
+// TODO(@xiyou): docs
 class BuildInputNode : public runtime::Object {
  public:
   IRModule mod;

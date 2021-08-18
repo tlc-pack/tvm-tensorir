@@ -107,7 +107,7 @@ class ScheduleFn(PySpaceGenerator):
         raise NotImplementedError
 
     def generate(self, workload: IRModule) -> List[Schedule]:
-        sch = Schedule(workload)
+        sch = Schedule(workload, traced=True)
         result = self.sch_fn(sch)
         if result is None:
             return [sch]

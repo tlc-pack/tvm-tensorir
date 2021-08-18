@@ -22,10 +22,10 @@
 #include <tvm/runtime/object.h>
 #include <tvm/target/target.h>
 
-#include "builder.h"
-#include "runner.h"
-#include "search_strategy.h"
-#include "space_generator.h"
+#include "./builder.h"
+#include "./runner.h"
+#include "./search_strategy.h"
+#include "./space_generator.h"
 
 #ifndef SRC_META_SCHEDULE_TUNE_CONTEXT_H_
 #define SRC_META_SCHEDULE_TUNE_CONTEXT_H_
@@ -34,7 +34,7 @@ namespace tvm {
 namespace meta_schedule {
 
 /*! \brief Type defintions */
-using TRandState = int64_t;  // todo(zxybazh): Merge with Sampling PR.
+using TRandState = int64_t;  // TODO(zxybazh): Merge with Sampling PR.
 using Database = ObjectRef;
 using CostModel = ObjectRef;
 using PostProc = ObjectRef;
@@ -42,13 +42,6 @@ using MeasureCallback = ObjectRef;
 
 class TuneContextNode : public runtime::Object {
  public:
-  /*! \brief The function types. */
-  using FProstProc = void();
-  using FMeasureCallback = void();
-
-  /*! \brief Virtual destructor */
-  virtual ~TuneContextNode() = default;
-
   /*! \brief The function to be optimized */
   Optional<IRModule> workload;
   /*! \brief The design space generator. */
@@ -62,7 +55,7 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The target for builder. */
   Optional<Target> target;
   /* \brief The post processing functions. */
-  Optional<Array<PostProc>> post_procs;
+  Optional<Array<PostProc>> postprocs;
   /*! \brief The measurement call back functions. */
   Optional<Array<MeasureCallback>> measure_callbacks;
   /*! \brief The name of the tuning task. */
@@ -74,18 +67,17 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The value of verbose. */
   int verbose;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("target", &target); }
-
-  TuneContextNode() = default;
-
-  /*! \brief The convenient function for post processings. */
-  virtual void PostProcessFunc();
-
-  /*! \brief The convenient function for measure callbacks. */
-  virtual void MeasureCallbackFunc();
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("workload", &workload);
+    v->Visit("space_generator", &space_generator);
+    v->Visit("search_strategy", &search_strategy);
+    v->Visit("database", &database);
+    v->Visit("target", &target);
+    // TODO
+  }
 
   static constexpr const char* _type_key = "meta_schedule.TuneContext";
-  TVM_DECLARE_BASE_OBJECT_INFO(TuneContextNode, Object);
+  TVM_DECLARE_FINAL_OBJECT_INFO(TuneContextNode, Object);
 };
 
 /*!
@@ -100,28 +92,13 @@ class TuneContext : public runtime::ObjectRef {
                        Optional<Database> database,                         //
                        Optional<CostModel> cost_model,                      //
                        Optional<Target> target,                             //
-                       Optional<Array<PostProc>> post_procs,                //
+                       Optional<Array<PostProc>> postprocs,                 //
                        Optional<Array<MeasureCallback>> measure_callbacks,  //
                        String name,                                         //
                        TRandState seed,                                     //
                        int num_threads,                                     //
-                       int verbose) {
-    ObjectPtr<TuneContextNode> n = make_object<TuneContextNode>();
-    n->workload = workload;
-    n->space_generator = space_generator;
-    n->search_strategy = search_strategy;
-    n->database = database;
-    n->cost_model = cost_model;
-    n->target = target;
-    n->post_procs = post_procs;
-    n->measure_callbacks = measure_callbacks;
-    n->name = name;
-    n->seed = seed;  // todo(zxybazh): Initialize the random seed.
-    n->num_threads = num_threads;
-    n->verbose = verbose;
-    data_ = std::move(n);
-  }
-  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(TuneContext, ObjectRef, TuneContextNode);
+                       int verbose);
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TuneContext, ObjectRef, TuneContextNode);
 };  // namespace meta_schedule
 
 }  // namespace meta_schedule

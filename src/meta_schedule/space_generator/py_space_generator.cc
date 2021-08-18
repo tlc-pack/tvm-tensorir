@@ -39,7 +39,7 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
     this->initialize_with_tune_context_func(context);
   }
 
-  Array<Schedule> Generate(const IRModule& workload) override {
+  Array<tir::Schedule> Generate(const IRModule& workload) override {
     return this->generate_func(workload);
   }
 

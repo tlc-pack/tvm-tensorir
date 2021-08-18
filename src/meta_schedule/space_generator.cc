@@ -17,13 +17,13 @@
  * under the License.
  */
 
-#include "space_generator.h"
+#include "./space_generator.h"
 
 #include <tvm/ir/module.h>
 #include <tvm/runtime/container/array.h>
 #include <tvm/runtime/object.h>
 
-#include "tune_context.h"
+#include "./tune_context.h"
 
 namespace tvm {
 namespace meta_schedule {
