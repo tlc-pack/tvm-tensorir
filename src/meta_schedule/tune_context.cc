@@ -23,6 +23,22 @@ namespace tvm {
 namespace meta_schedule {
 
 TVM_REGISTER_OBJECT_TYPE(TuneContextNode);
+TVM_REGISTER_GLOBAL("meta_schedule.Schedule")
+    .set_body_typed([](Optional<IRModule> workload,                         //
+                       Optional<SpaceGenerator> space_generator,            //
+                       Optional<SearchStrategy> search_strategy,            //
+                       Optional<Database> database,                         //
+                       Optional<CostModel> cost_model,                      //
+                       Optional<Target> target,                             //
+                       Optional<Array<PostProc>> post_procs,                //
+                       Optional<Array<MeasureCallback>> measure_callbacks,  //
+                       String name,                                         //
+                       TRandState seed,                                     //
+                       int num_threads,                                     //
+                       int verbose) -> TuneContext {
+      return TuneContext(workload, space_generator, search_strategy, database, cost_model, target,
+                         post_procs, measure_callbacks, name, seed, num_threads, verbose);
+    });
 TVM_REGISTER_GLOBAL("tvm.meta_schedule.TuneContextPostProcess")
     .set_body_method<TuneContext>(&TuneContextNode::PostProcessFunc);
 TVM_REGISTER_GLOBAL("tvm.meta_schedule.TuneContextMeasureCallback")

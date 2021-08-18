@@ -17,9 +17,9 @@
 """Task Scheduler"""
 
 from typing import List
+from tvm.runtime import Object
 
 from tvm._ffi import register_object
-from tvm.runtime import Object
 
 from . import _ffi_api
 from .tune_context import TuneContext

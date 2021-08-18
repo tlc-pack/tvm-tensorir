@@ -50,8 +50,13 @@ class PyTaskScheduler : public TaskScheduler {
                            Optional<Runner> runner,                               //
                            TaskSchedulerNode::FSortAllTasks sort_all_tasks_func,  //
                            TaskSchedulerNode::FTuneAllTasks tune_all_tasks_func) {
-    ObjectPtr<PyTaskSchedulerNode> n =
-        make_object<PyTaskSchedulerNode>(tune_contexts, builder, runner);
+    ObjectPtr<PyTaskSchedulerNode> n = make_object<PyTaskSchedulerNode>();
+    n->tasks.reserve(tune_contexts.size());
+    for (size_t i = 0; i < tune_contexts.size(); ++i) {
+      n->tasks.push_back(TaskWithContext(tune_contexts[i]));
+    }
+    n->builder = std::move(builder);
+    n->runner = std::move(runner);
     n->tune_all_tasks_func = std::move(tune_all_tasks_func);
     n->sort_all_tasks_func = std::move(sort_all_tasks_func);
     data_ = std::move(n);
