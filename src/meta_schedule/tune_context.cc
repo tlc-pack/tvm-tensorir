@@ -22,6 +22,9 @@
 namespace tvm {
 namespace meta_schedule {
 
+void TuneContextNode::PostProcessFunc() {}
+void TuneContextNode::MeasureCallbackFunc() {}
+
 TVM_REGISTER_OBJECT_TYPE(TuneContextNode);
 TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
     .set_body_typed([](Optional<IRModule> workload,                         //
