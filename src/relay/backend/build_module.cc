@@ -426,6 +426,8 @@ class RelayBuildModule : public runtime::ModuleNode {
       }
     }
 
+    // todo(zxybazh) : Put meta-schedule layout rewrite pass here.
+
     relay_module = transform::InferType()(relay_module);
 
     // Inline the functions that have been lifted by the module scope.
