@@ -64,7 +64,7 @@ class TuneContext(Object):
         verbose: int,
     ):
         self.__init_handle_by_constructor__(
-            _ffi_api.meta_schedule.TuneContext,  # pylint: disable=no-member
+            _ffi_api.TuneContext,  # pylint: disable=no-member
             workload,
             space_generator,
             search_strategy,

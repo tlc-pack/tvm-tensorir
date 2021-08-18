@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Test meta schedule TaskScheduler """
+# pylint: disable=missing-function-docstring
 
 from typing import List
 import random
@@ -22,20 +23,19 @@ import random
 from tvm import meta_schedule as ms
 from tvm.meta_schedule import PyTaskScheduler, TuneContext
 
-# pylint: disable=missing-docstring
-class TestTaskScheduler(PyTaskScheduler):
-    def __init__(self, tune_contexts: List[TuneContext]):
-        super().__init__(tune_contexts, None, None)
-        self.results = []
 
-    def sort_all_tasks(self) -> None:
-        pass
+def test_meta_schedule_create_task_scheduler():
+    class TestTaskScheduler(PyTaskScheduler):
+        def __init__(self, tune_contexts: List[TuneContext]):
+            super().__init__(tune_contexts, None, None)
+            self.results = []
 
-    def tune_all_tasks(self) -> None:
-        pass
+        def sort_all_tasks(self) -> None:
+            pass
 
+        def tune_all_tasks(self) -> None:
+            pass
 
-def test_meta_schedule_py_task_scheduler():
     def schedule_matmul(sch: ms.Schedule):
         block = sch.get_block("matmul")
         i, j, k = sch.get_axes(block=block)
@@ -58,9 +58,9 @@ def test_meta_schedule_py_task_scheduler():
         batch_size = random.randint(10, 50)
         tune_ctxs.append(
             ms.TuneContext(
-                schedule_matmul,
-                space_gen,
-                ms.ReplaySearchStrategy(trials, batch_size),
+                workload=None,
+                space_generator=space_gen,
+                search_strategy=ms.ReplaySearchStrategy(trials, batch_size),
                 database=None,
                 cost_model=None,
                 target=None,
@@ -78,4 +78,4 @@ def test_meta_schedule_py_task_scheduler():
 
 
 if __name__ == "__main__":
-    test_meta_schedule_py_task_scheduler()
+    test_meta_schedule_create_task_scheduler()

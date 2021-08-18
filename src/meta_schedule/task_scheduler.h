@@ -63,7 +63,7 @@ class TaskSchedulerNode : public runtime::Object {
   /*! \brief Sort all tuning tasks, together with the runner_callback functions. */
   virtual void SortAllTasks();
 
-  static constexpr const char* _type_key = "meta_schedule.TashScheduler";
+  static constexpr const char* _type_key = "meta_schedule.TaskScheduler";
   TVM_DECLARE_BASE_OBJECT_INFO(TaskSchedulerNode, Object);
 };
 
