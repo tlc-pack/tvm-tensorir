@@ -14,20 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""MicroTVM module for bare-metal backends"""
+"""FFI APIs for tvm.meta_schedule"""
+import tvm._ffi
 
-from .artifact import Artifact
-from .build import build_static_runtime, default_options, get_standalone_crt_dir
-from .build import get_standalone_crt_lib, Workspace
-from .compiler import Compiler, DefaultCompiler, Flasher
-from .debugger import GdbRemoteDebugger
-from .micro_library import MicroLibrary
-from .micro_binary import MicroBinary
-from .model_library_format import export_model_library_format, UnsupportedInModelLibraryFormatError
-from .session import (
-    create_local_graph_executor,
-    create_local_debug_executor,
-    Session,
-    SessionTerminatedError,
-)
-from .transport import TransportLogger, DebugWrapperTransport, SubprocessTransport
+tvm._ffi._init_api("meta_schedule", __name__)
