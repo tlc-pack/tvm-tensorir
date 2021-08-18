@@ -19,12 +19,14 @@
 
 from tir_workload import matmul
 from tvm import meta_schedule as ms
+from tvm.tir.schedule import Schedule
+from tvm.meta_schedule import ScheduleFn
 
 
 def test_meta_schedule_search_strategy():
     def schedule_matmul(sch: Schedule):
         block = sch.get_block("matmul")
-        i, j, k = sch.get_axes(block=block)
+        i, j, k = sch.get_loops(block=block)
         i_tiles = sch.sample_perfect_tile(i, n=4)
         j_tiles = sch.sample_perfect_tile(j, n=4)
         k_tiles = sch.sample_perfect_tile(k, n=2)

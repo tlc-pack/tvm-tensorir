@@ -21,7 +21,8 @@ from typing import List
 import random
 
 from tvm import meta_schedule as ms
-from tvm.meta_schedule import PyTaskScheduler, TuneContext
+from tvm.meta_schedule import PyTaskScheduler, TuneContext, ScheduleFn
+from tvm.tir.schedule import Schedule
 
 
 def test_meta_schedule_create_task_scheduler():
@@ -38,7 +39,7 @@ def test_meta_schedule_create_task_scheduler():
 
     def schedule_matmul(sch: Schedule):
         block = sch.get_block("matmul")
-        i, j, k = sch.get_axes(block=block)
+        i, j, k = sch.get_loops(block=block)
         i_tiles = sch.sample_perfect_tile(i, n=4)
         j_tiles = sch.sample_perfect_tile(j, n=4)
         k_tiles = sch.sample_perfect_tile(k, n=2)

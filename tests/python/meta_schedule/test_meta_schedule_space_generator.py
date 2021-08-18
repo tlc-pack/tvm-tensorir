@@ -27,7 +27,7 @@ from tvm.meta_schedule import ScheduleFn
 def test_meta_schedule_space_generator_schedule_fn():
     def schedule_matmul(sch: Schedule):
         block = sch.get_block("matmul")
-        i, j, k = sch.get_axes(block=block)
+        i, j, k = sch.get_loops(block=block)
         i_tiles = sch.sample_perfect_tile(i, n=4)
         j_tiles = sch.sample_perfect_tile(j, n=4)
         k_tiles = sch.sample_perfect_tile(k, n=2)
@@ -40,7 +40,7 @@ def test_meta_schedule_space_generator_schedule_fn():
     (sch,) = space_gen.generate(workload=matmul)
 
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        sch.get_sref(i).stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
+        sch.get_sref(i).stmt.extent for i in sch.get_loops(sch.get_block("matmul"))
     ]
     assert i_0 * i_1 * i_2 * i_3 == 1024
     assert j_0 * j_1 * j_2 * j_3 == 1024
@@ -50,7 +50,7 @@ def test_meta_schedule_space_generator_schedule_fn():
 def test_meta_schedule_design_space_generator_union():
     def schedule_matmul(sch: Schedule):
         block = sch.get_block("matmul")
-        i, j, k = sch.get_axes(block=block)
+        i, j, k = sch.get_loops(block=block)
         i_tiles = sch.sample_perfect_tile(i, n=4)
         j_tiles = sch.sample_perfect_tile(j, n=4)
         k_tiles = sch.sample_perfect_tile(k, n=2)
@@ -66,7 +66,7 @@ def test_meta_schedule_design_space_generator_union():
     sch = ret[0]
 
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        sch.get_sref(i).stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
+        sch.get_sref(i).stmt.extent for i in sch.get_loops(sch.get_block("matmul"))
     ]
     assert i_0 * i_1 * i_2 * i_3 == 1024
     assert j_0 * j_1 * j_2 * j_3 == 1024
@@ -75,7 +75,7 @@ def test_meta_schedule_design_space_generator_union():
     sch = ret[1]
 
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        sch.get_sref(i).stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
+        sch.get_sref(i).stmt.extent for i in sch.get_loops(sch.get_block("matmul"))
     ]
     assert i_0 * i_1 * i_2 * i_3 == 1024
     assert j_0 * j_1 * j_2 * j_3 == 1024
