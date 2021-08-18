@@ -67,13 +67,21 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The value of verbose. */
   int verbose;
 
+  // TODO(zxybazh): Convenient functions for post-processing and measure callbacks.
+
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("workload", &workload);
     v->Visit("space_generator", &space_generator);
     v->Visit("search_strategy", &search_strategy);
     v->Visit("database", &database);
+    v->Visit("cost_model", &cost_model);
     v->Visit("target", &target);
-    // TODO
+    v->Visit("postprocs", &postprocs);
+    v->Visit("measure_callbacks", &measure_callbacks);
+    v->Visit("name", &name);
+    v->Visit("seed", &seed);
+    v->Visit("num_threads", &num_threads);
+    v->Visit("verbose", &verbose);
   }
 
   static constexpr const char* _type_key = "meta_schedule.TuneContext";
@@ -86,6 +94,8 @@ class TuneContextNode : public runtime::Object {
  */
 class TuneContext : public runtime::ObjectRef {
  public:
+  TuneContext() = default;
+
   explicit TuneContext(Optional<IRModule> workload,                         //
                        Optional<SpaceGenerator> space_generator,            //
                        Optional<SearchStrategy> search_strategy,            //

@@ -31,7 +31,6 @@ class TuneContext;
 class SpaceGeneratorNode : public runtime::Object {
  public:
   using FInitializeWithTuneContext = void(const TuneContext&);
-  // TODO: change to tir::Trace
   using FGenerate = Array<tir::Schedule>(const IRModule&);
 
   /*! \brief Virtual destructor */

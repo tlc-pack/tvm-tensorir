@@ -19,51 +19,8 @@
 
 #include "task_scheduler.h"
 
-#include <tvm/tir/schedule/schedule.h>
-
 namespace tvm {
 namespace meta_schedule {
-
-// Round robin task scheduler
-void TaskSchedulerNode::SortAllTasks() {}
-
-void TaskSchedulerNode::TuneAllTasks() {
-  int num_unfinished = tasks.size();
-  for (TaskWithContext task : tasks) {
-    ICHECK(task.tune_context->workload.defined()) << "Workload not set";
-    ICHECK(task.tune_context->space_generator.defined()) << "Design space generator not set";
-    ICHECK(task.tune_context->search_strategy.defined()) << "Search strategy not set";
-
-    Array<tir::Schedule> design_spaces =
-        task.tune_context->space_generator.value()->Generate(task.tune_context->workload.value());
-    task.tune_context->search_strategy.value()->PreTuning(design_spaces);
-  }
-  while (num_unfinished > 0) {
-    SortAllTasks();
-    for (TaskWithContext task : tasks) {
-      if (task.is_finished) continue;
-
-      if (task.runner_callback == nullptr) {
-        Optional<runtime::Array<BuildInput>> measure_candidates =
-            task.tune_context->search_strategy.value()->GenerateMeasureCandidates();
-        if (measure_candidates.defined()) {
-          ICHECK(builder.defined()) << "Builder not set";
-          Array<BuildResult> builds = builder.value()->Build(measure_candidates.value());
-          ICHECK(runner.defined()) << "Runner not set";
-          task.runner_callback = runner.value()->Run(builds);
-        } else {
-          task.is_finished = true;
-          task.tune_context->search_strategy.value()->PostTuning();
-          --num_unfinished;
-        }
-      } else if (Optional<Array<MeasureResult>> results = task.runner_callback()) {
-        task.runner_callback = RunnerFuture(nullptr);
-        // Search strategy already ICHECKed when called before.
-        task.tune_context->search_strategy.value()->NotifyMeasureResults(results.value());
-      }
-    }
-  }
-}
 
 TVM_REGISTER_OBJECT_TYPE(TaskSchedulerNode);
 TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerTuneAllTasks")

@@ -26,10 +26,13 @@ namespace meta_schedule {
 
 class PyTaskSchedulerNode : public TaskSchedulerNode {
  public:
+  Array<TuneContext> tune_contexts;
   /*! \brief Pointer to the task sorting function in python */
   FSortAllTasks sort_all_tasks_func;
   /*! \brief Pointer to the autotuning function in python */
   FTuneAllTasks tune_all_tasks_func;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("tune_contexts", &tune_contexts); }
 
   void SortAllTasks() override { this->sort_all_tasks_func(); }
 
@@ -51,10 +54,7 @@ class PyTaskScheduler : public TaskScheduler {
                            TaskSchedulerNode::FSortAllTasks sort_all_tasks_func,  //
                            TaskSchedulerNode::FTuneAllTasks tune_all_tasks_func) {
     ObjectPtr<PyTaskSchedulerNode> n = make_object<PyTaskSchedulerNode>();
-    n->tasks.reserve(tune_contexts.size());
-    for (size_t i = 0; i < tune_contexts.size(); ++i) {
-      n->tasks.push_back(TaskWithContext(tune_contexts[i]));
-    }
+    n->tune_contexts = std::move(tune_contexts);
     n->builder = std::move(builder);
     n->runner = std::move(runner);
     n->tune_all_tasks_func = std::move(tune_all_tasks_func);

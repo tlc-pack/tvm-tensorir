@@ -30,38 +30,27 @@
 namespace tvm {
 namespace meta_schedule {
 
-struct TaskWithContext {
-  bool is_finished;
-  TuneContext tune_context;
-  RunnerNode::RunnerFuture runner_callback;
-
-  explicit TaskWithContext(const TuneContext& tune_context)
-      : is_finished(false), tune_context(tune_context), runner_callback(nullptr) {}
-};
-
-// TODO: make it abstract
 class TaskSchedulerNode : public runtime::Object {
  public:
-  using RunnerFuture = RunnerNode::RunnerFuture;
   using FTuneAllTasks = runtime::TypedPackedFunc<void()>;
   using FSortAllTasks = runtime::TypedPackedFunc<void()>;
 
   /*! \brief Virtual destructor */
   virtual ~TaskSchedulerNode() = default;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
-  /*! \brief Tasks of the scheduler. */
-  std::vector<TaskWithContext> tasks;
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("builder", &builder);
+    v->Visit("runner", &runner);
+  }
 
   Optional<Builder> builder;
   Optional<Runner> runner;
 
   /*! \brief Run auto-tuning on all tasks. */
-  virtual void TuneAllTasks();
+  virtual void TuneAllTasks() = 0;
 
   /*! \brief Sort all tuning tasks, together with the runner_callback functions. */
-  virtual void SortAllTasks();
+  virtual void SortAllTasks() = 0;
 
   static constexpr const char* _type_key = "meta_schedule.TaskScheduler";
   TVM_DECLARE_BASE_OBJECT_INFO(TaskSchedulerNode, Object);
@@ -74,25 +63,16 @@ class TaskSchedulerNode : public runtime::Object {
 class TaskScheduler : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
-  explicit TaskScheduler(Array<TuneContext> tune_contexts,  //
-                         Optional<Builder> builder,         //
-                         Optional<Runner> runner) {
-    // TODO: move to .cc file
-    ObjectPtr<TaskSchedulerNode> n = make_object<TaskSchedulerNode>();
-    n->builder = builder;
-    n->runner = runner;
-    n->tasks.reserve(tune_contexts.size());
-    for (size_t i = 0; i < tune_contexts.size(); ++i) {
-      n->tasks.push_back(TaskWithContext(tune_contexts[i]));
-    }
-    data_ = std::move(n);
-  }
+  static TaskScheduler StandardTaskScheduler(Array<TuneContext> tune_contexts,  //
+                                             Optional<Builder> builder,         //
+                                             Optional<Runner> runner);
 
   static TaskScheduler PyTaskScheduler(Array<TuneContext> tune_contexts,                      //
                                        Optional<Builder> builder,                             //
                                        Optional<Runner> runner,                               //
                                        TaskSchedulerNode::FSortAllTasks sort_all_tasks_func,  //
                                        TaskSchedulerNode::FTuneAllTasks tune_all_tasks_func);
+
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(TaskScheduler, ObjectRef, TaskSchedulerNode);
 };
 
