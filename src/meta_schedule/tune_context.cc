@@ -23,7 +23,7 @@ namespace tvm {
 namespace meta_schedule {
 
 TVM_REGISTER_OBJECT_TYPE(TuneContextNode);
-TVM_REGISTER_GLOBAL("meta_schedule.Schedule")
+TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
     .set_body_typed([](Optional<IRModule> workload,                         //
                        Optional<SpaceGenerator> space_generator,            //
                        Optional<SearchStrategy> search_strategy,            //

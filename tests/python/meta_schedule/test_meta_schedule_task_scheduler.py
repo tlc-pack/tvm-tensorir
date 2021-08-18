@@ -19,7 +19,6 @@
 from typing import List
 import random
 
-from tir_workload import matmul
 from tvm import meta_schedule as ms
 from tvm.meta_schedule import PyTaskScheduler, TuneContext
 
@@ -50,9 +49,7 @@ def test_meta_schedule_py_task_scheduler():
 
     trials = 100
     batch_size = 25
-
     num = 20
-    count = 0
 
     space_gen = ms.ScheduleFn(sch_fn=schedule_matmul)
     tune_ctxs = []
@@ -75,11 +72,9 @@ def test_meta_schedule_py_task_scheduler():
                 verbose=0,
             )
         )
-        count += trials / batch_size
-        if trials % batch_size != 0:
-            count += 1
 
     task_scheduler = TestTaskScheduler(tune_ctxs)
+    assert task_scheduler is not None
 
 
 if __name__ == "__main__":

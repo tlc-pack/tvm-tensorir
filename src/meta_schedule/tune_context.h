@@ -76,6 +76,8 @@ class TuneContextNode : public runtime::Object {
 
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("target", &target); }
 
+  TuneContextNode() = default;
+
   /*! \brief The convenient function for post processings. */
   virtual void PostProcessFunc();
 
