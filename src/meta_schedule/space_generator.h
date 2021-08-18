@@ -20,7 +20,8 @@
 #ifndef SRC_META_SCHEDULE_SPACE_GENERATOR_H_
 #define SRC_META_SCHEDULE_SPACE_GENERATOR_H_
 
-#include <tvm/tir/schedule/schedule.h>
+#include <tvm/ir/module.h>
+#include <tvm/tir/schedule/trace.h>
 
 namespace tvm {
 namespace meta_schedule {
@@ -30,8 +31,8 @@ class TuneContext;
 
 class SpaceGeneratorNode : public runtime::Object {
  public:
-  using FInitializeWithTuneContext = void(const TuneContext&);
-  using FGenerate = Array<tir::Schedule>(const IRModule&);
+  using FInitializeWithTuneContext = runtime::TypedPackedFunc<void(const TuneContext&)>;
+  using FGenerate = runtime::TypedPackedFunc<Array<tir::Trace>(const IRModule&)>;
 
   /*! \brief Virtual destructor */
   virtual ~SpaceGeneratorNode() = default;
@@ -43,8 +44,7 @@ class SpaceGeneratorNode : public runtime::Object {
    * \brief Generate a schedule out of the design space generator
    * \return The generated schedule
    */
-  // TODO(zxybazh): Change to Traces class
-  virtual runtime::Array<tir::Schedule> Generate(const IRModule& workload) = 0;
+  virtual runtime::Array<tir::Trace> Generate(const IRModule& workload) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SpaceGenerator";
   TVM_DECLARE_BASE_OBJECT_INFO(SpaceGeneratorNode, Object);
@@ -57,10 +57,11 @@ class SpaceGeneratorNode : public runtime::Object {
 class SpaceGenerator : public runtime::ObjectRef {
  public:
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SpaceGenerator, ObjectRef, SpaceGeneratorNode);
+
   static SpaceGenerator PySpaceGenerator(
-      runtime::TypedPackedFunc<SpaceGeneratorNode::FInitializeWithTuneContext>
-          initialize_with_tune_context_func,
-      runtime::TypedPackedFunc<SpaceGeneratorNode::FGenerate> generate_func);
+      SpaceGeneratorNode::FInitializeWithTuneContext initialize_with_tune_context_func,
+      SpaceGeneratorNode::FGenerate generate_func);
+
   static SpaceGenerator SpaceGeneratorUnion(runtime::Array<ObjectRef> space_generators);
 };
 

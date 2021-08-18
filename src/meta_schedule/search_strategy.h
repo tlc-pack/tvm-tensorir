@@ -24,7 +24,7 @@
 #include <tvm/runtime/container/array.h>
 #include <tvm/runtime/object.h>
 #include <tvm/runtime/packed_func.h>
-#include <tvm/tir/schedule/schedule.h>
+#include <tvm/tir/schedule/trace.h>
 
 #include "./builder.h"
 #include "./runner.h"
@@ -41,7 +41,7 @@ class SearchStrategyNode : public runtime::Object {
   using FGenerateMeasureCandidates =
       runtime::TypedPackedFunc<Optional<runtime::Array<BuildInput>>()>;
   using FNotifyMeasureResults = runtime::TypedPackedFunc<void(const Array<MeasureResult>&)>;
-  using FPreTuning = runtime::TypedPackedFunc<void(const Array<tir::Schedule>&)>;
+  using FPreTuning = runtime::TypedPackedFunc<void(const Array<tir::Trace>&)>;
   using FPostTuning = runtime::TypedPackedFunc<void()>;
 
   /*! \brief Virtual destructor */
@@ -63,7 +63,7 @@ class SearchStrategyNode : public runtime::Object {
   virtual void NotifyMeasureResults(const Array<MeasureResult>& results) = 0;
 
   // TODO: change to trace
-  virtual void PreTuning(const Array<tir::Schedule>& design_spaces) = 0;
+  virtual void PreTuning(const Array<tir::Trace>& design_spaces) = 0;
 
   virtual void PostTuning() = 0;
 

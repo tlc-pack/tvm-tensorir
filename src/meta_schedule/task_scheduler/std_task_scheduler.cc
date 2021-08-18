@@ -74,7 +74,7 @@ class StandardTaskSchedulerNode : public TaskSchedulerNode {
       ICHECK(task->tune_context->space_generator.defined()) << "Design space generator not set";
       ICHECK(task->tune_context->search_strategy.defined()) << "Search strategy not set";
 
-      Array<tir::Schedule> design_spaces = task->tune_context->space_generator.value()->Generate(
+      Array<tir::Trace> design_spaces = task->tune_context->space_generator.value()->Generate(
           task->tune_context->workload.value());
       task->tune_context->search_strategy.value()->PreTuning(design_spaces);
     }
