@@ -52,11 +52,11 @@ class TaskScheduler(Object):
 
     def sort_all_tasks(self) -> None:
         """Sort all the tuning tasks."""
-        _ffi_api.TaskSchedulerSortAllTasks()  # pylint: disable=no-member
+        _ffi_api.TaskSchedulerSortAllTasks(self)  # pylint: disable=no-member
 
     def tune_all_tasks(self) -> None:
         """Tune all the tasks."""
-        _ffi_api.TaskSchedulerTuneAllTasks()  # pylint: disable=no-member
+        _ffi_api.TaskSchedulerTuneAllTasks(self)  # pylint: disable=no-member
 
 
 @register_object("meta_schedule.PyTaskScheduler")

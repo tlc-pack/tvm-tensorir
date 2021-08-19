@@ -56,9 +56,7 @@ class SpaceGenerator(Object):
             The tunning context for the space generator, also allowing access to all other classes
             in the same tunning context.
         """
-        return _ffi_api.SpaceGeneratorInitializeWithTuneContext(  # pylint: disable=no-member
-            context
-        )
+        _ffi_api.SpaceGeneratorInitializeWithTuneContext(self, context)  # pylint: disable=no-member
 
     def generate(self, workload: IRModule) -> List[Trace]:
         """Generate design spaces given a workload.
@@ -71,7 +69,7 @@ class SpaceGenerator(Object):
         results : List[Trace]
             The generated design spaces, i.e., traces.
         """
-        return _ffi_api.SpaceGeneratorGenerate(workload)  # pylint: disable=no-member
+        return _ffi_api.SpaceGeneratorGenerate(self, workload)  # pylint: disable=no-member
 
     def initialize(self, **kwargs) -> None:
         """Custom initialization"""
