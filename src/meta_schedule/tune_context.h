@@ -34,7 +34,7 @@ namespace tvm {
 namespace meta_schedule {
 
 /*! \brief Type defintions */
-using TRandState = int64_t;  // TODO(zxybazh): Merge with Sampling PR.
+using TRandState = int64_t;  // AWAIT(zxybazh): Merge with Sampling PR.
 using Database = ObjectRef;
 using CostModel = ObjectRef;
 using PostProc = ObjectRef;
@@ -67,7 +67,7 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The value of verbose. */
   int verbose;
 
-  // TODO(zxybazh): Convenient functions for post-processing and measure callbacks.
+  // AWAIT(zxybazh): Convenient functions for post-processing and measure callbacks.
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("workload", &workload);

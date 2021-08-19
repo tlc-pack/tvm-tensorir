@@ -38,11 +38,6 @@ class TaskSchedulerNode : public runtime::Object {
   /*! \brief Virtual destructor */
   virtual ~TaskSchedulerNode() = default;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("builder", &builder);
-    v->Visit("runner", &runner);
-  }
-
   Optional<Builder> builder;
   Optional<Runner> runner;
 

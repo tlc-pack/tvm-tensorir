@@ -45,13 +45,12 @@ TuneContext::TuneContext(Optional<IRModule> workload,                         //
   n->postprocs = postprocs;
   n->measure_callbacks = measure_callbacks;
   n->name = name;
-  n->seed = seed;  // TODO(zxybazh): Initialize the random seed.
+  n->seed = seed;  // AWAIT(zxybazh): Initialize the random seed.
   n->num_threads = num_threads;
   n->verbose = verbose;
   data_ = std::move(n);
 }
 
-TVM_REGISTER_NODE_TYPE(TuneContextNode);
 TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
     .set_body_typed([](Optional<IRModule> workload,                         //
                        Optional<SpaceGenerator> space_generator,            //
@@ -68,6 +67,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
       return TuneContext(workload, space_generator, search_strategy, database, cost_model, target,
                          postprocs, measure_callbacks, name, seed, num_threads, verbose);
     });
+
+TVM_REGISTER_NODE_TYPE(TuneContextNode);
 
 }  // namespace meta_schedule
 }  // namespace tvm

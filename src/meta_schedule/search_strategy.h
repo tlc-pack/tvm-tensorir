@@ -62,7 +62,6 @@ class SearchStrategyNode : public runtime::Object {
    */
   virtual void NotifyMeasureResults(const Array<MeasureResult>& results) = 0;
 
-  // TODO: change to trace
   virtual void PreTuning(const Array<tir::Trace>& design_spaces) = 0;
 
   virtual void PostTuning() = 0;

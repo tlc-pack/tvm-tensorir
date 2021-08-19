@@ -32,7 +32,11 @@ class PyTaskSchedulerNode : public TaskSchedulerNode {
   /*! \brief Pointer to the autotuning function in python */
   FTuneAllTasks tune_all_tasks_func;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("tune_contexts", &tune_contexts); }
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("tune_contexts", &tune_contexts);
+    v->Visit("builder", &builder);
+    v->Visit("runner", &runner);
+  }
 
   void SortAllTasks() override { this->sort_all_tasks_func(); }
 

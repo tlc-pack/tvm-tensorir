@@ -23,7 +23,7 @@ from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.ir import IRModule
 from tvm.tir import PrimFunc
-from tvm.tir.schedule import Schedule
+from tvm.tir.schedule import Schedule, Trace
 
 from . import _ffi_api
 
@@ -45,7 +45,7 @@ class SpaceGenerator(Object):
             context
         )
 
-    def generate(self, workload: IRModule) -> List[Schedule]:
+    def generate(self, workload: IRModule) -> List[Trace]:
         return _ffi_api.SpaceGeneratorGenerate(workload)  # pylint: disable=no-member
 
     def initialize(self, **kwargs) -> None:
@@ -60,7 +60,7 @@ class PySpaceGenerator(SpaceGenerator):
         def initialize_with_tune_context_func(context: "TuneContext") -> None:
             self.initialize_with_tune_context(context)
 
-        def generate_func(workload: IRModule) -> List[Schedule]:
+        def generate_func(workload: IRModule) -> List[Trace]:
             return self.generate(workload)
 
         self.__init_handle_by_constructor__(
@@ -79,7 +79,7 @@ class PySpaceGenerator(SpaceGenerator):
         """
         raise NotImplementedError
 
-    def generate(self, workload: IRModule) -> List[Schedule]:
+    def generate(self, workload: IRModule) -> List[Trace]:
         """Generate a list of schedules from generator
 
         Returns
@@ -94,9 +94,9 @@ class ScheduleFn(PySpaceGenerator):
     """Design space that is specified by a schedule function"""
 
     SCH_FN_TYPE = Union[
-        Callable[[Schedule], None],
-        Callable[[Schedule], Schedule],
-        Callable[[Schedule], List[Schedule]],
+        Callable[[Trace], None],
+        Callable[[Trace], Trace],
+        Callable[[Trace], List[Trace]],
     ]
 
     def __init__(self, sch_fn: SCH_FN_TYPE):
@@ -106,16 +106,16 @@ class ScheduleFn(PySpaceGenerator):
     def initialize_with_tune_context(self, context: "TuneContext") -> None:
         raise NotImplementedError
 
-    def generate(self, workload: IRModule) -> List[Schedule]:
+    def generate(self, workload: IRModule) -> List[Trace]:
         sch = Schedule(workload, traced=True)
         result = self.sch_fn(sch)
         if result is None:
-            return [sch]
+            return [sch.trace]
         if isinstance(result, (list, tvm.ir.Array)):
             for ret in result:
-                if not isinstance(ret, Schedule):
+                if not isinstance(ret, Trace):
                     raise TypeError(
-                        "Wrong type of element in the list, expected Schedule got "
+                        "Wrong type of element in the list, expected Trace got "
                         + f"'{type(ret)}': {ret}"
                     )
             return result

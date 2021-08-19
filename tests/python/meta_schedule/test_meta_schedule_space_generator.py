@@ -18,10 +18,19 @@
 # pylint: disable=missing-function-docstring
 
 from tir_workload import matmul
-from tvm import meta_schedule as ms
-from tvm.tir.schedule import Schedule
+from tvm.tir.schedule import Schedule, Trace
+from tvm.meta_schedule import ScheduleFn, SpaceGeneratorUnion
 
-from tvm.meta_schedule import ScheduleFn
+
+def check_correct(trace: Trace):
+    decisions = []
+    for w in trace.decisions:
+        decisions += trace.decisions[w]
+
+    i_0, i_1, i_2, i_3, j_0, j_1, j_2, j_3, k_1, k_0 = decisions
+    assert i_0 * i_1 * i_2 * i_3 == 1024
+    assert j_0 * j_1 * j_2 * j_3 == 1024
+    assert k_0 * k_1 == 1024
 
 
 def test_meta_schedule_space_generator_schedule_fn():
@@ -35,16 +44,12 @@ def test_meta_schedule_space_generator_schedule_fn():
         j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
         k_0, k_1 = sch.split(loop=k, factors=k_tiles)
         sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
+        return sch.trace
 
     space_gen = ScheduleFn(sch_fn=schedule_matmul)
-    (sch,) = space_gen.generate(workload=matmul)
+    (trace,) = space_gen.generate(workload=matmul)
 
-    i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        sch.get_sref(i).stmt.extent for i in sch.get_loops(sch.get_block("matmul"))
-    ]
-    assert i_0 * i_1 * i_2 * i_3 == 1024
-    assert j_0 * j_1 * j_2 * j_3 == 1024
-    assert k_0 * k_1 == 1024
+    check_correct(trace)
 
 
 def test_meta_schedule_design_space_generator_union():
@@ -60,26 +65,11 @@ def test_meta_schedule_design_space_generator_union():
         sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
 
     space_gen = ScheduleFn(sch_fn=schedule_matmul)
-    space_gen_union = ms.SpaceGeneratorUnion([space_gen, space_gen])
+    space_gen_union = SpaceGeneratorUnion([space_gen, space_gen])
     ret = space_gen_union.generate(workload=matmul)
     assert len(ret) == 2
-    sch = ret[0]
-
-    i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        sch.get_sref(i).stmt.extent for i in sch.get_loops(sch.get_block("matmul"))
-    ]
-    assert i_0 * i_1 * i_2 * i_3 == 1024
-    assert j_0 * j_1 * j_2 * j_3 == 1024
-    assert k_0 * k_1 == 1024
-
-    sch = ret[1]
-
-    i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        sch.get_sref(i).stmt.extent for i in sch.get_loops(sch.get_block("matmul"))
-    ]
-    assert i_0 * i_1 * i_2 * i_3 == 1024
-    assert j_0 * j_1 * j_2 * j_3 == 1024
-    assert k_0 * k_1 == 1024
+    check_correct(ret[0])
+    check_correct(ret[1])
 
 
 if __name__ == "__main__":

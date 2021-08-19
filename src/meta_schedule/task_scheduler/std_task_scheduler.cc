@@ -64,6 +64,12 @@ class StandardTaskSchedulerNode : public TaskSchedulerNode {
   /*! \brief Tasks of the scheduler. */
   Array<TaskWithContext> tasks;
 
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("tasks", &tasks);
+    v->Visit("builder", &builder);
+    v->Visit("runner", &runner);
+  }
+
   // Round robin task scheduler
   void SortAllTasks() {}
 
@@ -139,6 +145,7 @@ TaskScheduler TaskScheduler::StandardTaskScheduler(Array<TuneContext> tune_conte
 }
 
 TVM_REGISTER_NODE_TYPE(StandardTaskSchedulerNode);
+
 TVM_REGISTER_GLOBAL("meta_schedule.StandardTaskScheduler")
     .set_body_typed(TaskScheduler::StandardTaskScheduler);
 
