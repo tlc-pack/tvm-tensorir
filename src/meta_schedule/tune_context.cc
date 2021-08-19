@@ -44,7 +44,7 @@ TuneContext::TuneContext(Optional<IRModule> workload,                         //
                          Optional<Database> database,                         //
                          Optional<CostModel> cost_model,                      //
                          Optional<Target> target,                             //
-                         Optional<Array<PostProc>> postprocs,                 //
+                         Optional<Array<Postproc>> postprocs,                 //
                          Optional<Array<MeasureCallback>> measure_callbacks,  //
                          String name,                                         //
                          TRandState seed,                                     //
@@ -76,7 +76,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
                        Optional<Database> database,                         //
                        Optional<CostModel> cost_model,                      //
                        Optional<Target> target,                             //
-                       Optional<Array<PostProc>> postprocs,                 //
+                       Optional<Array<Postproc>> postprocs,                 //
                        Optional<Array<MeasureCallback>> measure_callbacks,  //
                        String name,                                         //
                        TRandState seed,                                     //

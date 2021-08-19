@@ -65,7 +65,7 @@ def test_meta_schedule_create_task_scheduler():
                 database=None,
                 cost_model=None,
                 target=None,
-                post_procs=None,
+                postprocs=None,
                 measure_callbacks=None,
                 name="test",
                 seed=42,

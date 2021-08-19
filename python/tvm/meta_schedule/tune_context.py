@@ -36,7 +36,7 @@ class CostModel:
     pass
 
 
-class PostProc:
+class Postproc:
     pass
 
 
@@ -63,7 +63,7 @@ class TuneContext(Object):
         database: Optional[Database],
         cost_model: Optional[CostModel],
         target: Optional[Target],
-        post_procs: Optional[List[PostProc]],
+        postprocs: Optional[List[Postproc]],
         measure_callbacks: Optional[List[MeasureCallback]],
         name: str,
         seed: int,
@@ -87,7 +87,7 @@ class TuneContext(Object):
              Provides interface to update and query the cost model for estimation.
         target : Optional[Target],
             The target to be optimized for.
-        post_procs : Optional[List[PostProc]],
+        postprocs : Optional[List[Postproc]],
             The post processing functions.
             Each post processor is a single callable function.
         measure_callbacks : Optional[List[MeasureCallback]],
@@ -111,7 +111,7 @@ class TuneContext(Object):
             database,
             cost_model,
             target,
-            post_procs,
+            postprocs,
             measure_callbacks,
             name,
             seed,

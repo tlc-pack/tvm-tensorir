@@ -39,7 +39,7 @@ using TRandState = int64_t;
 // AWAIT(zxybazh): Merge with acutal implementation.
 using Database = ObjectRef;
 using CostModel = ObjectRef;
-using PostProc = ObjectRef;
+using Postproc = ObjectRef;
 using MeasureCallback = ObjectRef;
 
 /*! \brief The context for tuning, providing all required recources. */
@@ -58,7 +58,7 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The target to be optimized for. */
   Optional<Target> target;
   /* \brief The post processing functions. */
-  Optional<Array<PostProc>> postprocs;
+  Optional<Array<Postproc>> postprocs;
   /*! \brief The measure callback functions. */
   Optional<Array<MeasureCallback>> measure_callbacks;
   /*! \brief The name of the tuning task. */
@@ -129,7 +129,7 @@ class TuneContext : public runtime::ObjectRef {
                                Optional<Database> database,                         //
                                Optional<CostModel> cost_model,                      //
                                Optional<Target> target,                             //
-                               Optional<Array<PostProc>> postprocs,                 //
+                               Optional<Array<Postproc>> postprocs,                 //
                                Optional<Array<MeasureCallback>> measure_callbacks,  //
                                String name,                                         //
                                TRandState seed,                                     //
