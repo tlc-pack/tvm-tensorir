@@ -17,4 +17,4 @@
 """FFI APIs for tvm.meta_schedule"""
 import tvm._ffi
 
-tvm._ffi._init_api("meta_schedule", __name__)
+tvm._ffi._init_api("meta_schedule", __name__)  # pylint: disable=protected-access

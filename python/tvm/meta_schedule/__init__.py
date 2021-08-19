@@ -15,7 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
-""" Meta Schedule """
+"""Namespace for the Meta Schedule API."""
+
 from .space_generator import SpaceGenerator, PySpaceGenerator, ScheduleFn, SpaceGeneratorUnion
 from .search_strategy import SearchStrategy, PySearchStrategy, ReplaySearchStrategy
 from .tune_context import TuneContext

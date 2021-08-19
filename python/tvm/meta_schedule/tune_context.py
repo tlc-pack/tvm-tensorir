@@ -46,7 +46,14 @@ class MeasureCallback:
 
 @register_object("meta_schedule.TuneContext")
 class TuneContext(Object):
-    """Description and abstraction of a tune context class."""
+    """
+    The tune context class is designed to contain all resources for a tuning task.
+
+    All tuning tasks are separated in different tune contexts, but classes can access other class in
+    the same tune context through this class.
+
+    Most classes have a function to initialize with a tune context.
+    """
 
     def __init__(
         self,
@@ -63,6 +70,39 @@ class TuneContext(Object):
         num_threads: int,
         verbose: int,
     ):
+        """Construct a TuneContext.
+        Parameters
+        ----------
+        workload : Optional[IRModule],
+            The workload to be optimized.
+        space_generator : Optional[SpaceGenerator],
+            The design space generator.
+        search_strategy : Optional[SearchStrategy],
+           The search strategy to be used.
+        database : Optional[Database],
+            The database for querying and storage.
+            Provides interface to query and store the results.
+        cost_model : Optional[CostModel],
+             The cost model for estimation.
+             Provides interface to update and query the cost model for estimation.
+        target : Optional[Target],
+            The target to be optimized for.
+        post_procs : Optional[List[PostProc]],
+            The post processing functions.
+            Each post processor is a single callable function.
+        measure_callbacks : Optional[List[MeasureCallback]],
+            The measure callback functions.
+            Each measure callback is a single callable function.
+        name : str,
+            The name of the tuning task.
+        seed : int,
+            The seed value of random state.
+            Need to be in integer in [1, 2^31-1].
+        num_threads : int,
+            The number of threads to be used.
+        verbose : int,
+            The verbosity level.
+        """
         self.__init_handle_by_constructor__(
             _ffi_api.TuneContext,  # pylint: disable=no-member
             workload,
@@ -78,9 +118,3 @@ class TuneContext(Object):
             num_threads,
             verbose,
         )
-
-    def post_process(self) -> None:
-        return _ffi_api.TuneContextPostProcess()  # pylint: disable=no-member
-
-    def measure_callback(self) -> None:
-        return _ffi_api.TuneContextMeasureCallback()  # pylint: disable=no-member

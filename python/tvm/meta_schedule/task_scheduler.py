@@ -16,7 +16,7 @@
 # under the License.
 """Task Scheduler"""
 
-from typing import List
+from typing import List, Optional
 from tvm.runtime import Object
 
 from tvm._ffi import register_object
@@ -35,24 +35,63 @@ class Runner:
 
 @register_object("meta_schedule.TaskScheduler")
 class TaskScheduler(Object):
-    """Description and abstraction of a task scheduler class."""
+    """
+    The abstract task scheduler for auto tuning.
+
+    Task scheduler is responsible for scheduling tasks to maximize tuning rewards with given
+    computing resources. While the task scheduler is running, it will try to do measure candidates
+    generation while waiting for runner to asynchronously return measure results.
+
+    The task scheduler works with two functions:
+    1. sort_all_tasks: sort all tasks according to certain priority.
+    2. tune_all_tasks: tune all tasks based on given scheduling mechanism.
+
+    The PyTaskScheduler will call the functions defined in the class body, and the
+    StandardTaskScheduler (available from the c++ side) works on the task in a round-robin fashion.
+    """
 
     def sort_all_tasks(self) -> None:
-        return _ffi_api.TaskSchedulerSortAllTasks()  # pylint: disable=no-member
+        """Sort all the tuning tasks."""
+        _ffi_api.TaskSchedulerSortAllTasks()  # pylint: disable=no-member
 
     def tune_all_tasks(self) -> None:
-        return _ffi_api.TaskSchedulerTuneAllTasks()  # pylint: disable=no-member
+        """Tune all the tasks."""
+        _ffi_api.TaskSchedulerTuneAllTasks()  # pylint: disable=no-member
 
 
 @register_object("meta_schedule.PyTaskScheduler")
 class PyTaskScheduler(TaskScheduler):
-    """Task Scheduler that is implemented in python"""
+    """
+    The PyTaskScheduler is defined for cutomizable task scheduling from python side.
+    With PyTaskScheduler, you can define your own task sorting and tuning mechanism.
+    """
 
-    def __init__(self, tune_contexts: List[TuneContext], builder: Builder, runner: Runner):
+    def __init__(
+        self, tune_contexts: List[TuneContext], builder: Optional[Builder], runner: Optional[Runner]
+    ):
+        """Construct a PyTaskScheduler.
+        Parameters
+        ----------
+        tune_contexts: List[TuneContext]
+            The list of tuning contexts.
+            The sort_all_tasks function can manipulate the order of tuning contexts.
+        builder: Builder
+            The builder of the task scheduler. You may want to check whether it's None before usage.
+        runner: Runner
+            The runner of the task scheduler. You may want to check whether it's None before usage.
+
+        Note
+        ----
+        The PyTaskScheduler will use the sort_all_tasks and tune_all_tasks functions defined in the
+        class body to schedule all tasks.
+        """
+
         def sort_all_tasks_func() -> None:
+            """Pass the sort_all_tasks function to constructor."""
             self.sort_all_tasks()
 
         def tune_all_tasks_func() -> None:
+            """Pass the tune_all_tasks function to constructor."""
             self.tune_all_tasks()
 
         self.__init_handle_by_constructor__(
@@ -65,7 +104,7 @@ class PyTaskScheduler(TaskScheduler):
         )
 
     def sort_all_tasks(self) -> None:
-        """Sort all tasks with priority during auto tuning."""
+        """Sort all tasks with certain priority."""
         raise NotImplementedError
 
     def tune_all_tasks(self) -> None:
