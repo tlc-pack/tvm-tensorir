@@ -28,10 +28,13 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_OBJECT_TYPE(SpaceGeneratorNode);
+TVM_REGISTER_OBJECT_TYPE(SpaceGeneratorNode);  // Abstract class
 
+/*! \brief Register SpaceGenerator's `InitializeWithTuneContext` function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorInitializeWithTuneContext")
     .set_body_method<SpaceGenerator>(&SpaceGeneratorNode::InitializeWithTuneContext);
+
+/*! \brief Register SpaceGenerator's `Generate` function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorGenerate")
     .set_body_method<SpaceGenerator>(&SpaceGeneratorNode::Generate);
 

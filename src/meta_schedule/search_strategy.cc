@@ -24,16 +24,21 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);
+TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);  // Abstract class
 
+/*! \brief Register SearchStrategy's `InitializeWithTuneContext` function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyInitializeWithTuneContext")
     .set_body_method<SearchStrategy>(&SearchStrategyNode::InitializeWithTuneContext);
+/*! \brief Register SearchStrategy's `GenerateMeasureCandidates` function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyGenerateMeasureCandidates")
     .set_body_method<SearchStrategy>(&SearchStrategyNode::GenerateMeasureCandidates);
+/*! \brief Register SearchStrategy's `NotifyMeasureResults` function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyNotifyMeasureResults")
     .set_body_method<SearchStrategy>(&SearchStrategyNode::NotifyMeasureResults);
+/*! \brief Register SearchStrategy's `PreTuning` function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyPreTuning")
     .set_body_method<SearchStrategy>(&SearchStrategyNode::PreTuning);
+/*! \brief Register SearchStrategy's `PostTuning` function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyPostTuning")
     .set_body_method<SearchStrategy>(&SearchStrategyNode::PostTuning);
 

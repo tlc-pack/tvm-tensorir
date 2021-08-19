@@ -35,39 +35,55 @@ namespace meta_schedule {
 // Forward declaration
 class TuneContext;
 
+/*! \brief The mutable class of search strategy, i.e, measure candidates generation. */
 class SearchStrategyNode : public runtime::Object {
  public:
+  /*! \brief The function type of `InitializeWithTuneContext` method. */
   using FInitializeWithTuneContext = runtime::TypedPackedFunc<void(const TuneContext&)>;
+  /*! \brief The function type of `GenerateMeasureCandidates` method. */
   using FGenerateMeasureCandidates =
       runtime::TypedPackedFunc<Optional<runtime::Array<BuildInput>>()>;
+  /*! \brief The function type of `NotifyMeasureResults` method. */
   using FNotifyMeasureResults = runtime::TypedPackedFunc<void(const Array<MeasureResult>&)>;
+  /*! \brief The function type of `PreTuning` method. */
   using FPreTuning = runtime::TypedPackedFunc<void(const Array<tir::Trace>&)>;
+  /*! \brief The function type of `PostTuning` method. All typedefs are used for customization. */
   using FPostTuning = runtime::TypedPackedFunc<void()>;
 
-  /*! \brief Virtual destructor */
+  /*! \brief Virtual destructor, required for abstract class. */
   virtual ~SearchStrategyNode() = default;
 
-  /*! \brief Initialize the search strategy with TuneContext */
+  /*!
+   * \brief Virtual function to initialize the search strategy with TuneContext.
+   * \param context The TuneContext object for initialization.
+   */
   virtual void InitializeWithTuneContext(const TuneContext& context) = 0;
 
   /*!
-   * \brief Generate the candidates from design space in tune context for measurement
-   * \return The next batch of candidates for measurements generated from the design space
+   * \brief Virtual function to generate candidates from design space for measurement.
+   * \return The next batch of candidates for measurements generated from the design space. Return
+   *  nullptr when the search strategy is done.
    */
   virtual Optional<runtime::Array<BuildInput>> GenerateMeasureCandidates() = 0;
 
   /*!
-   * \brief Update the search strategy with meansurement results from the runners
-   * \param results The measurement results of candidates generated from the search strategy
+   * \brief Virtual function to update the search strategy with meansurements from the runners.
+   * \param results The measurement results of candidates generated from the search strategy.
    */
   virtual void NotifyMeasureResults(const Array<MeasureResult>& results) = 0;
 
+  /*!
+   * \brief Virtual function to prepare the search strategy status before tuning.
+   * \param design_spaces The given design spaces for measure candidates generation.
+   */
   virtual void PreTuning(const Array<tir::Trace>& design_spaces) = 0;
 
+  /*! \brief Virtual function to do post tuning work. */
   virtual void PostTuning() = 0;
 
+  /*! \brief Class name `SearchStrategy` */
   static constexpr const char* _type_key = "meta_schedule.SearchStrategy";
-  TVM_DECLARE_BASE_OBJECT_INFO(SearchStrategyNode, Object);
+  TVM_DECLARE_BASE_OBJECT_INFO(SearchStrategyNode, Object);  // Abstract class
 };
 
 /*!
@@ -76,7 +92,18 @@ class SearchStrategyNode : public runtime::Object {
  */
 class SearchStrategy : public runtime::ObjectRef {
  public:
+  /*! \brief Declare reference relationship. */
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
+
+  /*!
+   * \brief Member function to create the python side customizable PySearchStrategy class.
+   * \param initialize_with_tune_context_func The function pointer to the `Init...` function.
+   * \param generate_measure_candidates_func The function pointer to the `Generate...` function.
+   * \param notify_measure_results_func The function pointer to the `Notify...` function.
+   * \param pre_tuning_func The function pointer to the `PreTuning` function.
+   * \param post_tuning_func The function pointer to the `PostTuning` function.
+   * \return The constructed PySpaceGenerator object but in SpaceGenerator type.
+   */
   static SearchStrategy PySearchStrategy(
       SearchStrategyNode::FInitializeWithTuneContext initialize_with_tune_context_func,
       SearchStrategyNode::FGenerateMeasureCandidates generate_measure_candidates_func,
