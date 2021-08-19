@@ -148,7 +148,7 @@ class ReplaySearchStrategy(PySearchStrategy):
             return None
         candidates = []
         for _ in range(self.count, min(self.count + self.batch_size, self.trials)):
-            trace = Trace(random.choice(self.design_spaces).trace.insts, None)
+            trace = Trace(random.choice(self.design_spaces).insts, None)
             candidates.append(trace)
         return candidates
 

@@ -18,11 +18,8 @@
 # pylint: disable=missing-function-docstring
 
 from tir_workload import matmul
-from tvm import meta_schedule as ms
 from tvm.tir.schedule import Schedule
-from tvm.meta_schedule import ScheduleFn
-
-import pytest
+from tvm.meta_schedule import ScheduleFn, ReplaySearchStrategy
 
 
 def test_meta_schedule_search_strategy():
@@ -41,7 +38,7 @@ def test_meta_schedule_search_strategy():
     batch_size = 30
 
     space_gen = ScheduleFn(sch_fn=schedule_matmul)
-    replay = ms.ReplaySearchStrategy(trials, batch_size)
+    replay = ReplaySearchStrategy(trials, batch_size)
     replay.pre_tuning(design_spaces=space_gen.generate(workload=matmul))
 
     results = []

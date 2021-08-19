@@ -20,9 +20,9 @@
 from typing import List
 import random
 
-from tvm import meta_schedule as ms
-from tvm.meta_schedule import PyTaskScheduler, TuneContext, ScheduleFn
+from tvm.meta_schedule import PyTaskScheduler, TuneContext, ScheduleFn, ReplaySearchStrategy
 from tvm.tir.schedule import Schedule
+from tir_workload import matmul
 
 
 def test_meta_schedule_create_task_scheduler():
@@ -58,10 +58,10 @@ def test_meta_schedule_create_task_scheduler():
         trials = 100 * random.randint(1, 10)
         batch_size = random.randint(10, 50)
         tune_ctxs.append(
-            ms.TuneContext(
+            TuneContext(
                 workload=None,
                 space_generator=space_gen,
-                search_strategy=ms.ReplaySearchStrategy(trials, batch_size),
+                search_strategy=ReplaySearchStrategy(trials, batch_size),
                 database=None,
                 cost_model=None,
                 target=None,
