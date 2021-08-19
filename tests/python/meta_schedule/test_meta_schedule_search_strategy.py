@@ -47,7 +47,7 @@ def test_meta_schedule_search_strategy():
         results += temp
         assert len(temp) == batch_size or len(results) == trials
         assert len(results) <= trials
-        replay.notify_measure_results(temp)
+        replay.notify_runner_results(temp)
         temp = replay.generate_measure_candidates()
 
     assert len(results) == trials

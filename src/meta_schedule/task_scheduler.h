@@ -57,7 +57,7 @@ class TaskSchedulerNode : public runtime::Object {
 };
 
 /*!
- * \brief Managed reference to TaskSchedulerNode
+ * \brief Managed reference to TaskSchedulerNode.
  * \sa TuneContextNode
  */
 class TaskScheduler : public runtime::ObjectRef {

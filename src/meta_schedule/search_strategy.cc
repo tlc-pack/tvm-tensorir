@@ -32,9 +32,9 @@ TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyInitializeWithTuneContext")
 /*! \brief Register SearchStrategy's `GenerateMeasureCandidates` function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyGenerateMeasureCandidates")
     .set_body_method<SearchStrategy>(&SearchStrategyNode::GenerateMeasureCandidates);
-/*! \brief Register SearchStrategy's `NotifyMeasureResults` function to global registry. */
-TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyNotifyMeasureResults")
-    .set_body_method<SearchStrategy>(&SearchStrategyNode::NotifyMeasureResults);
+/*! \brief Register SearchStrategy's `NotifyRunnerResults` function to global registry. */
+TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyNotifyRunnerResults")
+    .set_body_method<SearchStrategy>(&SearchStrategyNode::NotifyRunnerResults);
 /*! \brief Register SearchStrategy's `PreTuning` function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyPreTuning")
     .set_body_method<SearchStrategy>(&SearchStrategyNode::PreTuning);

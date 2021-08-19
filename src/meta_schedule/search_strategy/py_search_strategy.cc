@@ -31,7 +31,7 @@ class PySearchStrategyNode : public SearchStrategyNode {
   /*! \brief Pointer to the `Generate...` function python. */
   FGenerateMeasureCandidates generate_measure_candidates_func;
   /*! \brief Pointer to the `Notify...` function python. */
-  FNotifyMeasureResults notify_measure_results_func;
+  FNotifyRunnerResults notify_runner_results_func;
   /*! \brief Pointer to the `PreTuning` function python. */
   FPreTuning pre_tuning_func;
   /*! \brief Pointer to the `PostTuning` function python. */
@@ -62,10 +62,10 @@ class PySearchStrategyNode : public SearchStrategyNode {
 
   /*!
    * \brief Use the given function pointer to override the `Notify...` function.
-   * \param results The measurement results of candidates generated from the search strategy.
+   * \param results The runner's results of candidates generated from the search strategy.
    */
-  void NotifyMeasureResults(const Array<MeasureResult>& results) override {
-    this->notify_measure_results_func(results);
+  void NotifyRunnerResults(const Array<RunnerResult>& results) override {
+    this->notify_runner_results_func(results);
   }
 
   /*!
@@ -93,7 +93,7 @@ class PySearchStrategy : public SearchStrategy {
   TVM_DLL explicit PySearchStrategy(
       SearchStrategyNode::FInitializeWithTuneContext initialize_with_tune_context_func,
       SearchStrategyNode::FGenerateMeasureCandidates generate_measure_candidates_func,
-      SearchStrategyNode::FNotifyMeasureResults notify_measure_results_func,
+      SearchStrategyNode::FNotifyRunnerResults notify_runner_results_func,
       SearchStrategyNode::FPreTuning pre_tuning_func,
       SearchStrategyNode::FPostTuning post_tuning_func) {
     // Make a new PySearchStrategyNode object.
@@ -101,7 +101,7 @@ class PySearchStrategy : public SearchStrategy {
     // Copy the given function pointers.
     n->initialize_with_tune_context_func = std::move(initialize_with_tune_context_func);
     n->generate_measure_candidates_func = std::move(generate_measure_candidates_func);
-    n->notify_measure_results_func = std::move(notify_measure_results_func);
+    n->notify_runner_results_func = std::move(notify_runner_results_func);
     n->pre_tuning_func = std::move(pre_tuning_func);
     n->post_tuning_func = std::move(post_tuning_func);
     data_ = std::move(n);
@@ -116,7 +116,7 @@ class PySearchStrategy : public SearchStrategy {
  * \brief Expose the PySearchStrategy constructor function as a member function of SearchStrategy.
  * \param initialize_with_tune_context_func The function pointer to the `Init...` function python.
  * \param generate_measure_candidates_func The function pointer to the `Gene...` function python.
- * \param notify_measure_results_func The function pointer to the `Notify...` function python.
+ * \param notify_runner_results_func The function pointer to the `Notify...` function python.
  * \param pre_tuning_func The function pointer to the `PreTuning` function python.
  * \param post_tuning_func The function pointer to the `PostTuning` function python.
  * \return The constructed PySearchStrategy object but in SearchStrategy type.
@@ -124,12 +124,12 @@ class PySearchStrategy : public SearchStrategy {
 SearchStrategy SearchStrategy::PySearchStrategy(
     SearchStrategyNode::FInitializeWithTuneContext initialize_with_tune_context_func,
     SearchStrategyNode::FGenerateMeasureCandidates generate_measure_candidates_func,
-    SearchStrategyNode::FNotifyMeasureResults notify_measure_results_func,
+    SearchStrategyNode::FNotifyRunnerResults notify_runner_results_func,
     SearchStrategyNode::FPreTuning pre_tuning_func,
     SearchStrategyNode::FPostTuning post_tuning_func) {
   return meta_schedule::PySearchStrategy(
       initialize_with_tune_context_func, generate_measure_candidates_func,
-      notify_measure_results_func, pre_tuning_func, post_tuning_func);
+      notify_runner_results_func, pre_tuning_func, post_tuning_func);
 }
 
 TVM_REGISTER_NODE_TYPE(PySearchStrategyNode);  // Concrete class

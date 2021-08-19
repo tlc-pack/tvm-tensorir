@@ -127,10 +127,16 @@ class StandardTaskSchedulerNode : public TaskSchedulerNode {
           if (measure_candidates.defined()) {
             // If candidates are generated, send them to the builder.
             ICHECK(builder.defined()) << "Builder not set";
-            Array<BuildResult> builds = builder.value()->Build(measure_candidates.value());
+            Array<BuildResult> build_results = builder.value()->Build(measure_candidates.value());
             ICHECK(runner.defined()) << "Runner not set";
             // Send the builds to the runner, and get the runner's callback.
-            task->runner_callback = runner.value()->Run(builds);
+            Array<RunnerInput> runner_inputs;
+            for (BuildResult build_result : build_results) {
+              if (build_result->artifact_path.defined()) {
+                runner_inputs.push_back(RunnerInput(build_result->artifact_path.value()));
+              }
+            }
+            task->runner_callback = runner.value()->Run(runner_inputs);
           } else {
             // If no measure candidates are generated, the task is finished.
             task->is_finished = true;
@@ -139,12 +145,12 @@ class StandardTaskSchedulerNode : public TaskSchedulerNode {
             // Remove the task from the unfinished tasks.
             --num_unfinished;
           }
-        } else if (Optional<Array<MeasureResult>> results = task->runner_callback()) {
+        } else if (Optional<Array<RunnerResult>> results = task->runner_callback()) {
           // Clear the runner's callback.
           task->runner_callback = RunnerFuture(nullptr);
           // Search strategy already been checked when called before.
-          // Update the search strategy status with the measure results.
-          task->tune_context->search_strategy.value()->NotifyMeasureResults(results.value());
+          // Update the search strategy status with the runner results.
+          task->tune_context->search_strategy.value()->NotifyRunnerResults(results.value());
         }
       }
     }

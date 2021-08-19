@@ -40,7 +40,7 @@ class TaskScheduler(Object):
 
     Task scheduler is responsible for scheduling tasks to maximize tuning rewards with given
     computing resources. While the task scheduler is running, it will try to do measure candidates
-    generation while waiting for runner to asynchronously return measure results.
+    generation while waiting for runner to asynchronously return runner results.
 
     The task scheduler works with two functions:
     1. sort_all_tasks: sort all tasks according to certain priority.

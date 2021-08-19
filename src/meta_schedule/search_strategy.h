@@ -43,8 +43,8 @@ class SearchStrategyNode : public runtime::Object {
   /*! \brief The function type of `GenerateMeasureCandidates` method. */
   using FGenerateMeasureCandidates =
       runtime::TypedPackedFunc<Optional<runtime::Array<BuildInput>>()>;
-  /*! \brief The function type of `NotifyMeasureResults` method. */
-  using FNotifyMeasureResults = runtime::TypedPackedFunc<void(const Array<MeasureResult>&)>;
+  /*! \brief The function type of `NotifyRunnerResults` method. */
+  using FNotifyRunnerResults = runtime::TypedPackedFunc<void(const Array<RunnerResult>&)>;
   /*! \brief The function type of `PreTuning` method. */
   using FPreTuning = runtime::TypedPackedFunc<void(const Array<tir::Trace>&)>;
   /*! \brief The function type of `PostTuning` method. All typedefs are used for customization. */
@@ -68,9 +68,9 @@ class SearchStrategyNode : public runtime::Object {
 
   /*!
    * \brief Virtual function to update the search strategy with meansurements from the runners.
-   * \param results The measurement results of candidates generated from the search strategy.
+   * \param results The runner's results of candidates generated from the search strategy.
    */
-  virtual void NotifyMeasureResults(const Array<MeasureResult>& results) = 0;
+  virtual void NotifyRunnerResults(const Array<RunnerResult>& results) = 0;
 
   /*!
    * \brief Virtual function to prepare the search strategy status before tuning.
@@ -87,7 +87,7 @@ class SearchStrategyNode : public runtime::Object {
 };
 
 /*!
- * \brief Managed reference to Search Strategy Generator Node
+ * \brief Managed reference to SearchStrategyNode.
  * \sa SearchStrategyNode
  */
 class SearchStrategy : public runtime::ObjectRef {
@@ -99,7 +99,7 @@ class SearchStrategy : public runtime::ObjectRef {
    * \brief Member function to create the python side customizable PySearchStrategy class.
    * \param initialize_with_tune_context_func The function pointer to the `Init...` function.
    * \param generate_measure_candidates_func The function pointer to the `Generate...` function.
-   * \param notify_measure_results_func The function pointer to the `Notify...` function.
+   * \param notify_runner_results_func The function pointer to the `Notify...` function.
    * \param pre_tuning_func The function pointer to the `PreTuning` function.
    * \param post_tuning_func The function pointer to the `PostTuning` function.
    * \return The constructed PySpaceGenerator object but in SpaceGenerator type.
@@ -107,7 +107,7 @@ class SearchStrategy : public runtime::ObjectRef {
   static SearchStrategy PySearchStrategy(
       SearchStrategyNode::FInitializeWithTuneContext initialize_with_tune_context_func,
       SearchStrategyNode::FGenerateMeasureCandidates generate_measure_candidates_func,
-      SearchStrategyNode::FNotifyMeasureResults notify_measure_results_func,
+      SearchStrategyNode::FNotifyRunnerResults notify_runner_results_func,
       SearchStrategyNode::FPreTuning pre_tuning_func,
       SearchStrategyNode::FPostTuning post_tuning_func);
 };

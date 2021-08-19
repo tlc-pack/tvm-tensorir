@@ -97,7 +97,7 @@ class TuneContextNode : public runtime::Object {
 };
 
 /*!
- * \brief Managed reference to TuneContext Node
+ * \brief Managed reference to TuneContextNode.
  * \sa TuneContextNode
  */
 class TuneContext : public runtime::ObjectRef {
