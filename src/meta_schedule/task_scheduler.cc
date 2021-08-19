@@ -22,11 +22,15 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_OBJECT_TYPE(TaskSchedulerNode);
-TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerTuneAllTasks")
-    .set_body_method<TaskScheduler>(&TaskSchedulerNode::TuneAllTasks);
+TVM_REGISTER_OBJECT_TYPE(TaskSchedulerNode);  // Abstract class
+
+/*! \brief Register TaskScheduler's `SortAllTasks` function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerSortAllTasks")
     .set_body_method<TaskScheduler>(&TaskSchedulerNode::SortAllTasks);
+
+/*! \brief Register TaskScheduler's `TuneAllTasks` function to global registry. */
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerTuneAllTasks")
+    .set_body_method<TaskScheduler>(&TaskSchedulerNode::TuneAllTasks);
 
 }  // namespace meta_schedule
 }  // namespace tvm

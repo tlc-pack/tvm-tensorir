@@ -30,44 +30,64 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*! \brief The base class for all task schedulers to manage auto tuning. */
 class TaskSchedulerNode : public runtime::Object {
  public:
+  /*! \brief The function type of `TuneAllTasks` method. */
   using FTuneAllTasks = runtime::TypedPackedFunc<void()>;
+  /*! \brief The function type of `SortAllTasks` method. */
   using FSortAllTasks = runtime::TypedPackedFunc<void()>;
 
-  /*! \brief Virtual destructor */
+  /*! \brief Virtual destructor, required for abstract class. */
   virtual ~TaskSchedulerNode() = default;
 
+  /*! \brief The builder of the scheduler. */
   Optional<Builder> builder;
+  /*! \brief The runner of the scheduler. */
   Optional<Runner> runner;
 
-  /*! \brief Run auto-tuning on all tasks. */
+  /*! \brief Virtual function to sort all tuning tasks with certain priority. */
+  virtual void SortAllTasks() = 0;
+  /*! \brief Virtual function to run auto-tuning on all tasks. */
   virtual void TuneAllTasks() = 0;
 
-  /*! \brief Sort all tuning tasks, together with the runner_callback functions. */
-  virtual void SortAllTasks() = 0;
-
+  /*! \brief Class name `TaskScheduler` */
   static constexpr const char* _type_key = "meta_schedule.TaskScheduler";
-  TVM_DECLARE_BASE_OBJECT_INFO(TaskSchedulerNode, Object);
+  TVM_DECLARE_BASE_OBJECT_INFO(TaskSchedulerNode, Object);  // Abstract class
 };
 
 /*!
- * \brief Managed reference to TaskScheduler Node
+ * \brief Managed reference to TaskSchedulerNode
  * \sa TuneContextNode
  */
 class TaskScheduler : public runtime::ObjectRef {
  public:
-  /*! \brief Constructor */
+  /*!
+   * \brief Member function to create the StandardTaskScheduler class.
+   * \param tune_contexts The array of tuning contexts for different tasks.
+   * \param builder The builder of the scheduler.
+   * \param runner The runner of the scheduler.
+   * \return The constructed StandardTaskScheduler object but in TaskScheduler type.
+   */
   static TaskScheduler StandardTaskScheduler(Array<TuneContext> tune_contexts,  //
                                              Optional<Builder> builder,         //
                                              Optional<Runner> runner);
-
+  /*!
+   * \brief Member function to create the python side customizable PyTaskScheduler class.
+   * \param tune_contexts The array of tuning contexts for different tasks.
+   * \param builder The builder of the scheduler.
+   * \param runner The runner of the scheduler.
+   * \param sort_all_tasks_func The function to sort all tuning tasks with certain priority.
+   * \param tune_all_tasks_func The function to run auto-tuning on all tasks.
+   * \return The constructed PyTaskScheduler object but in TaskScheduler type.
+   */
   static TaskScheduler PyTaskScheduler(Array<TuneContext> tune_contexts,                      //
                                        Optional<Builder> builder,                             //
                                        Optional<Runner> runner,                               //
                                        TaskSchedulerNode::FSortAllTasks sort_all_tasks_func,  //
                                        TaskSchedulerNode::FTuneAllTasks tune_all_tasks_func);
 
+  /*! \brief Declare reference relationship. */
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(TaskScheduler, ObjectRef, TaskSchedulerNode);
 };
 

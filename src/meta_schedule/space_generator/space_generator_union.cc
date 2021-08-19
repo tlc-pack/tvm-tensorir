@@ -29,7 +29,10 @@ class SpaceGeneratorUnionNode : public SpaceGeneratorNode {
   /*! \brief The array of space generators, could be recursive. */
   runtime::Array<SpaceGenerator> space_generators;
 
-  /*! \brief Visitor for variables in python (required). */
+  /*!
+   * \brief Visitor for variables in python.
+   * \note required for non-abstract classes.
+   */
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
@@ -66,7 +69,7 @@ class SpaceGeneratorUnionNode : public SpaceGeneratorNode {
 class SpaceGeneratorUnion : public SpaceGenerator {
  public:
   /*! \brief Constructor function of SpaceGeneratorUnion class. */
-  explicit SpaceGeneratorUnion(runtime::Array<ObjectRef> space_generators) {
+  TVM_DLL explicit SpaceGeneratorUnion(runtime::Array<ObjectRef> space_generators) {
     // Make a new SpaceGeneratorUnion object.
     ObjectPtr<SpaceGeneratorUnionNode> n = make_object<SpaceGeneratorUnionNode>();
     // Copt the child space generators.

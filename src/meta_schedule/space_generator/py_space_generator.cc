@@ -31,7 +31,10 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
   /*! \brief Pointer to the `Generate` funcion in python. */
   FGenerate generate_func;
 
-  /*! \brief Visitor for variables in python (required). */
+  /*!
+   * \brief Visitor for variables in python.
+   * \note required for non-abstract classes.
+   */
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
@@ -62,7 +65,7 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
 class PySpaceGenerator : public SpaceGenerator {
  public:
   /*! \brief Constructor function of PySpaceGenerator class. */
-  explicit PySpaceGenerator(
+  TVM_DLL explicit PySpaceGenerator(
       SpaceGeneratorNode::FInitializeWithTuneContext initialize_with_tune_context_func,
       SpaceGeneratorNode::FGenerate generate_func) {
     // Make a new PySpaceGeneratorNode object.

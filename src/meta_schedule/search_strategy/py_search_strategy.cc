@@ -37,7 +37,10 @@ class PySearchStrategyNode : public SearchStrategyNode {
   /*! \brief Pointer to the `PostTuning` function python. */
   FPostTuning post_tuning_func;
 
-  /*! \brief Visitor for variables in python (required). */
+  /*!
+   * \brief Visitor for variables in python.
+   * \note required for non-abstract classes.
+   */
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
@@ -87,7 +90,7 @@ class PySearchStrategyNode : public SearchStrategyNode {
 class PySearchStrategy : public SearchStrategy {
  public:
   /*! \brief Constructor function of PySearchStrategy class. */
-  explicit PySearchStrategy(
+  TVM_DLL explicit PySearchStrategy(
       SearchStrategyNode::FInitializeWithTuneContext initialize_with_tune_context_func,
       SearchStrategyNode::FGenerateMeasureCandidates generate_measure_candidates_func,
       SearchStrategyNode::FNotifyMeasureResults notify_measure_results_func,

@@ -23,6 +23,21 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*!
+ * \brief Constructor function of TuneContext class.
+ * \param workload The workload to be optimized.
+ * \param space_generator The design space generator.
+ * \param search_strategy The search strategy to be used.
+ * \param database The database for querying and storage.
+ * \param cost_model The cost model for estimation.
+ * \param target The target to be optimized for.
+ * \param postprocs The post processing functions.
+ * \param measure_callbacks The measure callback functions.
+ * \param name The name of the tuning task.
+ * \param seed The seed value of random state.
+ * \param num_threads The number of threads to be used.
+ * \param verbose The verbosity level.
+ */
 TuneContext::TuneContext(Optional<IRModule> workload,                         //
                          Optional<SpaceGenerator> space_generator,            //
                          Optional<SearchStrategy> search_strategy,            //
@@ -35,7 +50,9 @@ TuneContext::TuneContext(Optional<IRModule> workload,                         //
                          TRandState seed,                                     //
                          int num_threads,                                     //
                          int verbose) {
+  // Make a new TuneContextNode object.
   ObjectPtr<TuneContextNode> n = make_object<TuneContextNode>();
+  // Copy the given argument values.
   n->workload = workload;
   n->space_generator = space_generator;
   n->search_strategy = search_strategy;
@@ -51,6 +68,7 @@ TuneContext::TuneContext(Optional<IRModule> workload,                         //
   data_ = std::move(n);
 }
 
+/*! \brief Register TuneContext's constructor function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
     .set_body_typed([](Optional<IRModule> workload,                         //
                        Optional<SpaceGenerator> space_generator,            //
@@ -64,11 +82,12 @@ TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
                        TRandState seed,                                     //
                        int num_threads,                                     //
                        int verbose) -> TuneContext {
+      // Expose the TuneContext constructor function to python side.
       return TuneContext(workload, space_generator, search_strategy, database, cost_model, target,
                          postprocs, measure_callbacks, name, seed, num_threads, verbose);
     });
 
-TVM_REGISTER_NODE_TYPE(TuneContextNode);
+TVM_REGISTER_NODE_TYPE(TuneContextNode);  // Concrete class
 
 }  // namespace meta_schedule
 }  // namespace tvm

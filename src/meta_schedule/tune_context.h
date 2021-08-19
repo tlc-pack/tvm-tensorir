@@ -33,16 +33,19 @@
 namespace tvm {
 namespace meta_schedule {
 
-/*! \brief Type defintions */
-using TRandState = int64_t;  // AWAIT(zxybazh): Merge with Sampling PR.
+// AWAIT(zxybazh): Merge with Sampling PR.
+using TRandState = int64_t;
+
+// AWAIT(zxybazh): Merge with acutal implementation.
 using Database = ObjectRef;
 using CostModel = ObjectRef;
 using PostProc = ObjectRef;
 using MeasureCallback = ObjectRef;
 
+/*! \brief The context for tuning, providing all required recources. */
 class TuneContextNode : public runtime::Object {
  public:
-  /*! \brief The function to be optimized */
+  /*! \brief The workload to be optimized. */
   Optional<IRModule> workload;
   /*! \brief The design space generator. */
   Optional<SpaceGenerator> space_generator;
@@ -52,23 +55,27 @@ class TuneContextNode : public runtime::Object {
   Optional<Database> database;
   /*! \brief The cost model for estimation. */
   Optional<CostModel> cost_model;
-  /*! \brief The target for builder. */
+  /*! \brief The target to be optimized for. */
   Optional<Target> target;
   /* \brief The post processing functions. */
   Optional<Array<PostProc>> postprocs;
-  /*! \brief The measurement call back functions. */
+  /*! \brief The measure callback functions. */
   Optional<Array<MeasureCallback>> measure_callbacks;
   /*! \brief The name of the tuning task. */
   String name;
   /*! \brief The seed value of random state. */
   TRandState seed;
-  /*! \brief The number of threads to use. */
+  /*! \brief The number of threads to be used. */
   int num_threads;
-  /*! \brief The value of verbose. */
+  /*! \brief The verbosity level. */
   int verbose;
 
   // AWAIT(zxybazh): Convenient functions for post-processing and measure callbacks.
 
+  /*!
+   * \brief Visitor for variables in python.
+   * \note required for non-abstract classes.
+   */
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("workload", &workload);
     v->Visit("space_generator", &space_generator);
@@ -84,8 +91,9 @@ class TuneContextNode : public runtime::Object {
     v->Visit("verbose", &verbose);
   }
 
+  /*! \brief Class name `TuneContext` */
   static constexpr const char* _type_key = "meta_schedule.TuneContext";
-  TVM_DECLARE_FINAL_OBJECT_INFO(TuneContextNode, Object);
+  TVM_DECLARE_FINAL_OBJECT_INFO(TuneContextNode, Object);  // Concrete class
 };
 
 /*!
@@ -94,20 +102,39 @@ class TuneContextNode : public runtime::Object {
  */
 class TuneContext : public runtime::ObjectRef {
  public:
+  /*!
+    \brief Default constructor. To be called only from `TaskWithContext`.
+    \sa TaskWithContext
+  */
   TuneContext() = default;
 
-  explicit TuneContext(Optional<IRModule> workload,                         //
-                       Optional<SpaceGenerator> space_generator,            //
-                       Optional<SearchStrategy> search_strategy,            //
-                       Optional<Database> database,                         //
-                       Optional<CostModel> cost_model,                      //
-                       Optional<Target> target,                             //
-                       Optional<Array<PostProc>> postprocs,                 //
-                       Optional<Array<MeasureCallback>> measure_callbacks,  //
-                       String name,                                         //
-                       TRandState seed,                                     //
-                       int num_threads,                                     //
-                       int verbose);
+  /*!
+   * \brief Constructor function of TuneContext class.
+   * \param workload The workload to be optimized.
+   * \param space_generator The design space generator.
+   * \param search_strategy The search strategy to be used.
+   * \param database The database for querying and storage.
+   * \param cost_model The cost model for estimation.
+   * \param target The target to be optimized for.
+   * \param postprocs The post processing functions.
+   * \param measure_callbacks The measure callback functions.
+   * \param name The name of the tuning task.
+   * \param seed The seed value of random state.
+   * \param num_threads The number of threads to be used.
+   * \param verbose The verbosity level.
+   */
+  TVM_DLL explicit TuneContext(Optional<IRModule> workload,                         //
+                               Optional<SpaceGenerator> space_generator,            //
+                               Optional<SearchStrategy> search_strategy,            //
+                               Optional<Database> database,                         //
+                               Optional<CostModel> cost_model,                      //
+                               Optional<Target> target,                             //
+                               Optional<Array<PostProc>> postprocs,                 //
+                               Optional<Array<MeasureCallback>> measure_callbacks,  //
+                               String name,                                         //
+                               TRandState seed,                                     //
+                               int num_threads,                                     //
+                               int verbose);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TuneContext, ObjectRef, TuneContextNode);
 };  // namespace meta_schedule
 
