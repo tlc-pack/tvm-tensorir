@@ -22,7 +22,7 @@
 #include <tvm/ir/module.h>
 #include <tvm/target/target.h>
 
-#include "builder.h"
+#include "./builder.h"
 
 namespace tvm {
 namespace meta_schedule {

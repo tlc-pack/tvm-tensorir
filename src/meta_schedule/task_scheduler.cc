@@ -17,7 +17,7 @@
  * under the License.
  */
 
-#include "task_scheduler.h"
+#include "./task_scheduler.h"
 
 namespace tvm {
 namespace meta_schedule {

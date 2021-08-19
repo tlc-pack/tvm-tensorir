@@ -17,9 +17,9 @@
  * under the License.
  */
 
-#include "search_strategy.h"
+#include "./search_strategy.h"
 
-#include "tune_context.h"
+#include "./tune_context.h"
 
 namespace tvm {
 namespace meta_schedule {
