@@ -770,6 +770,28 @@ def FlattenBuffer():
     return _ffi_api.FlattenBuffer()  # type: ignore
 
 
+def UnifyThreadBinding():
+    """Unify all the thread bindings for "blockIdx.x/y/z",
+    "threadIdx.x/y/z", and "vthread.x/y/z". Before the unification,
+    two vars that are bound to a thread axis (e.g., "threadIdx.x")
+    use different IterVars and variables in their AttrStmts. After
+    the unification, we use a consolidated IterVar and a variable
+    for them.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+
+    Note
+    ----
+    `vthread` is a legacy behavior that will be deprecated, though
+    thread bindings of `vthread` are still also unified in this
+    pass. Please use `vthread.x`, `vthread.y` and `vthread.z` instead.
+    """
+    return _ffi_api.UnifyThreadBinding()  # type: ignore
+
+
 def InjectSoftwarePipeline():
     """Transform annotated loops into pipelined one that parallelize producers and consumers
 

@@ -77,12 +77,8 @@ class TracedScheduleNode : public ConcreteScheduleNode {
 
   void Parallel(const LoopRV& loop_rv) final;
   void Vectorize(const LoopRV& loop_rv) final;
+  void Bind(const LoopRV& loop_rv, const String& thread_axis) final;
   void Unroll(const LoopRV& loop_rv) final;
-  void Bind(const LoopRV& loop_rv, const IterVar& thread) final {
-    LOG(FATAL) << "NotImplementedError: Bind with an IterVar is not supported";
-    throw;
-  }
-  void Bind(const LoopRV& loop_rv, const String& thread) final;
 
   /******** Schedule: Insert cache stages ********/
 

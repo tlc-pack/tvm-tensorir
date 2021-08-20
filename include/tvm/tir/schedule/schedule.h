@@ -114,7 +114,7 @@ class ScheduleNode : public runtime::Object {
    * guaranteeing that
    * 1) SRef tree is completely reconstructed;
    * 2) The IRModule being scheduled is not modified;
-   * 3) All the random variables are valid in the copy, pointing to the correpsonding sref
+   * 3) All the random variables are valid in the copy, pointing to the corresponding sref
    * reconstructed
    */
   virtual Schedule Copy(tir::TRandState seed = -1) const = 0;
@@ -279,7 +279,7 @@ class ScheduleNode : public runtime::Object {
   /*!
    * \brief Shift the iteration range of given loops to make them zero-based.
    * \param loop_rvs The loop random variables to be normalized
-   * \return The normalized loops 
+   * \return The normalized loops
    */
   virtual void Normalize(const Array<LoopRV>& loop_rvs) = 0;
   /*!
@@ -290,32 +290,42 @@ class ScheduleNode : public runtime::Object {
 
   /******** Schedule: Manipulate ForKind ********/
   /*!
-   * \brief Parallelize a loop
-   * \param loop_rv The loop to be paralleled
+   * \brief Parallelize the input loop. It requires:
+   * 1) The scope block that the loop is in should have stage-pipeline property
+   * 2) All the blocks under the loop are complete blocks or reduction blocks, and have affine
+   * bindings
+   * 3) For each block under the loop, the loop can only be contained in data-parallel block iters'
+   * bindings
+   * \param loop_rv The loop to be parallelized
    */
   virtual void Parallel(const LoopRV& loop_rv) = 0;
   /*!
-   * \brief Vectorize a loop
+   * \brief Vectorize the input loop. It requires:
+   * 1) The scope block that the loop is in should have stage-pipeline property
+   * 2) All the blocks under the loop are complete blocks or reduction blocks, and have affine
+   * bindings
+   * 3) For each block under the loop, the loop can only be contained in data-parallel block iters'
+   * bindings
    * \param loop_rv The loop to be vectorized
    */
   virtual void Vectorize(const LoopRV& loop_rv) = 0;
   /*!
-   * \brief Unroll a loop
+   * \brief Bind the input loop to the given thread axis. It requires:
+   * 1) The scope block that the loop is in should have stage-pipeline property
+   * 2) All the blocks under the loop are complete blocks or reduction blocks, and have affine
+   * bindings
+   * 3) For each block under the loop, if the thread axis starts with "threadIdx`, the loop can only
+   * be contained in data-parallel block iter and reduction block iters' bindings. Otherwise the
+   * loop can only be contained in data-parallel block iters' bindings
+   * \param loop_rv The loop to be bound to the thread axis
+   * \param thread_axis The thread axis to be bound to the loop
+   */
+  virtual void Bind(const LoopRV& loop_rv, const String& thread_axis) = 0;
+  /*!
+   * \brief Unroll the input loop. It requires nothing
    * \param loop_rv The loop to be unrolled
    */
   virtual void Unroll(const LoopRV& loop_rv) = 0;
-  /*!
-   * \brief Bind a loop to a thread axis
-   * \param loop_rv The loop to be bound
-   * \param thread The thread axis
-   */
-  virtual void Bind(const LoopRV& loop_rv, const IterVar& thread) = 0;
-  /*!
-   * \brief Bind a loop to a thread axis
-   * \param loop_rv The loop to be bound
-   * \param thread The thread axis
-   */
-  virtual void Bind(const LoopRV& loop_rv, const String& thread) = 0;
 
   /******** Schedule: Insert cache stages ********/
   /*!
