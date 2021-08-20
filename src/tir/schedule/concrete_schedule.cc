@@ -433,27 +433,24 @@ void ConcreteScheduleNode::Vectorize(const LoopRV& loop_rv) {
   TVM_TIR_SCHEDULE_END("vectorize", this->error_render_level_);
 }
 
+void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread_axis) {
+  if (thread_axis == "vthread") {
+    LOG(WARNING) << "`vthread` is legacy behavior and is going to be deprecated. Please use "
+                    "`vthread.x`, `vthread.y` and `vthread.z` instead";
+  }
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::Bind(state_, this->GetSRef(loop_rv),
+            IterVar(/*dom=*/Range(nullptr), /*var=*/Var(thread_axis), /*iter_type=*/kThreadIndex,
+                    /*thread_tag=*/thread_axis));
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("bind", this->error_render_level_);
+}
+
 void ConcreteScheduleNode::Unroll(const LoopRV& loop_rv) {
   TVM_TIR_SCHEDULE_BEGIN();
   tir::Unroll(state_, this->GetSRef(loop_rv));
   this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("unroll", this->error_render_level_);
-}
-
-void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const IterVar& thread) {
-  TVM_TIR_SCHEDULE_BEGIN();
-  tir::Bind(state_, this->GetSRef(loop_rv), thread);
-  this->state_->DebugVerify();
-  TVM_TIR_SCHEDULE_END("bind", this->error_render_level_);
-}
-
-void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread) {
-  TVM_TIR_SCHEDULE_BEGIN();
-  tir::Bind(state_, this->GetSRef(loop_rv),
-            IterVar(/*dom=*/Range(nullptr), /*var=*/Var(thread), /*IterVarType=*/kThreadIndex,
-                    /*thread_tag=*/thread));
-  this->state_->DebugVerify();
-  TVM_TIR_SCHEDULE_END("bind", this->error_render_level_);
 }
 
 /******** Schedule: Insert cache stages ********/

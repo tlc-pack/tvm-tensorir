@@ -21,8 +21,8 @@
  * \file flatten_buffer.cc
  */
 
-#include <tvm/tir/function.h>
 #include <tvm/tir/builtin.h>
+#include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
@@ -158,7 +158,10 @@ class BufferFlattener : public StmtExprMutator {
                      /*var=*/std::move(var),
                      /*iter_type=*/IterVarType::kThreadIndex,
                      /*thread_tag=*/thread_tag);
-    String attr_key = thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent;
+    String attr_key = (thread_tag == "vthread" || thread_tag == "vthread.x" ||
+                       thread_tag == "vthread.y" || thread_tag == "vthread.z")
+                          ? attr::virtual_thread
+                          : attr::thread_extent;
     return AttrStmt(/*node=*/std::move(iter_var),
                     /*attr_key=*/std::move(attr_key),
                     /*value=*/std::move(extent),

@@ -197,9 +197,9 @@ void TracedScheduleNode::Normalize(const Array<LoopRV>& loop_rvs) {
 
   static const InstructionKind& kind = InstructionKind::Get("Normalize");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
-                               /*inputs=*/{loop_rvs.begin(), loop_rvs.end()},
-                               /*attrs=*/{},
-                               /*outputs=*/{}));
+                                      /*inputs=*/{loop_rvs.begin(), loop_rvs.end()},
+                                      /*attrs=*/{},
+                                      /*outputs=*/{}));
 }
 
 void TracedScheduleNode::Reorder(const Array<LoopRV>& order) {
@@ -234,6 +234,16 @@ void TracedScheduleNode::Vectorize(const LoopRV& loop_rv) {
                                       /*outputs=*/{}));
 }
 
+void TracedScheduleNode::Bind(const LoopRV& loop_rv, const String& thread_axis) {
+  ConcreteScheduleNode::Bind(loop_rv, thread_axis);
+
+  static const InstructionKind& kind = InstructionKind::Get("Bind");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{loop_rv},
+                                      /*attrs=*/{thread_axis},
+                                      /*outputs=*/{}));
+}
+
 void TracedScheduleNode::Unroll(const LoopRV& loop_rv) {
   ConcreteScheduleNode::Unroll(loop_rv);
 
@@ -241,16 +251,6 @@ void TracedScheduleNode::Unroll(const LoopRV& loop_rv) {
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                       /*inputs=*/{loop_rv},
                                       /*attrs=*/{},
-                                      /*outputs=*/{}));
-}
-
-void TracedScheduleNode::Bind(const LoopRV& loop_rv, const String& thread) {
-  ConcreteScheduleNode::Bind(loop_rv, thread);
-
-  static const InstructionKind& kind = InstructionKind::Get("Bind");
-  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
-                                      /*inputs=*/{loop_rv},
-                                      /*attrs=*/{thread},
                                       /*outputs=*/{}));
 }
 

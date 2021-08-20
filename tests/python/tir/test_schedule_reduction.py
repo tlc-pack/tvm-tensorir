@@ -250,12 +250,10 @@ def test_reduction_compute_inline():
 def test_reduction_allreduce_1():
     ctx = tvm.cuda(0)
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
-    thread_x = tir.thread_axis((0, 16), "threadIdx.x")
-    thread_y = tir.thread_axis((0, 16), "threadIdx.y")
     B_block = s.get_block("B")
     _, ax_i, ax_j = s.get_loops(B_block)
-    s.bind(ax_j, thread_x)
-    s.bind(ax_i, thread_y)
+    s.bind(ax_j, "threadIdx.x")
+    s.bind(ax_i, "threadIdx.y")
 
     f = tvm.build(s.mod["main"], target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
@@ -269,10 +267,9 @@ def test_reduction_allreduce_1():
 def test_reduction_allreduce_2():
     ctx = tvm.cuda(0)
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
-    thread_x = tir.thread_axis((0, 16), "threadIdx.x")
     B_block = s.get_block("B")
     _, _, ax_j = s.get_loops(B_block)
-    s.bind(ax_j, thread_x)
+    s.bind(ax_j, "threadIdx.x")
 
     f = tvm.build(s.mod["main"], target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
@@ -286,10 +283,9 @@ def test_reduction_allreduce_2():
 def test_reduction_allreduce_3():
     ctx = tvm.cuda(0)
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
-    thread_x = tir.thread_axis((0, 16), "threadIdx.x")
     B_block = s.get_block("B")
     _, ax_i, _ = s.get_loops(B_block)
-    s.bind(ax_i, thread_x)
+    s.bind(ax_i, "threadIdx.x")
 
     f = tvm.build(s.mod["main"], target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
@@ -303,14 +299,13 @@ def test_reduction_allreduce_3():
 def test_reduction_allreduce_4():
     ctx = tvm.cuda(0)
     s = tir.Schedule(rowsum_allreduce, debug_mode=True)
-    _ = tir.thread_axis((0, 16), "threadIdx.x")
     B_block = s.get_block("B")
     _, ax_i, _ = s.get_loops(B_block)
     B_rf = s.rfactor(ax_i, 0)
     ax_ii_rf, ax_i_rf, ax_j_rf = s.get_loops(B_rf)
     ax_i_rf_o, _ = s.split(ax_i_rf, factors=[None, 4])
-    s.bind(ax_ii_rf, tir.thread_axis("blockIdx.x"))
-    s.bind(ax_i_rf_o, tir.thread_axis("threadIdx.x"))
+    s.bind(ax_ii_rf, "blockIdx.x")
+    s.bind(ax_i_rf_o, "threadIdx.x")
     _ = s.cache_write(B_rf, 0, "local")
     s.compute_inline(B_rf)
     s.reverse_compute_at(B_block, ax_i_rf_o)
