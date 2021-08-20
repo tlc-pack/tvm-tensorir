@@ -383,10 +383,16 @@ Array<Array<arith::IterMark>> TrivialSubspaceDivision(const Array<IterVar>& iter
       arith::IterMark outer(arith::IterSumExpr({}, 0), 1);
       arith::IterMark inner(arith::IterSumExpr({}, bindings[i]), iter_vars[i]->dom->extent);
       res.push_back(Array<arith::IterMark>({outer, inner}));
+    } else if (!outer && !inner) {
+      arith::IterMark outer(arith::IterSumExpr({}, 0), 1);
+      arith::IterMark inner(arith::IterSumExpr({}, 0), 1);
+      res.push_back(Array<arith::IterMark>({outer, inner}));
     } else {
       return {};
     }
   }
+  res.push_back({arith::IterMark(arith::IterSumExpr({}, 0), Bool(true)),
+                 arith::IterMark(arith::IterSumExpr({}, 0), Bool(true))});
   return res;
 }
 
