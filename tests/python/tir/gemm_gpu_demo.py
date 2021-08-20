@@ -19,7 +19,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 n = 2048
 device = "cuda"
-ctx = tvm.context(device, 0)
+ctx = tvm.device(device, 0)
 mod = tvm.script.create_module({"matmul": matmul})
 
 original_func = mod["matmul"]
@@ -53,13 +53,6 @@ scale = 8
 num_thread = 8
 block_factor = scale * num_thread
 
-block_x = tir.thread_axis("blockIdx.x")
-thread_x = tir.thread_axis((0, num_thread), "threadIdx.x")
-block_y = tir.thread_axis("blockIdx.y")
-thread_y = tir.thread_axis((0, num_thread), "threadIdx.y")
-thread_xz = tir.thread_axis((0, 2), "vthread", name="vx")
-thread_yz = tir.thread_axis((0, 2), "vthread", name="vy")
-
 s = tir.Schedule(original_func, debug_mode=True)
 
 C = s.get_block("C")
@@ -71,26 +64,26 @@ BL = s.cache_read(C, 2, "local")
 CC = s.cache_write(C, 0, "local")
 
 y, x = s.get_loops(C)
-by, yi = s.split(y, factor=block_factor)
-bx, xi = s.split(x, factor=block_factor)
+by, yi = s.split(y, [None, block_factor])
+bx, xi = s.split(x, [None, block_factor])
 s.reorder(by, bx, yi, xi)
-s.bind(by, block_y)
-s.bind(bx, block_x)
+s.bind(by, "blockIdx.y")
+s.bind(bx, "blockIdx.x")
 
-tyz, yi = s.split(yi, nparts=2)
-ty, yi = s.split(yi, nparts=num_thread)
-txz, xi = s.split(xi, nparts=2)
-tx, xi = s.split(xi, nparts=num_thread)
+tyz, yi = s.split(yi, [2, None])
+ty, yi = s.split(yi, [num_thread, None])
+txz, xi = s.split(xi, [2, None])
+tx, xi = s.split(xi, [num_thread, None])
 s.reorder(tyz, txz, ty, tx, yi, xi)
-s.bind(tyz, thread_yz)
-s.bind(txz, thread_xz)
-s.bind(ty, thread_y)
-s.bind(tx, thread_x)
+s.bind(tyz, "vthread.y")
+s.bind(txz, "vthread.x")
+s.bind(ty, "threadIdx.y")
+s.bind(tx, "threadIdx.x")
 
 s.compute_at(CC, tx)
 y, x, k = s.get_loops(CC)[-3:]
-ko, ki = s.split(k, factor=8)
-kt, ki = s.split(ki, factor=1)
+ko, ki = s.split(k, [None, 8])
+kt, ki = s.split(ki, [None, 1])
 s.reorder(ko, kt, ki, y, x)
 decompose_pos = ko
 s.unroll(kt)
@@ -101,20 +94,20 @@ s.compute_at(AA, ko)
 s.compute_at(BB, ko)
 
 x, y = s.get_loops(AA)[-2:]
-ty, xi = s.split(x, nparts=num_thread)
-_, xi = s.split(y, factor=num_thread * 4)
-tx, xi = s.split(xi, nparts=num_thread)
-s.bind(ty, thread_y)
-s.bind(tx, thread_x)
+ty, xi = s.split(x, [num_thread, None])
+_, xi = s.split(y, [None, num_thread * 4])
+tx, xi = s.split(xi, [num_thread, None])
+s.bind(ty, "threadIdx.y")
+s.bind(tx, "threadIdx.x")
 s.vectorize(xi)
 s.double_buffer(AA)
 
 x, y = s.get_loops(BB)[-2:]
-ty, xi = s.split(x, nparts=num_thread)
-_, xi = s.split(y, factor=num_thread * 4)
-tx, xi = s.split(xi, nparts=num_thread)
-s.bind(ty, thread_y)
-s.bind(tx, thread_x)
+ty, xi = s.split(x, [num_thread, None])
+_, xi = s.split(y, [None, num_thread * 4])
+tx, xi = s.split(xi, [num_thread, None])
+s.bind(ty, "threadIdx.y")
+s.bind(tx, "threadIdx.x")
 s.vectorize(xi)
 s.double_buffer(BB)
 

@@ -276,30 +276,23 @@ def test_tensorcore():
     warp_size = 32
     chunk = 2
 
-    block_x = tir.thread_axis("blockIdx.x")
-    block_y = tir.thread_axis("blockIdx.y")
-    block_z = tir.thread_axis("blockIdx.z")
-    thread_x = tir.thread_axis("threadIdx.x")
-    thread_y = tir.thread_axis("threadIdx.y")
-    thread_z = tir.thread_axis("threadIdx.z")
-
     nc, hc, wc, oc, nnc, ooc = s.get_loops(Conv)
     block_k = s.fuse(hc, wc)
-    s.bind(block_k, block_z)
-    nc, nci = s.split(nc, factor=warp_row_tiles)
-    block_i, nc = s.split(nc, factor=block_row_warps)
-    oc, oci = s.split(oc, factor=warp_col_tiles)
-    block_j, oc = s.split(oc, factor=block_col_warps)
+    s.bind(block_k, "blockIdx.z")
+    nc, nci = s.split(nc, [None, warp_row_tiles])
+    block_i, nc = s.split(nc, [None, block_row_warps])
+    oc, oci = s.split(oc, [None, warp_col_tiles])
+    block_j, oc = s.split(oc, [None, block_col_warps])
     s.reorder(block_k, block_i, block_j, nc, oc, nci, oci, nnc, ooc)
-    s.bind(block_i, block_x)
-    s.bind(block_j, block_y)
-    s.bind(nc, thread_y)
-    s.bind(oc, thread_z)
+    s.bind(block_i, "blockIdx.x")
+    s.bind(block_j, "blockIdx.y")
+    s.bind(nc, "threadIdx.y")
+    s.bind(oc, "threadIdx.z")
 
     # Schedule local computation
     s.compute_at(ConvF, oc)
     ic, kh, kw, _nnf, _oof, ii = s.get_loops(ConvF)[-6:]
-    ko, ki = s.split(ic, factor=chunk)
+    ko, ki = s.split(ic, [None, chunk])
     s.reorder(ko, kh, ki)
 
     # Move intermediate computation into each output compute tile
@@ -310,19 +303,19 @@ def test_tensorcore():
     s.compute_at(AS, kh)
     _, _, nn, ii = s.get_loops(AS)[-4:]
     t = s.fuse(nn, ii)
-    _, ti = s.split(t, factor=warp_size)
-    s.bind(ti, thread_x)
+    _, ti = s.split(t, [None, warp_size])
+    s.bind(ti, "threadIdx.x")
 
     # Schedule for W's share memory
     s.compute_at(WS, kh)
     kw, ic, o, ii, oo = s.get_loops(WS)[-5:]
-    tx, xo = s.split(o, nparts=block_row_warps)
-    ty, _ = s.split(xo, nparts=block_col_warps)  # pylint: disable=redefined-outer-name
+    tx, xo = s.split(o, [block_row_warps, None])
+    ty, _ = s.split(xo, [block_col_warps, None])  # pylint: disable=redefined-outer-name
     t = s.fuse(ii, oo)
-    to, ti = s.split(t, nparts=warp_size)
-    s.bind(tx, thread_y)
-    s.bind(ty, thread_z)
-    s.bind(to, thread_x)
+    to, ti = s.split(t, [warp_size, None])
+    s.bind(tx, "threadIdx.y")
+    s.bind(ty, "threadIdx.z")
+    s.bind(to, "threadIdx.x")
     s.vectorize(ti)
 
     s.compute_inline(s.get_block("A_pad"))
