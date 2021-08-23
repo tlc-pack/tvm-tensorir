@@ -859,11 +859,6 @@ Optional<Array<arith::IntSet>> EstimateRegionLowerBound(const Array<Range>& regi
   return result;
 }
 
-IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent) {
-  return IntSet::FromRange(Range::FromMinExtent(min, extent));
-}
-
-
 TVM_REGISTER_NODE_TYPE(IntervalSetNode);
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
