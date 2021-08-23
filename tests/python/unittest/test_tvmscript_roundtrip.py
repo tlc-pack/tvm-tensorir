@@ -15,6 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import sys
+import pytest
+
 import tvm
 from tvm import tir
 from tvm.script import ty
@@ -3008,28 +3011,45 @@ def constant_folding(a: ty.handle) -> None:
     A[()] = tir.min(2.2, 5.0)
 
 
-def test_script_printer():
+def test_constant_folding():
     func = constant_folding
     rt_func = tvm.script.from_source(tvm.script.asscript(func, True))
     tvm.ir.assert_structural_equal(func, rt_func)
 
 
+@tvm.script.tir
+def var_with_same_name(a: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), "float32")
+    with tir.block([16, 16]) as [vi, vj]:
+        A[vi, vj] = 0
+    with tir.block([16, 16]) as [vi, vj]:
+        A[vi, vj] = 0
+    for i, j in tir.grid(16, 16):
+        with tir.block([16, 16]) as [vi, vj]:
+            A[vi, vj] = 0
+    for i, j in tir.grid(16, 16):
+        with tir.block([16, 16]) as [vi, vj]:
+            A[vi, vj] = 0
+
+
+def test_same_name_var():
+    func = var_with_same_name
+    out_str = tvm.script.asscript(func, True)
+    rt_func = tvm.script.from_source(out_str)
+    tvm.ir.assert_structural_equal(func, rt_func)
+
+    assert out_str.count("with tir.block([16, 16]) as [vi, vj]") == 4
+    assert out_str.find("vi_") == -1
+    assert out_str.find("vj_") == -1
+
+    assert out_str.count("for i0, i1 in tir.grid(16, 16)") == 2
+    assert out_str.find("i0_") == -1
+    assert out_str.find("i1_") == -1
+
+    assert out_str.count("for i, j in tir.grid(16, 16)") == 2
+    assert out_str.find("i_") == -1
+    assert out_str.find("i_") == -1
+
+
 if __name__ == "__main__":
-    test_opt_gemm_normalize()
-    test_opt_gemm_mod_host()
-    test_opt_gemm_lower()
-    test_opt_conv_tensorcore_normalize()
-    test_opt_conv_tensorcore_lower()
-    test_opt_conv_tensorcore_mod_host()
-    test_vthread()
-    test_module_define()
-    test_matmul()
-    test_matmul_original()
-    test_element_wise()
-    test_predicate()
-    test_for_thread_binding()
-    test_match_buffer_region()
-    test_block_elements()
-    test_opaque_block()
-    test_abs()
-    test_script_printer()
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))
