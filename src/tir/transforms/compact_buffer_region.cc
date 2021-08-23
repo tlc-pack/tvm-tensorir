@@ -22,7 +22,7 @@
  * \brief Compact the buffer size into its exact need.
  */
 
-#include <tvm/arith/int_set.h>
+#include <tvm/support/nd_int_set.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
@@ -36,8 +36,7 @@
 namespace tvm {
 namespace tir {
 
-
-using namespace arith;
+using namespace support;
 
 /*!
  * \brief return the region collected by NDIntSet. return the oroginal buffer shape if the

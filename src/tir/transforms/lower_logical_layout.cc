@@ -27,6 +27,7 @@
 #include <tvm/tir/expr.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/transform.h>
+#include <tvm/support/nd_int_set.h>
 
 #include <unordered_set>
 
@@ -38,6 +39,7 @@
 namespace tvm {
 namespace tir {
 
+using namespace support;
 using FLowerLogicalLayout = TypedPackedFunc<Array<PrimExpr>(Array<PrimExpr>)>;
 
 class LogicalLayoutNode : public Object {
@@ -118,7 +120,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
       current_loop_nests_.clear();
       return result;
     }
-    return block_realize;
+    return std::move(block_realize);
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
@@ -144,7 +146,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     for (const auto& buffer : op->alloc_buffers) {
       buffer_data_to_buffer_.erase(buffer->data);
     }
-    return block;
+    return std::move(block);
   }
 
   Stmt VisitStmt_(const BufferStoreNode* _op) final {
@@ -152,7 +154,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     const auto& reg = LogicalLayoutRegistry::Global()->reg;
     auto it = reg.find(store->buffer.scope());
     if (it == reg.end()) {
-      return store;
+      return std::move(store);
     }
 
     BufferStoreNode* op = store.CopyOnWrite();
@@ -177,7 +179,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
           GetLeadingIndices(op->indices, op->indices.size() - orig_buffer_num_dims + logical_layout->num_dims);
       auto leading_shape = InferRange(leading_indices);
       ReallocOrValidateBuffer(&op->buffer, logical_layout, leading_shape);
-      return store;
+      return std::move(store);
     }
 
     // Case 2: The outer loops can be mutated. We will regenerate outer loops to make sure
@@ -212,7 +214,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
 
     // Step 6: Compute new buffer shape and make new buffer.
     ReallocOrValidateBuffer(&op->buffer, logical_layout, leading_shape);
-    return store;
+    return std::move(store);
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* _op) final {
@@ -220,7 +222,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
     const auto& reg = LogicalLayoutRegistry::Global()->reg;
     auto it = reg.find(load->buffer.scope());
     if (it == reg.end()) {
-      return load;
+      return std::move(load);
     }
     const LogicalLayout& logical_layout = (*it).second;
     size_t orig_buffer_num_dims = load->indices.size();
@@ -247,16 +249,8 @@ class LogicalLayoutMutator : public StmtExprMutator {
     return GetRef<Var>(op);
   }
 
-  PrimExpr VisitExpr_(const CallNode* op) final {
-    if (op->op == builtin::tvm_mfma_sync()) {
-       auto res = StmtExprMutator::VisitExpr_(op);
-       return res;
-    }
-    return StmtExprMutator::VisitExpr_(op);
-  }
-
   void ReallocOrValidateBuffer(Buffer* buffer, const LogicalLayout& logical_layout,
-                               const arith::NDIntSet& leading_shape) {
+                               const NDIntSet& leading_shape) {
     // Compute new buffer shape
     Array<PrimExpr> new_shape((*buffer)->shape.begin(),
                               (*buffer)->shape.end() - logical_layout->num_dims);
@@ -304,19 +298,19 @@ class LogicalLayoutMutator : public StmtExprMutator {
   }
 
   // Infer range of the indices by evaluating NDIntSet
-  arith::NDIntSet InferRange(const Array<PrimExpr> indices) {
-    arith::NDIntSet nd_int_set = arith::NDIntSetFromPoint(indices);
+  NDIntSet InferRange(const Array<PrimExpr> indices) {
+    NDIntSet nd_int_set = NDIntSetFromPoint(indices);
     std::unordered_map<const VarNode*, arith::IntSet> dom_map;
     for (const auto& index : indices) {
       PostOrderVisit(index, [&](const ObjectRef& obj) {
         if (obj.as<VarNode>()) {
           const For& for_loop = loop_map_.at(Downcast<Var>(obj));
           dom_map.emplace(obj.as<VarNode>(),
-                          arith::IntSetFromMinExtent(for_loop->min, for_loop->extent));
+                          IntSetFromMinExtent(for_loop->min, for_loop->extent));
         }
       });
     }
-    arith::NDIntSet new_ranges = arith::EvalNDIntSet(nd_int_set, dom_map);
+    NDIntSet new_ranges = EvalNDIntSet(nd_int_set, dom_map);
     // Validate the new ranges has zero as minumum
     for (const auto& range : new_ranges) {
       CHECK(is_zero(range.min())) << "ValueError: the transformed indices of the logical layout "
@@ -349,7 +343,7 @@ class LogicalLayoutMutator : public StmtExprMutator {
   }
 
   // Build loop nests to cover the given NDIntSet
-  std::vector<Stmt> BuildLoopNests(const arith::NDIntSet& shape) {
+  std::vector<Stmt> BuildLoopNests(const NDIntSet& shape) {
     std::vector<Stmt> loop_vars;
     const auto nop = Evaluate(Integer(0));
     for (size_t i = 0; i < shape.size(); i++) {

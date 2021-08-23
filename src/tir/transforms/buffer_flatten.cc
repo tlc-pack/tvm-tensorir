@@ -20,7 +20,7 @@
 /*!
  * \file buffer_flatten.cc
  */
-#include <tvm/arith/int_set.h>
+#include <tvm/support/nd_int_set.h>
 #include <tvm/tir/builtin.h>
 #include <tvm/tir/transform.h>
 
@@ -30,7 +30,7 @@
 namespace tvm {
 namespace tir {
 
-using namespace arith;
+using namespace support;
 
 template <class K, class V>
 using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
