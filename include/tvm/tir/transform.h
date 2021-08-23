@@ -533,6 +533,10 @@ TVM_DLL Pass FlattenBuffer();
  */
 TVM_DLL Pass UnifyThreadBinding();
 
+/*!
+ * \brief Lower lower logical layout into physical layout.
+ * \return The pass.
+ */
 TVM_DLL Pass LowerLogicalLayout();
 
 }  // namespace transform
