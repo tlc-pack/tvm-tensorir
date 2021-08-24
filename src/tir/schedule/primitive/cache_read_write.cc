@@ -116,14 +116,16 @@ bool HaveBlockAccess(const Block& scope_block, const Buffer& buffer, bool read, 
   ICHECK((read != write) && (read || write));
   bool found = false;
   PreOrderVisit(scope_block->body, [&found, read, write, buffer](const ObjectRef& node) {
+    if (found) {
+      // Don't need to visit if already found.
+      return false;
+    }
     if (const auto* op = node.as<BlockNode>()) {
       if (read && RelatedBufferRegion(op->reads, buffer).defined()) found = true;
       if (write && RelatedBufferRegion(op->writes, buffer).defined()) found = true;
       return false;
-    } else {
-      // Don't need to visit if already found .
-      return !found;
     }
+    return true;
   });
   return found;
 }
