@@ -176,7 +176,7 @@ class LogicalLayout(Object):
 
     @staticmethod
     def register(name: str, lowering_func: Callable):
-        num_dims = len(inspect.getargspec(lowering_func).args)
+        num_dims = len(inspect.signature(lowering_func).parameters)
         def wrapped(args):
             return list(lowering_func(*args))
         return _ffi_api.LogicalLayoutRegister(name, wrapped, num_dims)

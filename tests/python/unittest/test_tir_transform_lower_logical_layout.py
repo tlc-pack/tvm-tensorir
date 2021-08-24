@@ -171,6 +171,53 @@ def cache_read_non_bijective(a: ty.handle, c: ty.handle) -> None:
                 C[i, j] = (A_warp_logical[i, j] + tir.float32(1))
 
 
+@tvm.script.tir
+def cache_write(a: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [32, 32], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [32, 32], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root"):
+        tir.reads([])
+        tir.writes([])
+        C_warp_logical = tir.alloc_buffer([32, 32], scope="warp.logical")
+        for ax0, ax1 in tir.grid(32, 32):
+            with tir.block([32, 32], "A_warp.logical") as [v0, v1]:
+                tir.bind(v0, ax0)
+                tir.bind(v1, ax1)
+                tir.reads([A[v0, v1]])
+                tir.writes([C_warp_logical[v0, v1]])
+                C_warp_logical[v0, v1] = A[v0, v1] + tir.float32(1)
+        for i0, i1 in tir.grid(32, 32):
+            with tir.block([32, 32], "C") as [i, j]:
+                tir.bind(i, i0)
+                tir.bind(j, i1)
+                tir.reads([C_warp_logical[i, j]])
+                tir.writes([C[i, j]])
+                C[i, j] = C_warp_logical[i, j]
+
+
+@tvm.script.tir
+def transformed_cache_write(a: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [32, 32], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [32, 32], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root"):
+        tir.reads([])
+        tir.writes([])
+        C_warp_logical = tir.alloc_buffer([64, 2, 8], scope="warp.logical")
+        for v0 in tir.thread_binding(0, 64, thread = "threadIdx.x"):
+            for v1, v2 in tir.grid(2, 8):
+                with tir.block([], "C_warp.logical"):
+                    tir.reads([A[((v1*16) + tir.floordiv(v0, 4)), ((v2*4) + tir.floormod(v0, 4))]])
+                    tir.writes([C_warp_logical[v0, v1, v2]])
+                    C_warp_logical[v0, v1, v2] = A[((v1*16) + tir.floordiv(v0, 4)), ((v2*4) + tir.floormod(v0, 4))] + tir.float32(1)
+        for i, j in tir.grid(32, 32):
+            with tir.block([], "C"):
+                tir.reads([C_warp_logical[tir.floormod(i, 16)* 4 + tir.floormod(j, 4), tir.floordiv(i, 16), tir.floordiv(j, 4)]])
+                tir.writes([C[i, j]])
+                C[i, j] = C_warp_logical[tir.floormod(i, 16)* 4 + tir.floormod(j, 4), tir.floordiv(i, 16), tir.floordiv(j, 4)]
+
+
 def test_cache_read():
     _check(cache_read, transformed_cache_read)
 
@@ -183,7 +230,12 @@ def test_non_bijective():
     _check_fail(cache_read_non_bijective)
 
 
+def test_cache_write():
+    _check(cache_write, transformed_cache_write)
+
+
 if __name__ == "__main__":
     test_cache_read()
     test_cache_read_extra_dim()
     test_non_bijective()
+    test_cache_write()
