@@ -31,5 +31,17 @@ Block WithAnnotation(const BlockNode* block, const String& attr_key, const Objec
   return Block(new_block);
 }
 
+/******** Buffer Related ********/
+Buffer WithScope(const Buffer& buffer, const String& scope) {
+  auto n = make_object<BufferNode>(*buffer.get());
+  auto new_ptr = make_object<VarNode>(*n->data.get());
+  const auto* ptr_type = new_ptr->type_annotation.as<PointerTypeNode>();
+  ICHECK(ptr_type);
+  new_ptr->type_annotation = PointerType(ptr_type->element_type, scope);
+  n->data = Var(new_ptr->name_hint + "_" + scope, new_ptr->type_annotation);
+  n->name = buffer->name + "_" + scope;
+  return Buffer(n);
+}
+
 }  // namespace tir
 }  // namespace tvm

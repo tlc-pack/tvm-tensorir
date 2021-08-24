@@ -472,6 +472,7 @@ def cache_write_opaque_access(a: ty.handle, b: ty.handle, c: ty.handle, d: ty.ha
     with tir.block([128, 128], "C") as [vi, vj]:
         C[vi, vj] = C_global[vi, vj]
 
+
 @tvm.script.tir
 def cache_write_multi_consumer() -> None:
     A = tir.alloc_buffer((128))
@@ -504,8 +505,10 @@ def test_cache_read_elementwise():
     sch = tir.Schedule(elementwise, debug_mask="all")
     block_b = sch.get_block("B")
     block_c = sch.get_block("C")
-    sch.cache_read(block_b, 0, "global")
-    sch.cache_read(block_c, 0, "local")
+    cached_a = sch.cache_read(block_b, 0, "global")
+    cached_b = sch.cache_read(block_c, 0, "local")
+    assert sch.get(cached_a) == sch.get(sch.get_block("A_global"))
+    assert sch.get(cached_b) == sch.get(sch.get_block("B_local"))
     tvm.ir.assert_structural_equal(cache_read_elementwise, sch.mod["main"])
     verify_trace_roundtrip(sch=sch, mod=elementwise)
 
@@ -557,8 +560,10 @@ def test_cache_write_elementwise():
     sch = tir.Schedule(elementwise, debug_mask="all")
     block_b = sch.get_block("B")
     block_c = sch.get_block("C")
-    sch.cache_write(block_b, 0, "local")
-    sch.cache_write(block_c, 0, "global")
+    cached_b = sch.cache_write(block_b, 0, "local")
+    cached_c = sch.cache_write(block_c, 0, "global")
+    assert sch.get(cached_b) == sch.get(sch.get_block("B_local"))
+    assert sch.get(cached_c) == sch.get(sch.get_block("C_global"))
     tvm.ir.assert_structural_equal(cache_write_elementwise, sch.mod["main"])
     verify_trace_roundtrip(sch=sch, mod=elementwise)
 

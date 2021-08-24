@@ -715,19 +715,17 @@ class Schedule(Object):
 
     ########## Schedule: Insert cache stages ##########
 
-    def cache_read(self, block: BlockRV, buffer_index: int, storage_scope: str) -> BlockRV:
+    def cache_read(self, block: BlockRV, read_buffer_index: int, storage_scope: str) -> BlockRV:
         """Create a block that reads a buffer region into a read cache. It requires:
 
-        1) There is at least one block read the buffer in the scope.
-
-        2) There is at most one block who write the buffer in the scope.
+        1) There is at most one block who write the buffer in the scope.
 
         Parameters
         ----------
         block : BlockRV
             The consumer block of the target buffer.
 
-        buffer_index: int
+        read_buffer_index: int
             The index of the buffer in block's read region.
 
         storage_scope: str
@@ -778,21 +776,19 @@ class Schedule(Object):
                         B[vi, vj] = A_local[vi, vj] * 2.0
 
         """
-        return _ffi_api.ScheduleCacheRead(self, block, buffer_index, storage_scope)  # type: ignore # pylint: disable=no-member
+        return _ffi_api.ScheduleCacheRead(self, block, read_buffer_index, storage_scope)  # type: ignore # pylint: disable=no-member
 
-    def cache_write(self, block: BlockRV, buffer_index: int, storage_scope: str) -> BlockRV:
-        """Create a block that reads a buffer region into a read cache. It requires:
+    def cache_write(self, block: BlockRV, write_buffer_index: int, storage_scope: str) -> BlockRV:
+        """Create a block that reads a buffer region into a write cache. It requires:
 
-        1) There is at least one block read the buffer in the scope.
-
-        2) There is at most one block who write the buffer in the scope.
+        1) There is only one block who write the buffer in the scope.
 
         Parameters
         ----------
         block : BlockRV
             The producer block of the target buffer.
 
-        buffer_index: int
+        write_buffer_index: int
             The index of the buffer in block's write region.
 
         storage_scope: str
@@ -844,7 +840,7 @@ class Schedule(Object):
                         B[vi, vj] = B_local[vi, vj]
 
         """
-        return _ffi_api.ScheduleCacheWrite(self, block, buffer_index, storage_scope)  # type: ignore # pylint: disable=no-member
+        return _ffi_api.ScheduleCacheWrite(self, block, write_buffer_index, storage_scope)  # type: ignore # pylint: disable=no-member
 
     ########## Schedule: Compute location ##########
 

@@ -1035,7 +1035,7 @@ TVM_DLL void ScheduleStateNode::UpdateAffineFlag(const StmtSRef& scope_sref) {
       << "Cannot find the block info of the given block, please create it.";
   BlockInfo& info = it->second;
 
-  bool is_root_block = scope_sref->parent != nullptr;
+  bool is_root_block = scope_sref->parent == nullptr;
   if (is_root_block) {
     info.affine_binding = true;
   } else {

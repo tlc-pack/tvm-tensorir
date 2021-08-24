@@ -591,8 +591,7 @@ BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sr
 Buffer GetNthAccessBuffer(const ScheduleState& self, const Block& block, int n, bool is_write) {
   class BufferIndexOutOfRangeError : public ScheduleError {
    public:
-    explicit WriteBufferIndexOutOfRangeError(IRModule mod, Block block, int buffer_index,
-                                             bool is_write)
+    explicit BufferIndexOutOfRangeError(IRModule mod, Block block, int buffer_index, bool is_write)
         : mod_(std::move(mod)),
           block_(std::move(block)),
           buffer_index_(buffer_index),
@@ -636,7 +635,7 @@ Buffer GetNthAccessBuffer(const ScheduleState& self, const Block& block, int n, 
   const Array<BufferRegion>& access_region = is_write ? block->writes : block->reads;
 
   if (n < 0 || access_region.size() <= n) {
-    throw WriteBufferIndexOutOfRangeError(self->mod, block, n, is_write);
+    throw BufferIndexOutOfRangeError(self->mod, block, n, is_write);
   }
   return access_region[n]->buffer;
 }

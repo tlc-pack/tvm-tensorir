@@ -260,20 +260,9 @@ std::vector<TypedPackedFunc<CommReducer(DataType)>> GetReducerGetters();
 bool FromIdentityCombiner(const PrimExpr& identity, const BufferStore& combiner,
                           CommReducer* result_reducer, PrimExpr* lhs, PrimExpr* rhs);
 
-/******** Annotation ********/
-
-/*!
- * \brief Create a new block with the given annotation added
- * \param block The block with original annotation
- * \param attr_key The annotation key to be added
- * \param attr_value The annotation value to be added
- * \return A new block with the given annotation as its last annotation
- */
-Block WithAnnotation(const BlockNode* block, const String& attr_key, const ObjectRef& attr_value);
-
 /******** SRef Tree Related ********/
 /*!
- * \brief Get the root node of the sref tree. It's usually the root block of the PrimFunc.
+ * \brief Get the root node of the sref tree, which is the root block of the PrimFunc.
  * \param sref The given sref.
  * \return The root node of the sref tree which contains the given node.
  */

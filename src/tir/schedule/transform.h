@@ -35,6 +35,15 @@ namespace tir {
  */
 Block WithAnnotation(const BlockNode* block, const String& attr_key, const ObjectRef& attr_value);
 
+/******** Buffer Related ********/
+
+/*!
+ * \brief Create a new buffer by changing the storage scope.
+ * \param buffer The given buffer.
+ * \param scope The target storage scope.
+ * \return The new buffer with target storage scope.
+ */
+Buffer WithScope(const Buffer& buffer, const String& scope);
 }  // namespace tir
 }  // namespace tvm
 

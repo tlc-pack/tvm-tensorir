@@ -77,22 +77,6 @@ struct CacheStageInfo {
   Map<Block, Block> block_map;
 };
 
-/*!
- * \brief Create a new buffer by changing the storage scope.
- * \param buffer The given buffer.
- * \param scope The target storage scope.
- * \return The new buffer with target storage scope.
- */
-Buffer WithScope(const Buffer& buffer, const String& scope) {
-  auto n = make_object<BufferNode>(*buffer.get());
-  auto new_ptr = make_object<VarNode>(*n->data.get());
-  const auto* ptr_type = TVM_TYPE_AS(ptr_type, new_ptr->type_annotation, PointerTypeNode);
-  new_ptr->type_annotation = PointerType(ptr_type->element_type, scope);
-  n->data = Var(new_ptr);
-  n->name = buffer->name + "_" + scope;
-  return Buffer(n);
-}
-
 /*! \brief Return the buffer region realted with the buffer */
 Optional<BufferRegion> RelatedBufferRegion(const Array<BufferRegion>& buffer_regions,
                                            const Buffer& buffer) {
@@ -118,10 +102,13 @@ BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
 }
 
 /*!
- * \brief Check if there is at least one block who read/write the target buffer under the given
- * scope. \param scope_block The scope block. \param buffer The target buffer. \param read A flag to
- * indicate to check the block who reads the buffer. \param write A flag to indicate to check the
- * block who writes the buffer. \note Only allow to check either read or write at the same time.
+ * \brief Check if there is at least one block who read/write the target buffer
+ *        under the given scope.
+ * \param scope_block The scope block.
+ * \param buffer The target buffer.
+ * \param read A flag to indicate to check the block who reads the buffer.
+ * \param write A flag to indicate to check the block who writes the buffer.
+ * \note Only allow to check either read or write at the same time.
  * \return Whether there are blocks access the buffer.
  */
 bool HaveBlockAccess(const Block& scope_block, const Buffer& buffer, bool read, bool write) {
@@ -686,7 +673,7 @@ class CacheWriteRewriter : public StmtExprMutator {
 
 /******** Implementation ********/
 
-StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
+StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int read_buffer_index,
                    const String& storage_scope) {
   /*!
    * Check:
@@ -696,34 +683,30 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int buffer_in
    * Mutate:
    *   - Allocate new cache buffer under the current scope.
    *   - Find the lowest ancestor of the block and ANY ONE of the consumers blocks.
-   *   - Copy the buffer with the necessary region.
+   *   - Copy the buffer with the consumed region.
    */
 
   // Step 1. Check index and getting the target buffer.
   const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   Buffer read_buffer =
-      GetNthAccessBuffer(self, GetRef<Block>(block), buffer_index, /*is_write=*/false);
+      GetNthAccessBuffer(self, GetRef<Block>(block), read_buffer_index, /*is_write=*/false);
 
-  // Step 2. Checking there is only one writing block and get it.
-  StmtSRef root_sref = GetSRefTreeRoot(block_sref);
-  const BlockNode* root_block = TVM_SREF_TO_BLOCK(root_block, root_sref);
-
-  // Step 3. Creat CacheStageInfo
+  // Step 2. Creat CacheStageInfo
   CacheStageInfo info;
   info.read_buffer = read_buffer;
-  // Create corresponding the buffer to be written, i.e. result of cache_read
+  // Create the corresponding buffer to be written, i.e. result of cache_read
   info.write_buffer = WithScope(read_buffer, storage_scope);
   // Create the corresponding buffer allocation
   info.alloc = info.write_buffer;
 
-  // Step 4. Find the parent scope
+  // Step 3. Find the parent scope
   StmtSRef scope_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/true);
   const BlockNode* scope_block = TVM_SREF_TO_BLOCK(scope_block, scope_sref);
 
-  // Step 5. Find the only writer block if exist.
+  // Step 4. Find the only writer block if exist.
   Optional<StmtSRef> _write_block_sref = GetOnlyWriteBlock(self, scope_sref, read_buffer);
 
-  // Step 6. Update cache stage info.
+  // Step 5. Update cache stage info.
   BufferRegion cache_region;
   if (!_write_block_sref.defined()) {
     // Cond 1. The buffer is the input block for the scope.
@@ -746,12 +729,12 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int buffer_in
         RelaxBufferRegion(self, region.value(), write_block_sref, parent_sref, info.loc_sref);
   }
 
-  // Step 7. Making new cache stage block and rewrite readers.
+  // Step 6. Making new cache stage block and rewrite readers.
   Block cache_read_stage = MakeCacheStage(/*cache_region=*/cache_region, /*info=*/&info,
                                           /*storage_scope=*/storage_scope);
   Stmt new_scope = CacheReadRewriter::Rewrite(/*scope_sref=*/scope_sref, /*info=*/&info);
 
-  // Step 8. Replacing and updating flags.
+  // Step 7. Replacing and updating flags.
   self->Replace(scope_sref, new_scope, info.block_map);
   StmtSRef result_block_sref = self->stmt2ref.at(cache_read_stage.get());
   self->UpdateAffineFlag(result_block_sref);
@@ -761,47 +744,43 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int buffer_in
   return result_block_sref;
 }
 
-StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
+StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_buffer_index,
                     const String& storage_scope) {
   /*!
    * Check:
    *   - The index is in the array of block reading region
-   *   - There is at most one block who write the buffer in the scope
+   *   - There is only one block who write the buffer in the scope
    *
    * Mutate:
    *   - Allocate new cache buffer under the current scope.
    *   - Find the lowest ancestor of the block and ANY ONE of the producer blocks.
-   *   - Copy the buffer with the necessary region.
+   *   - Copy the buffer with the consumed region.
    */
   // Step 1. Checking index
   const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   Buffer write_buffer =
-      GetNthAccessBuffer(self, GetRef<Block>(block), buffer_index, /*is_write=*/true);
+      GetNthAccessBuffer(self, GetRef<Block>(block), write_buffer_index, /*is_write=*/true);
 
-  // Step 2. Checking there is only one writing block and get it.
-  StmtSRef root_sref = GetSRefTreeRoot(block_sref);
-  const BlockNode* root_block = TVM_SREF_TO_BLOCK(root_block, root_sref);
-
-  // Step 3. Creating CacheStageInfo
+  // Step 2. Creating CacheStageInfo
   CacheStageInfo info;
   info.read_buffer = WithScope(write_buffer, storage_scope);
-  // Create corresponding the buffer to be written, i.e. result of cache_read
+  // Create the corresponding buffer to be written, i.e. result of cache_write
   info.write_buffer = write_buffer;
   // Create the corresponding buffer allocation
   info.alloc = info.read_buffer;
 
-  // Step 4. Find the parent scope
+  // Step 3. Find the parent scope
   StmtSRef scope_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/true);
   const BlockNode* scope_block = TVM_SREF_TO_BLOCK(scope_block, scope_sref);
 
-  // Step 5. Check the only writer block.
+  // Step 4. Check the only writer block.
   Optional<StmtSRef> _write_block_sref = GetOnlyWriteBlock(self, scope_sref, write_buffer);
   // We have provide a block_sref who write the buffer, so use ICHECK here.
   ICHECK(_write_block_sref.defined());
   // Check the only producer is same as the input block.
   ICHECK(_write_block_sref.value().same_as(block_sref));
 
-  // Step 6. Find the producing region and insert position
+  // Step 5. Find the producing region and insert position
   Optional<BufferRegion> region = RelatedBufferRegion(block->writes, write_buffer);
   ICHECK(region.defined());
   StmtSRef parent_sref = GetRef<StmtSRef>(block_sref->parent);
@@ -810,21 +789,13 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int buffer_i
   BufferRegion cache_region =
       RelaxBufferRegion(self, region.value(), block_sref, parent_sref, info.loc_sref);
 
-  // Step 7. Making new cache stage block and rewrite readers.
+  // Step 6. Making new cache stage block and rewrite readers.
   Block cache_write_stage = MakeCacheStage(/*cache_region=*/cache_region, /*info=*/&info,
                                            /*storage_scope=*/storage_scope);
   Stmt new_scope = CacheWriteRewriter::Rewrite(/*scope_sref=*/scope_sref,
                                                /*writer_block_sref=*/block_sref, /*info=*/&info);
 
-  // Step 8. Handling block remapping
-  Map<Block, Block>& block_map = info.block_map;
-  auto it = block_map.find(GetRef<Block>(block));
-  ICHECK(it != block_map.end());
-  Block t = (*it).second;
-  std::swap(t, cache_write_stage);
-  block_map.Set(GetRef<Block>(block), t);
-
-  // Step 8. Replacing and updating flags.
+  // Step 7. Replacing and updating flags.
   self->Replace(scope_sref, new_scope, info.block_map);
   StmtSRef result_block_sref = self->stmt2ref.at(cache_write_stage.get());
   self->UpdateAffineFlag(result_block_sref);
@@ -845,16 +816,16 @@ struct CacheReadTraits : public UnpackedInstTraits<CacheReadTraits> {
   static constexpr size_t kNumAttrs = 2;
   static constexpr size_t kNumDecisions = 0;
 
-  static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block, Integer buffer_index,
+  static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block, Integer read_buffer_index,
                                          String storage_scope) {
-    return sch->CacheRead(block, buffer_index->value, storage_scope);
+    return sch->CacheRead(block, read_buffer_index->value, storage_scope);
   }
 
-  static String UnpackedAsPython(Array<String> outputs, String block, Integer buffer_index,
+  static String UnpackedAsPython(Array<String> outputs, String block, Integer read_buffer_index,
                                  String storage_scope) {
     PythonAPICall py("cache_read");
     py.Input("block", block);
-    py.Input("buffer_index", buffer_index->value);
+    py.Input("read_buffer_index", read_buffer_index->value);
     py.Input("storage_scope", storage_scope);
     py.SingleOutput(outputs);
     return py.Str();
@@ -873,16 +844,16 @@ struct CacheWriteTraits : public UnpackedInstTraits<CacheWriteTraits> {
   static constexpr size_t kNumAttrs = 2;
   static constexpr size_t kNumDecisions = 0;
 
-  static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block, Integer buffer_index,
+  static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block, Integer write_buffer_index,
                                          String storage_scope) {
-    return sch->CacheWrite(block, buffer_index->value, storage_scope);
+    return sch->CacheWrite(block, write_buffer_index->value, storage_scope);
   }
 
-  static String UnpackedAsPython(Array<String> outputs, String block, Integer buffer_index,
+  static String UnpackedAsPython(Array<String> outputs, String block, Integer write_buffer_index,
                                  String storage_scope) {
     PythonAPICall py("cache_write");
     py.Input("block", block);
-    py.Input("buffer_index", buffer_index->value);
+    py.Input("write_buffer_index", write_buffer_index->value);
     py.Input("storage_scope", storage_scope);
     py.SingleOutput(outputs);
     return py.Str();
