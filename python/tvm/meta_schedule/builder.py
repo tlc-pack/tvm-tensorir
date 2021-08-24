@@ -70,12 +70,12 @@ class Builder(Object):
 @register_object("meta_schedule.PyBuilder")
 class PyBuilder(Builder):
     def __init__(self):
-        def f_build(build_inputs: List[BuildInput]) -> List[BuildResult]:
+        def build_func(build_inputs: List[BuildInput]) -> List[BuildResult]:
             return self.build(build_inputs)
 
         self.__init_handle_by_constructor__(
             _ffi_api.PyBuilder,  # type: ignore # pylint: disable=no-member
-            f_build,
+            build_func,
         )
 
     def build(self, build_inputs: List[BuildInput]) -> List[BuildResult]:
@@ -158,17 +158,20 @@ class LocalBuilder(PyBuilder):
             f_build = default_build
         else:
             f_build = get_global_func(build_func)
+
         # Step 1.2. Get the export function
         f_export: Callable[[Module], str]
         if export_func is None:
             f_export = export_tar
         else:
             f_export = get_global_func(export_func)
+
         # Step 2.1. Build the IRModule
         try:
             rt_mod: Module = f_build(mod, target)
         except Exception as err:  # pylint: disable=broad-except
             return BuildResult(None, "LocalBuilder: Error building the IRModule\n" + repr(err))
+
         # Step 2.2. Export the Module
         try:
             artifact_path: str = f_export(rt_mod)

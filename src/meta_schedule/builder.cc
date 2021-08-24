@@ -37,9 +37,9 @@ BuildResult::BuildResult(Optional<String> artifact_path, Optional<String> error_
   data_ = std::move(n);
 }
 
-Builder Builder::PyBuilder(BuilderNode::FBuild f_build) {
+Builder Builder::PyBuilder(BuilderNode::FBuild build_func) {
   ObjectPtr<PyBuilderNode> n = make_object<PyBuilderNode>();
-  n->f_build = std::move(f_build);
+  n->build_func = std::move(build_func);
   return Builder(std::move(n));
 }
 
@@ -49,6 +49,7 @@ TVM_REGISTER_NODE_TYPE(BuildInputNode);
 TVM_REGISTER_NODE_TYPE(BuildResultNode);
 TVM_REGISTER_OBJECT_TYPE(BuilderNode);
 TVM_REGISTER_NODE_TYPE(PyBuilderNode);
+
 TVM_REGISTER_GLOBAL("meta_schedule.BuildInput")
     .set_body_typed([](IRModule mod, Target target) -> BuildInput {
       return BuildInput(mod, target);
@@ -58,8 +59,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.BuildResult")
       return BuildResult(artifact_path, error_msg);
     });
 TVM_REGISTER_GLOBAL("meta_schedule.PyBuilder")
-    .set_body_typed([](BuilderNode::FBuild f_build) -> Builder {
-      return Builder::PyBuilder(f_build);
+    .set_body_typed([](BuilderNode::FBuild build_func) -> Builder {
+      return Builder::PyBuilder(build_func);
     });
 
 }  // namespace meta_schedule
