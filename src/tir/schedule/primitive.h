@@ -122,8 +122,8 @@ TVM_DLL void Unroll(ScheduleState self, const StmtSRef& loop_sref);
 /******** Schedule: Insert cache stages ********/
 /*!
  * \brief Create a block that reads a buffer region into a read cache. It requires:
- * 1) There is at least one block read the buffer in the scope.
- * 2) There is at most one block who write the buffer in the scope.
+ * 1) There is at least one block who reads the buffer in the scope.
+ * 2) There is at most one block who writes the buffer in the scope.
  * \param self The state of the schedule
  * \param block_sref The consumer block of the target buffer.
  * \param buffer_index The index of the buffer in block's read region.

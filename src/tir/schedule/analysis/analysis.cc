@@ -589,7 +589,7 @@ BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sr
 /******** Block-buffer relation ********/
 
 Buffer GetNthAccessBuffer(const ScheduleState& self, const Block& block, int n, bool is_write) {
-  class WriteBufferIndexOutOfRangeError : public ScheduleError {
+  class BufferIndexOutOfRangeError : public ScheduleError {
    public:
     explicit WriteBufferIndexOutOfRangeError(IRModule mod, Block block, int buffer_index,
                                              bool is_write)
@@ -614,7 +614,7 @@ Buffer GetNthAccessBuffer(const ScheduleState& self, const Block& block, int n, 
 
     String DetailRenderTemplate() const final {
       std::ostringstream os;
-      size_t num = block_->writes.size();
+      size_t num = is_write_ ? block_->writes.size() : block_->reads.size();
       std::string access_type = is_write_ ? "write" : "read";
       os << "The block {0} has " << num << " " << access_type
          << " regions, so `buffer_index` is required to be in [0, " << num

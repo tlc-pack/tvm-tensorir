@@ -228,11 +228,11 @@ BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sr
 /******** Block-buffer relation ********/
 
 /*!
- * \brief Get the n-th read or write buffer of the given the block.
+ * \brief Get the n-th read or write buffer of the given block.
  * \param self The schedule state.
  * \param block The queried block.
  * \param n The index of the queried buffer.
- * \param is_write A flag to indicate querying read or write buffer.
+ * \param is_write A boolean flag to indicate querying write buffer or read buffer.
  * \return The buffer of the n-th read/write region of the block.
  * \throw ScheduleError If the buffer index is out of bound.
  */
