@@ -59,7 +59,7 @@ class NotSingleWriteBlock : public ScheduleError {
 
 /******** Helper Functions/Classes ********/
 
-/*! \brief The auxilary info used for the insertion point and content of the cache stage. */
+/*! \brief The auxiliary info used for the insertion point and content of the cache stage. */
 struct CacheStageInfo {
   /*! \brief The buffer to be read. */
   Buffer read_buffer;
@@ -150,7 +150,7 @@ bool HaveBlockAccess(const Block& scope_block, const Buffer& buffer, bool read, 
  * \param info The cache stage information, which will be updated in the function.
  * \param storage_scope The storage scope of the cached buffer (only used in naming here)
  * \returns A block indicating the body of the loop nesting.
- * */
+ */
 Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
                      const String& storage_scope) {
   // loop variables
@@ -167,7 +167,7 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
   Array<IterVar> block_vars;
   // block access region for read/write buffers
   Region access_region;
-  // indices used in function body
+  // indices used in block body
   Array<PrimExpr> access_indices;
   // Create block vars, block's accessed region and accessing indices
   for (const PrimExpr& dim : cache_region->buffer->shape) {
@@ -699,7 +699,7 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int buffer_in
    *   - Copy the buffer with the necessary region.
    */
 
-  // Step 1. Checking index
+  // Step 1. Check index and getting the target buffer.
   const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   Buffer read_buffer =
       GetNthAccessBuffer(self, GetRef<Block>(block), buffer_index, /*is_write=*/false);
@@ -708,7 +708,7 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int buffer_in
   StmtSRef root_sref = GetSRefTreeRoot(block_sref);
   const BlockNode* root_block = TVM_SREF_TO_BLOCK(root_block, root_sref);
 
-  // Step 3. Creating CacheStageInfo
+  // Step 3. Creat CacheStageInfo
   CacheStageInfo info;
   info.read_buffer = read_buffer;
   // Create corresponding the buffer to be written, i.e. result of cache_read
@@ -860,7 +860,8 @@ struct CacheReadTraits : public UnpackedInstTraits<CacheReadTraits> {
     return py.Str();
   }
 
-  friend struct UnpackedInstTraits;
+  template <typename>
+  friend struct ::tvm::tir::UnpackedInstTraits;
 };
 
 struct CacheWriteTraits : public UnpackedInstTraits<CacheWriteTraits> {
@@ -887,7 +888,8 @@ struct CacheWriteTraits : public UnpackedInstTraits<CacheWriteTraits> {
     return py.Str();
   }
 
-  friend struct UnpackedInstTraits;
+  template <typename>
+  friend struct ::tvm::tir::UnpackedInstTraits;
 };
 
 TVM_REGISTER_INST_KIND_TRAITS(CacheReadTraits);

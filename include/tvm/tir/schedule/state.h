@@ -129,7 +129,7 @@ class ScheduleStateNode : public Object {
   TVM_DLL void Replace(const tir::StmtSRef& src_sref, const Stmt& tgt_stmt,
                        const Map<Block, Block>& block_sref_reuse);
   /*!
-   * \brief Recalculate the AffineFlag of the scope block info.
+   * \brief Recalculate the `affine_binding` flag of the scope block info.
    * \param scope_sref The sref to the intersted scope block.
    */
   TVM_DLL void UpdateAffineFlag(const StmtSRef& scope_sref);

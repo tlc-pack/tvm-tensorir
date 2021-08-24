@@ -751,7 +751,7 @@ class Schedule(Object):
         block : BlockRV
             The producer block of the target buffer.
 
-        i: int
+        buffer_index: int
             The index of the buffer in block's write region.
 
         storage_scope: str
