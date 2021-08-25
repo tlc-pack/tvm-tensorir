@@ -130,7 +130,7 @@ class ScheduleStateNode : public Object {
                        const Map<Block, Block>& block_sref_reuse);
   /*!
    * \brief Recalculate the `affine_binding` flag of the scope block info.
-   * \param scope_sref The sref to the intersted scope block.
+   * \param scope_sref The sref to the interested scope block.
    */
   TVM_DLL void UpdateAffineFlag(const StmtSRef& scope_sref);
   /*!

@@ -509,6 +509,8 @@ def test_cache_read_elementwise():
     cached_b = sch.cache_read(block_c, 0, "local")
     assert sch.get(cached_a) == sch.get(sch.get_block("A_global"))
     assert sch.get(cached_b) == sch.get(sch.get_block("B_local"))
+    assert sch.get(block_b) == sch.get(sch.get_block("B"))
+    assert sch.get(block_c) == sch.get(sch.get_block("C"))
     tvm.ir.assert_structural_equal(cache_read_elementwise, sch.mod["main"])
     verify_trace_roundtrip(sch=sch, mod=elementwise)
 
@@ -564,6 +566,8 @@ def test_cache_write_elementwise():
     cached_c = sch.cache_write(block_c, 0, "global")
     assert sch.get(cached_b) == sch.get(sch.get_block("B_local"))
     assert sch.get(cached_c) == sch.get(sch.get_block("C_global"))
+    assert sch.get(block_b) == sch.get(sch.get_block("B"))
+    assert sch.get(block_c) == sch.get(sch.get_block("C"))
     tvm.ir.assert_structural_equal(cache_write_elementwise, sch.mod["main"])
     verify_trace_roundtrip(sch=sch, mod=elementwise)
 
