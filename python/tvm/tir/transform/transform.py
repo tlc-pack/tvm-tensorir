@@ -801,3 +801,14 @@ def InjectSoftwarePipeline():
         The result pass
     """
     return _ffi_api.InjectSoftwarePipeline()
+
+
+def LowerLogicalLayout():
+    """Lower logical layout to physical layout
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.LowerLogicalLayout()
