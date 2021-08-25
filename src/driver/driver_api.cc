@@ -425,7 +425,6 @@ std::pair<IRModule, IRModule> SplitDevHostFuncs(IRModule mod_mixed, const Target
                CallingConv::kDeviceKernelLaunch;
       }),
       BindTarget(target),
-      tir::transform::UnifyThreadAxis(),
       tir::transform::LowerWarpMemory(),
       tir::transform::Simplify(),
       tir::transform::LowerCustomDatatypes(),

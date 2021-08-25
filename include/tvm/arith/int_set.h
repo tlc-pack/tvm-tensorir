@@ -260,23 +260,6 @@ TVM_DLL Optional<Array<IntSet>> EstimateRegionLowerBound(const Array<Range>& reg
                                                          const Map<Var, Range>& var_dom,
                                                          const PrimExpr& predicate,
                                                          arith::Analyzer* analyzer);
-using NDIntSet = std::vector<tvm::arith::IntSet>;
-
-IntSet IntSetFromMinExtent(const PrimExpr& min, const PrimExpr& extent);
-
-NDIntSet NDIntSetFromRegion(const tir::Region& region);
-
-NDIntSet NDIntSetFromShape(const Array<PrimExpr>& shape);
-
-NDIntSet NDIntSetFromPoint(const Array<PrimExpr>& indices);
-
-void NDIntSetUnionWith(NDIntSet* lhs, const NDIntSet& rhs);
-
-NDIntSet NDIntSetEmpty(int ndim);
-
-NDIntSet EvalNDIntSet(const NDIntSet& nd_int_set,
-                      const std::unordered_map<const VarNode*, arith::IntSet>& dom_map);
-
 }  // namespace arith
 }  // namespace tvm
 #endif  // TVM_ARITH_INT_SET_H_
