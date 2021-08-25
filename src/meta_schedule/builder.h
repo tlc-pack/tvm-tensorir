@@ -35,7 +35,7 @@ class BuildInputNode : public runtime::Object {
 
   /*!
    * \brief Visitor for variables in python.
-   * \note required for non-abstract classes.
+   * \note Defined for reflection.
    */
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("mod", &mod);
@@ -73,7 +73,7 @@ class BuildResultNode : public runtime::Object {
 
   /*!
    * \brief Visitor for variables in python.
-   * \note required for non-abstract classes.
+   * \note Defined for reflection.
    */
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("artifact_path", &artifact_path);
@@ -148,7 +148,7 @@ class PyBuilderNode : public BuilderNode {
 
   /*!
    * \brief Visitor for variables in python.
-   * \note required for non-abstract classes.
+   * \note Defined for reflection.
    */
   void VisitAttrs(tvm::AttrVisitor* v) {
     // `build_func` is not visited
