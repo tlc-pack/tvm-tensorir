@@ -113,9 +113,10 @@ class LocalBuilder(PyBuilder):
     def build(self, build_inputs: List[BuildInput]) -> List[BuildResult]:
         results: List[BuildResult] = []
         map_result: MapResult
+
         for map_result in self.pool.map_with_error_catching(
-            LocalBuilder._worker_func,
-            (
+            lambda x: LocalBuilder._worker_func(*x),
+            [
                 (
                     self.build_func,
                     self.export_func,
@@ -123,7 +124,7 @@ class LocalBuilder(PyBuilder):
                     build_input.target,
                 )
                 for build_input in build_inputs
-            ),
+            ],
         ):
             if map_result.status == StatusKind.COMPLETE:
                 results.append(map_result.value)

@@ -15,4 +15,4 @@
 # specific language governing permissions and limitations
 # under the License.
 """The meta schedule infrastructure."""
-from .builder import BuildInput, BuildResult, Builder
+from .builder import BuildInput, BuildResult, Builder, PyBuilder, LocalBuilder
