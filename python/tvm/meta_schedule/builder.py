@@ -96,6 +96,7 @@ class LocalBuilder(PyBuilder):
         timeout_sec: float = 30.0,
         build_func: str = None,
         export_func: str = None,
+        initializer: Callable = None,
     ) -> None:
         super().__init__()
 
@@ -105,6 +106,7 @@ class LocalBuilder(PyBuilder):
         self.pool = PopenPoolExecutor(
             max_workers=max_workers,
             timeout=timeout_sec,
+            initializer=initializer,
         )
         self.timeout_sec = timeout_sec
         self.build_func = build_func

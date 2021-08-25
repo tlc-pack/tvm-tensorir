@@ -140,14 +140,15 @@ def test_meta_schedule_error_handle_test_builder():
         assert error_msg == "error"
 
 
-def test_meta_schedule_error_handle_local_builder():
+def test_meta_schedule_error_handle_build_func():
     """Test the error handing during building"""
 
-    @register_func("meta_schedule.builder.test_build")
-    def test_build(mod: Module, target: Target) -> None:  # pylint: disable=unused-variable
-        raise ValueError("Builder intended Test Error.")
+    def initializer():
+        @register_func("meta_schedule.builder.test_build")
+        def test_build(mod: Module, target: Target) -> None:  # pylint: disable=unused-variable
+            raise ValueError("Builder intended Test Error (build func).")
 
-    builder = LocalBuilder(build_func="meta_schedule.builder.test_build", max_workers=1)
+    builder = LocalBuilder(build_func="meta_schedule.builder.test_build", initializer=initializer)
     builder_inputs = [BuildInput(MatmulModule(), Target("llvm"))]
     builder_results = builder.build(builder_inputs)
     assert len(builder_results) == len(builder_inputs)
@@ -155,8 +156,26 @@ def test_meta_schedule_error_handle_local_builder():
         artifact_path = result.artifact_path
         error_msg = result.error_msg
         assert artifact_path is None
-        print(error_msg.replace("\\n", "\n") if error_msg is not None else "None")
         assert error_msg.startswith("LocalBuilder: Error building the IRModule")
+
+
+def test_meta_schedule_error_handle_export_func():
+    """Test the error handing during building"""
+
+    def initializer():
+        @register_func("meta_schedule.builder.test_export")
+        def test_build(mod: Module) -> str:  # pylint: disable=unused-variable
+            raise ValueError("Builder intended Test Error (export func).")
+
+    builder = LocalBuilder(export_func="meta_schedule.builder.test_export", initializer=initializer)
+    builder_inputs = [BuildInput(MatmulModule(), Target("llvm"))]
+    builder_results = builder.build(builder_inputs)
+    assert len(builder_results) == len(builder_inputs)
+    for result in builder_results:
+        artifact_path = result.artifact_path
+        error_msg = result.error_msg
+        assert artifact_path is None
+        assert error_msg.startswith("LocalBuilder: Error exporting the Module")
 
 
 def test_meta_schedule_error_handle_time_out():
@@ -174,14 +193,4 @@ def test_meta_schedule_error_handle_time_out():
 
 
 if __name__ == "__main__":
-    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
-    test_meta_schedule_error_handle_local_builder()
-
-    """mod = MatmulModule()
-    target = "llvm"
-    builder = LocalBuilder()
-    rt_mod: Module = tvm.lower(mod, target)
-
-    artifact_path = os.path.join(tempfile.mkdtemp(), "tvm_tmp_mod." + tar.output_format)
-    mod.export_library(artifact_path, tar)
-    return artifact_path"""
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))
