@@ -185,13 +185,10 @@ def _build_for_device(input_mod, target, target_host):
                 lambda f: "calling_conv" in f.attrs
                 and f.attrs["calling_conv"].value == CallingConv.DEVICE_KERNEL_LAUNCH
             ),
-            tvm.tir.transform.LowerIntrin(),
-            tvm.tir.transform.UnifyThreadAxis(),
             tvm.tir.transform.LowerWarpMemory(),
-            tvm.tir.transform.Simplify(),
-        tvm.ir.transform.PrintIR(),
             tvm.tir.transform.LowerDeviceStorageAccessInfo(),
             tvm.tir.transform.LowerCustomDatatypes(),
+            tvm.tir.transform.LowerIntrin(),
         ]
     )
     mod_dev = opt_device(mod_mixed)
@@ -354,9 +351,6 @@ def build(
 
     device_modules = []
     for tar, input_mod in target_input_mod.items():
-        # print('Build For device')
-        # print(input_mod)
-        # raise NotImplementedError()
         mod_host, mdev = _build_for_device(input_mod, tar, target_host)
         mod_host_all.update(mod_host)
         device_modules.append(mdev)

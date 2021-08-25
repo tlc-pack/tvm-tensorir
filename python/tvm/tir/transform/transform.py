@@ -814,5 +814,12 @@ def LowerLogicalLayout():
     return _ffi_api.LowerLogicalLayout()
 
 
-def UnifyThreadAxis():
-    return _ffi_api.UnifyThreadAxis()
+def LowerLogicalIntrin():
+    """Lower logical intrinsics to physical intrinsics.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.LowerLogicalIntrin()

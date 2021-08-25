@@ -260,6 +260,7 @@ TVM_DLL Optional<Array<IntSet>> EstimateRegionLowerBound(const Array<Range>& reg
                                                          const Map<Var, Range>& var_dom,
                                                          const PrimExpr& predicate,
                                                          arith::Analyzer* analyzer);
+
 }  // namespace arith
 }  // namespace tvm
 #endif  // TVM_ARITH_INT_SET_H_
