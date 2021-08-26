@@ -23,7 +23,6 @@ namespace meta_schedule {
 
 /******** Constructors ********/
 
-/*! \brief Constructor function of BuildInput class. */
 BuildInput::BuildInput(IRModule mod, Target target) {
   ObjectPtr<BuildInputNode> n = make_object<BuildInputNode>();
   n->mod = std::move(mod);
@@ -31,7 +30,6 @@ BuildInput::BuildInput(IRModule mod, Target target) {
   data_ = std::move(n);
 }
 
-/*! \brief Constructor function of BuildResult class. */
 BuildResult::BuildResult(Optional<String> artifact_path, Optional<String> error_msg) {
   ObjectPtr<BuildResultNode> n = make_object<BuildResultNode>();
   n->artifact_path = std::move(artifact_path);
@@ -39,7 +37,6 @@ BuildResult::BuildResult(Optional<String> artifact_path, Optional<String> error_
   data_ = std::move(n);
 }
 
-/*! \brief Constructor function for a PyBuilder class returned as a Builder. */
 Builder Builder::PyBuilder(BuilderNode::FBuild build_func) {
   ObjectPtr<PyBuilderNode> n = make_object<PyBuilderNode>();
   n->build_func = std::move(build_func);
@@ -48,24 +45,21 @@ Builder Builder::PyBuilder(BuilderNode::FBuild build_func) {
 
 /******** FFI ********/
 
-TVM_REGISTER_NODE_TYPE(BuildInputNode);   // Concrete Class
-TVM_REGISTER_NODE_TYPE(BuildResultNode);  // Concrete Class
-TVM_REGISTER_OBJECT_TYPE(BuilderNode);    // Abstract Class
-TVM_REGISTER_NODE_TYPE(PyBuilderNode);    // Concrete Class
+TVM_REGISTER_NODE_TYPE(BuildInputNode);
+TVM_REGISTER_NODE_TYPE(BuildResultNode);
+TVM_REGISTER_OBJECT_TYPE(BuilderNode);
+TVM_REGISTER_NODE_TYPE(PyBuilderNode);
 
-/*! \brief Register BuildInput's constructor function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.BuildInput")
     .set_body_typed([](IRModule mod, Target target) -> BuildInput {
       return BuildInput(mod, target);
     });
 
-/*! \brief Register BuildResult's constructor function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.BuildResult")
     .set_body_typed([](Optional<String> artifact_path, Optional<String> error_msg) -> BuildResult {
       return BuildResult(artifact_path, error_msg);
     });
 
-/*! \brief Register Builder's `PyBuilder` function to global registry. */
 TVM_REGISTER_GLOBAL("meta_schedule.PyBuilder").set_body_typed(Builder::PyBuilder);
 
 }  // namespace meta_schedule

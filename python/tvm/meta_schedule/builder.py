@@ -31,7 +31,15 @@ from .utils import cpu_count
 
 @register_object("meta_schedule.BuildInput")
 class BuildInput(Object):
+    """The builder's input.
 
+    Parameters
+    ----------
+    mod : IRModule
+        The IRModule to be built.
+    target : Target
+        The target to be built for.
+    """
     mod: IRModule
     target: Target
 

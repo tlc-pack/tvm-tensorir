@@ -25,26 +25,21 @@
 namespace tvm {
 namespace meta_schedule {
 
-/*! \brief The class for builder's input type. */
+/*! \brief The builder's input. */
 class BuildInputNode : public runtime::Object {
  public:
-  /*! \brief The module to be optimized. */
+  /*! \brief The IRModule to be built. */
   IRModule mod;
-  /*! \brief The target to be optimized for. */
+  /*! \brief The target to be built for. */
   Target target;
 
-  /*!
-   * \brief Visitor for variables in python.
-   * \note Defined for reflection.
-   */
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("mod", &mod);
     v->Visit("target", &target);
   }
 
-  /*! \brief Class name `PySpaceGenerator` */
   static constexpr const char* _type_key = "meta_schedule.BuildInput";
-  TVM_DECLARE_FINAL_OBJECT_INFO(BuildInputNode, runtime::Object);  // Concrete class
+  TVM_DECLARE_FINAL_OBJECT_INFO(BuildInputNode, runtime::Object);
 };
 
 /*!
@@ -54,35 +49,29 @@ class BuildInputNode : public runtime::Object {
 class BuildInput : public runtime::ObjectRef {
  public:
   /*!
-   * \brief Constructor function of BuildInput class.
-   * \param mod The module to be optimized.
-   * \param target The target to be optimized for.
+   * \brief Constructor of BuildInput.
+   * \param mod The IRModule to be built.
+   * \param target The target to be built for.
    */
   TVM_DLL explicit BuildInput(IRModule mod, Target target);
-  /*! \brief Declare reference relationship. */
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BuildInput, runtime::ObjectRef, BuildInputNode);
 };
 
-/*! \brief The class for builder's output type. */
+/*! \brief The builder's output. */
 class BuildResultNode : public runtime::Object {
  public:
-  /*! \brief The String typed path to the built artifact. */
+  /*! \brief The path to the built artifact. */
   Optional<String> artifact_path;
   /*! \brief The error message if any. */
   Optional<String> error_msg;
 
-  /*!
-   * \brief Visitor for variables in python.
-   * \note Defined for reflection.
-   */
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("artifact_path", &artifact_path);
     v->Visit("error_msg", &error_msg);
   }
 
-  /*! \brief Class name `BuildResult` */
   static constexpr const char* _type_key = "meta_schedule.BuildResult";
-  TVM_DECLARE_FINAL_OBJECT_INFO(BuildResultNode, runtime::Object);  // Concrete class
+  TVM_DECLARE_FINAL_OBJECT_INFO(BuildResultNode, runtime::Object);
 };
 
 /*!
@@ -92,35 +81,34 @@ class BuildResultNode : public runtime::Object {
 class BuildResult : public runtime::ObjectRef {
  public:
   /*!
-   * \brief Constructor function of BuildResult class.
-   * \param artifact_path The String typed path to the built artifact.
+   * \brief Constructor of BuildResult.
+   * \param artifact_path The path to the built artifact.
    * \param error_msg The error message if any.
    */
   TVM_DLL explicit BuildResult(Optional<String> artifact_path, Optional<String> error_msg);
-  /*! \brief Declare reference relationship. */
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BuildResult, runtime::ObjectRef, BuildResultNode);
 };
 
-/*! \brief The class of builder. */
-
+/*! \brief The abstract builder interface. */
 class BuilderNode : public runtime::Object {
  public:
-  /*! \brief Virtual destructor, required for abstract class. */
+  /*! \brief Default destructor */
   virtual ~BuilderNode() = default;
-
   /*!
-   * \brief Virtual function to generate the build result from build input.
-   * \param build_inputs The given array of build inputs from meansure candidates.
-   * \return The array of build results.
+   * \brief Generate the build results from build inputs.
+   * \param build_inputs The inputs to be built.
+   * \return The build results.
    */
   virtual Array<BuildResult> Build(const Array<BuildInput>& build_inputs) = 0;
-
-  /*! \brief The function type of `Build` method. */
+  /*!
+   * \brief The function type of `Build` method.
+   * \param build_inputs The inputs to be built.
+   * \return The build results.
+   */
   using FBuild = runtime::TypedPackedFunc<Array<BuildResult>(const Array<BuildInput>&)>;
 
-  /*! \brief Class name `Builder` */
   static constexpr const char* _type_key = "meta_schedule.Builder";
-  TVM_DECLARE_BASE_OBJECT_INFO(BuilderNode, runtime::Object);  // Absract class
+  TVM_DECLARE_BASE_OBJECT_INFO(BuilderNode, runtime::Object);
 };
 
 /*!
@@ -130,42 +118,30 @@ class BuilderNode : public runtime::Object {
 class Builder : public runtime::ObjectRef {
  public:
   /*!
-   * \brief Member function to create the PyBuilder class.
+   * \brief Create a builder with customized build method on the python-side.
    * \param build_func The function pointer to the `Build` function.
-   * \return The constructed PyBuilder object but in Builder type.
+   * \return The Builder created.
    */
   static Builder PyBuilder(BuilderNode::FBuild build_func);
-
-  /*! \brief Declare reference relationship. */
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Builder, runtime::ObjectRef, BuilderNode);
 };
 
-/*! \brief The python side customizable class for builder. */
+/*! \brief A builder with customized build method on the python-side. */
 class PyBuilderNode : public BuilderNode {
  public:
-  /*! \brief The function pointer to the `Build` function. */
+  /*! \brief The packed function to the `Build` function. */
   FBuild build_func;
 
-  /*!
-   * \brief Visitor for variables in python.
-   * \note Defined for reflection.
-   */
   void VisitAttrs(tvm::AttrVisitor* v) {
     // `build_func` is not visited
   }
 
-  /*!
-   * \brief Use the given function pointer to override the `Build` function.
-   * \param build_inputs The given array of build inputs from meansure candidates.
-   * \return The array of build results.
-   */
   Array<BuildResult> Build(const Array<BuildInput>& build_inputs) final {
     return build_func(build_inputs);
   }
 
-  /*! \brief Class name `PyBuilder` */
   static constexpr const char* _type_key = "meta_schedule.PyBuilder";
-  TVM_DECLARE_FINAL_OBJECT_INFO(PyBuilderNode, BuilderNode);  // Concrete class
+  TVM_DECLARE_FINAL_OBJECT_INFO(PyBuilderNode, BuilderNode);
 };
 
 }  // namespace meta_schedule
