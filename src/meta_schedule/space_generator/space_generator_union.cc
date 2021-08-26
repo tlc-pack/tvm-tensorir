@@ -18,7 +18,6 @@
  */
 
 #include "../space_generator.h"
-#include "../tune_context.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -27,26 +26,26 @@ namespace meta_schedule {
 class SpaceGeneratorUnionNode : public SpaceGeneratorNode {
  public:
   /*! \brief The array of design space generators unioned, could be recursive. */
-  Array<SpaceGenerator> space_generators;
+  runtime::Array<SpaceGenerator> space_generators;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("space_generators", &space_generators); }
+  void VisitAttrs(tvm::AttrVisitor* v) {}
 
-  void InitializeWithTuneContext(const TuneContext& tune_context) final {
+  void InitializeWithTuneContext(const TuneContext& context) override {
     // Initialize each space generator.
-    for (const SpaceGenerator& space_generator : space_generators) {
-      space_generator->InitializeWithTuneContext(tune_context);
+    for (const SpaceGenerator& space_gen : space_generators) {
+      space_gen->InitializeWithTuneContext(context);
     }
   }
 
-  Array<tir::Trace> GenerateDesignSpace(const IRModule& mod) final {
-    Array<tir::Trace> design_spaces;
-    for (const SpaceGenerator& space_generator : space_generators) {
-      // Generate partial design spaces from each design space generator.
-      Array<tir::Trace> partial = space_generator->GenerateDesignSpace(mod);
-      // Merge the partial design spaces.
-      design_spaces.insert(design_spaces.end(), partial.begin(), partial.end());
+  Array<tir::Trace> GenerateDesignSpaces(const IRModule& workload) override {
+    Array<tir::Trace> result;
+    for (const SpaceGenerator& space_gen : space_generators) {
+      // Generate design spaces from each design space generator.
+      Array<tir::Trace> partial = space_gen->GenerateDesignSpaces(workload);
+      // Merge the result.
+      result.insert(result.end(), partial.begin(), partial.end());
     }
-    return design_spaces;
+    return result;
   }
 
   static constexpr const char* _type_key = "meta_schedule.SpaceGeneratorUnion";
@@ -63,9 +62,10 @@ class SpaceGeneratorUnion : public SpaceGenerator {
    * \brief Constructor of SpaceGeneratorUnion.
    * \param space_generators Array of the design space generators to be unioned.
    */
-  TVM_DLL explicit SpaceGeneratorUnion(Array<SpaceGenerator> space_generators) {
+  TVM_DLL explicit SpaceGeneratorUnion(runtime::Array<ObjectRef> space_generators) {
     ObjectPtr<SpaceGeneratorUnionNode> n = make_object<SpaceGeneratorUnionNode>();
-    n->space_generators = std::move(space_generators);
+    for (const ObjectRef& space_gen : space_generators)
+      n->space_generators.push_back(Downcast<SpaceGenerator>(space_gen));
     data_ = std::move(n);
   }
 
@@ -78,13 +78,18 @@ class SpaceGeneratorUnion : public SpaceGenerator {
  * \param space_generators Array of the design space generators to be unioned.
  * \return The design space generator created.
  */
-SpaceGenerator SpaceGenerator::SpaceGeneratorUnion(Array<ObjectRef> space_generators) {
-  return meta_schedule::SpaceGeneratorUnion(Downcast<Array<SpaceGenerator>>(space_generators));
+SpaceGenerator SpaceGenerator::SpaceGeneratorUnion(runtime::Array<ObjectRef> space_generators) {
+  return meta_schedule::SpaceGeneratorUnion(space_generators);
 }
 
 TVM_REGISTER_NODE_TYPE(SpaceGeneratorUnionNode);
+
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnion")
     .set_body_typed(SpaceGenerator::SpaceGeneratorUnion);
+TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnionInitializeWithTuneContext")
+    .set_body_method<SpaceGeneratorUnion>(&SpaceGeneratorUnionNode::InitializeWithTuneContext);
+TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnionGenerate")
+    .set_body_method<SpaceGeneratorUnion>(&SpaceGeneratorUnionNode::GenerateDesignSpaces);
 
 }  // namespace meta_schedule
 }  // namespace tvm

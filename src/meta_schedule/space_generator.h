@@ -30,8 +30,20 @@ namespace meta_schedule {
 class TuneContext;
 
 /*! \brief The abstract class for design space generation. */
-class SpaceGeneratorNode : public Object {
+class SpaceGeneratorNode : public runtime::Object {
  public:
+  /*!
+   * \brief The function type of `InitializeWithTuneContext` method.
+   * \param tune_context The tuning context for initialization.
+   */
+  using FInitializeWithTuneContext = runtime::TypedPackedFunc<void(const TuneContext&)>;
+  /*!
+   * \brief The function type of `GenerateDesignSpace` method.
+   * \param mod The module used for design space generation.
+   * \return The generated design spaces, i.e., traces.
+   */
+  using FGenerateDesignSpace = runtime::TypedPackedFunc<Array<tir::Trace>(const IRModule&)>;
+
   /*! \brief Virtual destructor */
   virtual ~SpaceGeneratorNode() = default;
 
@@ -46,57 +58,17 @@ class SpaceGeneratorNode : public Object {
    * \param mod The module used for design space generation.
    * \return The generated design spaces, i.e., traces.
    */
-  virtual Array<tir::Trace> GenerateDesignSpace(const IRModule& mod) = 0;
+  virtual runtime::Array<tir::Trace> GenerateDesignSpaces(const IRModule& mod) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SpaceGenerator";
   TVM_DECLARE_BASE_OBJECT_INFO(SpaceGeneratorNode, Object);
-};
-
-/*! \brief The design space generator with customized methods on the python-side. */
-class PySpaceGeneratorNode : public SpaceGeneratorNode {
- public:
-  /*!
-   * \brief The function type of `InitializeWithTuneContext` method.
-   * \param tune_context The tuning context for initialization.
-   */
-  using FInitializeWithTuneContext = runtime::TypedPackedFunc<void(const TuneContext&)>;
-  /*!
-   * \brief The function type of `GenerateDesignSpace` method.
-   * \param mod The module used for design space generation.
-   * \return The generated design spaces, i.e., traces.
-   */
-  using FGenerateDesignSpace = runtime::TypedPackedFunc<Array<tir::Trace>(const IRModule&)>;
-
-  /*! \brief The packed function to the `InitializeWithTuneContext` funcion. */
-  FInitializeWithTuneContext f_initialize_with_tune_context;
-  /*! \brief The packed function to the `GenerateDesignSpace` function. */
-  FGenerateDesignSpace f_generate_design_space;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    // `f_initialize_with_tune_context` is not visited
-    // `f_generate_design_space` is not visited
-  }
-
-  void InitializeWithTuneContext(const TuneContext& tune_context) override {
-    f_initialize_with_tune_context(tune_context);
-  }
-
-  Array<tir::Trace> GenerateDesignSpace(const IRModule& mod) override {
-    return f_generate_design_space(mod);
-  }
-
-  static constexpr const char* _type_key = "meta_schedule.PySpaceGenerator";
-  TVM_DECLARE_FINAL_OBJECT_INFO(PySpaceGeneratorNode, SpaceGeneratorNode);
 };
 
 /*!
  * \brief Managed reference to SpaceGeneratorNode.
  * \sa SpaceGeneratorNode
  */
-class SpaceGenerator : public ObjectRef {
- protected:
-  SpaceGenerator() = default;
-
+class SpaceGenerator : public runtime::ObjectRef {
  public:
   /*!
    * \brief Create a design space generator with customized methods on the python-side.
@@ -105,16 +77,16 @@ class SpaceGenerator : public ObjectRef {
    * \return The design space generator created.
    */
   static SpaceGenerator PySpaceGenerator(
-      PySpaceGeneratorNode::FInitializeWithTuneContext initialize_with_tune_context_func,
-      PySpaceGeneratorNode::FGenerateDesignSpace generate_design_space_func);
+      SpaceGeneratorNode::FInitializeWithTuneContext initialize_with_tune_context_func,
+      SpaceGeneratorNode::FGenerateDesignSpace generate_design_space_func);
 
   /*!
    * \brief Create a design space generator that is union of multiple design space generators.
    * \param space_generators An array of design space generators to be unioned.
    * \return The design space generator created.
    */
-  static SpaceGenerator SpaceGeneratorUnion(Array<ObjectRef> space_generators);
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(SpaceGenerator, ObjectRef, SpaceGeneratorNode);
+  static SpaceGenerator SpaceGeneratorUnion(runtime::Array<ObjectRef> space_generators);
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SpaceGenerator, ObjectRef, SpaceGeneratorNode);
 };
 
 }  // namespace meta_schedule
