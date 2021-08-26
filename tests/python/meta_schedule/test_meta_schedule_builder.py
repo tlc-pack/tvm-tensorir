@@ -24,6 +24,7 @@ import pytest
 
 from tvm._ffi import register_func
 import tvm
+from tvm.driver.build_module import build
 from tvm.runtime import Module
 from tvm import tir
 from tvm.script import ty
@@ -180,7 +181,19 @@ def test_meta_schedule_error_handle_export_func():
 
 def test_meta_schedule_error_handle_time_out():
     """Test the error handing time out during building"""
-    builder = LocalBuilder(timeout_sec=-1)
+
+    def initializer():
+        @register_func("meta_schedule.builder.test_time_out")
+        def timeout_build(mod, target):  # pylint: disable=unused-variable
+            import time
+
+            time.sleep(2)
+
+    builder = LocalBuilder(
+        timeout_sec=1,
+        build_func="meta_schedule.builder.test_time_out",
+        initializer=initializer,
+    )
     builder_inputs = [BuildInput(MatmulModule(), Target("llvm"))]
     builder_results = builder.build(builder_inputs)
     assert len(builder_results) == len(builder_inputs)
@@ -189,6 +202,11 @@ def test_meta_schedule_error_handle_time_out():
         error_msg = result.error_msg
         assert artifact_path is None
         assert error_msg.startswith("LocalBuilder: Timeout")
+
+
+def test_meta_schedule_missing_build_func():
+    with pytest.raises(ValueError):
+        LocalBuilder(build_func="wrong-name")
 
 
 if __name__ == "__main__":

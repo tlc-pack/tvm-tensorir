@@ -19,6 +19,8 @@ import os
 import tempfile
 from typing import Callable, List, Optional
 
+from _pytest._code.code import ExceptionRepr
+
 from tvm._ffi import register_func, register_object
 from tvm.ir import IRModule
 from tvm.runtime import Module, Object
@@ -206,6 +208,7 @@ class LocalBuilder(PyBuilder):
         self.timeout_sec = timeout_sec
         self.build_func = build_func
         self.export_func = export_func
+        self._pre_check()
 
     def build(self, build_inputs: List[BuildInput]) -> List[BuildResult]:
         results: List[BuildResult] = []
@@ -230,7 +233,7 @@ class LocalBuilder(PyBuilder):
                 results.append(
                     BuildResult(
                         None,
-                        "LocalBuilder: An exception occurred\n" + repr(map_result.value),
+                        "LocalBuilder: An exception occurred\n" + str(map_result.value),
                     )
                 )
             elif map_result.status == StatusKind.TIMEOUT:
@@ -243,6 +246,18 @@ class LocalBuilder(PyBuilder):
             else:
                 raise NotImplementedError(map_result.status)
         return results
+
+    def _pre_check(self) -> None:
+        value = self.pool.submit(LocalBuilder._worker_pre_check, self.build_func, self.export_func)
+        value.result()
+
+    @staticmethod
+    def _worker_pre_check(
+        build_func: Optional[str],
+        export_func: Optional[str],
+    ) -> None:
+        get_global_func_with_default_on_worker(name=build_func, default=None)
+        get_global_func_with_default_on_worker(name=export_func, default=None)
 
     @staticmethod
     def _worker_func(
