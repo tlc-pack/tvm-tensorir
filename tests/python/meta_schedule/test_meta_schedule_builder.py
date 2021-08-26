@@ -84,7 +84,7 @@ class BatchMatmulModule:
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring
 
 
-def check_build_results(builder_results: List[BuildResult]):
+def _check_build_results(builder_results: List[BuildResult]):
     """Simple check whether the build is successful"""
     for result in builder_results:
         artifact_path = result.artifact_path
@@ -102,7 +102,7 @@ def test_meta_schedule_single_build():
     builder_inputs = [BuildInput(mod, Target("llvm"))]
     builder_results = builder.build(builder_inputs)
     assert len(builder_results) == len(builder_inputs)
-    check_build_results(builder_results)
+    _check_build_results(builder_results)
 
 
 def test_meta_schedule_multiple_build():
@@ -115,7 +115,7 @@ def test_meta_schedule_multiple_build():
     ]
     builder_results = builder.build(builder_inputs)
     assert len(builder_results) == len(builder_inputs)
-    check_build_results(builder_results)
+    _check_build_results(builder_results)
 
 
 def test_meta_schedule_error_handle_test_builder():
@@ -180,7 +180,7 @@ def test_meta_schedule_error_handle_export_func():
 
 def test_meta_schedule_error_handle_time_out():
     """Test the error handing time out during building"""
-    builder = LocalBuilder(timeout_sec=0.0001)
+    builder = LocalBuilder(timeout_sec=-1)
     builder_inputs = [BuildInput(MatmulModule(), Target("llvm"))]
     builder_results = builder.build(builder_inputs)
     assert len(builder_results) == len(builder_inputs)
