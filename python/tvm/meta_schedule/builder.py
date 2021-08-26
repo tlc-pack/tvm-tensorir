@@ -159,6 +159,9 @@ class LocalBuilder(PyBuilder):
     Note
     ----
     The build function and export function should be registered in the worker process.
+    The worker process is only aware of functions registered in TVM package,
+    if there are extra functions to be registered,
+    please send the registration logic via initializer.
     """
 
     pool: PopenPoolExecutor

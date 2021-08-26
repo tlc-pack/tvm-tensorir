@@ -62,6 +62,7 @@ def get_global_func_with_default_on_worker(name: Optional[str], default: Callabl
     except TVMError:
         raise ValueError(
             "Function '{name}' is not registered on the worker process. "
+            "The build function and export function should be registered in the worker process. "
             "Note that the worker process is only aware of functions registered in TVM package, "
             "if there are extra functions to be registered, "
             "please send the registration logic via initializer."
