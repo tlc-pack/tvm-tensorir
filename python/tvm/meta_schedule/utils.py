@@ -21,23 +21,16 @@ from tvm._ffi import register_func
 
 @register_func("meta_schedule.cpu_count")
 def cpu_count(logical: bool = True) -> int:
-    """Return the number of logical CPUs in the system (same as
-    os.cpu_count() in Python 3.4).
-
-    If *logical* is False return the number of physical cores only
-    (e.g. hyper thread CPUs are excluded).
-
-    Return None if undetermined.
+    """Return the number of logical or physical CPUs in the system
 
     Parameters
     ----------
-    logical : bool
-        If True, return the number of logical cpus, otherwise return physical
-        cpus.
+    logical : bool = True
+        If True, return the number of logical CPUs, otherwise return the number of physical CPUs
 
     Returns
     -------
-    result : int
-        Number of logical or physical cores.
+    cpu_count : int
+        The number of logical or physical CPUs in the system
     """
     return psutil.cpu_count(logical=logical) or 1
