@@ -132,9 +132,7 @@ class PyBuilderNode : public BuilderNode {
   /*! \brief The packed function to the `Build` function. */
   FBuild build_func;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    // `build_func` is not visited
-  }
+  void VisitAttrs(tvm::AttrVisitor* v) {}
 
   Array<BuildResult> Build(const Array<BuildInput>& build_inputs) final {
     return build_func(build_inputs);

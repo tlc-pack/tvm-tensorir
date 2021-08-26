@@ -26,9 +26,9 @@ namespace meta_schedule {
 class SpaceGeneratorUnionNode : public SpaceGeneratorNode {
  public:
   /*! \brief The array of design space generators unioned, could be recursive. */
-  runtime::Array<SpaceGenerator> space_generators;
+  Array<SpaceGenerator> space_generators;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {}
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("space_generators", &space_generators); }
 
   void InitializeWithTuneContext(const TuneContext& context) override {
     // Initialize each space generator.
@@ -62,7 +62,7 @@ class SpaceGeneratorUnion : public SpaceGenerator {
    * \brief Constructor of SpaceGeneratorUnion.
    * \param space_generators Array of the design space generators to be unioned.
    */
-  TVM_DLL explicit SpaceGeneratorUnion(runtime::Array<ObjectRef> space_generators) {
+  TVM_DLL explicit SpaceGeneratorUnion(Array<ObjectRef> space_generators) {
     ObjectPtr<SpaceGeneratorUnionNode> n = make_object<SpaceGeneratorUnionNode>();
     for (const ObjectRef& space_gen : space_generators)
       n->space_generators.push_back(Downcast<SpaceGenerator>(space_gen));
@@ -78,18 +78,13 @@ class SpaceGeneratorUnion : public SpaceGenerator {
  * \param space_generators Array of the design space generators to be unioned.
  * \return The design space generator created.
  */
-SpaceGenerator SpaceGenerator::SpaceGeneratorUnion(runtime::Array<ObjectRef> space_generators) {
+SpaceGenerator SpaceGenerator::SpaceGeneratorUnion(Array<ObjectRef> space_generators) {
   return meta_schedule::SpaceGeneratorUnion(space_generators);
 }
 
 TVM_REGISTER_NODE_TYPE(SpaceGeneratorUnionNode);
-
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnion")
     .set_body_typed(SpaceGenerator::SpaceGeneratorUnion);
-TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnionInitializeWithTuneContext")
-    .set_body_method<SpaceGeneratorUnion>(&SpaceGeneratorUnionNode::InitializeWithTuneContext);
-TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnionGenerate")
-    .set_body_method<SpaceGeneratorUnion>(&SpaceGeneratorUnionNode::GenerateDesignSpaces);
 
 }  // namespace meta_schedule
 }  // namespace tvm
