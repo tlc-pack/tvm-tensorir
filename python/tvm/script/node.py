@@ -96,6 +96,7 @@ class BufferSlice(ObjectGeneric):
                 if index < 0:
                     report_error("Negative index is not allowed during buffer access", span)
             elif isinstance(index, PrimExpr):
+                # FIXME(vinx13): Ramp is allowed when registering logical intrinsic implementatoins
                 # if index.dtype != "int32":
                 #     report_error(
                 #         "index expected an int32 type PrimExpr but got " + str(index.dtype),

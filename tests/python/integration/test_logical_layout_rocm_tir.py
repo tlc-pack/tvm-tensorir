@@ -250,29 +250,6 @@ def tensorcore_gemm(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                             scope="warp.mfma_16x16x16_matrix_c",
                                             offset_factor=1,
                                         )
-                                        # tir.store(
-                                        #     wmma_C1.data,
-                                        #     tir.ramp((i * 4 + j) * 4, 1, 4),
-                                        #     tir.call_llvm_pure_intrin(
-                                        #         tir.llvm_lookup_intrinsic_id("llvm.amdgcn.mfma.f32.16x16x16f16"),
-                                        #         tir.load(
-                                        #             "float16x4",
-                                        #             wmma_A1.data,
-                                        #             tir.ramp(i * 4, 1, 4),
-                                        #             tir.broadcast(True, 4),
-                                        #             ),
-                                        #         tir.load(
-                                        #             "float16x4",
-                                        #             wmma_B1.data,
-                                        #             tir.ramp(j * 4, 1, 4),
-                                        #             tir.broadcast(True, 4),
-                                        #             ),
-                                        #         0,
-                                        #         0,
-                                        #         0,
-                                        #         dtype="float32x4"),
-                                        #     tir.broadcast(True, 4)
-                                        #     )
 
                                         tir.evaluate(
                                             tir.tvm_mfma_sync(
@@ -320,14 +297,6 @@ def tensorcore_gemm(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                             tir.writes([C1[vii, vjj]])
                                             C1[vii, vjj] = wmma_C2[vii, vjj]
 
-
-                                # for i1, j1 in tir.grid(16, 16):
-                                #     with tir.block([16, 16]) as [vii, vjj]:
-                                #         tir.bind(vii, i1)
-                                #         tir.bind(vjj, j1)
-                                #         tir.reads([wmma_C2[vii, vjj]])
-                                #         tir.writes([C1[vii, vjj]])
-                                #         C1[vii, vjj] = wmma_C2[vii, vjj]
 
 def test_gemm_tensorcore():
     dev = tvm.device("rocm", 0)

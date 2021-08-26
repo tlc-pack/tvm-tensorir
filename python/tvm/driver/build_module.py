@@ -21,7 +21,6 @@
 
 from typing import Union, Optional, List, Mapping
 import warnings
-from tvm.ir import transform
 
 import tvm.tir
 
@@ -186,6 +185,7 @@ def _build_for_device(input_mod, target, target_host):
                 and f.attrs["calling_conv"].value == CallingConv.DEVICE_KERNEL_LAUNCH
             ),
             tvm.tir.transform.LowerWarpMemory(),
+            tvm.tir.transform.Simplify(),
             tvm.tir.transform.LowerDeviceStorageAccessInfo(),
             tvm.tir.transform.LowerCustomDatatypes(),
             tvm.tir.transform.LowerIntrin(),
