@@ -126,7 +126,7 @@ class Builder : public runtime::ObjectRef {
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Builder, runtime::ObjectRef, BuilderNode);
 };
 
-/*! \brief A builder with customized build method on the python-side. */
+/*! \brief An abstract builder with customized build method on the python-side. */
 class PyBuilderNode : public BuilderNode {
  public:
   /*! \brief The packed function to the `Build` function. */

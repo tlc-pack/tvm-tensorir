@@ -40,10 +40,20 @@ class BuildInput(Object):
     target : Target
         The target to be built for.
     """
+
     mod: IRModule
     target: Target
 
     def __init__(self, mod: IRModule, target: Target) -> None:
+        """Constructor.
+
+        Parameters
+        ----------
+        mod : IRModule
+            The IRModule to be built.
+        target : Target
+            The target to be built for.
+        """
         self.__init_handle_by_constructor__(
             _ffi_api.BuildInput,  # type: ignore # pylint: disable=no-member
             mod,
@@ -53,6 +63,15 @@ class BuildInput(Object):
 
 @register_object("meta_schedule.BuildResult")
 class BuildResult(Object):
+    """The builder's result.
+
+    Parameters
+    ----------
+    artifact_path : Optional[str]
+        The path to the artifact.
+    error_msg : Optional[str]
+        The error message.
+    """
 
     artifact_path: Optional[str]
     error_msg: Optional[str]
@@ -62,6 +81,15 @@ class BuildResult(Object):
         artifact_path: Optional[str],
         error_msg: Optional[str],
     ) -> None:
+        """Constructor.
+
+        Parameters
+        ----------
+        artifact_path : Optional[str]
+            The path to the artifact.
+        error_msg : Optional[str]
+            The error message.
+        """
         self.__init_handle_by_constructor__(
             _ffi_api.BuildResult,  # type: ignore # pylint: disable=no-member
             artifact_path,
@@ -71,13 +99,31 @@ class BuildResult(Object):
 
 @register_object("meta_schedule.Builder")
 class Builder(Object):
+    """The abstract builder interface."""
+
     def build(self, build_inputs: List[BuildInput]) -> List[BuildResult]:
+        """Build the given inputs.
+
+        Parameters
+        ----------
+        build_inputs : List[BuildInput]
+            The inputs to be built.
+
+        Returns
+        -------
+        build_results : List[BuildResult]
+            The results of building the given inputs.
+        """
         raise NotImplementedError
 
 
 @register_object("meta_schedule.PyBuilder")
 class PyBuilder(Builder):
+    """An abstract builder with customized build method on the python-side."""
+
     def __init__(self):
+        """Constructor."""
+
         def build_func(build_inputs: List[BuildInput]) -> List[BuildResult]:
             return self.build(build_inputs)
 
@@ -91,6 +137,27 @@ class PyBuilder(Builder):
 
 
 class LocalBuilder(PyBuilder):
+    """A builder that builds the given input on local host.
+
+    Parameters
+    ----------
+    pool : PopenPoolExecutor
+        The process pool to run the build.
+    timeout_sec : float
+        The timeout in seconds for the build.
+    build_func : Optional[str]
+        Name of the build function to be used.
+        Defaults to `meta_schedule.builder.default_build`.
+        The signature is Callable[[IRModule, Target], Module].
+    export_func : Optional[str]
+        Name of the export function to be used.
+        Defaults to `meta_schedule.builder.default_export`.
+        The signature is Callable[[Module], str].
+
+    Note
+    ----
+    The build function and export function should be registered in the worker process.
+    """
 
     pool: PopenPoolExecutor
     timeout_sec: float
@@ -104,8 +171,28 @@ class LocalBuilder(PyBuilder):
         timeout_sec: float = 30.0,
         build_func: str = None,
         export_func: str = None,
-        initializer: Callable = None,
+        initializer: Optional[Callable] = None,
     ) -> None:
+        """Constructor.
+
+        Parameters
+        ----------
+        max_workers : Optional[int]
+            The maximum number of worker processes to be used.
+            Defaults to number of CPUs.
+        timeout_sec : float
+            The timeout in seconds for the build.
+        build_func : Optional[str]
+            Name of the build function to be used.
+            Defaults to `meta_schedule.builder.default_build`.
+            The signature is Callable[[IRModule, Target], Module].
+        export_func : Optional[str]
+            Name of the export function to be used.
+            Defaults to `meta_schedule.builder.default_export`.
+            The signature is Callable[[Module], str].
+        initializer : Optional[Callable]
+            The initializer to be used for the worker processes.
+        """
         super().__init__()
 
         if max_workers is None:
@@ -124,6 +211,7 @@ class LocalBuilder(PyBuilder):
         results: List[BuildResult] = []
         map_result: MapResult
 
+        # Dispatch the build inputs to the worker processes.
         for map_result in self.pool.map_with_error_catching(
             lambda x: LocalBuilder._worker_func(*x),
             [
@@ -193,6 +281,20 @@ class LocalBuilder(PyBuilder):
 
 @register_func("meta_schedule.builder.default_build")
 def default_build(mod: IRModule, target: Target) -> Module:
+    """Default build function.
+
+    Parameters
+    ----------
+    mod : IRModule
+        The IRModule to be built.
+    target : Target
+        The target to be built.
+
+    Returns
+    -------
+    rt_mod : Module
+        The built Module.
+    """
     # pylint: disable=import-outside-toplevel
     from tvm.autotvm.measure.measure_methods import set_cuda_target_arch
     from tvm.driver import build as tvm_build
@@ -207,6 +309,18 @@ def default_build(mod: IRModule, target: Target) -> Module:
 
 @register_func("meta_schedule.builder.export_tar")
 def export_tar(mod: Module) -> str:
+    """Default export function.
+
+    Parameters
+    ----------
+    mod : Module
+        The Module to be exported.
+
+    Returns
+    -------
+    artifact_path : str
+        The path to the exported Module.
+    """
     from tvm.contrib.tar import tar  # pylint: disable=import-outside-toplevel
 
     artifact_path = os.path.join(tempfile.mkdtemp(), "tvm_tmp_mod." + tar.output_format)
