@@ -39,7 +39,6 @@ class MatmulModule:
         a: ty.handle, b: ty.handle, c: ty.handle
     ) -> None:
         tir.func_attr({"global_symbol": "matmul", "tir.noalias": True})
-
         A = tir.match_buffer(a, (1024, 1024), "float32")
         B = tir.match_buffer(b, (1024, 1024), "float32")
         C = tir.match_buffer(c, (1024, 1024), "float32")
@@ -86,6 +85,7 @@ class BatchMatmulModule:
 
 
 def check_build_results(builder_results: List[BuildResult]):
+    """Simple check whether the build is successful"""
     for result in builder_results:
         artifact_path = result.artifact_path
         error_msg = result.error_msg
@@ -179,8 +179,7 @@ def test_meta_schedule_error_handle_export_func():
 
 
 def test_meta_schedule_error_handle_time_out():
-    """Test the error handing during building"""
-
+    """Test the error handing time out during building"""
     builder = LocalBuilder(timeout_sec=0.0001)
     builder_inputs = [BuildInput(MatmulModule(), Target("llvm"))]
     builder_results = builder.build(builder_inputs)
