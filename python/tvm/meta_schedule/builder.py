@@ -19,14 +19,14 @@ import os
 import tempfile
 from typing import Callable, List, Optional
 
-from tvm._ffi import register_func, register_object, get_global_func
+from tvm._ffi import register_func, register_object
 from tvm.ir import IRModule
 from tvm.runtime import Module, Object
 from tvm.target import Target
 
 from ..contrib.popen_pool import PopenPoolExecutor, StatusKind, MapResult
 from . import _ffi_api
-from .utils import cpu_count
+from .utils import cpu_count, get_global_func_with_default_on_worker
 
 
 @register_object("meta_schedule.BuildInput")
@@ -171,7 +171,7 @@ class LocalBuilder(PyBuilder):
         timeout_sec: float = 30.0,
         build_func: str = None,
         export_func: str = None,
-        initializer: Optional[Callable] = None,
+        initializer: Optional[Callable[[], None]] = None,
     ) -> None:
         """Constructor.
 
@@ -190,7 +190,7 @@ class LocalBuilder(PyBuilder):
             Name of the export function to be used.
             Defaults to `meta_schedule.builder.default_export`.
             The signature is Callable[[Module], str].
-        initializer : Optional[Callable]
+        initializer : Optional[Callable[[], None]]
             The initializer to be used for the worker processes.
         """
         super().__init__()
@@ -225,7 +225,7 @@ class LocalBuilder(PyBuilder):
             ],
         ):
             if map_result.status == StatusKind.COMPLETE:
-                results.append(map_result.value)
+                results.append(BuildResult(map_result.value, None))
             elif map_result.status == StatusKind.EXCEPTION:
                 results.append(
                     BuildResult(
@@ -250,33 +250,22 @@ class LocalBuilder(PyBuilder):
         export_func: Optional[str],
         mod: IRModule,
         target: Target,
-    ) -> BuildResult:
+    ) -> str:
         # Step 1.1. Get the build function
-        f_build: Callable[[IRModule, Target], Module]
-        if build_func is None:
-            f_build = default_build
-        else:
-            f_build = get_global_func(build_func)
-
+        f_build: Callable[[IRModule, Target], Module] = get_global_func_with_default_on_worker(
+            name=build_func,
+            default=default_build,
+        )
         # Step 1.2. Get the export function
-        f_export: Callable[[Module], str]
-        if export_func is None:
-            f_export = export_tar
-        else:
-            f_export = get_global_func(export_func)
-
+        f_export: Callable[[Module], str] = get_global_func_with_default_on_worker(
+            name=export_func,
+            default=export_tar,
+        )
         # Step 2.1. Build the IRModule
-        try:
-            rt_mod: Module = f_build(mod, target)
-        except Exception as err:  # pylint: disable=broad-except
-            return BuildResult(None, "LocalBuilder: Error building the IRModule\n" + repr(err))
-
+        rt_mod: Module = f_build(mod, target)
         # Step 2.2. Export the Module
-        try:
-            artifact_path: str = f_export(rt_mod)
-        except Exception as err:  # pylint: disable=broad-except
-            return BuildResult(None, "LocalBuilder: Error exporting the Module\n" + repr(err))
-        return BuildResult(artifact_path, None)
+        artifact_path: str = f_export(rt_mod)
+        return artifact_path
 
 
 @register_func("meta_schedule.builder.default_build")

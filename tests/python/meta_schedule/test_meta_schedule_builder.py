@@ -156,7 +156,7 @@ def test_meta_schedule_error_handle_build_func():
         artifact_path = result.artifact_path
         error_msg = result.error_msg
         assert artifact_path is None
-        assert error_msg.startswith("LocalBuilder: Error building the IRModule")
+        assert error_msg.startswith("LocalBuilder: An exception occurred")
 
 
 def test_meta_schedule_error_handle_export_func():
@@ -175,7 +175,7 @@ def test_meta_schedule_error_handle_export_func():
         artifact_path = result.artifact_path
         error_msg = result.error_msg
         assert artifact_path is None
-        assert error_msg.startswith("LocalBuilder: Error exporting the Module")
+        assert error_msg.startswith("LocalBuilder: An exception occurred")
 
 
 def test_meta_schedule_error_handle_time_out():

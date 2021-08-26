@@ -15,8 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 """Utility"""
+from typing import Callable, Optional
 import psutil
-from tvm._ffi import register_func
+from tvm._ffi import register_func, get_global_func
+from tvm.error import TVMError
 
 
 @register_func("meta_schedule.cpu_count")
@@ -34,3 +36,33 @@ def cpu_count(logical: bool = True) -> int:
         The number of logical or physical CPUs in the system
     """
     return psutil.cpu_count(logical=logical) or 1
+
+
+def get_global_func_with_default_on_worker(name: Optional[str], default: Callable) -> Callable:
+    """Get the registered global function on the worker process.
+
+    Parameters
+    ----------
+    name : Optional[str]
+        If given, retrieve the function in TVM's global registry;
+        Otherwise, return `default`.
+
+    default : Callable
+        The function to be returned if `name` is None.
+
+    Returns
+    -------
+    result : Callable
+        The retrieved global function or `default` if `name` is None
+    """
+    if name is None:
+        return default
+    try:
+        return get_global_func(name)
+    except TVMError:
+        raise ValueError(
+            "Function '{name}' is not registered on the worker process. "
+            "Note that the worker process is only aware of functions registered in TVM package, "
+            "if there are extra functions to be registered, "
+            "please send the registration logic via initializer."
+        )
