@@ -720,6 +720,8 @@ class Schedule(Object):
 
         1) There is at most one block who write the buffer in the scope.
 
+        2) The scope block have stage-pipeline property.
+
         Parameters
         ----------
         block : BlockRV
@@ -782,6 +784,8 @@ class Schedule(Object):
         """Create a block that reads a buffer region into a write cache. It requires:
 
         1) There is only one block who write the buffer in the scope.
+
+        2) The scope block have stage-pipeline property.
 
         Parameters
         ----------

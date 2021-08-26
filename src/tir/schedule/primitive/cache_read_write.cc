@@ -106,23 +106,20 @@ BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
  *        under the given scope.
  * \param scope_block The scope block.
  * \param buffer The target buffer.
- * \param read A flag to indicate to check the block who reads the buffer.
- * \param write A flag to indicate to check the block who writes the buffer.
- * \note Only allow to check either read or write at the same time.
+ * \param is_write A flag to indicate to check the block who writes the buffer,
+ *                 otherwise, check the reading buffers
  * \return Whether there are blocks access the buffer.
  */
-bool HaveBlockAccess(const Block& scope_block, const Buffer& buffer, bool read, bool write) {
-  // Only allowed to check either read or write.
-  ICHECK((read != write) && (read || write));
+bool HaveBlockAccess(const Block& scope_block, const Buffer& buffer, bool is_write) {
   bool found = false;
-  PreOrderVisit(scope_block->body, [&found, read, write, buffer](const ObjectRef& node) {
+  PreOrderVisit(scope_block->body, [&found, is_write, buffer](const ObjectRef& node) {
     if (found) {
       // Don't need to visit if already found.
       return false;
     }
     if (const auto* op = node.as<BlockNode>()) {
-      if (read && RelatedBufferRegion(op->reads, buffer).defined()) found = true;
-      if (write && RelatedBufferRegion(op->writes, buffer).defined()) found = true;
+      if (!is_write && RelatedBufferRegion(op->reads, buffer).defined()) found = true;
+      if (is_write && RelatedBufferRegion(op->writes, buffer).defined()) found = true;
       return false;
     }
     return true;

@@ -56,6 +56,14 @@ void VerifyCachedFlags(const ScheduleState& self);
 const PrimFuncNode* GetRootPrimFunc(const IRModule& mod, const StmtNode* root_block,
                                     GlobalVar* result_g_var);
 
+/******** SRef Tree Related ********/
+/*!
+ * \brief Get the root node of the sref tree, which is the root block of the PrimFunc.
+ * \param sref The given sref.
+ * \return The root node of the sref tree which contains the given node.
+ */
+StmtSRef GetSRefTreeRoot(const StmtSRef& sref);
+
 /******** Scope ********/
 /*!
  * \brief Checks if scope the specified sref is in is a stage-pipeline and return it
@@ -260,13 +268,6 @@ std::vector<TypedPackedFunc<CommReducer(DataType)>> GetReducerGetters();
 bool FromIdentityCombiner(const PrimExpr& identity, const BufferStore& combiner,
                           CommReducer* result_reducer, PrimExpr* lhs, PrimExpr* rhs);
 
-/******** SRef Tree Related ********/
-/*!
- * \brief Get the root node of the sref tree, which is the root block of the PrimFunc.
- * \param sref The given sref.
- * \return The root node of the sref tree which contains the given node.
- */
-StmtSRef GetSRefTreeRoot(const StmtSRef& sref);
 }  // namespace tir
 }  // namespace tvm
 
