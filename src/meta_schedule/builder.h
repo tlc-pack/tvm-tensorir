@@ -119,7 +119,7 @@ class Builder : public runtime::ObjectRef {
  public:
   /*!
    * \brief Create a builder with customized build method on the python-side.
-   * \param build_func The function pointer to the `Build` function.
+   * \param build_func The packed function to the `Build` function.
    * \return The Builder created.
    */
   static Builder PyBuilder(BuilderNode::FBuild build_func);

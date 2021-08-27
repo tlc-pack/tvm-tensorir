@@ -14,6 +14,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""The meta schedule infrastructure."""
-from .builder import Builder, BuildInput, BuildResult, LocalBuilder, PyBuilder
-from .space_generator import PySpaceGenerator, ScheduleFn, SpaceGenerator, SpaceGeneratorUnion
+"""Space Generator"""
+
+from .schedule_fn import ScheduleFn
+from .space_generator import PySpaceGenerator, SpaceGenerator
+from .space_generator_union import SpaceGeneratorUnion
