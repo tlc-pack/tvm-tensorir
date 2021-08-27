@@ -18,6 +18,7 @@
  */
 
 #include "../space_generator.h"
+#include "../tune_context.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -30,22 +31,22 @@ class SpaceGeneratorUnionNode : public SpaceGeneratorNode {
 
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("space_generators", &space_generators); }
 
-  void InitializeWithTuneContext(const TuneContext& context) override {
+  void InitializeWithTuneContext(const TuneContext& tune_context) override {
     // Initialize each space generator.
-    for (const SpaceGenerator& space_gen : space_generators) {
-      space_gen->InitializeWithTuneContext(context);
+    for (const SpaceGenerator& space_generator : space_generators) {
+      space_generator->InitializeWithTuneContext(tune_context);
     }
   }
 
-  Array<tir::Trace> GenerateDesignSpaces(const IRModule& workload) override {
-    Array<tir::Trace> result;
-    for (const SpaceGenerator& space_gen : space_generators) {
-      // Generate design spaces from each design space generator.
-      Array<tir::Trace> partial = space_gen->GenerateDesignSpaces(workload);
-      // Merge the result.
-      result.insert(result.end(), partial.begin(), partial.end());
+  Array<tir::Trace> GenerateDesignSpaces(const IRModule& mod) override {
+    Array<tir::Trace> design_spaces;
+    for (const SpaceGenerator& space_generator : space_generators) {
+      // Generate partial design spaces from each design space generator.
+      Array<tir::Trace> partial = space_generator->GenerateDesignSpaces(mod);
+      // Merge the partial design spaces.
+      design_spaces.insert(design_spaces.end(), partial.begin(), partial.end());
     }
-    return result;
+    return design_spaces;
   }
 
   static constexpr const char* _type_key = "meta_schedule.SpaceGeneratorUnion";
@@ -85,6 +86,10 @@ SpaceGenerator SpaceGenerator::SpaceGeneratorUnion(Array<ObjectRef> space_genera
 TVM_REGISTER_NODE_TYPE(SpaceGeneratorUnionNode);
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnion")
     .set_body_typed(SpaceGenerator::SpaceGeneratorUnion);
+TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnionInitializeWithTuneContext")
+    .set_body_method<SpaceGeneratorUnion>(&SpaceGeneratorUnionNode::InitializeWithTuneContext);
+TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnionGenerateDesignSpaces")
+    .set_body_method<SpaceGeneratorUnion>(&SpaceGeneratorUnionNode::GenerateDesignSpaces);
 
 }  // namespace meta_schedule
 }  // namespace tvm

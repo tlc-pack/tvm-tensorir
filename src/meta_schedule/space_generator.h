@@ -26,7 +26,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-// Forward declaration
 class TuneContext;
 
 /*! \brief The abstract class for design space generation. */

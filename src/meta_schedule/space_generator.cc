@@ -23,6 +23,8 @@
 #include <tvm/runtime/container/array.h>
 #include <tvm/runtime/object.h>
 
+#include "./tune_context.h"
+
 namespace tvm {
 namespace meta_schedule {
 
@@ -30,7 +32,6 @@ TVM_REGISTER_OBJECT_TYPE(SpaceGeneratorNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorInitializeWithTuneContext")
     .set_body_method<SpaceGenerator>(&SpaceGeneratorNode::InitializeWithTuneContext);
-
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorGenerateDesignSpace")
     .set_body_method<SpaceGenerator>(&SpaceGeneratorNode::GenerateDesignSpaces);
 

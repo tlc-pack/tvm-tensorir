@@ -18,6 +18,7 @@
  */
 
 #include "../space_generator.h"
+#include "../tune_context.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -28,16 +29,16 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
   /*! \brief The packed function to the `InitializeWithTuneContext` funcion. */
   FInitializeWithTuneContext initialize_with_tune_context_func;
   /*! \brief The packed function to the `GenerateDesignSpace` function. */
-  FGenerateDesignSpace generate_func;
+  FGenerateDesignSpace generate_design_space_func;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
-  void InitializeWithTuneContext(const TuneContext& context) override {
-    initialize_with_tune_context_func(context);
+  void InitializeWithTuneContext(const TuneContext& tune_context) override {
+    initialize_with_tune_context_func(tune_context);
   }
 
-  Array<tir::Trace> GenerateDesignSpaces(const IRModule& workload) override {
-    return generate_func(workload);
+  Array<tir::Trace> GenerateDesignSpaces(const IRModule& mod) override {
+    return generate_design_space_func(mod);
   }
 
   static constexpr const char* _type_key = "meta_schedule.PySpaceGenerator";
@@ -57,10 +58,10 @@ class PySpaceGenerator : public SpaceGenerator {
    */
   TVM_DLL explicit PySpaceGenerator(
       SpaceGeneratorNode::FInitializeWithTuneContext initialize_with_tune_context_func,
-      SpaceGeneratorNode::FGenerateDesignSpace generate_func) {
+      SpaceGeneratorNode::FGenerateDesignSpace generate_design_space_func) {
     ObjectPtr<PySpaceGeneratorNode> n = make_object<PySpaceGeneratorNode>();
     n->initialize_with_tune_context_func = std::move(initialize_with_tune_context_func);
-    n->generate_func = std::move(generate_func);
+    n->generate_design_space_func = std::move(generate_design_space_func);
     data_ = std::move(n);
   }
 
