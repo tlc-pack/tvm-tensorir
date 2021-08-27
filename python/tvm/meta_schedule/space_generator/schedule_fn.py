@@ -18,6 +18,7 @@
 from typing import Callable, List, Union
 
 from tvm.ir import IRModule
+from tvm.ir.container import Array
 from tvm.tir.schedule import Schedule, Trace
 
 from .space_generator import PySpaceGenerator
@@ -29,8 +30,8 @@ class ScheduleFn(PySpaceGenerator):
     # Multiple cases of schedule functions supported
     SCH_FN_TYPE = Union[
         Callable[[IRModule], None],  # No output
-        Callable[[IRModule], Trace],  # Single output
-        Callable[[IRModule], List[Trace]],  # Multiple outputs
+        Callable[[IRModule], Schedule],  # Single output
+        Callable[[IRModule], List[Schedule]],  # Multiple outputs
     ]
 
     def __init__(self, sch_fn: SCH_FN_TYPE):
@@ -52,7 +53,7 @@ class ScheduleFn(PySpaceGenerator):
         tune_context : TuneContext
             The tuning context for initializing the design space generator.
         """
-        raise NotImplementedError
+        pass
 
     def generate_design_space(self, mod: IRModule) -> List[Trace]:
         """Generate design spaces given a module.
@@ -69,14 +70,16 @@ class ScheduleFn(PySpaceGenerator):
         """
         sch = Schedule(mod, traced=True)  # Make sure the schedule is traced
         result = self.sch_fn(sch)  # Call the schedule function
-        if result is None:  # The case of no output
+        if result is None:  # Case 1. No output
             return [sch.trace]
-        if isinstance(result, (list, tvm.ir.Array)):  # enumerate the outputs
-            for ret in result:
-                if not isinstance(ret, Trace):
+        if isinstance(result, Schedule):  # Case 2. Single output
+            return [result.trace]
+        if isinstance(result, (list, tuple, Array)):  # Case 3. Multiple outputs
+            for ret in result:  # enumerate the outputs
+                if not isinstance(ret, Schedule):
                     raise TypeError(
-                        "Wrong type of element in the list, expected Trace got "
+                        "Wrong type of element in the list, expected Schedule got "
                         + f"'{type(ret)}': {ret}"
                     )
-            return result  # the case of multiple outputs
-        return [result]  # the case of single output
+            return [sch.trace for sch in result]
+        raise TypeError(f"Unexpected return type {type(result)}: {result}")
