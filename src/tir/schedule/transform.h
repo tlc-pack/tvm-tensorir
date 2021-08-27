@@ -44,6 +44,26 @@ Block WithAnnotation(const BlockNode* block, const String& attr_key, const Objec
  * \return The new buffer with target storage scope.
  */
 Buffer WithScope(const Buffer& buffer, const String& scope);
+
+/*!
+ * \brief Replaces the buffer within the specific sequence of regions
+ * \param regions The regions whose buffers are to be replaced
+ * \param source The buffer to be replaced
+ * \param target The buffer to be replaced to
+ * \return The new sequence of regions after replacement
+ */
+Array<BufferRegion> ReplaceBuffer(Array<BufferRegion> regions, const Buffer& source,
+                                  const Buffer& target);
+
+/*!
+ * \brief Replaces the buffer within the specific sequence of match_buffers
+ * \param match_buffers The match_buffers whose buffers are to be replaced
+ * \param source The buffer to be replaced
+ * \param target The buffer to be replaced to
+ * \return The new sequence of match_buffers after replacement
+ */
+Array<MatchBufferRegion> ReplaceBuffer(Array<MatchBufferRegion> match_buffers, const Buffer& source,
+                                       const Buffer& target);
 }  // namespace tir
 }  // namespace tvm
 

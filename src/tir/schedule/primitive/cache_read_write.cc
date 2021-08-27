@@ -91,43 +91,6 @@ Optional<BufferRegion> RelatedBufferRegion(const Array<BufferRegion>& buffer_reg
 }
 
 /*!
- * \brief Get the only write region of the block
- * \param block_sref The block to be queried
- * \return The only region the block writes
- */
-BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
-  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  ICHECK_EQ(block->writes.size(), 1) << "ValueError: Only one write buffer is allowed in the block";
-  return block->writes[0];
-}
-
-/*!
- * \brief Check if there is at least one block who read/write the target buffer
- *        under the given scope.
- * \param scope_block The scope block.
- * \param buffer The target buffer.
- * \param is_write A flag to indicate to check the block who writes the buffer,
- *                 otherwise, check the reading buffers
- * \return Whether there are blocks access the buffer.
- */
-bool HaveBlockAccess(const Block& scope_block, const Buffer& buffer, bool is_write) {
-  bool found = false;
-  PreOrderVisit(scope_block->body, [&found, is_write, buffer](const ObjectRef& node) {
-    if (found) {
-      // Don't need to visit if already found.
-      return false;
-    }
-    if (const auto* op = node.as<BlockNode>()) {
-      if (!is_write && RelatedBufferRegion(op->reads, buffer).defined()) found = true;
-      if (is_write && RelatedBufferRegion(op->writes, buffer).defined()) found = true;
-      return false;
-    }
-    return true;
-  });
-  return found;
-}
-
-/*!
  * \brief Create a loop nest that represents cache copy (cache_read / cache_write) from read buffer
  *        to write buffer.
  * \note This function will store the stmt with loop nesting to the CacheStageInfo, but only return
@@ -218,53 +181,12 @@ SeqStmt InsertCacheStage(const Stmt& stmt, int pos, const Stmt& stage) {
 }
 
 /*!
- * \brief Replaces the buffer within the specific sequence of regions
- * \param regions The regions whose buffers are to be replaced
- * \param source The buffer to be replaced
- * \param target The buffer to be replaced to
- * \return The new sequence of regions after replacement
- */
-Array<BufferRegion> ReplaceBuffer(Array<BufferRegion> regions, const Buffer& source,
-                                  const Buffer& target) {
-  regions.MutateByApply([&source, &target](BufferRegion region) -> BufferRegion {
-    if (region->buffer.same_as(source)) {
-      ObjectPtr<BufferRegionNode> n = make_object<BufferRegionNode>(*region.get());
-      n->buffer = target;
-      return BufferRegion(n);
-    }
-    return region;
-  });
-  return regions;
-}
-
-/*!
- * \brief Replaces the buffer within the specific sequence of match_buffers
- * \param match_buffers The match_buffers whose buffers are to be replaced
- * \param source The buffer to be replaced
- * \param target The buffer to be replaced to
- * \return The new sequence of match_buffers after replacement
- */
-Array<MatchBufferRegion> ReplaceBuffer(Array<MatchBufferRegion> match_buffers, const Buffer& source,
-                                       const Buffer& target) {
-  match_buffers.MutateByApply([&source,
-                               &target](MatchBufferRegion match_buffer) -> MatchBufferRegion {
-    if (match_buffer->source->buffer.same_as(source)) {
-      ObjectPtr<MatchBufferRegionNode> n = make_object<MatchBufferRegionNode>(*match_buffer.get());
-      n->source = BufferRegion(target, n->source->region);
-      return MatchBufferRegion(n);
-    }
-    return match_buffer;
-  });
-  return match_buffers;
-}
-
-/*!
- * \brief Get the only writer block of the input buffer in a given scope block
+ * \brief Get the only writer block of the input buffer in a given scope block.
  * \param self The state of the schedule
  * \param scope_sref The scope block where the write is considered
  * \param buffer The queried buffer
  * \return The sref of the only writer of the input buffer in the given scope, or `NullOpt` if no block writes it in the scope.
- *        Throw an NotSingleWriteBlock error if there are more than one intrested block.
+ * \throw NotSingleWriteBlock if there are more than one intrested block.
  */
 Optional<StmtSRef> GetOnlyWriteBlock(ScheduleState self, const StmtSRef& scope_sref,
                                      const Buffer& buffer) {
@@ -284,11 +206,11 @@ Optional<StmtSRef> GetOnlyWriteBlock(ScheduleState self, const StmtSRef& scope_s
 
 /*!
  * \brief Get the buffer region under the sref tree path [dom_low_inclusive, dom_high_exclusive)
- * \param self The state of the schedule
- * \param region The buffer region to be analyzed
- * \param block The block related to the region, using for unbind the block var.
- * \param dom_low_inclusive The lowest node in the sref tree path
- * \param dom_high_exclusive The highest node in the sref tree path
+ * \param self The state of the schedule.
+ * \param buffer_region The buffer region to be analyzed.
+ * \param block_sref The sref of the block related to the region.
+ * \param dom_low_inclusive The lowest node in the sref tree path.
+ * \param dom_high_exclusive The highest node in the sref tree path.
  * \return The relaxed buffer region.
  */
 BufferRegion RelaxBufferRegion(ScheduleState self, const BufferRegion& buffer_region,
@@ -326,9 +248,9 @@ class CacheLocDetector : public StmtVisitor {
   static void Detect(const ScheduleState& self, const StmtSRef& block_sref,
                      const StmtSRef& scope_sref, CacheStageInfo* info) {
     std::vector<StmtSRef> related_blocks;
-    for (const Dependency& x : self->GetBlockScope(scope_sref)->GetDepsBySrc(block_sref)) {
-      if (x->kind == DepKind::kRAW) {
-        related_blocks.push_back(x->dst);
+    for (const Dependency& def : self->GetBlockScope(scope_sref)->GetDepsBySrc(block_sref)) {
+      if (def->kind == DepKind::kRAW) {
+        related_blocks.push_back(def->dst);
       }
     }
     if (!related_blocks.empty()) {
