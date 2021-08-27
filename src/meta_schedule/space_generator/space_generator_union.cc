@@ -38,11 +38,11 @@ class SpaceGeneratorUnionNode : public SpaceGeneratorNode {
     }
   }
 
-  Array<tir::Trace> GenerateDesignSpaces(const IRModule& mod) override {
+  Array<tir::Trace> GenerateDesignSpace(const IRModule& mod) override {
     Array<tir::Trace> design_spaces;
     for (const SpaceGenerator& space_generator : space_generators) {
       // Generate partial design spaces from each design space generator.
-      Array<tir::Trace> partial = space_generator->GenerateDesignSpaces(mod);
+      Array<tir::Trace> partial = space_generator->GenerateDesignSpace(mod);
       // Merge the partial design spaces.
       design_spaces.insert(design_spaces.end(), partial.begin(), partial.end());
     }
@@ -88,8 +88,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnion")
     .set_body_typed(SpaceGenerator::SpaceGeneratorUnion);
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnionInitializeWithTuneContext")
     .set_body_method<SpaceGeneratorUnion>(&SpaceGeneratorUnionNode::InitializeWithTuneContext);
-TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnionGenerateDesignSpaces")
-    .set_body_method<SpaceGeneratorUnion>(&SpaceGeneratorUnionNode::GenerateDesignSpaces);
+TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnionGenerateDesignSpace")
+    .set_body_method<SpaceGeneratorUnion>(&SpaceGeneratorUnionNode::GenerateDesignSpace);
 
 }  // namespace meta_schedule
 }  // namespace tvm
