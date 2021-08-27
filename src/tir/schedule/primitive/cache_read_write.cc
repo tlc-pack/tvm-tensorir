@@ -259,8 +259,11 @@ Array<MatchBufferRegion> ReplaceBuffer(Array<MatchBufferRegion> match_buffers, c
 }
 
 /*!
- * \brief Get the only block who writes the target buffer.
- *        Return NullOpt if there is no block writes it.
+ * \brief Get the only writer block of the input buffer in a given scope block
+ * \param self The state of the schedule
+ * \param scope_sref The scope block where the write is considered
+ * \param buffer The queried buffer
+ * \return The sref of the only writer of the input buffer in the given scope, or `NullOpt` if no block writes it in the scope.
  *        Throw an NotSingleWriteBlock error if there are more than one intrested block.
  */
 Optional<StmtSRef> GetOnlyWriteBlock(ScheduleState self, const StmtSRef& scope_sref,
@@ -270,7 +273,7 @@ Optional<StmtSRef> GetOnlyWriteBlock(ScheduleState self, const StmtSRef& scope_s
   if (it == scope->buffer_writers.end()) {
     return NullOpt;
   } else {
-    const Array<StmtSRef> block_srefs = it->second;
+    const Array<StmtSRef>& block_srefs = it->second;
     ICHECK(!block_srefs.empty());
     if (block_srefs.size() > 1) {
       throw NotSingleWriteBlock(self->mod, buffer, block_srefs);
@@ -310,15 +313,14 @@ BufferRegion RelaxBufferRegion(ScheduleState self, const BufferRegion& buffer_re
   return BufferRegion(buffer, region);
 }
 
-/*! \brief Detect the insert position of buffer copy */
+/*! \brief Detect the insertion position of the new cache stage */
 class CacheLocDetector : public StmtVisitor {
  public:
   /*!
-   * \brief Detect the position for adding the cache stage, writing the result back to
-   *        the CacheStageInfo。
-   * \param self The schedule class
-   * \param block_sref The innermost writer block
-   * \param scope_sref The parent scope of the block
+   * \brief Detect the insertion position of the cache stage, and write the position into the CacheStageInfo
+   * \param self The state of the schedule
+   * \param block_sref The sref of the unique writer block of the buffer being applied cache_read or cache_write
+   * \param scope_sref The sref of the scope block of the cached block
    * \param info The cache stage info.
    */
   static void Detect(const ScheduleState self, const StmtSRef& block_sref,
@@ -344,10 +346,10 @@ class CacheLocDetector : public StmtVisitor {
  private:
   /*!
    * \brief Constructor
-   * \param self The schedule class
-   * \param block_sref The dominate block which write the buffer
-   * \param scope_sref The parent scope of the dominate block
-   * \param related_blocks Producer blocks for cache_write and consumer blocks for cache_read
+   * \param self The state of the schedule
+   * \param block_sref The sref of the unique writer block of the buffer being applied cache_read or cache_write
+   * \param scope_sref The sref of the scope block of the cached block
+   * \param related_blocks Producer blocks for cache_write, or consumer blocks for cache_read
    */
   CacheLocDetector(const ScheduleState self, const StmtSRef& block_sref, const StmtSRef& scope_sref,
                    const std::vector<StmtSRef>& related_blocks)
@@ -367,7 +369,7 @@ class CacheLocDetector : public StmtVisitor {
         break;
       }
       VisitStmt(seq_stmt->seq[i]);
-      // pos can be assigned only once when we visited the block_sref
+      // `pos` can be assigned only once when we visited `block_sref`
       if (visited_block_ && visited_related_ && pos == -1) {
         // The offset of insert position from the block
         pos = i;
