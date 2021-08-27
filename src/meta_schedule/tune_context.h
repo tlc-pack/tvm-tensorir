@@ -57,7 +57,7 @@ class TuneContextNode : public runtime::Object {
   Optional<Array<Postproc>> postprocs;
   /*! \brief The measure callback functions. */
   Optional<Array<MeasureCallback>> measure_callbacks;
-  /*! \brief The task_name of the tuning task. */
+  /*! \brief The name of the tuning task. */
   String task_name;
   /*! \brief The seed value of random state. */
   TRandState seed;
