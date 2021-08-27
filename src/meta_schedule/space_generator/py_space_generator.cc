@@ -71,8 +71,9 @@ class PySpaceGenerator : public SpaceGenerator {
 
 SpaceGenerator SpaceGenerator::PySpaceGenerator(
     SpaceGeneratorNode::FInitializeWithTuneContext initialize_with_tune_context_func,
-    SpaceGeneratorNode::FGenerateDesignSpace generate_func) {
-  return meta_schedule::PySpaceGenerator(initialize_with_tune_context_func, generate_func);
+    SpaceGeneratorNode::FGenerateDesignSpace generate_design_space_func) {
+  return meta_schedule::PySpaceGenerator(initialize_with_tune_context_func,
+                                         generate_design_space_func);
 }
 
 TVM_REGISTER_NODE_TYPE(PySpaceGeneratorNode);

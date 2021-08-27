@@ -45,7 +45,7 @@ class SpaceGeneratorNode : public Object {
   using FGenerateDesignSpace = runtime::TypedPackedFunc<Array<tir::Trace>(const IRModule&)>;
 
   /*! \brief Virtual destructor */
-  virtual ~SpaceGeneratorNode();
+  virtual ~SpaceGeneratorNode() = default;
 
   /*!
    * \brief Initialize the design space generator with tuning context.
