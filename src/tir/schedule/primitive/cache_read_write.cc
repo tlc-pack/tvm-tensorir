@@ -323,7 +323,7 @@ class CacheLocDetector : public StmtVisitor {
    * \param scope_sref The sref of the scope block of the cached block
    * \param info The cache stage info.
    */
-  static void Detect(const ScheduleState self, const StmtSRef& block_sref,
+  static void Detect(const ScheduleState& self, const StmtSRef& block_sref,
                      const StmtSRef& scope_sref, CacheStageInfo* info) {
     std::vector<StmtSRef> related_blocks;
     for (const Dependency& x : self->GetBlockScope(scope_sref)->GetDepsBySrc(block_sref)) {
