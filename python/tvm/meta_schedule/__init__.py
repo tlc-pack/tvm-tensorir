@@ -15,5 +15,5 @@
 # specific language governing permissions and limitations
 # under the License.
 """The meta schedule infrastructure."""
-from .builder import BuildInput, BuildResult, Builder, PyBuilder, LocalBuilder
-from .space_generator import SpaceGenerator, PySpaceGenerator, ScheduleFn, SpaceGeneratorUnion
+from .builder import Builder, BuildInput, BuildResult, LocalBuilder, PyBuilder
+from .space_generator import PySpaceGenerator, ScheduleFn, SpaceGenerator, SpaceGeneratorUnion

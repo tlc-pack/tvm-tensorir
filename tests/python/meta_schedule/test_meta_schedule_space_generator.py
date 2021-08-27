@@ -36,14 +36,17 @@ from tvm.tir import PrimFunc
 # fmt: off
 
 @tvm.script.tir
-def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (1024, 1024), "float32")
-    B = tir.match_buffer(b, (1024, 1024), "float32")
-    C = tir.match_buffer(c, (1024, 1024), "float32")
-    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
-        with tir.init():
-            C[vi, vj] = 0.0
-        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+class Matmul:
+
+    def main(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+        tir.func_attr({"global_symbol": "main"})
+        A = tir.match_buffer(a, (1024, 1024), "float32")
+        B = tir.match_buffer(b, (1024, 1024), "float32")
+        C = tir.match_buffer(c, (1024, 1024), "float32")
+        with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
+            with tir.init():
+                C[vi, vj] = 0.0
+            C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 # fmt: on
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
@@ -66,15 +69,9 @@ def _check_correct(trace: Trace):
         assert math.prod(trace.decisions[inst]) == 1024
 
 
-def _to_irmodule(prim_func: PrimFunc) -> IRModule:
-    mod = tvm.IRModule()
-    mod["main"] = prim_func
-    return mod
-
-
 def test_meta_schedule_space_generator_schedule_fn():
+    mod = Matmul()
     space_generator = ScheduleFn(sch_fn=schedule_matmul)
-    mod = _to_irmodule(matmul)
     design_spaces = space_generator.generate_design_space(mod)
     assert len(design_spaces) == 1
     (trace,) = design_spaces
@@ -82,8 +79,8 @@ def test_meta_schedule_space_generator_schedule_fn():
 
 
 def test_meta_schedule_design_space_generator_union():
+    mod = Matmul()
     space_generator = ScheduleFn(sch_fn=schedule_matmul)
-    mod = _to_irmodule(matmul)
     space_generator_union = SpaceGeneratorUnion([space_generator, space_generator])
     design_spaces = space_generator_union.generate_design_space(mod)
     assert len(design_spaces) == 2
