@@ -23,6 +23,9 @@ from tvm.tir.schedule import Schedule, Trace
 
 from .space_generator import PySpaceGenerator
 
+if TYPE_CHECKING:
+    from ..tune_context import TuneContext
+
 
 class ScheduleFn(PySpaceGenerator):
     """A design space generator with design spaces specified by a schedule function."""

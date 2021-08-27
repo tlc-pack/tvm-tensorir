@@ -25,6 +25,9 @@ from tvm.tir.schedule import Trace
 
 from .. import _ffi_api
 
+if TYPE_CHECKING:
+    from ..tune_context import TuneContext
+
 
 @register_object("meta_schedule.SpaceGenerator")
 class SpaceGenerator(Object):

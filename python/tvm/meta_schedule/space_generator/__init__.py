@@ -17,3 +17,5 @@
 """Space Generator"""
 
 from .space_generator import SpaceGenerator
+from .schedule_fn import ScheduleFn
+from .space_generator_union import SpaceGeneratorUnion
