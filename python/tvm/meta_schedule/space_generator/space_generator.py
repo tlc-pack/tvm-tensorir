@@ -16,7 +16,7 @@
 # under the License.
 """Space Generator"""
 
-from typing import List
+from typing import List, TYPE_CHECKING
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
@@ -24,6 +24,9 @@ from tvm.ir import IRModule
 from tvm.tir.schedule import Trace
 
 from .. import _ffi_api
+
+if TYPE_CHECKING:
+    from ..tune_context import TuneContext
 
 
 @register_object("meta_schedule.SpaceGenerator")

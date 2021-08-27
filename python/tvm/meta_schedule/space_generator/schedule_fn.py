@@ -15,13 +15,16 @@
 # specific language governing permissions and limitations
 # under the License.
 """ScheduleFn"""
-from typing import Callable, List, Union
+from typing import Callable, List, Union, TYPE_CHECKING
 
 from tvm.ir import IRModule
 from tvm.ir.container import Array
 from tvm.tir.schedule import Schedule, Trace
 
 from .space_generator import PySpaceGenerator
+
+if TYPE_CHECKING:
+    from ..tune_context import TuneContext
 
 
 class ScheduleFn(PySpaceGenerator):
