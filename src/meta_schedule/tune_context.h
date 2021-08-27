@@ -22,6 +22,7 @@
 #include <tvm/ir/module.h>
 #include <tvm/target/target.h>
 
+#include "./search_strategy.h"
 #include "./space_generator.h"
 
 namespace tvm {
@@ -36,7 +37,6 @@ using CostModel = ObjectRef;
 using Postproc = ObjectRef;
 using MeasureCallback = ObjectRef;
 using Runner = ObjectRef;
-using SearchStrategy = ObjectRef;
 
 /*! \brief The tuning context. */
 class TuneContextNode : public runtime::Object {
