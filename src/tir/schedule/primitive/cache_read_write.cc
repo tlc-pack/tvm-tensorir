@@ -198,9 +198,9 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
 }
 
 /*!
- * \brief Insert the cache_read/cache_write stage into the specific position into to get the SeqStmt
- * \param stmt A sequence of statements, or a single statement, to be inserted into
- * \param pos The position the cache stage to be put
+ * \brief Insert the cache_read/cache_write stage into the specific position
+ * \param stmt A sequence of statements or a single statement that the new stage is inserted in
+ * \param pos The position where the cache stage is inserted
  * \param stage The stage to be inserted
  * \return A SeqStmt, the result after insertion
  */
