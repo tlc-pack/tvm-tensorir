@@ -16,3 +16,4 @@
 # under the License.
 """The meta schedule infrastructure."""
 from .builder import BuildInput, BuildResult, Builder, PyBuilder, LocalBuilder
+from .space_generator import SpaceGenerator, PySpaceGenerator, ScheduleFn, SpaceGeneratorUnion

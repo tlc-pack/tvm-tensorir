@@ -19,8 +19,6 @@ import os
 import tempfile
 from typing import Callable, List, Optional
 
-from _pytest._code.code import ExceptionRepr
-
 from tvm._ffi import register_func, register_object
 from tvm.ir import IRModule
 from tvm.runtime import Module, Object
