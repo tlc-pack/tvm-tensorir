@@ -16,17 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-#include <tvm/ir/module.h>
-#include <tvm/runtime/container/array.h>
-#include <tvm/runtime/object.h>
-#include <tvm/target/target.h>
-
-#include "./builder.h"
-#include "./space_generator.h"
-
 #ifndef SRC_META_SCHEDULE_TUNE_CONTEXT_H_
 #define SRC_META_SCHEDULE_TUNE_CONTEXT_H_
+
+#include <tvm/ir/module.h>
+#include <tvm/target/target.h>
+
+#include "./space_generator.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -34,7 +30,7 @@ namespace meta_schedule {
 // AWAIT(zxybazh): Merge with Sampling PR.
 using TRandState = int64_t;
 
-// AWAIT(zxybazh): Merge with acutal implementation.
+// AWAIT(zxybazh): Merge with actual implementation.
 using Database = ObjectRef;
 using CostModel = ObjectRef;
 using Postproc = ObjectRef;
@@ -45,8 +41,10 @@ using SearchStrategy = ObjectRef;
 /*! \brief The tuning context. */
 class TuneContextNode : public runtime::Object {
  public:
-  /*! \brief The workload to be optimized. */
-  Optional<IRModule> workload;
+  /*! \brief The mod to be optimized. */
+  Optional<IRModule> mod;
+  /*! \brief The target to be optimized for. */
+  Optional<Target> target;
   /*! \brief The design space generator. */
   Optional<SpaceGenerator> space_generator;
   /*! \brief The search strategy to be used. */
@@ -55,14 +53,12 @@ class TuneContextNode : public runtime::Object {
   Optional<Database> database;
   /*! \brief The cost model for estimation. */
   Optional<CostModel> cost_model;
-  /*! \brief The target to be optimized for. */
-  Optional<Target> target;
   /* \brief The post processing functions. */
   Optional<Array<Postproc>> postprocs;
   /*! \brief The measure callback functions. */
   Optional<Array<MeasureCallback>> measure_callbacks;
-  /*! \brief The name of the tuning task. */
-  String name;
+  /*! \brief The task_name of the tuning task. */
+  String task_name;
   /*! \brief The seed value of random state. */
   TRandState seed;
   /*! \brief The number of threads to be used. */
@@ -73,15 +69,15 @@ class TuneContextNode : public runtime::Object {
   // AWAIT(zxybazh): Convenient functions for post-processing and measure callbacks.
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("workload", &workload);
+    v->Visit("mod", &mod);
+    v->Visit("target", &target);
     v->Visit("space_generator", &space_generator);
     v->Visit("search_strategy", &search_strategy);
     v->Visit("database", &database);
     v->Visit("cost_model", &cost_model);
-    v->Visit("target", &target);
     v->Visit("postprocs", &postprocs);
     v->Visit("measure_callbacks", &measure_callbacks);
-    v->Visit("name", &name);
+    v->Visit("task_name", &task_name);
     v->Visit("seed", &seed);
     v->Visit("num_threads", &num_threads);
     v->Visit("verbose", &verbose);
@@ -97,33 +93,30 @@ class TuneContextNode : public runtime::Object {
  */
 class TuneContext : public runtime::ObjectRef {
  public:
-  /*! \brief Default constructor  */
-  TuneContext() = default;
-
   /*!
    * \brief Constructor.
-   * \param workload The workload to be optimized.
+   * \param mod The mod to be optimized.
+   * \param target The target to be optimized for.
    * \param space_generator The design space generator.
    * \param search_strategy The search strategy to be used.
    * \param database The database for querying and storage.
    * \param cost_model The cost model for estimation.
-   * \param target The target to be optimized for.
    * \param postprocs The post processing functions.
    * \param measure_callbacks The measure callback functions.
-   * \param name The name of the tuning task.
+   * \param task_name The task_name of the tuning task.
    * \param seed The seed value of random state.
    * \param num_threads The number of threads to be used.
    * \param verbose The verbosity level.
    */
-  TVM_DLL explicit TuneContext(Optional<IRModule> workload,                         //
+  TVM_DLL explicit TuneContext(Optional<IRModule> mod,                              //
+                               Optional<Target> target,                             //
                                Optional<SpaceGenerator> space_generator,            //
                                Optional<SearchStrategy> search_strategy,            //
                                Optional<Database> database,                         //
                                Optional<CostModel> cost_model,                      //
-                               Optional<Target> target,                             //
                                Optional<Array<Postproc>> postprocs,                 //
                                Optional<Array<MeasureCallback>> measure_callbacks,  //
-                               String name,                                         //
+                               String task_name,                                    //
                                TRandState seed,                                     //
                                int num_threads,                                     //
                                int verbose);
