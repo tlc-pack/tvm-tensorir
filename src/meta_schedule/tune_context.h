@@ -42,7 +42,7 @@ using MeasureCallback = ObjectRef;
 using Runner = ObjectRef;
 using SearchStrategy = ObjectRef;
 
-/*! \brief The context for tuning, providing all required recources. */
+/*! \brief The tuning context. */
 class TuneContextNode : public runtime::Object {
  public:
   /*! \brief The workload to be optimized. */
@@ -72,10 +72,6 @@ class TuneContextNode : public runtime::Object {
 
   // AWAIT(zxybazh): Convenient functions for post-processing and measure callbacks.
 
-  /*!
-   * \brief Visitor for variables in python.
-   * \note required for non-abstract classes.
-   */
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("workload", &workload);
     v->Visit("space_generator", &space_generator);
@@ -91,9 +87,8 @@ class TuneContextNode : public runtime::Object {
     v->Visit("verbose", &verbose);
   }
 
-  /*! \brief Class name `TuneContext` */
   static constexpr const char* _type_key = "meta_schedule.TuneContext";
-  TVM_DECLARE_FINAL_OBJECT_INFO(TuneContextNode, Object);  // Concrete class
+  TVM_DECLARE_FINAL_OBJECT_INFO(TuneContextNode, Object);
 };
 
 /*!
@@ -102,14 +97,11 @@ class TuneContextNode : public runtime::Object {
  */
 class TuneContext : public runtime::ObjectRef {
  public:
-  /*!
-    \brief Default constructor. To be called only from `TaskWithContext`.
-    \sa TaskWithContext
-  */
+  /*! \brief Default constructor  */
   TuneContext() = default;
 
   /*!
-   * \brief Constructor function of TuneContext class.
+   * \brief Constructor.
    * \param workload The workload to be optimized.
    * \param space_generator The design space generator.
    * \param search_strategy The search strategy to be used.
@@ -136,7 +128,7 @@ class TuneContext : public runtime::ObjectRef {
                                int num_threads,                                     //
                                int verbose);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TuneContext, ObjectRef, TuneContextNode);
-};  // namespace meta_schedule
+};
 
 }  // namespace meta_schedule
 }  // namespace tvm

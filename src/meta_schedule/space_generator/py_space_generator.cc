@@ -37,7 +37,7 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
     initialize_with_tune_context_func(tune_context);
   }
 
-  Array<tir::Trace> GenerateDesignSpaces(const IRModule& mod) override {
+  Array<tir::Trace> GenerateDesignSpace(const IRModule& mod) override {
     return generate_design_space_func(mod);
   }
 

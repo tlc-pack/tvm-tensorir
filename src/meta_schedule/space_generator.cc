@@ -33,7 +33,7 @@ TVM_REGISTER_OBJECT_TYPE(SpaceGeneratorNode);
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorInitializeWithTuneContext")
     .set_body_method<SpaceGenerator>(&SpaceGeneratorNode::InitializeWithTuneContext);
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorGenerateDesignSpace")
-    .set_body_method<SpaceGenerator>(&SpaceGeneratorNode::GenerateDesignSpaces);
+    .set_body_method<SpaceGenerator>(&SpaceGeneratorNode::GenerateDesignSpace);
 
 }  // namespace meta_schedule
 

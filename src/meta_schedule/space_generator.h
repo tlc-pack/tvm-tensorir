@@ -26,6 +26,7 @@
 namespace tvm {
 namespace meta_schedule {
 
+// Forward declaration
 class TuneContext;
 
 /*! \brief The abstract class for design space generation. */
@@ -57,7 +58,7 @@ class SpaceGeneratorNode : public Object {
    * \param mod The module used for design space generation.
    * \return The generated design spaces, i.e., traces.
    */
-  virtual Array<tir::Trace> GenerateDesignSpaces(const IRModule& mod) = 0;
+  virtual Array<tir::Trace> GenerateDesignSpace(const IRModule& mod) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SpaceGenerator";
   TVM_DECLARE_BASE_OBJECT_INFO(SpaceGeneratorNode, Object);
