@@ -24,9 +24,7 @@ from tvm.runtime import Object
 from tvm.target import Target
 
 from . import _ffi_api
-
-if TYPE_CHECKING:
-    from .space_generator import SpaceGenerator
+from .space_generator import SpaceGenerator
 
 
 class Database:
@@ -63,11 +61,11 @@ class TuneContext(Object):
     def __init__(
         self,
         mod: Optional[IRModule],
-        target: Optional[Target],
-        space_generator: Optional["SpaceGenerator"],
+        space_generator: Optional[SpaceGenerator],
         search_strategy: Optional[SearchStrategy],
         database: Optional[Database],
         cost_model: Optional[CostModel],
+        target: Optional[Target],
         postprocs: Optional[List[Postproc]],
         measure_callbacks: Optional[List[MeasureCallback]],
         task_name: str,
@@ -76,7 +74,6 @@ class TuneContext(Object):
         verbose: int,
     ):
         """Construct a TuneContext.
-
         Parameters
         ----------
         mod : Optional[IRModule],
