@@ -14,8 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Space Generator"""
+"""Search Strategy"""
 
-from .space_generator import SpaceGenerator, PySpaceGenerator
-from .space_generator_union import SpaceGeneratorUnion
-from .schedule_fn import ScheduleFn
+from .search_strategy import SearchStrategy, PySearchStrategy
+from .replay_search_strategy import ReplaySearchStrategy
