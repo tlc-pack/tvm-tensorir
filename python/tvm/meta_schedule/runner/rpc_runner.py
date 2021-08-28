@@ -1,0 +1,327 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+"""RPC Runner"""
+import concurrent.futures
+import itertools
+import os.path as osp
+from contextlib import contextmanager
+from typing import Callable, List, Optional
+
+from ...contrib.popen_pool import PopenPoolExecutor
+from ...rpc import RPCSession
+from ...runtime import Device, Module, NDArray
+from ..arg_info import ArgInfo, ArgInfoPyRepr, ArgType
+from ..utils import get_global_func_with_default_on_worker
+from .rpc_config import RPCConfig
+from .runner import EvaluatorConfig, PyRunner, RunnerFuture, RunnerInput, RunnerResult
+
+ArgListType = List[ArgType]
+
+
+class RPCRunnerFuture(RunnerFuture):
+
+    future: concurrent.futures.Future
+    timeout_sec: float
+
+    def __init__(self, future: concurrent.futures.Future, timeout_sec: float) -> None:
+        super().__init__()
+        self.future = future
+        self.timeout_sec = timeout_sec
+
+    def done(self) -> bool:
+        return self.future.done()
+
+    def result(self) -> RunnerResult:
+        try:
+            run_sec: List[float] = self.future.result()
+        except TimeoutError as exception:
+            return RunnerResult(
+                None,
+                error_msg=f"RPCRunner: Timeout, killed after {self.timeout_sec} seconds",
+            )
+        except Exception as exception:  # pylint: disable=broad-except
+            return RunnerResult(
+                None,
+                error_msg="RPCRunner: An exception occurred\n" + str(exception),
+            )
+        return RunnerResult(run_sec, None)
+
+
+class RPCRunner(PyRunner):
+
+    rpc_config: RPCConfig
+    evaluator_config: EvaluatorConfig
+    cooldown_sec: float
+    alloc_repeat: int
+    f_create_session: Optional[str] = None
+    f_upload_module: Optional[str] = None
+    f_alloc_argument: Optional[str] = None
+    f_run_evaluator: Optional[str] = None
+    f_cleanup: Optional[str] = None
+    pool: PopenPoolExecutor
+
+    def __init__(
+        self,
+        rpc_config: Optional[RPCConfig] = None,
+        evaluator_config: Optional[EvaluatorConfig] = None,
+        cooldown_sec: float = 0.0,
+        alloc_repeat: int = 1,
+        f_create_session: Optional[str] = None,
+        f_upload_module: Optional[str] = None,
+        f_alloc_argument: Optional[str] = None,
+        f_run_evaluator: Optional[str] = None,
+        f_cleanup: Optional[str] = None,
+        max_connections: Optional[int] = None,
+        initializer: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__()
+        self.rpc_config = RPCConfig._parse(rpc_config)
+        self.evaluator_config = EvaluatorConfig._parse(evaluator_config)
+        self.cooldown_sec = cooldown_sec
+        self.alloc_repeat = alloc_repeat
+        self.f_create_session = f_create_session
+        self.f_upload_module = f_upload_module
+        self.f_alloc_argument = f_alloc_argument
+        self.f_run_evaluator = f_run_evaluator
+        self.f_cleanup = f_cleanup
+
+        num_servers = self.rpc_config.count_num_servers(allow_missing=False)
+        if max_connections is None:
+            max_connections = num_servers
+        else:
+            max_connections = min(max_connections, num_servers)
+
+        self.pool = PopenPoolExecutor(
+            max_workers=max_connections,
+            timeout=rpc_config.session_timeout_sec,
+            initializer=initializer,
+        )
+        self._sanity_check()
+
+    def run(self, runner_inputs: List[RunnerInput]) -> List[RunnerFuture]:
+        results: List[RunnerFuture] = []
+        for runner_input in runner_inputs:
+            future = RPCRunnerFuture(
+                future=self.pool.submit(
+                    RPCRunner._worker_func,
+                    self.f_create_session,
+                    self.f_upload_module,
+                    self.f_alloc_argument,
+                    self.f_run_evaluator,
+                    self.f_cleanup,
+                    self.rpc_config,
+                    self.evaluator_config,
+                    self.alloc_repeat,
+                    str(runner_input.artifact_path),
+                    str(runner_input.device_type),
+                    tuple(arg_info.as_python() for arg_info in runner_input.args_info),
+                ),
+                timeout_sec=self.rpc_config.session_timeout_sec,
+            )
+            results.append(future)
+        return results
+
+    def _sanity_check(self) -> None:
+        def _check(
+            f_create_session: Optional[str] = None,
+            f_upload_module: Optional[str] = None,
+            f_alloc_argument: Optional[str] = None,
+            f_run_evaluator: Optional[str] = None,
+            f_cleanup: Optional[str] = None,
+        ) -> None:
+            get_global_func_with_default_on_worker(name=f_create_session, default=None)
+            get_global_func_with_default_on_worker(name=f_upload_module, default=None)
+            get_global_func_with_default_on_worker(name=f_alloc_argument, default=None)
+            get_global_func_with_default_on_worker(name=f_run_evaluator, default=None)
+            get_global_func_with_default_on_worker(name=f_cleanup, default=None)
+
+        value = self.pool.submit(
+            _check,
+            self.f_create_session,
+            self.f_upload_module,
+            self.f_alloc_argument,
+            self.f_run_evaluator,
+            self.f_cleanup,
+        )
+        value.result()
+
+    @staticmethod
+    def _worker_func(
+        _f_create_session: Optional[str],
+        _f_upload_module: Optional[str],
+        _f_alloc_argument: Optional[str],
+        _f_run_evaluator: Optional[str],
+        _f_cleanup: Optional[str],
+        rpc_config: RPCConfig,
+        evaluator_config: EvaluatorConfig,
+        alloc_repeat: int,
+        artifact_path: str,
+        device_type: str,
+        args_info: List[ArgInfoPyRepr],
+    ) -> List[float]:
+        # Step 0. Get the registered functions
+        f_create_session: Callable[
+            [RPCConfig],
+            RPCSession,
+        ] = get_global_func_with_default_on_worker(
+            _f_create_session,
+            default_create_session,
+        )
+        f_upload_module: Callable[
+            [RPCSession, str, str],
+            Module,
+        ] = get_global_func_with_default_on_worker(
+            _f_upload_module,
+            default_upload_module,
+        )
+        f_alloc_argument: Callable[
+            [RPCSession, Device, int, List[ArgInfoPyRepr]],
+            List[ArgListType],
+        ] = get_global_func_with_default_on_worker(
+            _f_alloc_argument,
+            default_alloc_argument,
+        )
+        f_run_evaluator: Callable[
+            [
+                RPCSession,
+                Module,
+                Device,
+                EvaluatorConfig,
+                List[ArgListType],
+            ],
+            List[float],
+        ] = get_global_func_with_default_on_worker(
+            _f_run_evaluator,
+            default_run_evaluator,
+        )
+        f_cleanup: Callable[[RPCSession, str], None] = get_global_func_with_default_on_worker(
+            _f_cleanup,
+            default_cleanup,
+        )
+        session: Optional[RPCSession] = None
+        remote_path: Optional[str] = None
+
+        @contextmanager
+        def resource_handler():
+            try:
+                yield
+            finally:
+                # Step 5. Clean up
+                f_cleanup(session, remote_path)
+
+        with resource_handler():
+            # Step 1. Create session
+            session = f_create_session(rpc_config)
+            device = session.device(dev_type=device_type, dev_id=0)
+            # Step 2. Upload the module
+            local_path: str = artifact_path
+            remote_path = artifact_path
+            rt_mod: Module = f_upload_module(session, local_path, remote_path)
+            # Step 3: Allocate input arguments
+            repeated_args: List[ArgListType] = f_alloc_argument(
+                session,
+                device,
+                alloc_repeat,
+                args_info,
+            )
+            # Step 4: Run time_evaluator
+            costs: List[float] = f_run_evaluator(
+                session,
+                rt_mod,
+                device,
+                evaluator_config,
+                repeated_args,
+            )
+        return costs
+
+
+def default_create_session(rpc_config: RPCConfig) -> RPCSession:
+    return rpc_config.connect_server()
+
+
+def default_upload_module(
+    session: RPCSession,
+    local_path: str,
+    remote_path: str,
+) -> Module:
+    session.upload(local_path, remote_path)
+    _, mod_path = osp.split(remote_path)
+    rt_mod: Module = session.load_module(mod_path)
+    return rt_mod
+
+
+def default_alloc_argument(
+    session: RPCSession,
+    device: Device,
+    alloc_repeat: int,
+    args_info: List[ArgInfoPyRepr],
+) -> List[ArgListType]:
+    try:
+        f_random_fill = session.get_function("tvm.contrib.random.random_fill")
+    except AttributeError as error:
+        raise AttributeError(
+            'Unable to find function "tvm.contrib.random.random_fill" on remote RPC server. '
+            "Please make sure USE_RANDOM is turned ON in the config.cmake on the RPC server."
+        ) from error
+    repeated_args: List[ArgListType] = []
+    for _ in range(alloc_repeat):
+        args: ArgListType = []
+        for arg_info in args_info:
+            arg = ArgInfo.alloc(arg_info, device)
+            if isinstance(arg, NDArray):
+                f_random_fill(arg)
+            args.append(arg)
+        repeated_args.append(args)
+    return repeated_args
+
+
+def default_run_evaluator(
+    session: RPCSession,  # pylint: disable=unused-argument
+    rt_mod: Module,
+    device: Device,
+    evaluator_config: EvaluatorConfig,
+    repeated_args: List[ArgListType],
+) -> List[float]:
+    evaluator = rt_mod.time_evaluator(
+        func_name=rt_mod.entry_name,
+        dev=device,
+        number=evaluator_config.number,
+        repeat=evaluator_config.repeat,
+        min_repeat_ms=evaluator_config.min_repeat_ms,
+        f_preproc="cache_flush_cpu_non_first_arg"
+        if evaluator_config.enable_cpu_cache_flush
+        else "",
+    )
+    repeated_costs: List[List[float]] = []
+    for args in repeated_args:
+        device.sync()
+        profile_result = evaluator(*args)
+        repeated_costs.append(profile_result.results)
+    costs = [float(cost) for cost in itertools.chain.from_iterable(repeated_costs)]
+    return costs
+
+
+def default_cleanup(
+    session: Optional[RPCSession],
+    remote_path: Optional[str],
+):
+    if session is None:
+        return
+    prefix, _ = osp.splitext(remote_path)
+    session.remove(remote_path)
+    session.remove(prefix + ".so")
+    session.remove("")

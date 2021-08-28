@@ -23,42 +23,45 @@ namespace meta_schedule {
 
 /******** Constructors ********/
 
-BuildInput::BuildInput(IRModule mod, Target target) {
-  ObjectPtr<BuildInputNode> n = make_object<BuildInputNode>();
+BuilderInput::BuilderInput(IRModule mod, Target target) {
+  ObjectPtr<BuilderInputNode> n = make_object<BuilderInputNode>();
   n->mod = std::move(mod);
   n->target = std::move(target);
   data_ = std::move(n);
 }
 
-BuildResult::BuildResult(Optional<String> artifact_path, Optional<String> error_msg) {
-  ObjectPtr<BuildResultNode> n = make_object<BuildResultNode>();
+BuilderResult::BuilderResult(Optional<String> artifact_path, Optional<String> error_msg) {
+  ObjectPtr<BuilderResultNode> n = make_object<BuilderResultNode>();
   n->artifact_path = std::move(artifact_path);
   n->error_msg = std::move(error_msg);
   data_ = std::move(n);
 }
 
-Builder Builder::PyBuilder(BuilderNode::FBuild build_func) {
+Builder Builder::PyBuilder(BuilderNode::FBuild f_build) {
   ObjectPtr<PyBuilderNode> n = make_object<PyBuilderNode>();
-  n->build_func = std::move(build_func);
+  n->f_build = std::move(f_build);
   return Builder(std::move(n));
 }
 
 /******** FFI ********/
 
-TVM_REGISTER_NODE_TYPE(BuildInputNode);
-TVM_REGISTER_NODE_TYPE(BuildResultNode);
+TVM_REGISTER_NODE_TYPE(BuilderInputNode);
+TVM_REGISTER_NODE_TYPE(BuilderResultNode);
 TVM_REGISTER_OBJECT_TYPE(BuilderNode);
 TVM_REGISTER_NODE_TYPE(PyBuilderNode);
 
-TVM_REGISTER_GLOBAL("meta_schedule.BuildInput")
-    .set_body_typed([](IRModule mod, Target target) -> BuildInput {
-      return BuildInput(mod, target);
+TVM_REGISTER_GLOBAL("meta_schedule.BuilderInput")
+    .set_body_typed([](IRModule mod, Target target) -> BuilderInput {
+      return BuilderInput(mod, target);
     });
 
-TVM_REGISTER_GLOBAL("meta_schedule.BuildResult")
-    .set_body_typed([](Optional<String> artifact_path, Optional<String> error_msg) -> BuildResult {
-      return BuildResult(artifact_path, error_msg);
+TVM_REGISTER_GLOBAL("meta_schedule.BuilderResult")
+    .set_body_typed([](Optional<String> artifact_path,
+                       Optional<String> error_msg) -> BuilderResult {
+      return BuilderResult(artifact_path, error_msg);
     });
+
+TVM_REGISTER_GLOBAL("meta_schedule.BuilderBuild").set_body_method<Builder>(&BuilderNode::Build);
 
 TVM_REGISTER_GLOBAL("meta_schedule.PyBuilder").set_body_typed(Builder::PyBuilder);
 

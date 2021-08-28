@@ -16,8 +16,9 @@
 # under the License.
 """Utility"""
 from typing import Callable, Optional
+
 import psutil
-from tvm._ffi import register_func, get_global_func
+from tvm._ffi import get_global_func, register_func
 from tvm.error import TVMError
 
 
@@ -59,11 +60,11 @@ def get_global_func_with_default_on_worker(name: Optional[str], default: Callabl
         return default
     try:
         return get_global_func(name)
-    except TVMError:
+    except TVMError as error:
         raise ValueError(
             "Function '{name}' is not registered on the worker process. "
             "The build function and export function should be registered in the worker process. "
             "Note that the worker process is only aware of functions registered in TVM package, "
             "if there are extra functions to be registered, "
             "please send the registration logic via initializer."
-        )
+        ) from error

@@ -16,11 +16,11 @@
 # under the License.
 """Space Generator"""
 
-from typing import List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 from tvm._ffi import register_object
-from tvm.runtime import Object
 from tvm.ir import IRModule
+from tvm.runtime import Object
 from tvm.tir.schedule import Trace
 
 from .. import _ffi_api
