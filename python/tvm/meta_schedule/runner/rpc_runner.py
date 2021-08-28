@@ -24,12 +24,10 @@ from typing import Callable, List, Optional
 from ...contrib.popen_pool import PopenPoolExecutor
 from ...rpc import RPCSession
 from ...runtime import Device, Module, NDArray
-from ..arg_info import ArgInfo, ArgInfoPyRepr, ArgType
+from ..arg_info import ArgInfo, Args, PyArgsInfo
 from ..utils import get_global_func_with_default_on_worker
 from .rpc_config import RPCConfig
 from .runner import EvaluatorConfig, PyRunner, RunnerFuture, RunnerInput, RunnerResult
-
-ArgListType = List[ArgType]
 
 
 class RPCRunnerFuture(RunnerFuture):
@@ -171,7 +169,7 @@ class RPCRunner(PyRunner):
         alloc_repeat: int,
         artifact_path: str,
         device_type: str,
-        args_info: List[ArgInfoPyRepr],
+        args_info: PyArgsInfo,
     ) -> List[float]:
         # Step 0. Get the registered functions
         f_create_session: Callable[
@@ -189,8 +187,8 @@ class RPCRunner(PyRunner):
             default_upload_module,
         )
         f_alloc_argument: Callable[
-            [RPCSession, Device, int, List[ArgInfoPyRepr]],
-            List[ArgListType],
+            [RPCSession, Device, int, PyArgsInfo],
+            List[Args],
         ] = get_global_func_with_default_on_worker(
             _f_alloc_argument,
             default_alloc_argument,
@@ -201,7 +199,7 @@ class RPCRunner(PyRunner):
                 Module,
                 Device,
                 EvaluatorConfig,
-                List[ArgListType],
+                List[Args],
             ],
             List[float],
         ] = get_global_func_with_default_on_worker(
@@ -232,7 +230,7 @@ class RPCRunner(PyRunner):
             remote_path = artifact_path
             rt_mod: Module = f_upload_module(session, local_path, remote_path)
             # Step 3: Allocate input arguments
-            repeated_args: List[ArgListType] = f_alloc_argument(
+            repeated_args: List[Args] = f_alloc_argument(
                 session,
                 device,
                 alloc_repeat,
@@ -268,8 +266,8 @@ def default_alloc_argument(
     session: RPCSession,
     device: Device,
     alloc_repeat: int,
-    args_info: List[ArgInfoPyRepr],
-) -> List[ArgListType]:
+    args_info: PyArgsInfo,
+) -> List[Args]:
     try:
         f_random_fill = session.get_function("tvm.contrib.random.random_fill")
     except AttributeError as error:
@@ -277,9 +275,9 @@ def default_alloc_argument(
             'Unable to find function "tvm.contrib.random.random_fill" on remote RPC server. '
             "Please make sure USE_RANDOM is turned ON in the config.cmake on the RPC server."
         ) from error
-    repeated_args: List[ArgListType] = []
+    repeated_args: List[Args] = []
     for _ in range(alloc_repeat):
-        args: ArgListType = []
+        args: Args = []
         for arg_info in args_info:
             arg = ArgInfo.alloc(arg_info, device)
             if isinstance(arg, NDArray):
@@ -294,7 +292,7 @@ def default_run_evaluator(
     rt_mod: Module,
     device: Device,
     evaluator_config: EvaluatorConfig,
-    repeated_args: List[ArgListType],
+    repeated_args: List[Args],
 ) -> List[float]:
     evaluator = rt_mod.time_evaluator(
         func_name=rt_mod.entry_name,

@@ -23,22 +23,23 @@ from tvm.runtime.container import ShapeTuple
 
 from . import _ffi_api
 
-ArgType = Union[
+Arg = Union[
     int,
     float,
     NDArray,
 ]
-
-ArgInfoPyRepr = List[Any]
+Args = List[Arg]
+PyArgInfo = List[Any]
+PyArgsInfo = List[PyArgInfo]
 
 
 @register_object("meta_schedule.ArgInfo")
 class ArgInfo(Object):
-    def as_python(self) -> ArgInfoPyRepr:
+    def as_python(self) -> PyArgInfo:
         raise NotImplementedError
 
     @staticmethod
-    def alloc(arg_info: ArgInfoPyRepr, device: Device) -> ArgType:
+    def alloc(arg_info: PyArgInfo, device: Device) -> Arg:
         subtype = _TYPE_DICT.get(arg_info[0], None)
         if subtype is None:
             raise ValueError(f"Unable to recognize argument information: {arg_info}")
@@ -75,7 +76,7 @@ class TensorArgInfo(Object):
         )
 
     @staticmethod
-    def alloc(arg_info: ArgInfoPyRepr, device: Device) -> NDArray:
+    def alloc(arg_info: PyArgInfo, device: Device) -> NDArray:
         _, dtype, shape = arg_info
         return ndarray.empty(shape=shape, dtype=dtype, device=device)
 
