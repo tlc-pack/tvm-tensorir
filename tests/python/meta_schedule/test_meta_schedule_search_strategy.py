@@ -14,21 +14,17 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-""" Test Meta Schedule SpaceGenerator """
+""" Test Meta Schedule SearchStrategy """
 # pylint: disable=missing-function-docstring
 
 import sys
-import math
-
 import pytest
 
 import tvm
 from tvm import tir
 from tvm.script import ty
-
-from tvm.tir.schedule import Schedule, Trace
-from tvm.meta_schedule import ScheduleFn, SpaceGeneratorUnion
-
+from tvm.tir import Schedule
+from tvm.meta_schedule import ReplaySearchStrategy, ScheduleFn
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
 # fmt: off
@@ -61,28 +57,28 @@ def schedule_matmul(sch: Schedule):
     sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
 
 
-def _check_correct(trace: Trace):
-    for inst in trace.decisions:
-        assert math.prod(trace.decisions[inst]) == 1024
+def test_meta_schedule_search_strategy():
+    trials = 100
+    batch_size = 30
 
-
-def test_meta_schedule_space_generator_schedule_fn():
-    mod = Matmul()
     space_generator = ScheduleFn(sch_fn=schedule_matmul)
-    design_spaces = space_generator.generate_design_space(mod)
-    assert len(design_spaces) == 1
-    (trace,) = design_spaces
-    _check_correct(trace)
+    replay = ReplaySearchStrategy(trials, batch_size)
+    replay.pre_tuning(design_spaces=space_generator.generate_design_space(Matmul()))
 
+    results = []
+    candidates = replay.generate_measure_candidates()
+    while candidates is not None:
+        results += candidates
+        assert len(results) <= trials
+        assert len(candidates) == batch_size or len(results) == trials
+        for candidate in candidates:
+            assert len(candidate.decisions) == 0
+        replay.notify_runner_results(
+            [(None, None) for candidate in candidates]
+        )  # Assume runner return (None, None) for each candidate
+        candidates = replay.generate_measure_candidates()
 
-def test_meta_schedule_design_space_generator_union():
-    mod = Matmul()
-    space_generator = ScheduleFn(sch_fn=schedule_matmul)
-    space_generator_union = SpaceGeneratorUnion([space_generator, space_generator])
-    design_spaces = space_generator_union.generate_design_space(mod)
-    assert len(design_spaces) == 2
-    for design_space in design_spaces:
-        _check_correct(design_space)
+    assert len(results) == trials
 
 
 if __name__ == "__main__":
