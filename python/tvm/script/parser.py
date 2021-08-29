@@ -176,7 +176,7 @@ class TVMScriptParser(Transformer):
             self.current_lineno = self.base_lineno + node.lineno - 1
         if hasattr(node, "col_offset"):
             self.current_col_offset = node.col_offset
-
+        
         method = "transform_" + node.__class__.__name__
         visitor = getattr(self, method, self.generic_visit)
         transform_res = visitor(node)
@@ -850,7 +850,6 @@ class TVMScriptParser(Transformer):
         2. All other names `tvm.something` are lookup up in this current python
            namespace.
         """
-
         if isinstance(node.object, ast.Var):
             if node.object.id.name == "tir":
                 func_name = "tir." + node.field.name
@@ -867,6 +866,25 @@ class TVMScriptParser(Transformer):
                         )
                     else:
                         raise e
+        elif isinstance(node.object, ast.Attr):
+            func_name = node.field.name
+            node = node.object
+            if isinstance(node.object, ast.Var):
+                if node.object.id.name == "tir" and node.field.name == 'sp':
+                    func_name = "tir.sp." + func_name
+                    res = Registry.lookup(func_name)
+                    if res is not None:
+                        return res
+                    try:
+                        return tvm.ir.op.Op.get(func_name)
+                    except TVMError as e:
+                        # Check if we got an attribute error
+                        if e.args[0].find("AttributeError"):
+                            self.report_error(
+                                f"Unregistered function `{func_name}`.", node.field.span
+                            )
+                        else:
+                            raise e
 
         symbol = self.transform(node.object)
         if symbol is None:
