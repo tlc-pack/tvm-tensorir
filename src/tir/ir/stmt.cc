@@ -802,7 +802,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<MatchBufferRegionNode>([](const ObjectRef& node, ReprPrinter* p) {
       auto* op = static_cast<const MatchBufferRegionNode*>(node.get());
       p->PrintIndent();
-      p->stream << op->buffer->name << " = match_buffer_region(";
+      p->stream << op->buffer->name << " = match_buffer(";
       p->Print(op->source);
       p->stream << ")\n";
     });
