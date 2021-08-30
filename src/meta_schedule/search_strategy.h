@@ -19,9 +19,8 @@
 #ifndef SRC_META_SCHEDULE_SEARCH_STRATEGY_H_
 #define SRC_META_SCHEDULE_SEARCH_STRATEGY_H_
 
+#include <tvm/ir/module.h>
 #include <tvm/tir/schedule/trace.h>
-
-#include "./builder.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -47,7 +46,7 @@ class SearchStrategyNode : public runtime::Object {
    * \brief Generate measure candidates from design spaces for measurement.
    * \return The measure candidates generated, nullptr if finished.
    */
-  virtual Optional<runtime::Array<BuildInput>> GenerateMeasureCandidates() = 0;
+  virtual Optional<runtime::Array<IRModule>> GenerateMeasureCandidates() = 0;
 
   /*!
    * \brief Update the search strategy with profiling results.
@@ -80,8 +79,7 @@ class PySearchStrategyNode : public SearchStrategyNode {
    * \brief The function type of `GenerateMeasureCandidates` method.
    * \return The measure candidates generated, nullptr if finished.
    */
-  using FGenerateMeasureCandidates =
-      runtime::TypedPackedFunc<Optional<runtime::Array<BuildInput>>()>;
+  using FGenerateMeasureCandidates = runtime::TypedPackedFunc<Optional<runtime::Array<IRModule>>()>;
   /*!
    * \brief The function type of `NotifyRunnerResults` method.
    * \param results The profiling results from the runner.
@@ -114,22 +112,22 @@ class PySearchStrategyNode : public SearchStrategyNode {
     // `f_post_tuning` is not visited
   }
 
-  void InitializeWithTuneContext(const TuneContext& context) override {
+  void InitializeWithTuneContext(const TuneContext& context) final {
     this->f_initialize_with_tune_context(context);
   }
 
-  Optional<runtime::Array<BuildInput>> GenerateMeasureCandidates() override {
+  Optional<runtime::Array<IRModule>> GenerateMeasureCandidates() final {
     return this->f_generate_measure_candidates();
   }
 
-  void NotifyRunnerResults(const Array<RunnerResult>& results) override {
+  void NotifyRunnerResults(const Array<RunnerResult>& results) final {
     this->f_notify_runner_results(results);
   }
 
-  void PreTuning(const Array<tir::Trace>& design_spaces) override {
+  void PreTuning(const Array<tir::Trace>& design_spaces) final {
     this->f_pre_tuning(design_spaces);
   }
-  void PostTuning() override { this->f_post_tuning(); }
+  void PostTuning() final { this->f_post_tuning(); }
 
   static constexpr const char* _type_key = "meta_schedule.PySearchStrategy";
   TVM_DECLARE_FINAL_OBJECT_INFO(PySearchStrategyNode, SearchStrategyNode);
@@ -156,6 +154,8 @@ class SearchStrategy : public runtime::ObjectRef {
       PySearchStrategyNode::FNotifyRunnerResults f_notify_runner_results,               //
       PySearchStrategyNode::FPreTuning f_pre_tuning,                                    //
       PySearchStrategyNode::FPostTuning f_post_tuning);
+
+  static SearchStrategy ReplayTrace(int num_trials_per_iter, int num_trials_total);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
 };

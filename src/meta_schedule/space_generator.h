@@ -45,6 +45,7 @@ class SpaceGeneratorNode : public Object {
    * \brief Generate design spaces given a module.
    * \param mod The module used for design space generation.
    * \return The generated design spaces, i.e., traces.
+   * // TODO: change to IRModule
    */
   virtual Array<tir::Trace> GenerateDesignSpace(const IRModule& mod) = 0;
 
@@ -77,11 +78,11 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
     // `f_generate_design_space` is not visited
   }
 
-  void InitializeWithTuneContext(const TuneContext& tune_context) override {
+  void InitializeWithTuneContext(const TuneContext& tune_context) final {
     f_initialize_with_tune_context(tune_context);
   }
 
-  Array<tir::Trace> GenerateDesignSpace(const IRModule& mod) override {
+  Array<tir::Trace> GenerateDesignSpace(const IRModule& mod) final {
     return f_generate_design_space(mod);
   }
 

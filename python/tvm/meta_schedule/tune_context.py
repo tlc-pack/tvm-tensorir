@@ -60,6 +60,19 @@ class TuneContext(Object):
     Most classes have a function to initialize with a tune context.
     """
 
+    mod: IRModule
+    target: Target
+    space_generator: "SpaceGenerator"
+    search_strategy: SearchStrategy
+    database: Database
+    cost_model: CostModel
+    postprocs: List[Postproc]
+    measure_callbacks: List[MeasureCallback]
+    task_name: str
+    seed: int
+    num_threads: int
+    verbose: int
+
     def __init__(
         self,
         mod: Optional[IRModule],

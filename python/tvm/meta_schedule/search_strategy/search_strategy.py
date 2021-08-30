@@ -16,17 +16,20 @@
 # under the License.
 """Search Strategy"""
 
-from typing import List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, List
 
 from tvm._ffi import register_object
+from tvm.ir import IRModule
 from tvm.runtime import Object
 from tvm.tir.schedule import Trace
 
 from .. import _ffi_api
-from ..builder import BuildInput
 
 if TYPE_CHECKING:
     from ..tune_context import TuneContext
+
+
+RunnerResult = Any
 
 
 @register_object("meta_schedule.SearchStrategy")
@@ -51,12 +54,12 @@ class SearchStrategy(Object):
             self, tune_context
         )
 
-    def generate_measure_candidates(self) -> List[BuildInput]:
+    def generate_measure_candidates(self) -> List[IRModule]:
         """Generate measure candidates from design spaces for measurement.
 
         Returns
         -------
-        measure_candidates : List[BuildInput]
+        measure_candidates : List[IRModule]
             The measure candidates generated, None if finished.
         """
         return _ffi_api.SearchStrategyGenerateMeasureCandidates(self)  # pylint: disable=no-member
@@ -96,7 +99,7 @@ class PySearchStrategy(SearchStrategy):
         def f_initialize_with_tune_context(context: "TuneContext") -> None:
             self.initialize_with_tune_context(context)
 
-        def f_generate_measure_candidates() -> List[BuildInput]:
+        def f_generate_measure_candidates() -> List[IRModule]:
             return self.generate_measure_candidates()
 
         def f_notify_runner_results(results: List["RunnerResult"]) -> None:
@@ -120,7 +123,7 @@ class PySearchStrategy(SearchStrategy):
     def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
         raise NotImplementedError
 
-    def generate_measure_candidates(self) -> List["BuilderInput"]:
+    def generate_measure_candidates(self) -> List[IRModule]:
         raise NotImplementedError
 
     def notify_runner_results(self, results: List["RunnerResult"]) -> None:
