@@ -191,7 +191,7 @@ class IterSplitExpr : public IterMapExpr {
    */
   TVM_DLL explicit IterSplitExpr(IterMark source);
   /*!
-   * \brief constructor from just source.
+   * \brief constructor from source and scale.
    * \param source The source expression.
    * \param scale The additional scaling factor.
    */
