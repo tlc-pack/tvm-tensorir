@@ -225,6 +225,28 @@ Array<ExprRV> ConcreteScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int
   TVM_TIR_SCHEDULE_END("sample-perfect-tile", this->error_render_level_);
 }
 
+Array<Array<ExprRV>>
+ConcreteScheduleNode::SampleShapeGenericTiles(const Array<LoopRV>& loop_rvs,
+                                              const std::vector<int>& ns,
+                                              const Target& target,
+                                              int max_innermost_factor,
+                                              Optional<Array<Array<Integer>>> decision) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  Array<StmtSRef> stmt_srefs;
+  for (const LoopRV& loop_rv : loop_rvs) {
+    stmt_srefs.push_back(GetSRef(loop_rv));
+  }
+  std::vector<std::vector<int64_t>> result =
+      tir::SampleShapeGenericTiles(state_, &this->rand_state_, stmt_srefs, ns, target, max_innermost_factor,
+                                   &decision);
+  Array<Array<ExprRV>> result_rvs;
+  for (const std::vector<int64_t>& sampled : result) {
+    result_rvs.push_back(CreateRV(sampled));
+  }
+  return result_rvs;
+  TVM_TIR_SCHEDULE_END("sample-shape-generic-tile", this->error_render_level_);
+}
+
 ExprRV ConcreteScheduleNode::SampleCategorical(const Array<Integer>& candidates,
                                                const Array<FloatImm>& probs,
                                                Optional<Integer> decision) {
