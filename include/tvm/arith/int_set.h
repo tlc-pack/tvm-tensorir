@@ -101,7 +101,7 @@ class IntSet : public ObjectRef {
   /*!
    * \brief Try to match IntSet with range r.
    *
-   * \note It is guanrateed that IntSet::FromRange(r).MatchRange(r) == true
+   * \note It is guaranteed that IntSet::FromRange(r).MatchRange(r) == true
    * \return true if we can prove they are the same.
    */
   bool MatchRange(const tvm::Range& r) const;

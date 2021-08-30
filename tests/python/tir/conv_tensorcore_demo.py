@@ -269,10 +269,10 @@ def test_tensorcore():
     WF = s.cache_read(Conv, 2, "wmma.matrix_b")
     ConvF = s.cache_write(Conv, 0, "wmma.accumulator")
 
-    block_row_warps = 1
-    block_col_warps = 1
-    warp_row_tiles = 1
-    warp_col_tiles = 1
+    block_row_warps = 4
+    block_col_warps = 2
+    warp_row_tiles = 2
+    warp_col_tiles = 4
     warp_size = 32
     chunk = 2
 
@@ -291,9 +291,9 @@ def test_tensorcore():
 
     # Schedule local computation
     s.compute_at(ConvF, oc)
-    ic, kh, kw, _nnf, _oof, ii = s.get_loops(ConvF)[-6:]
+    no, oo, ic, kh, kw = s.get_loops(ConvF)[-8:-3]
     ko, ki = s.split(ic, [None, chunk])
-    s.reorder(ko, kh, ki)
+    s.reorder(ko, kh, ki, kw, no, oo)
 
     # Move intermediate computation into each output compute tile
     s.compute_at(AF, kw)
@@ -301,20 +301,22 @@ def test_tensorcore():
 
     # Schedule for A's share memory
     s.compute_at(AS, kh)
-    _, _, nn, ii = s.get_loops(AS)[-4:]
+    n, _, _, nn, ii = s.get_loops(AS)[-5:]
+    ty, tz = s.split(n, [block_row_warps, block_col_warps])
     t = s.fuse(nn, ii)
     _, ti = s.split(t, [None, warp_size])
     s.bind(ti, "threadIdx.x")
+    s.bind(ty, "threadIdx.y")
+    s.bind(tz, "threadIdx.z")
 
     # Schedule for W's share memory
     s.compute_at(WS, kh)
-    kw, ic, o, ii, oo = s.get_loops(WS)[-5:]
-    tx, xo = s.split(o, [block_row_warps, None])
-    ty, _ = s.split(xo, [block_col_warps, None])  # pylint: disable=redefined-outer-name
+    _, _, o, ii, oo = s.get_loops(WS)[-5:]
+    ty, tz = s.split(o, [block_row_warps, block_col_warps])
     t = s.fuse(ii, oo)
     to, ti = s.split(t, [warp_size, None])
-    s.bind(tx, "threadIdx.y")
-    s.bind(ty, "threadIdx.z")
+    s.bind(ty, "threadIdx.y")
+    s.bind(tz, "threadIdx.z")
     s.bind(to, "threadIdx.x")
     s.vectorize(ti)
 
