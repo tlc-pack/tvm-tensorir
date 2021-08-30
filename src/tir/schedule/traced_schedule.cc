@@ -63,6 +63,31 @@ Array<ExprRV> TracedScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n
   return results;
 }
 
+Array<Array<ExprRV>> TracedScheduleNode::SampleShapeGenericTiles(const Array<LoopRV>& loop_rvs,
+                                                                 const std::vector<int>& ns,
+                                                                 const Target& target,
+                                                                 int max_innermost_factor,
+                                                                 Optional<Array<Array<Integer>>> decision) {
+  Array<StmtSRef> stmt_srefs;
+  for (const LoopRV& loop_rv : loop_rvs) {
+    stmt_srefs.push_back(GetSRef(loop_rv));
+  }
+  std::vector<std::vector<int64_t>> result =
+      tir::SampleShapeGenericTiles(state_, &this->rand_state_, stmt_srefs, ns, target, max_innermost_factor,
+                                   &decision);
+  Array<Array<ExprRV>> result_rvs;
+  for (const std::vector<int64_t>& sampled : result) {
+    result_rvs.push_back(CreateRV(sampled));
+  }
+  static const InstructionKind& kind = InstructionKind::Get("SampleShapeGenericTiles");
+  trace_->Append(Instruction(kind,
+                             {loop_rvs},
+                             {AsArray<int, Integer>(ns), target, Integer(max_innermost_factor)},
+                             {result_rvs.begin(), result_rvs.end()}),
+                 decision);
+  return result_rvs;
+}
+
 ExprRV TracedScheduleNode::SampleCategorical(const Array<Integer>& candidates,
                                              const Array<FloatImm>& probs,
                                              Optional<Integer> decision) {
