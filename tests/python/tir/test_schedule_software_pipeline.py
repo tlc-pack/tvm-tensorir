@@ -67,7 +67,6 @@ def test_cuda_nested_pipeline():
     A_shared = s.cache_read(A_local, 0, "shared")
     B_shared = s.cache_read(B_local, 0, "shared")
 
-    print(tvm.script.asscript(s.mod['main']))
     s.compute_at(A_local, km)
     s.compute_at(B_local, km)
     s.compute_at(A_shared, ko)
