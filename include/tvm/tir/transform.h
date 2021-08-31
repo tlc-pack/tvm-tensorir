@@ -539,6 +539,12 @@ TVM_DLL Pass UnifyThreadBinding();
  */
 TVM_DLL Pass LowerLogicalLayout();
 
+/*!
+ * \brief Transform annotated loops into pipelined one that parallelize producers and consumers.
+ * \return The IR transform pass.
+ */
+TVM_DLL Pass InjectSoftwarePipeline();
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm

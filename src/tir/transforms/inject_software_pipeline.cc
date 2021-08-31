@@ -60,69 +60,6 @@ using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
 template <class K>
 using SSet = std::unordered_set<K, ObjectPtrHash, ObjectPtrEqual>;
 
-/*! \brief Information about a software pipeline that will be used in the transformation */
-struct PipelineInfo {
-  // Buffers written by the producers. These buffers can only be read by the consumers.
-  SSet<Var> producer_buffers;
-  // Producers of the pipeline.
-  Array<Stmt> producers;
-  // Consumers of the pipeline.
-  Array<Stmt> consumers;
-  // Storage scope of the pipeline. The scope is the same as the storage scope of the producer
-  // buffers. Producer buffers are required to have the same storage scope.
-  String scope;
-  // Number of stages of the pipeline.
-  Integer num_stages;
-  // The loop variable of the pipelined loop.
-  Var loop_var;
-  // Buffer allocations that need to be relocated outside of the pipeline after the transformation.
-  Array<Var> buffer_allocs;
-
-  PipelineInfo(const SSet<Var>& producer_buffers, const Array<Stmt>& producers,
-               const Array<Stmt>& consumers, const String& scope, const Integer& num_stages,
-               const Var& loop_var, const Array<Var>& buffer_allocs)
-      : producer_buffers(producer_buffers),
-        producers(producers),
-        consumers(consumers),
-        scope(scope),
-        num_stages(num_stages),
-        loop_var(loop_var),
-        buffer_allocs(buffer_allocs) {}
-};
-
-/* \brief Information about a buffer allocation.
- * \note In TIR, a buffer allocation is consist of one or more AttrStmt followed by Allocate.
- * This structure holds reference of these statements so that it can be used to rebuild the buffer
- * allocation during the software pipeline transformaion.
- */
-struct BufferInfo {
-  // The first AttrStmt related to the buffer.
-  Stmt annotation;
-  // The Allocate statement of the buffer.
-  Allocate allocate;
-  // The storage scope of the buffer.
-  String scope;
-  BufferInfo(const Stmt& annotation, const Allocate& allocate, const String& scope)
-      : annotation(annotation), allocate(allocate), scope(scope) {}
-};
-
-/*!
- * \brief Strips AttrStmt of the buffer and get the closest nested Allocate.
- * \param attr_node The AttrStmt related to the buffer.
- */
-static Allocate GetBufferAllocate(const AttrStmtNode* attr_node) {
-  while (attr_node) {
-    ICHECK(attr_node->attr_key == tir::attr::storage_scope ||
-           attr_node->attr_key == tir::attr::double_buffer_scope);
-    if (attr_node->body.as<AllocateNode>()) {
-      return Downcast<Allocate>(attr_node->body);
-    }
-    attr_node = attr_node->body.as<AttrStmtNode>();
-  }
-  ICHECK(false) << "unreachable";
-  throw;
-}
-
 struct BufferAccess {
   // Buffer variables being written.
   SSet<Var> writes;
@@ -136,22 +73,12 @@ struct BufferAccess {
 BufferAccess GetBufferAccess(const Stmt& stmt) {
   BufferAccess access;
   PreOrderVisit(stmt, [&access](const ObjectRef& obj) {
-    if (const auto* store = obj.as<StoreNode>()) {
-      access.writes.insert(store->buffer_var);
-    } else if (const auto* load = obj.as<LoadNode>()) {
-      access.reads.insert(load->buffer_var);
-    } else if (const auto* call = obj.as<CallNode>()) {
-      if (call->op.same_as(builtin::tvm_access_ptr())) {
-        ICHECK(call->args.size() == 5U);
-        Var buffer_var = Downcast<Var>(call->args[1]);
-        int64_t rw_mask = Downcast<Integer>(call->args[4])->value;
-        if (rw_mask & 1) {
-          access.reads.insert(buffer_var);
-        }
-        if (rw_mask & 2) {
-          access.writes.insert(buffer_var);
-        }
-        return false;
+    if (const auto* block = obj.as<BlockNode>()) {
+      for (const auto& read : block->reads) {
+        access.reads.insert(read->buffer->data);
+      }
+      for (const auto& write : block->writes) {
+        access.writes.insert(write->buffer->data);
       }
     }
     return true;
@@ -159,14 +86,72 @@ BufferAccess GetBufferAccess(const Stmt& stmt) {
   return access;
 }
 
+struct PipelineBufferInfo {
+  Buffer new_buffer;
+  Var loop_var;
+  PipelineBufferInfo(Buffer new_buffer, Var loop_var)
+      : new_buffer(std::move(new_buffer)), loop_var(std::move(loop_var)) {}
+};
+
 /*!
- * \brief Detect the annotated pipeline loop and generate information that will be used for the
- * software pipeline transformation later.
+ * \brief Use the pipeline information produced by PipelineDetector to transform the IR.
+ *
+ * Given a for-loop annotated with pipeline_scope, this pass does the following transformation.
+ *
+ * Input:
+ * \code
+ * for ax in range(min, min + extent, annotations={pipeline_scope: num_stages}):
+ *   buffer allocations;
+ *   producers(ax);  // producers(ax) denotes ax-th iteration of the producers
+ *   consumers(ax);  // consumers(ax) denotes ax-th iteration of the consumers
+ * \endcode
+ *
+ * Output:
+ * \code
+ *
+ * buffer allocations;
+ *
+ * // prologue
+ * for ax in range(min, min + shift_extent):
+ *   producers(ax);
+ *
+ * // main loop
+ * for ax in range(min, min + extent + shift_extent, annotations={pipeline_scope: 1}):
+ *   producers(ax + shift_extent);
+ *   consumers(ax);
+ *
+ * // epilogue
+ * for ax in range(min, min + shift_extent):
+ *   consumers(ax + extent - shift_extent);
+ *
+ * where shift_extent = num_stages - 1
+ * \endcode
+ *
+ * Synchronizatons and native pipeline API calls are inserted if needed. The main loop is annotated
+ * with AttrStmt so that `ThreadStorageSync` pass will skip this loop which prevents unnecessary
+ * synchronizations being inserted.
+ *
+ * Since producers are executed ahead of the consumers by `shift_extent` iterations, buffers written
+ * by the producers need to be enlarged by `num_stages` times. During iterations, results of the
+ * producers up to `num_stages` iterations will be kept in the buffer. This reduces synchronizations
+ * needed between the producers and the consumers so that they can be executed concurrently.
  */
-class PipelineDetector : public StmtVisitor {
+class PipelineInjector : public StmtExprMutator {
  public:
-  SMap<Var, BufferInfo> buffer_info_;
-  SMap<AttrStmt, PipelineInfo> pipeline_info_;
+  static Stmt Inject(bool use_native_pipeline, const PrimFunc& func) {
+    // detector(stmt);
+    PipelineInjector injector(use_native_pipeline, func);
+    Stmt new_stmt = injector(func->body);
+    return ConvertSSA(new_stmt);
+  }
+
+  PipelineInjector(bool use_native_pipeline, const PrimFunc& func) : use_native_pipeline_(use_native_pipeline) {
+    DetectNativePipeline();
+    for (const auto& kv : func->buffer_map) {
+      const Buffer& buffer = kv.second;
+      buffer_data_to_buffer_.Set(buffer->data, buffer);
+    }
+  }
 
  private:
   /*!
@@ -198,249 +183,145 @@ class PipelineDetector : public StmtVisitor {
     }
   }
 
-  /*!
-   * \brief Make the plan for the pipeline transformation for a AST subtree.
-   * \param pipeline_scope The AttrStmt that annotates the for-loop for software pipelining.
-   *
-   * This function analyzes the dependencies among the children of the software pipelined for-loop,
-   * generates and stores the information of the pipeline in `pipeline_info_`.
-   */
-
-  void PlanPipeline(const AttrStmtNode* pipeline_scope) {
-    CHECK(current_pipeline_scope_ == nullptr) << "ValueError: Nested pipeline is not allowed.";
-    current_pipeline_scope_ = pipeline_scope;
-    StmtVisitor::VisitStmt_(pipeline_scope);
-    current_pipeline_scope_ = nullptr;
-
-    Integer num_stages = Downcast<Integer>(pipeline_scope->value);
-    CHECK_GE(num_stages->value, 2) << "ValueError: Pipeline should have at least two stages.";
-
-    const ForNode* op = TVM_TYPE_AS(op, pipeline_scope->body, ForNode);
-    // The body of the annotated pipeline for-loop should be optional buffer allocations followed by
-    // SeqStmt.
-    Array<Var> buffer_allocs;
-    Stmt stmt = GetRef<Stmt>(op);
-    const auto* attr_node = op->body.as<AttrStmtNode>();
-    while (attr_node) {
-      Allocate alloc = GetBufferAllocate(attr_node);
-      buffer_allocs.push_back(alloc->buffer_var);
-      stmt = alloc->body;
-      attr_node = stmt.as<AttrStmtNode>();
-    }
-    const SeqStmtNode* body = stmt.as<SeqStmtNode>();
-    CHECK(body) << "ValueError: The body of the pipeline should be SeqStmt.";
-
+  std::pair<Array<Stmt>, Array<Stmt>> GetPipelineProducerConsumers(const SeqStmt& seq) {
     // Build the dependency graph from buffer accesses.
-
     // A map from a Stmt to its buffer access info.
     SMap<Stmt, BufferAccess> buffer_access;
     // A map from a Stmt to its dependants.
     SMap<Stmt, Array<Stmt>> dep_src2dst;
     // A map from a Stmt to its dependencies.
     SMap<Stmt, Array<Stmt>> dep_dst2src;
-    BuildDependencyGraph(body, &buffer_access, &dep_src2dst, &dep_dst2src);
+    BuildDependencyGraph(seq.get(), &buffer_access, &dep_src2dst, &dep_dst2src);
 
     // analyze dependencies among direct children of the pipeline loop
     Array<Stmt> producers, consumers;
-    for (const auto& stmt : body->seq) {
+    for (const auto& stmt : seq->seq) {
       if (!dep_src2dst.count(stmt)) {
         consumers.push_back(stmt);
       } else {
         producers.push_back(stmt);
       }
     }
-    // Find buffers that are written by producers and read by consumers.
-    // These buffers need to be resized.
-    SSet<Var> producer_buffers;
-    for (const Stmt& consumer : consumers) {
-      for (const Stmt& dependency : dep_dst2src[consumer]) {
-        for (const Var& read : buffer_access.at(consumer).reads) {
-          if (buffer_access.at(dependency).writes.count(read)) {
-            producer_buffers.insert(read);
-          }
-        }
-      }
-    }
+    return {producers, consumers};
+  }
 
+  Buffer RewriteAllocBuffer(const Buffer& buffer, int num_stages) {
+    ObjectPtr<BufferNode> new_buffer = make_object<BufferNode>(*(buffer.get()));
+    new_buffer->shape.insert(new_buffer->shape.begin(), num_stages);
+    if (new_buffer->strides.size()) {
+      PrimExpr stride_0 = foldl([](PrimExpr a, PrimExpr b, Span span) { return mul(a, b, span); },
+                                make_const(DataType::Int(32), 1), new_buffer->strides);
+      new_buffer->strides.insert(new_buffer->strides.begin(), stride_0);
+    }
+    return Buffer(new_buffer);
+  }
+
+  Stmt RewritePipelineBody(Stmt stmt, const For& pipeline_loop, int num_stages,
+                           const String& scope) {
+    Array<Stmt> producers, consumers;
+    CHECK(stmt->IsInstance<SeqStmtNode>())
+        << "ValueError: The body of the pipeline should be SeqStmt.";
+    std::tie(producers, consumers) = GetPipelineProducerConsumers(Downcast<SeqStmt>(stmt));
     CHECK(!producers.empty()) << "ValueError: Producer not found in the pipeline.";
     CHECK(!consumers.empty()) << "ValueError: Consumer not found in the pipeline.";
-    CHECK(!producer_buffers.empty()) << "ValueError: Producer buffer not found in the pipeline.";
-
-    // Check the consistency of pipeline scope.
-    String scope = buffer_info_.at(*producer_buffers.begin()).scope;
-    for (const Var& buffer : producer_buffers) {
-      CHECK_EQ(buffer_info_.at(buffer).scope, scope) << "ValueError: Inconsistent scopes among "
-                                                        "buffers of pipeline producers";
-    }
-    pipeline_info_.emplace(GetRef<AttrStmt>(pipeline_scope),
-                           PipelineInfo{producer_buffers, producers, consumers, scope, num_stages,
-                                        op->loop_var, buffer_allocs});
-  }
-
-  void VisitStmt_(const AttrStmtNode* op) final {
-    if (op->attr_key == tir::attr::pipeline_scope) {
-      PlanPipeline(op);
-      return;
-    }
-
-    StmtVisitor::VisitStmt_(op);
-    AttrStmt attr_stmt = GetRef<AttrStmt>(op);
-    if (op->attr_key == tir::attr::storage_scope) {
-      Allocate allocate = Downcast<Allocate>(op->body);
-      buffer_info_.emplace(allocate->buffer_var,
-                           BufferInfo{attr_stmt, allocate, Downcast<StringImm>(op->value)->value});
-    } else if (op->attr_key == tir::attr::double_buffer_scope) {
-      buffer_info_.at(Downcast<Var>(op->node)).annotation = attr_stmt;
-    }
-  }
-
-  const AttrStmtNode* current_pipeline_scope_ = nullptr;
-};
-
-/*!
- * \brief Use the pipeline information produced by PipelineDetector to transform the IR.
- *
- * Given a for-loop annotated with pipeline_scope, this pass does the following transformation.
- *
- * Input:
- * \code
- * AttrStmt(pipeline_scope, num_stages)
- * for ax in range(min, min + extent):
- *   buffer allocations;
- *   producers(ax);  // producers(ax) denotes ax-th iteration of the producers
- *   consumers(ax);  // consumers(ax) denotes ax-th iteration of the consumers
- * \endcode
- *
- * Output:
- * \code
- *
- * buffer allocations;
- *
- * // prologue
- * for ax in range(min, min + shift_extent):
- *   producers(ax);
- *
- * // main loop
- * AttrStmt(pipeline_scope, 1)
- * for ax in range(min, min + extent + shift_extent):
- *   producers(ax + shift_extent);
- *   consumers(ax);
- *
- * // epilogue
- * for ax in range(min, min + shift_extent):
- *   consumers(ax + extent - shift_extent);
- *
- * where shift_extent = num_stages - 1
- * \endcode
- *
- * Synchronizatons and native pipeline API calls are inserted if needed. The main loop is annotated
- * with AttrStmt so that `ThreadStorageSync` pass will skip this loop which prevents unnecessary
- * synchronizations being inserted.
- *
- * Since producers are executed ahead of the consumers by `shift_extent` iterations, buffers written
- * by the producers need to be enlarged by `num_stages` times. During iterations, results of the
- * producers up to `num_stages` iterations will be kept in the buffer. This reduces synchronizations
- * needed between the producers and the consumers so that they can be executed concurrently.
- */
-class PipelineInjector : public StmtExprMutator {
- public:
-  static Stmt Inject(bool use_native_pipeline, const Stmt& stmt) {
-    PipelineDetector detector;
-    detector(stmt);
-    PipelineInjector injector(use_native_pipeline, detector.pipeline_info_, detector.buffer_info_);
-    Stmt new_stmt = injector(stmt);
-    return ConvertSSA(new_stmt);
-  }
-
-  PipelineInjector(bool use_native_pipeline, const SMap<AttrStmt, PipelineInfo>& pipeline_info,
-                   const SMap<Var, BufferInfo>& buffer_info)
-      : pipeline_info_(pipeline_info),
-        buffer_info_(buffer_info),
-        use_native_pipeline_(use_native_pipeline) {
-    DetectNativePipeline();
-    for (const auto& kv : pipeline_info_) {
-      for (const auto& buffer : kv.second.producer_buffers) {
-        skip_allocs.emplace(buffer_info_.at(buffer).annotation);
-      }
-    }
-  }
-
- private:
-  Stmt BuildPipeline(const AttrStmt& pipeline_scope) {
-    const PipelineInfo* pipeline_info = &pipeline_info_.at(pipeline_scope);
-    std::swap(pipeline_info, current_pipeline_);
-
-    For pipeline_loop = Downcast<For>(pipeline_scope->body);
-    PrimExpr shift_extent = Integer(current_pipeline_->num_stages->value - 1);
+    PrimExpr shift_extent = Integer(num_stages - 1);
 
     // Step 1: Initialize pipeline_var for native pipeline, which will be used in the native
     // pipeline API calls
-    if (use_native_pipeline_) {
-      pipeline_var_ = Var("pipeline", DataType::Handle());
+    bool use_native_pipeline = use_native_pipeline_ && scope == "shared";
+    if (use_native_pipeline) {
+      CHECK(!pipeline_var_.defined()) << "ValueError: Nested native pipeline not supported.";
+      pipeline_var_ = Var("pipeline", PrimType(DataType::Handle()));
     }
 
     // Step 2: Mutate children to rewrite pipeline buffer access.
-    Array<Stmt> producers, consumers;
-    for (const auto& stmt : current_pipeline_->producers) {
-      producers.push_back(VisitStmt(stmt));
-    }
-    for (const auto& stmt : current_pipeline_->consumers) {
-      consumers.push_back(VisitStmt(stmt));
-    }
+    producers.MutateByApply(std::bind(&PipelineInjector::VisitStmt, this, std::placeholders::_1));
+    consumers.MutateByApply(std::bind(&PipelineInjector::VisitStmt, this, std::placeholders::_1));
 
     // Step 3: Build each part of the pipeline
-    Stmt prologue = BuildPrologue(producers, pipeline_loop, shift_extent);
-    Stmt epilogue = BuildEpilogue(consumers, pipeline_loop, shift_extent);
-    Stmt main_loop = BuildMainLoop(producers, consumers, pipeline_loop, shift_extent);
-    // Annotate the main loop so that thread_storage_sync will skip this part
-    main_loop = AttrStmt(Stmt(), tir::attr::pipeline_scope, Integer(1), main_loop);
+    Stmt prologue = BuildPrologue(producers, pipeline_loop, shift_extent, use_native_pipeline);
+    Stmt epilogue =
+        BuildEpilogue(consumers, pipeline_loop, shift_extent, scope, use_native_pipeline);
+    Stmt main_loop = BuildMainLoop(producers, consumers, pipeline_loop, shift_extent, num_stages,
+                                   scope, use_native_pipeline);
 
     Array<Stmt> pipeline_seq;
-    if (use_native_pipeline_) {
+    if (use_native_pipeline) {
       pipeline_seq = {prologue, main_loop, epilogue};
     } else {
-      pipeline_seq = {prologue, GetPipelineSync(), main_loop, epilogue};
+      pipeline_seq = {prologue, GetPipelineSync(scope), main_loop, epilogue};
     }
-    Stmt pipeline = SeqStmt(pipeline_seq);
+    Stmt pipeline = SeqStmt::Flatten(pipeline_seq);
 
     // Step 4: Create the native pipeline object if necessary
-    if (use_native_pipeline_) {
+    if (use_native_pipeline) {
       PrimExpr create_pipeline = Call(DataType::Handle(), builtin::tvm_create_pipeline(), {});
       pipeline = LetStmt(pipeline_var_.value(), create_pipeline, pipeline);
+      pipeline_var_ = NullOpt;
     }
 
-    // Step 5: Add buffer allocation
-    std::vector<Stmt> allocs;
-    Stmt no_op = Evaluate(0);
-    for (const Var& buffer_var : current_pipeline_->buffer_allocs) {
-      Stmt stmt = buffer_info_.at(buffer_var).annotation;
-      while (const auto* attr_node = stmt.as<AttrStmtNode>()) {
-        allocs.push_back(AttrStmt(attr_node->node, attr_node->attr_key, attr_node->value, no_op));
-        stmt = attr_node->body;
-      }
-      const auto* alloc_node = TVM_TYPE_AS(alloc_node, stmt, AllocateNode);
-      if (current_pipeline_->producer_buffers.count(buffer_var)) {
-        ICHECK(alloc_node->extents.size() == 1U);
-        PrimExpr new_extent = alloc_node->extents[0] * current_pipeline_->num_stages;
-        Allocate new_alloc(alloc_node->buffer_var, alloc_node->dtype, {new_extent},
-                           alloc_node->condition, no_op);
-        allocs.push_back(new_alloc);
-      } else {
-        Allocate new_alloc(alloc_node->buffer_var, alloc_node->dtype, alloc_node->extents,
-                           alloc_node->condition, no_op);
-        allocs.push_back(new_alloc);
-      }
+    return pipeline;
+  }
+
+  String GetPipelineScope(const Array<Buffer>& producer_buffers) {
+    CHECK(producer_buffers.size()) << "ValueError: Cannot find producer buffers.";
+    String scope = GetPtrStorageScope(producer_buffers[0]->data);
+    for (size_t i = 1; i < producer_buffers.size(); i++) {
+      String new_scope = GetPtrStorageScope(producer_buffers[i]->data);
+      CHECK_EQ(scope, new_scope) << "ValueError: Inconsistent storage scopes of producer buffers "
+                                    "of the software pipeline ("
+                                 << scope << " vs. " << new_scope << ").";
+    }
+    return scope;
+  }
+
+  Stmt InjectPipeline(const ForNode* op) {
+    // Get and check annotation
+    Integer num_stages = Downcast<Integer>(op->annotations.Get(attr::pipeline_scope).value());
+    CHECK_GE(num_stages->value, 2) << "ValueError: Pipeline should have at least two stages.";
+
+    // Clear the pipeline annotation
+    For pipeline_loop = GetRef<For>(op);
+    auto* pipeline_loop_node = pipeline_loop.CopyOnWrite();
+    pipeline_loop_node->annotations.erase(attr::pipeline_scope);
+
+    // Resize producer buffers for pipelined accesses
+    CHECK(pipeline_loop->body->IsInstance<BlockRealizeNode>())
+        << "ValueError: Cannot find buffer allocations inside the pipeline scope.";
+
+    BlockRealize block_realize = Downcast<BlockRealize>(pipeline_loop->body);
+    String scope = GetPipelineScope(block_realize->block->alloc_buffers);
+    Array<Buffer> new_alloc_buffers;
+    for (const Buffer& alloc_buffer : block_realize->block->alloc_buffers) {
+      Buffer new_buffer = RewriteAllocBuffer(alloc_buffer, num_stages);
+      new_alloc_buffers.push_back(new_buffer);
+      buffer_map_.emplace(alloc_buffer, PipelineBufferInfo(new_buffer, op->loop_var));
+      // buffer_data_to_buffer_.Set(new_buffer->data, new_buffer);
     }
 
-    std::swap(pipeline_info, current_pipeline_);
-    pipeline_var_ = NullOpt;
-    return MergeNest(allocs, pipeline);
+    CHECK(is_one(block_realize->predicate))
+        << "ValueError: The body block of the software pipeline can not have predicates.";
+    CHECK(block_realize->block->match_buffers.empty()) << "ValueError: Pipeline body with match_buffer is not supported.";
+
+    // Rewrite pipeline body
+    Stmt pipeline_body =
+        RewritePipelineBody(block_realize->block->body, pipeline_loop, num_stages, scope);
+
+    auto new_block = Block({}, {}, {}, "", pipeline_body, NullOpt, new_alloc_buffers);
+    auto access = GetBlockReadWriteRegion(new_block, buffer_data_to_buffer_);
+    auto* new_block_ptr = new_block.CopyOnWrite();
+    new_block_ptr->reads = access[0];
+    new_block_ptr->writes = access[1];
+    return BlockRealize({}, Bool(true), std::move(new_block));
   }
 
-  Stmt GetPipelineSync() {
-    return Evaluate(Call(DataType::Int(32), builtin::tvm_storage_sync(),
-                         Array<PrimExpr>{StringImm(current_pipeline_->scope)}));
+  Stmt GetPipelineSync(String scope) {
+    return Evaluate(
+        Call(DataType::Int(32), builtin::tvm_storage_sync(), Array<PrimExpr>{StringImm(scope)}));
   }
+
+  Map<Var, Buffer> buffer_data_to_buffer_;
+  std::unordered_map<Buffer, PipelineBufferInfo, ObjectPtrHash, ObjectPtrEqual> buffer_map_;
 
   /*!
    * \brief Wrap a producer statement with native pipeline API calls.
@@ -487,21 +368,21 @@ class PipelineInjector : public StmtExprMutator {
    *   tvm_pipeline_consumer_commit(pipeline);
    * \endcode
    */
-  Stmt WrapNativeConsumer(const Stmt& consumer) {
+  Stmt WrapNativeConsumer(const Stmt& consumer, const String& scope) {
     ICHECK(use_native_pipeline_);
     ICHECK(pipeline_var_.defined());
     Stmt consumer_wait = Evaluate(
         Call(DataType::Handle(), builtin::tvm_pipeline_consumer_wait(), {pipeline_var_.value()}));
     Stmt consumer_release = Evaluate(
         Call(DataType::Handle(), builtin::tvm_pipeline_consumer_release(), {pipeline_var_.value()}));
-    Stmt storage_sync = GetPipelineSync();
+    Stmt storage_sync = GetPipelineSync(scope);
     return SeqStmt::Flatten(consumer_wait, storage_sync, consumer, consumer_release);
   }
 
-  Stmt BuildPrologue(const Array<Stmt>& producers, For pipeline_loop,
-                     const PrimExpr& shift_extent) {
+  Stmt BuildPrologue(const Array<Stmt>& producers, For pipeline_loop, const PrimExpr& shift_extent,
+                     bool use_native_pipeline) {
     Stmt producer = SeqStmt::Flatten(producers);
-    if (use_native_pipeline_) {
+    if (use_native_pipeline) {
       producer = WrapNativeProducer(producer);
     }
     PrimExpr new_loop_var =
@@ -519,11 +400,11 @@ class PipelineInjector : public StmtExprMutator {
     }
   }
 
-  Stmt BuildEpilogue(const Array<Stmt>& consumers, For pipeline_loop,
-                     const PrimExpr& shift_extent) {
+  Stmt BuildEpilogue(const Array<Stmt>& consumers, For pipeline_loop, const PrimExpr& shift_extent,
+                     const String& scope, bool use_native_pipeline) {
     Stmt consumer = SeqStmt::Flatten(consumers);
-    if (use_native_pipeline_) {
-      consumer = WrapNativeConsumer(consumer);
+    if (use_native_pipeline) {
+      consumer = WrapNativeConsumer(consumer, scope);
     }
     PrimExpr new_loop_var =
         is_one(shift_extent) ? pipeline_loop->min : pipeline_loop->loop_var.copy_with_suffix("");
@@ -541,19 +422,20 @@ class PipelineInjector : public StmtExprMutator {
     }
   }
 
-  Stmt ScheduleMainLoop(const Array<Stmt>& producers, const Array<Stmt>& consumers) {
+  Stmt ScheduleMainLoop(const Array<Stmt>& producers, const Array<Stmt>& consumers, int num_stages,
+                        const String& scope, bool use_native_pipeline) {
     // Schedule the execution of producers and consumers. Producers and consumers are assumed to be
     // independant and can be executed concurrently. The schedule can be target-dependant.
-    Stmt storage_sync = Evaluate(Call(DataType::Int(32), builtin::tvm_storage_sync(),
-                                      {StringImm(current_pipeline_->scope)}));
+    Stmt storage_sync =
+        Evaluate(Call(DataType::Int(32), builtin::tvm_storage_sync(), {StringImm(scope)}));
     // default case: run producers and consumers sequentially.
     Stmt producer = SeqStmt::Flatten(producers);
     Stmt consumer = SeqStmt::Flatten(consumers);
-    if (use_native_pipeline_) {
+    if (use_native_pipeline) {
       producer = WrapNativeProducer(producer);
-      consumer = WrapNativeConsumer(consumer);
+      consumer = WrapNativeConsumer(consumer, scope);
     }
-    if (!use_native_pipeline_ || current_pipeline_->num_stages->value == 2) {
+    if (!use_native_pipeline_ || num_stages == 2) {
       return SeqStmt::Flatten(producer, consumer, storage_sync);
     } else {
       return SeqStmt::Flatten(producer, consumer);
@@ -561,7 +443,8 @@ class PipelineInjector : public StmtExprMutator {
   }
 
   Stmt BuildMainLoop(const Array<Stmt>& producers, const Array<Stmt>& consumers, For pipeline_loop,
-                     const PrimExpr& shift_extent) {
+                     const PrimExpr& shift_extent, int num_stages, const String& scope,
+                     bool use_native_pipeline) {
     ForNode* main_loop = pipeline_loop.CopyOnWrite();
     main_loop->extent -= shift_extent;
 
@@ -573,54 +456,63 @@ class PipelineInjector : public StmtExprMutator {
       Stmt shifted_producer = Substitute(producer, subst_map);
       shifted_producers.push_back(shifted_producer);
     }
-    main_loop->body = ScheduleMainLoop(shifted_producers, consumers);
+    main_loop->body =
+        ScheduleMainLoop(shifted_producers, consumers, num_stages, scope, use_native_pipeline);
+    // Annotate the main loop so that thread_storage_sync will skip this part
+    main_loop->annotations.Set(attr::pipeline_scope, Integer(1));
     return pipeline_loop;
   }
 
-  Stmt VisitStmt_(const AttrStmtNode* op) {
-    // Skip allocate of pipeline buffers in the original TensorIR AST. These buffers should be
-    // allocated later outside the pipeline scope.
-    if (skip_allocs.count(GetRef<Stmt>(op))) {
-      Allocate alloc = GetBufferAllocate(op);
-      return VisitStmt(alloc->body);
-    }
-    AttrStmt attr_stmt = GetRef<AttrStmt>(op);
-    if (pipeline_info_.count(attr_stmt)) {
-      Stmt new_stmt = BuildPipeline(attr_stmt);
-      return new_stmt;
-    }
-    return StmtExprMutator::VisitStmt_(op);
-  }
-
-  /*!
-   * \brief Rewrite accesses to the producer buffers after they are resized for the pipeline.
-   * \param buffer_var The buffer variable.
-   * \param index The index of he buffer access.
-   * \return The updated index for accessing the resized buffer.
-   */
-  PrimExpr RewriteProducerBufferAccess(const Var& buffer_var, const PrimExpr& index) {
-    const auto& extents = buffer_info_.at(buffer_var).allocate->extents;
-    ICHECK(extents.size() == 1U);
-    PrimExpr stride = extents[0];
-    return indexmod(current_pipeline_->loop_var, current_pipeline_->num_stages) * stride + index;
-  }
-
-  Stmt VisitStmt_(const StoreNode* op) {
-    Store store = Downcast<Store>(StmtExprMutator::VisitStmt_(op));
-    if (current_pipeline_ && current_pipeline_->producer_buffers.count(store->buffer_var)) {
-      PrimExpr new_index = RewriteProducerBufferAccess(store->buffer_var, store->index);
-      store = Store(store->buffer_var, store->value, new_index, store->predicate);
+  Stmt VisitStmt_(const BufferStoreNode* op) {
+    BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(op));
+    auto it = buffer_map_.find(op->buffer);
+    if (it != buffer_map_.end()) {
+      auto* n = store.CopyOnWrite();
+      n->buffer = (*it).second.new_buffer;
+      n->indices.insert(n->indices.begin(),
+                        indexmod(buffer_map_.at(op->buffer).loop_var, n->buffer->shape[0]));
     }
     return store;
   }
 
-  PrimExpr VisitExpr_(const LoadNode* op) {
-    Load load = Downcast<Load>(StmtExprMutator::VisitExpr_(op));
-    if (current_pipeline_ && current_pipeline_->producer_buffers.count(load->buffer_var)) {
-      PrimExpr new_index = RewriteProducerBufferAccess(load->buffer_var, load->index);
-      load = Load(load->dtype, load->buffer_var, new_index, load->predicate);
+  PrimExpr VisitExpr_(const BufferLoadNode* op) {
+    BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(op));
+    auto it = buffer_map_.find(op->buffer);
+    if (it != buffer_map_.end()) {
+      auto* n = load.CopyOnWrite();
+      n->buffer = (*it).second.new_buffer;
+      n->indices.insert(n->indices.begin(),
+                        indexmod(buffer_map_.at(op->buffer).loop_var, n->buffer->shape[0]));
     }
     return load;
+  }
+
+  BufferRegion RewritePipelineBufferRegion(const BufferRegion& buffer_region) {
+    auto it = buffer_map_.find(buffer_region->buffer);
+    if (it != buffer_map_.end()) {
+      Region new_region = buffer_region->region;
+      new_region.insert(new_region.begin(),
+                        Range::FromMinExtent(0, (*it).second.new_buffer->shape[0]));
+      return BufferRegion((*it).second.new_buffer, new_region);
+    }
+    return buffer_region;
+  }
+
+  Stmt VisitStmt_(const BlockNode* op) {
+    for (const auto& buffer : op->alloc_buffers) {
+      buffer_data_to_buffer_.Set(buffer->data, buffer);
+    }
+    Block block = Downcast<Block>(StmtExprMutator::VisitStmt_(op));
+    for (const auto& buffer : op->alloc_buffers) {
+      buffer_data_to_buffer_.erase(buffer->data);
+    }
+    auto* n = block.CopyOnWrite();
+    n->reads.MutateByApply(
+        std::bind(&PipelineInjector::RewritePipelineBufferRegion, this, std::placeholders::_1));
+    n->writes.MutateByApply(
+        std::bind(&PipelineInjector::RewritePipelineBufferRegion, this, std::placeholders::_1));
+
+    return std::move(block);
   }
 
   PrimExpr VisitExpr_(const CallNode* op) {
@@ -629,18 +521,17 @@ class PipelineInjector : public StmtExprMutator {
       CHECK(pipeline_var_.defined())
           << "ValueError: intrinsic tvm_get_pipeline can only be called inside the pipeline scope.";
       return pipeline_var_.value();
-    } else if (call->op.same_as(builtin::tvm_access_ptr())) {
-      ICHECK(call->args.size() == 5U);
-      Var buffer_var = Downcast<Var>(call->args[1]);
-      if (current_pipeline_ && current_pipeline_->producer_buffers.count(buffer_var)) {
-        PrimExpr elem_offset = call->args[2];
-        elem_offset = RewriteProducerBufferAccess(buffer_var, elem_offset);
-        Array<PrimExpr> new_args(call->args);
-        new_args.Set(2, elem_offset);
-        return Call(call->dtype, call->op, new_args);
-      }
     }
     return call;
+  }
+
+  Stmt VisitStmt_(const ForNode* op) {
+    auto it = op->annotations.find(attr::pipeline_scope);
+    if (it != op->annotations.end()) {
+      return InjectPipeline(op);
+    } else {
+      return StmtExprMutator::VisitStmt_(op);
+    }
   }
 
   void DetectNativePipeline() {
@@ -662,15 +553,6 @@ class PipelineInjector : public StmtExprMutator {
     }
   }
 
-  // Information of the current pipeline.
-  const PipelineInfo* current_pipeline_ = nullptr;
-  // A map from annotated pipeline statements to the information for the transformation.
-  const SMap<AttrStmt, PipelineInfo>& pipeline_info_;
-  // A map from buffer variables to their information.
-  const SMap<Var, BufferInfo>& buffer_info_;
-  // Buffer allocations that need to be skipped as they will be regenerated by the pipeline
-  // transformation.
-  SSet<Stmt> skip_allocs;
   // Whether the native pipeline is enabled.
   bool use_native_pipeline_;
   // The pipeline object if native pipeline is enabled.
@@ -693,7 +575,7 @@ Pass InjectSoftwarePipeline() {
       cfg = AttrsWithDefaultValues<InjectSoftwarePipelineConfig>();
     }
     fptr->body = inject_software_pipeline::PipelineInjector::Inject(
-        cfg.value()->use_native_pipeline, std::move(fptr->body));
+        cfg.value()->use_native_pipeline, f);
     return f;
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.InjectSoftwarePipeline", {});
