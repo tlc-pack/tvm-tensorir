@@ -28,6 +28,7 @@ Arg = Union[
     float,
     NDArray,
 ]
+
 Args = List[Arg]
 PyArgInfo = List[Any]
 PyArgsInfo = List[PyArgInfo]
@@ -35,11 +36,14 @@ PyArgsInfo = List[PyArgInfo]
 
 @register_object("meta_schedule.ArgInfo")
 class ArgInfo(Object):
+    """Argument information"""
+
     def as_python(self) -> PyArgInfo:
         raise NotImplementedError
 
     @staticmethod
     def alloc(arg_info: PyArgInfo, device: Device) -> Arg:
+        """Allocate argument information."""
         subtype = _TYPE_DICT.get(arg_info[0], None)
         if subtype is None:
             raise ValueError(f"Unable to recognize argument information: {arg_info}")
@@ -48,6 +52,16 @@ class ArgInfo(Object):
 
 @register_object("meta_schedule.TensorArgInfo")
 class TensorArgInfo(Object):
+    """Tensor argument information
+
+    Parameters
+    ----------
+    dtype : DataType
+        The data type of the tensor.
+    shape : ShapeTuple
+        The shape of the tensor.
+    """
+
     TYPE_STR = "TENSOR"
 
     dtype: DataType
@@ -58,6 +72,15 @@ class TensorArgInfo(Object):
         dtype: DataType,
         shape: Union[ShapeTuple, List[int]],
     ) -> None:
+        """Constructor
+
+        Parameters
+        ----------
+        dtype : DataType
+            The data type of the tensor.
+        shape : ShapeTuple
+            The shape of the tensor.
+        """
         if isinstance(shape, ShapeTuple):
             shape_tuple = shape
         else:

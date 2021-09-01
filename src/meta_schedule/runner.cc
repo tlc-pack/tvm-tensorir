@@ -52,6 +52,7 @@ Runner Runner::PyRunner(Runner::FRun f_run) {
 TVM_REGISTER_NODE_TYPE(RunnerInputNode);
 TVM_REGISTER_NODE_TYPE(RunnerResultNode);
 TVM_REGISTER_NODE_TYPE(RunnerFutureNode);
+
 TVM_REGISTER_OBJECT_TYPE(RunnerNode);
 TVM_REGISTER_NODE_TYPE(PyRunnerNode);
 

@@ -24,6 +24,22 @@ from tvm import rpc
 
 
 class RPCConfig(NamedTuple):
+    """RPC configuration
+
+    Parameters
+    ----------
+    tracker_host: str
+        Host of the RPC Tracker
+    tracker_port: int
+        Port of the RPC Tracker
+    tracker_key: str
+        Key of the Tracker
+    session_timeout_sec: float
+        Timeout of the RPC session
+    session_priority: int
+        Priority of the RPC session
+    """
+
     tracker_host: Optional[str] = None
     tracker_port: Optional[str] = None
     tracker_key: Optional[str] = None
@@ -57,6 +73,13 @@ class RPCConfig(NamedTuple):
         return config
 
     def connect_tracker(self) -> rpc.TrackerSession:
+        """Connect to the tracker
+
+        Returns
+        -------
+        tracker : TrackerSession
+            The connected tracker session
+        """
         tracker: Optional[rpc.TrackerSession] = None
 
         def _connect():
@@ -79,6 +102,13 @@ class RPCConfig(NamedTuple):
         return tracker
 
     def connect_server(self) -> rpc.RPCSession:
+        """Connect to the server
+
+        Returns
+        -------
+        session : RPCSession
+            The connected rpc session
+        """
         tracker = self.connect_tracker()
         session: rpc.RPCSession = tracker.request(
             key=self.tracker_key,
@@ -88,6 +118,18 @@ class RPCConfig(NamedTuple):
         return session
 
     def count_num_servers(self, allow_missing=True) -> int:
+        """Count the number of servers available in the tracker
+
+        Parameters
+        ----------
+        allow_missing : bool
+            Whether to allow no server to be found.
+
+        Returns
+        -------
+        num_servers : int
+            The number of servers
+        """
         tracker = self.connect_tracker()
         tracker_summary = tracker.summary()
         result: int = 0

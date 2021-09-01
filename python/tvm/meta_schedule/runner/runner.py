@@ -26,6 +26,17 @@ from ..arg_info import ArgInfo
 
 @register_object("meta_schedule.RunnerInput")
 class RunnerInput(Object):
+    """The runner's input
+
+    Parameters
+    ----------
+    artifact_path : str
+        The path to the built artifact.
+    device_type : str
+        The device type.
+    args_info : List[ArgInfo]
+        The argument information.
+    """
 
     artifact_path: str
     device_type: str
@@ -37,6 +48,17 @@ class RunnerInput(Object):
         device_type: str,
         args_info: List[ArgInfo],
     ) -> None:
+        """Constructor
+
+        Parameters
+        ----------
+        artifact_path : str
+            The path to the built artifact.
+        device_type : str
+            The device type.
+        args_info : List[ArgInfo]
+            The argument information.
+        """
         self.__init_handle_by_constructor__(
             _ffi_api.RunnerInput,  # type: ignore # pylint: disable=no-member
             artifact_path,
@@ -47,6 +69,15 @@ class RunnerInput(Object):
 
 @register_object("meta_schedule.RunnerResult")
 class RunnerResult(Object):
+    """The runner's result
+
+    Parameters
+    ----------
+    run_sec : Optional[List[float]]
+        The run time in seconds.
+    error_msg : Optional[str]
+        The error message, if any.
+    """
 
     run_sec: Optional[List[float]]
     error_msg: Optional[str]
@@ -56,6 +87,15 @@ class RunnerResult(Object):
         run_sec: Optional[List[float]],
         error_msg: Optional[str],
     ) -> None:
+        """Constructor
+
+        Parameters
+        ----------
+        run_sec : Optional[List[float]]
+            The run time in seconds.
+        error_msg : Optional[str]
+            The error message, if any.
+        """
         self.__init_handle_by_constructor__(
             _ffi_api.RunnerResult,  # type: ignore # pylint: disable=no-member
             run_sec,
@@ -65,7 +105,11 @@ class RunnerResult(Object):
 
 @register_object("meta_schedule.RunnerFuture")
 class RunnerFuture(Object):
+    """A class to asynchronously fetch runner's output."""
+
     def __init__(self) -> None:
+        """Constructor"""
+
         def f_done():
             return self.done()
 
@@ -79,21 +123,41 @@ class RunnerFuture(Object):
         )
 
     def done(self) -> bool:
+        """Check whether the runner has finished."""
         raise NotImplementedError
 
     def result(self) -> RunnerResult:
+        """Fetch the runner's output if it is ready."""
         raise NotImplementedError
 
 
 @register_object("meta_schedule.Runner")
 class Runner(Object):
+    """The abstract runner interface"""
+
     def run(self, runner_inputs: List[RunnerInput]) -> List[RunnerFuture]:
+        """Run the built artifact and get runner futures.
+
+        Parameters
+        ----------
+        runner_inputs : List[RunnerInput]
+            The inputs to the runner.
+
+        Returns
+        -------
+        runner_futures: List[RunnerFuture]
+            The runner futures.
+        """
         return _ffi_api.RunnerRun(runner_inputs)  # type: ignore # pylint: disable=no-member
 
 
 @register_object("meta_schedule.PyRunner")
 class PyRunner(Runner):
+    """An abstract runner with customized build method on the python-side."""
+
     def __init__(self) -> None:
+        """Constructor"""
+
         def f_run(runner_inputs: List[RunnerInput]) -> List[RunnerFuture]:
             return self.run(runner_inputs)
 
@@ -107,6 +171,25 @@ class PyRunner(Runner):
 
 
 class EvaluatorConfig(NamedTuple):
+    """Config Details of Evaluator
+
+    Parameters
+    ----------
+    number: int
+        The number of runs.
+    repeat: int
+        The number of times to repeat in each run.
+    min_repeat_ms: int
+        minimum repeat time in ms.
+    enable_cpu_cache_flush: bool
+        Whether to flush the cache on CPU.
+
+    Note
+    ----
+    The total number of acutal executions is 1+number*repeat because we would warm up 1 time before
+    actaul run. The number of runs would be increased if run time is below min_repeat_ms.
+    """
+
     number: int = 3
     repeat: int = 1
     min_repeat_ms: int = 40

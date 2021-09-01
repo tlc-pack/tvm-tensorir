@@ -26,21 +26,30 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*! \brief The argument information. */
 class ArgInfoNode : public runtime::Object {
  public:
   virtual ~ArgInfoNode() = default;
+
   static constexpr const char* _type_key = "meta_schedule.ArgInfo";
   TVM_DECLARE_BASE_OBJECT_INFO(ArgInfoNode, runtime::Object);
 };
 
+/*!
+ * \brief Managed reference to ArgInfoNode
+ * \sa ArgInfoNode
+ */
 class ArgInfo : public runtime::ObjectRef {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(ArgInfo, runtime::ObjectRef, ArgInfoNode);
 };
 
+/*! \brief The tensor argument information. */
 class TensorArgInfoNode : public ArgInfoNode {
  public:
+  /*! \brief The data type of the tensor. */
   runtime::DataType dtype;
+  /*! \brief The shape of the tensor. */
   runtime::ShapeTuple shape;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -52,6 +61,10 @@ class TensorArgInfoNode : public ArgInfoNode {
   TVM_DECLARE_BASE_OBJECT_INFO(TensorArgInfoNode, ArgInfoNode);
 };
 
+/*!
+ * \brief Managed reference to TensorArgInfoNode
+ * \sa TensorArgInfoNode
+ */
 class TensorArgInfo : public ArgInfo {
  public:
   TVM_DLL TensorArgInfo(runtime::DataType dtype, runtime::ShapeTuple shape);

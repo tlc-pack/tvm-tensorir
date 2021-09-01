@@ -31,11 +31,29 @@ from .runner import EvaluatorConfig, PyRunner, RunnerFuture, RunnerInput, Runner
 
 
 class RPCRunnerFuture(RunnerFuture):
+    """RPC based runner future
+
+    Parameters
+    ----------
+    future: concurrent.futures.Future
+        The concurrent function to check when the function is done and to return the result.
+    timeout_sec: float
+        The timeout in seconds.
+    """
 
     future: concurrent.futures.Future
     timeout_sec: float
 
     def __init__(self, future: concurrent.futures.Future, timeout_sec: float) -> None:
+        """Constructor
+
+        Parameters
+        ----------
+        future: concurrent.futures.Future
+            The concurrent function to check when the function is done and to return the result.
+        timeout_sec: float
+            The timeout in seconds.
+        """
         super().__init__()
         self.future = future
         self.timeout_sec = timeout_sec
@@ -60,6 +78,31 @@ class RPCRunnerFuture(RunnerFuture):
 
 
 class RPCRunner(PyRunner):
+    """RPC based runner
+
+    Parameters
+    ----------
+    rpc_config: RPCConfig
+        The rpc configuration.
+    evaluator_config: EvaluatorConfig
+        The evaluator configuration.
+    cooldown_sec: float
+        The cooldown in seconds.
+    alloc_repeat: int
+        The number of times to repeat the allocation.
+    f_create_session: str
+        The function name to create the session.
+    f_upload_module: str
+        The function name to upload the module.
+    f_alloc_argument: str
+        The function name to allocate the arguments.
+    f_run_evaluator: str
+        The function name to run the evaluator.
+    f_cleanup: str
+        The function name to cleanup the session.
+    pool: str
+        The popen pool executor.
+    """
 
     rpc_config: RPCConfig
     evaluator_config: EvaluatorConfig
@@ -86,6 +129,31 @@ class RPCRunner(PyRunner):
         max_connections: Optional[int] = None,
         initializer: Optional[Callable[[], None]] = None,
     ) -> None:
+        """Consrtuctor
+
+        Parameters
+        ----------
+        rpc_config: RPCConfig
+            The rpc configuration.
+        evaluator_config: EvaluatorConfig
+            The evaluator configuration.
+        cooldown_sec: float
+            The cooldown in seconds.
+        alloc_repeat: int
+            The number of times to random fill the allocation.
+        f_create_session: str
+            The function name to create the session.
+        f_upload_module: str
+            The function name to upload the module.
+        f_alloc_argument: str
+            The function name to allocate the arguments.
+        f_run_evaluator: str
+            The function name to run the evaluator.
+        f_cleanup: str
+            The function name to cleanup the session.
+        pool: str
+            The popen pool executor.
+        """
         super().__init__()
         self.rpc_config = RPCConfig._parse(rpc_config)
         self.evaluator_config = EvaluatorConfig._parse(evaluator_config)
@@ -248,6 +316,18 @@ class RPCRunner(PyRunner):
 
 
 def default_create_session(rpc_config: RPCConfig) -> RPCSession:
+    """Default function to creat the session
+
+    Parameters
+    ----------
+    rpc_config : RPCConfig
+        The configuration of the RPC session
+
+    Returns
+    -------
+    session : RPCSession
+        The created rpc session
+    """
     return rpc_config.connect_server()
 
 
@@ -256,6 +336,22 @@ def default_upload_module(
     local_path: str,
     remote_path: str,
 ) -> Module:
+    """Default function to upload the module
+
+    Parameters
+    ----------
+    session: RPCSession
+        The session to upload the module
+    local_path: str
+        The local path of the module
+    remote_path: str
+        The remote path to place the module
+
+    Returns
+    -------
+    rt_mod : Module
+        The runtime module
+    """
     session.upload(local_path, remote_path)
     _, mod_path = osp.split(remote_path)
     rt_mod: Module = session.load_module(mod_path)
@@ -268,6 +364,24 @@ def default_alloc_argument(
     alloc_repeat: int,
     args_info: PyArgsInfo,
 ) -> List[Args]:
+    """Default function to allocate the arguments
+
+    Parameters
+    ----------
+    session: RPCSession
+        The session to allocate the arguments
+    device: Device
+        The device to allocate the arguments
+    alloc_repeat: int
+        The number of times to repeat the allocation
+    args_info: PyArgsInfo
+        The arguments info
+
+    Returns
+    -------
+    repeated_args: List[Args]
+        The allocation args
+    """
     try:
         f_random_fill = session.get_function("tvm.contrib.random.random_fill")
     except AttributeError as error:
@@ -294,6 +408,26 @@ def default_run_evaluator(
     evaluator_config: EvaluatorConfig,
     repeated_args: List[Args],
 ) -> List[float]:
+    """Default function to run the evaluator
+
+    Parameters
+    ----------
+    session: RPCSession
+        The session to run the evaluator
+    rt_mod: Module
+        The runtime module
+    device: Device
+        The device to run the evaluator
+    evaluator_config: EvaluatorConfig
+        The evaluator config
+    repeated_args: List[Args]
+        The repeated arguments
+
+    Returns
+    -------
+    costs: List[float]
+        The evaluator results
+    """
     evaluator = rt_mod.time_evaluator(
         func_name=rt_mod.entry_name,
         dev=device,
@@ -316,7 +450,16 @@ def default_run_evaluator(
 def default_cleanup(
     session: Optional[RPCSession],
     remote_path: Optional[str],
-):
+) -> None:
+    """Default function to clean up the session
+
+    Parameters
+    ----------
+    session: RPCSession
+        The session to clean up
+    remote_path: str
+        The remote path to clean up
+    """
     if session is None:
         return
     prefix, _ = osp.splitext(remote_path)

@@ -26,10 +26,14 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*! \brief The runner's input. */
 class RunnerInputNode : public runtime::Object {
  public:
+  /*! \brief The path to the built artifact. */
   String artifact_path;
+  /*! \brief The type of device. */
   String device_type;
+  /*! \brief The argument information. */
   Array<ArgInfo> args_info;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -42,15 +46,28 @@ class RunnerInputNode : public runtime::Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(RunnerInputNode, runtime::Object);
 };
 
+/*!
+ * \brief Managed reference to RunnerInputNode
+ * \sa RunnerInputNode
+ */
 class RunnerInput : public runtime::ObjectRef {
  public:
-  TVM_DLL RunnerInput(String artifact_path, String device_type, Array<ArgInfo> args_info);
+  /*!
+   * \brief Constructor of RunnerInput
+   * \param artifact_path The path to the built artifact.
+   * \param device_type The type of device.
+   * \param args_info The argument information.
+   */
+  TVM_DLL explicit RunnerInput(String artifact_path, String device_type, Array<ArgInfo> args_info);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(RunnerInput, runtime::ObjectRef, RunnerInputNode);
 };
 
+/*! \brief The runner's output. */
 class RunnerResultNode : public runtime::Object {
  public:
+  /*! \brief The run time in seconds.*/
   Optional<Array<FloatImm>> run_sec;
+  /*! \brief The error message, if any. */
   Optional<String> error_msg;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -62,19 +79,36 @@ class RunnerResultNode : public runtime::Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(RunnerResultNode, runtime::Object);
 };
 
+/*!
+ * \brief Managed reference to RunnerResultNode
+ * \sa RunnerResultNode
+ */
 class RunnerResult : public runtime::ObjectRef {
  public:
-  TVM_DLL RunnerResult(Optional<Array<FloatImm>> run_sec, Optional<String> error_msg);
+  TVM_DLL explicit RunnerResult(Optional<Array<FloatImm>> run_sec, Optional<String> error_msg);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(RunnerResult, runtime::ObjectRef, RunnerResultNode);
 };
 
+/*!
+ * \brief A class to asynchronously fetch runner's output.
+ * \note https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Future
+ */
 class RunnerFutureNode : public runtime::Object {
  public:
-  // https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Future
+  /*!
+   * \brief The function type to check whether the runner has finished.
+   * \return Whether the runner's output is ready.
+   */
   using FDone = runtime::TypedPackedFunc<bool()>;
+  /*!
+   * \brief The function type to fetch runner output if it is ready.
+   * \return The runner's output.
+   */
   using FResult = runtime::TypedPackedFunc<RunnerResult()>;
 
+  /*! \brief The packed function to check whether the runner has finished. */
   FDone f_done;
+  /*! \brief The packed function to fetch runner output if it is ready. */
   FResult f_result;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -82,43 +116,85 @@ class RunnerFutureNode : public runtime::Object {
     // `f_result` is not visited
   }
 
+  /*!
+   * \brief Check whether the runner has finished.
+   * \return A boolean indicating whether the runner has finished.
+   */
   bool Done() const { return f_done(); }
+  /*!
+   * \brief Fetch the runner's output if it is ready.
+   * \return The runner's output.
+   */
   RunnerResult Result() const { return f_result(); }
 
   static constexpr const char* _type_key = "meta_schedule.RunnerFuture";
   TVM_DECLARE_FINAL_OBJECT_INFO(RunnerFutureNode, runtime::Object);
 };
 
+/*!
+ * \brief Managed reference to RunnerFutureNode
+ * \sa RunnerFutureNode
+ */
 class RunnerFuture : public runtime::ObjectRef {
  public:
   using FDone = RunnerFutureNode::FDone;
   using FResult = RunnerFutureNode::FResult;
 
-  TVM_DLL RunnerFuture(FDone f_done, FResult f_result);
+  /*!
+   * \brief Constructor of RunnerFuture
+   * \param f_done The packed function to check whether the runner has finished.
+   * \param f_result The packed function to fetch runner output if it is ready.
+   */
+  TVM_DLL explicit RunnerFuture(FDone f_done, FResult f_result);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(RunnerFuture, runtime::ObjectRef,
                                                     RunnerFutureNode);
 };
 
+/*! \brief The abstract runner interface. */
 class RunnerNode : public runtime::Object {
  public:
+  /*!
+   * \brief The function type to run the built artifacts and get runner futures.
+   * \param input The runner's inputs.
+   * \return The runner futures.
+   * \sa RunnerFuture
+   */
   using FRun = runtime::TypedPackedFunc<Array<RunnerFuture>(Array<RunnerInput>)>;
 
   virtual ~RunnerNode() = default;
+
+  /*!
+   * \brief Run the built artifact and get runner futures.
+   * \param input The runner's inputs.
+   * \return The runner futures.
+   */
   virtual Array<RunnerFuture> Run(Array<RunnerInput> runner_inputs) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.Runner";
   TVM_DECLARE_BASE_OBJECT_INFO(RunnerNode, runtime::Object);
 };
 
+/*!
+ * \brief Managed reference to RunnerNode
+ * \sa RunnerNode
+ */
 class Runner : public runtime::ObjectRef {
  public:
   using FRun = RunnerNode::FRun;
+
+  /*!
+   * \brief Create a runner with customized build method on the python-side.
+   * \param f_run The packed function to run the built artifacts and get runner futures.
+   * \return The runner created.
+   */
   TVM_DLL static Runner PyRunner(FRun f_run);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Runner, runtime::ObjectRef, RunnerNode);
 };
 
+/*! \brief An abstract runner with customized build method on the python-side. */
 class PyRunnerNode : public RunnerNode {
  public:
+  /*! \brief The packed function to run the built artifacts and get runner futures. */
   FRun f_run;
 
   void VisitAttrs(tvm::AttrVisitor* v) {

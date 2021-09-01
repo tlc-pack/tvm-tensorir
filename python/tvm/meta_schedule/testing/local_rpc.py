@@ -21,6 +21,17 @@ import tvm.rpc.tracker
 
 
 class Tracker:
+    """Tracker
+
+    Parameters
+    ----------
+    tracker : tvm.rpc.tracker.Tracker
+        The tracker
+    host : str
+        The host url
+    port : int
+        The port number
+    """
 
     tracker: tvm.rpc.tracker.Tracker
     host: str
@@ -33,6 +44,19 @@ class Tracker:
         port_end: int = 9999,
         silent: bool = False,
     ) -> None:
+        """Constructor
+
+        Parameters
+        ----------
+        host : str
+            The host url
+        port : int
+            The port number
+        port_end : int
+            The end port number
+        silent : bool
+            Whether run in silent mode
+        """
         self.tracker = tvm.rpc.tracker.Tracker(
             host,
             port=port,
@@ -44,6 +68,12 @@ class Tracker:
 
 
 class Server:
+    """Server
+
+    Parameters
+    ----------
+    server : tvm.rpc.Server
+    """
 
     server: tvm.rpc.Server
 
@@ -59,6 +89,29 @@ class Server:
         silent: bool = False,
         no_fork: bool = False,
     ) -> None:
+        """Constructor
+
+        Parameters
+        ----------
+        tracker : Tracker
+            The tracker
+        key : str
+            The tracker key
+        host : str
+            The host url
+        port : int
+            The port number
+        port_end : int
+            The end port number
+        load_library : str, optional
+            Additional library to load
+        custom_addr : str, optional
+            custom rpc address
+        silent : bool
+            Whether run in silent mode
+        no_fork : bool
+            Whether use fork instead of spawn
+        """
         self.server = tvm.rpc.Server(
             host=host,
             port=port,
