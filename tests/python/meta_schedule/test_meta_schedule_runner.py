@@ -19,16 +19,19 @@
 import os
 import sys
 import time
+from typing import List
 
 import pytest
 
 import tvm
+from tvm._ffi import register_func
 from tvm import tir
 from tvm.script import ty
 from tvm.target import Target
 from tvm.tir import FloatImm
+from tvm.rpc import RPCSession
 from tvm.meta_schedule import LocalBuilder, BuilderInput
-from tvm.meta_schedule import RPCRunner, RunnerInput
+from tvm.meta_schedule import RPCRunner, RunnerInput, PyRunner, RunnerFuture, RPCConfig
 from tvm.meta_schedule.arg_info import TensorArgInfo
 from tvm.meta_schedule.testing import Tracker, Server
 
@@ -86,9 +89,13 @@ class BatchMatmulModule:
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring
 
 
-def _clean_build(artifact_path):
+def _clean_build(artifact_path: str) -> None:
     os.remove(artifact_path)
     os.rmdir(os.path.dirname(artifact_path))
+
+
+def _terminate_server(server: Server, tracker: Tracker) -> None:
+    pass
 
 
 def test_meta_schedule_single_run():
@@ -135,19 +142,16 @@ def test_meta_schedule_single_run():
 
     # Run the module
     (runner_future,) = runner.run([runner_input])  # pylint: disable=unbalanced-tuple-unpacking
-    while not runner_future.done():
-        time.sleep(0.1)
     runner_result = runner_future.result()
     assert runner_result.error_msg is None
     for result in runner_result.run_sec:
         assert isinstance(result, (float, FloatImm))
         assert result >= 0.0
     # Does not need to clean builds because the remote path is the same as the local path
-    server.server.terminate()
-    tracker.tracker.terminate()
+    _terminate_server(server, tracker)
 
 
-def test_meta_schedule_multiple_run():
+def test_meta_schedule_multiple_runs():
     """Test meta schedule builder for multiple runs"""
     # Build the module
     mods = [
@@ -204,16 +208,139 @@ def test_meta_schedule_multiple_run():
     # Run the module
     runner_futures = runner.run(runner_inputs)  # pylint: disable=unbalanced-tuple-unpacking
     for runner_future in runner_futures:
-        while not runner_future.done():
-            time.sleep(0.1)
         runner_result = runner_future.result()
         assert runner_result.error_msg is None
         for result in runner_result.run_sec:
             assert isinstance(result, (float, FloatImm))
             assert result >= 0.0
     # Does not need to clean builds because the remote path is the same as the local path
-    server.server.terminate()
-    tracker.tracker.terminate()
+    _terminate_server(server, tracker)
+
+
+def test_meta_schedule_py_runner():
+    """Test meta schedule PyRunner"""
+
+    class TestRunner(PyRunner):
+        def run(self, runner_inputs: List[RunnerInput]) -> List[RunnerFuture]:
+            raise ValueError("TestRunner")
+
+    runner = TestRunner()
+    with pytest.raises(ValueError, match="TestRunner"):
+        runner.run([])
+
+
+def test_meta_schedule_rpc_runner_time_out():
+    """Test meta schedule RPC Runner time out"""
+
+    def initializer():
+        @register_func("meta_schedule.runner.test_time_out")
+        def timeout_session_creater(  # pylint: disable=unused-variable
+            rpc_config: RPCConfig,  # pylint: disable=unused-argument
+        ) -> RPCSession:
+            time.sleep(2)
+
+    runner_input = RunnerInput(
+        "test",
+        "llvm",
+        [TensorArgInfo("float32", (1024, 1024)) for _ in range(3)],
+    )
+
+    tracker = Tracker()
+    server = Server(tracker)
+
+    rpc_config = type(
+        "rpc_config",
+        (),
+        {
+            "tracker_host": tracker.host,
+            "tracker_port": tracker.port,
+            "tracker_key": server.key,
+            "session_priority": 1,
+            "session_timeout_sec": 1,
+        },
+    )()
+
+    evaluator_config = type(
+        "evaluator_config",
+        (),
+        {
+            "number": 1,
+            "repeat": 1,
+            "min_repeat_ms": 0,
+            "enable_cpu_cache_flush": False,
+        },
+    )()
+
+    runner = RPCRunner(
+        rpc_config,
+        evaluator_config,
+        initializer=initializer,
+        f_create_session="meta_schedule.runner.test_time_out",
+    )
+    (runner_future,) = runner.run([runner_input])  # pylint: disable=unbalanced-tuple-unpacking
+    runner_result = runner_future.result()
+    assert runner_result.error_msg is not None and runner_result.error_msg.startswith(
+        "RPCRunner: Timeout, killed after"
+    )
+    assert runner_result.run_sec is None
+    _terminate_server(server, tracker)
+
+
+def test_meta_schedule_rpc_runner_exception():
+    """Test meta schedule RPC Runner exception"""
+
+    def initializer():
+        @register_func("meta_schedule.runner.test_exception")
+        def exception_session_creater(  # pylint: disable=unused-variable
+            rpc_config: RPCConfig,  # pylint: disable=unused-argument
+        ) -> RPCSession:
+            raise Exception("Test")
+
+    runner_input = RunnerInput(
+        "test",
+        "llvm",
+        [TensorArgInfo("float32", (1024, 1024)) for _ in range(3)],
+    )
+
+    tracker = Tracker()
+    server = Server(tracker)
+
+    rpc_config = type(
+        "rpc_config",
+        (),
+        {
+            "tracker_host": tracker.host,
+            "tracker_port": tracker.port,
+            "tracker_key": server.key,
+            "session_priority": 1,
+            "session_timeout_sec": 100,
+        },
+    )()
+
+    evaluator_config = type(
+        "evaluator_config",
+        (),
+        {
+            "number": 1,
+            "repeat": 1,
+            "min_repeat_ms": 0,
+            "enable_cpu_cache_flush": False,
+        },
+    )()
+
+    runner = RPCRunner(
+        rpc_config,
+        evaluator_config,
+        initializer=initializer,
+        f_create_session="meta_schedule.runner.test_exception",
+    )
+    (runner_future,) = runner.run([runner_input])  # pylint: disable=unbalanced-tuple-unpacking
+    runner_result = runner_future.result()
+    assert runner_result.error_msg is not None and runner_result.error_msg.startswith(
+        "RPCRunner: An exception occurred\n"
+    )
+    assert runner_result.run_sec is None
+    _terminate_server(server, tracker)
 
 
 if __name__ == "__main__":

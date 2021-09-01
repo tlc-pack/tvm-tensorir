@@ -20,6 +20,7 @@ from .runner import (
     Runner,
     RunnerInput,
     RunnerResult,
+    RunnerFuture,
     PyRunner,
     RPCConfig,
     RPCRunner,

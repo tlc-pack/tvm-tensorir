@@ -90,15 +90,15 @@ class RPCRunner(PyRunner):
         The cooldown in seconds.
     alloc_repeat: int
         The number of times to repeat the allocation.
-    f_create_session: str
+    f_create_session: Optional[str]
         The function name to create the session.
-    f_upload_module: str
+    f_upload_module: Optional[str]
         The function name to upload the module.
-    f_alloc_argument: str
+    f_alloc_argument: Optional[str]
         The function name to allocate the arguments.
-    f_run_evaluator: str
+    f_run_evaluator: Optional[str]
         The function name to run the evaluator.
-    f_cleanup: str
+    f_cleanup: Optional[str]
         The function name to cleanup the session.
     pool: str
         The popen pool executor.
@@ -141,18 +141,20 @@ class RPCRunner(PyRunner):
             The cooldown in seconds.
         alloc_repeat: int
             The number of times to random fill the allocation.
-        f_create_session: str
+        f_create_session: Optional[str]
             The function name to create the session.
-        f_upload_module: str
+        f_upload_module: Optional[str]
             The function name to upload the module.
-        f_alloc_argument: str
+        f_alloc_argument: Optional[str]
             The function name to allocate the arguments.
-        f_run_evaluator: str
+        f_run_evaluator: Optional[str]
             The function name to run the evaluator.
-        f_cleanup: str
+        f_cleanup: Optional[str]
             The function name to cleanup the session.
-        pool: str
-            The popen pool executor.
+        max_connections: Optional[int]
+            The maximum number of connections.
+        initializer: Optional[Callable[[], None]]
+            The initializer function.
         """
         super().__init__()
         self.rpc_config = RPCConfig._parse(rpc_config)
