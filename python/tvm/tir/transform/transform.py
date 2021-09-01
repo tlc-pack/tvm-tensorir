@@ -812,3 +812,14 @@ def LowerLogicalLayout():
         The result pass
     """
     return _ffi_api.LowerLogicalLayout()
+
+
+def LowerLogicalIntrin():
+    """Lower logical intrinsics to physical intrinsics.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.LowerLogicalIntrin()

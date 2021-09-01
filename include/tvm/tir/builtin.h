@@ -671,6 +671,11 @@ TVM_DLL const Op& atomic_add();
  */
 TVM_DLL const Op& tvm_memcpy_async();
 
+/*!
+ * \brief tvm intrinsic for mfma instruction
+ */
+TVM_DLL const Op& tvm_mfma_sync();
+
 /*! \brief The kind of structure field info used in intrinsic */
 enum TVMStructFieldKind : int {
   // array head address
