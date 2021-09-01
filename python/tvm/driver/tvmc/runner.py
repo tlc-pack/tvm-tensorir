@@ -113,7 +113,7 @@ def drive_run(args):
     try:
         inputs = np.load(args.inputs) if args.inputs else {}
     except IOError as ex:
-        raise TVMCException("Error loading inputs file:") from ex
+        raise TVMCException("Error loading inputs file: %s" % ex)
 
     tvmc_package = TVMCPackage(package_path=args.FILE)
 
