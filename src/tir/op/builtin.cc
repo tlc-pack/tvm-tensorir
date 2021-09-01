@@ -271,6 +271,9 @@ TIR_DEFINE_BUILTIN_FUNC(tvm_pipeline_consumer_wait)
 TIR_DEFINE_BUILTIN_FUNC(tvm_pipeline_consumer_release)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 
+TIR_DEFINE_BUILTIN_FUNC(tvm_mfma_sync)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
+
 }  // namespace builtin
 }  // namespace tir
 }  // namespace tvm

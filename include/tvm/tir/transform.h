@@ -534,7 +534,7 @@ TVM_DLL Pass FlattenBuffer();
 TVM_DLL Pass UnifyThreadBinding();
 
 /*!
- * \brief Lower lower logical layout into physical layout.
+ * \brief Lower logical layout into physical layout.
  * \return The pass.
  */
 TVM_DLL Pass LowerLogicalLayout();
@@ -544,6 +544,11 @@ TVM_DLL Pass LowerLogicalLayout();
  * \return The IR transform pass.
  */
 TVM_DLL Pass InjectSoftwarePipeline();
+
+/*!
+ * \brief Lower logical intrinsics into physical intrinsics.
+ */
+TVM_DLL Pass LowerLogicalIntrin();
 
 }  // namespace transform
 }  // namespace tir
