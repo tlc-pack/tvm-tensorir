@@ -99,7 +99,7 @@ class BufferFlattener : public StmtExprMutator {
     for (const auto& annotation : op->annotations) {
       const String& ann_key = annotation.first;
       const ObjectRef& ann_value = annotation.second;
-      if (attr::IsPragmaKey(ann_key)) {
+      if (attr::IsPragmaKey(ann_key) || ann_key == attr::pipeline_scope ) {
         body = AttrStmt(op->loop_var, ann_key, Downcast<PrimExpr>(ann_value), std::move(body));
       }
     }
