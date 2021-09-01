@@ -15,4 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 """meta_schedule.runner"""
-from .runner import PyRunner, Runner, RunnerFuture, RunnerInput, RunnerResult
+from .runner import PyRunner, Runner, RunnerFuture, RunnerInput, RunnerResult, EvaluatorConfig
+from .rpc_runner import RPCRunner, RPCRunnerFuture
+from .rpc_config import RPCConfig

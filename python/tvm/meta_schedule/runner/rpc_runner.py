@@ -353,8 +353,7 @@ def default_upload_module(
         The runtime module
     """
     session.upload(local_path, remote_path)
-    _, mod_path = osp.split(remote_path)
-    rt_mod: Module = session.load_module(mod_path)
+    rt_mod: Module = session.load_module(remote_path)
     return rt_mod
 
 

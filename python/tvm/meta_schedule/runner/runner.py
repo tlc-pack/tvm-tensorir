@@ -199,4 +199,10 @@ class EvaluatorConfig(NamedTuple):
     def _parse(config: Optional["EvaluatorConfig"]) -> "EvaluatorConfig":
         if config is None:
             return EvaluatorConfig()
+        config = EvaluatorConfig(
+            number=config.number,
+            repeat=config.repeat,
+            min_repeat_ms=config.min_repeat_ms,
+            enable_cpu_cache_flush=config.enable_cpu_cache_flush,
+        )
         return config

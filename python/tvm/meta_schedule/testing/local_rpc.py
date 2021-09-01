@@ -76,6 +76,7 @@ class Server:
     """
 
     server: tvm.rpc.Server
+    key: str
 
     def __init__(
         self,
@@ -124,3 +125,4 @@ class Server:
             silent=silent,
             no_fork=no_fork,
         )
+        self.key = key
