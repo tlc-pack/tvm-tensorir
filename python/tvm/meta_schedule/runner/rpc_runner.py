@@ -17,9 +17,9 @@
 """RPC Runner"""
 import concurrent.futures
 import itertools
-import tempfile
 import os
 import os.path as osp
+import shutil
 from contextlib import contextmanager
 from typing import Callable, List, Optional
 
@@ -278,11 +278,14 @@ class RPCRunner(PyRunner):
             _f_run_evaluator,
             default_run_evaluator,
         )
-        f_cleanup: Callable[[RPCSession, str], None] = get_global_func_with_default_on_worker(
+        f_cleanup: Callable[
+            [Optional[RPCSession], Optional[str], Optional[str]], None
+        ] = get_global_func_with_default_on_worker(
             _f_cleanup,
             default_cleanup,
         )
         session: Optional[RPCSession] = None
+        local_path: str = artifact_path
         remote_path: Optional[str] = None
 
         @contextmanager
@@ -291,16 +294,16 @@ class RPCRunner(PyRunner):
                 yield
             finally:
                 # Step 5. Clean up
-                f_cleanup(session, remote_path)
+                f_cleanup(session, local_path, remote_path)
 
         with resource_handler():
             # Step 1. Create session
             session = f_create_session(rpc_config)
             device = session.device(dev_type=device_type, dev_id=0)
             # Step 2. Upload the module
-            local_path: str = artifact_path
-            remote_path: str = osp.join(tempfile.mkdtemp(), osp.basename(artifact_path))
+            _, remote_path = osp.split(artifact_path)
             rt_mod: Module = f_upload_module(session, local_path, remote_path)
+
             # Step 3: Allocate input arguments
             repeated_args: List[Args] = f_alloc_argument(
                 session,
@@ -357,8 +360,6 @@ def default_upload_module(
         The runtime module
     """
     session.upload(local_path, remote_path)
-    os.remove(local_path)  # clean up the local file
-    os.rmdir(os.path.dirname(local_path))  # clean up the local dir
     rt_mod: Module = session.load_module(remote_path)
     return rt_mod
 
@@ -454,6 +455,7 @@ def default_run_evaluator(
 
 def default_cleanup(
     session: Optional[RPCSession],
+    local_path: Optional[str],
     remote_path: Optional[str],
 ) -> None:
     """Default function to clean up the session
@@ -465,9 +467,9 @@ def default_cleanup(
     remote_path: str
         The remote path to clean up
     """
-    if session is None:
-        return
-    prefix, _ = osp.splitext(remote_path)
-    session.remove(remote_path)
-    session.remove(remote_path + ".so")
-    # unable to remove the path
+    if local_path is not None:
+        shutil.rmtree(os.path.dirname(local_path))
+    if session is not None and remote_path is not None:
+        session.remove(remote_path)
+        session.remove(remote_path + ".so")
+        session.remove("")
