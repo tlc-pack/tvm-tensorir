@@ -94,12 +94,6 @@ def _clean_build(artifact_path: str) -> None:
     os.rmdir(os.path.dirname(artifact_path))
 
 
-def _terminate_server(server: Server, tracker: Tracker) -> None:
-    tracker.tracker.terminate()
-    server.server.terminate()
-    time.sleep(0.5)
-
-
 def test_meta_schedule_single_run():
     """Test meta schedule builder for a single run"""
     # Build the module
@@ -154,7 +148,6 @@ def test_meta_schedule_single_run():
         assert isinstance(result, (float, FloatImm))
         assert result >= 0.0
     # Does not need to clean builds because the remote path is the same as the local path
-    _terminate_server(server, tracker)
 
 
 def test_meta_schedule_multiple_runs():
@@ -222,7 +215,6 @@ def test_meta_schedule_multiple_runs():
             assert isinstance(result, (float, FloatImm))
             assert result >= 0.0
     # Does not need to clean builds because the remote path is the same as the local path
-    _terminate_server(server, tracker)
 
 
 def test_meta_schedule_py_runner():
@@ -293,7 +285,6 @@ def test_meta_schedule_rpc_runner_time_out():
         "RPCRunner: Timeout, killed after"
     )
     assert runner_result.run_sec is None
-    _terminate_server(server, tracker)
 
 
 def test_meta_schedule_rpc_runner_exception():
@@ -352,7 +343,6 @@ def test_meta_schedule_rpc_runner_exception():
         "RPCRunner: An exception occurred\n"
     )
     assert runner_result.run_sec is None
-    _terminate_server(server, tracker)
 
 
 if __name__ == "__main__":
