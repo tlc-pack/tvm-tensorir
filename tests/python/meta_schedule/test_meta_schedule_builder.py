@@ -20,6 +20,8 @@ from typing import List
 
 import os
 import sys
+import time
+
 import pytest
 
 from tvm._ffi import register_func
@@ -183,9 +185,7 @@ def test_meta_schedule_error_handle_time_out():
 
     def initializer():
         @register_func("meta_schedule.builder.test_time_out")
-        def timeout_build(mod, target):  # pylint: disable=unused-variable
-            import time
-
+        def timeout_build(mod, target):  # pylint: disable=unused-argument, unused-variable
             time.sleep(2)
 
     builder = LocalBuilder(

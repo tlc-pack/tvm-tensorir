@@ -31,7 +31,14 @@ from tvm.target import Target
 from tvm.tir import FloatImm
 from tvm.rpc import RPCSession
 from tvm.meta_schedule import LocalBuilder, BuilderInput
-from tvm.meta_schedule import RPCRunner, RunnerInput, PyRunner, RunnerFuture, RPCConfig
+from tvm.meta_schedule import (
+    RPCRunner,
+    RunnerInput,
+    PyRunner,
+    RunnerFuture,
+    RPCConfig,
+    EvaluatorConfig,
+)
 from tvm.meta_schedule.arg_info import TensorArgInfo
 from tvm.meta_schedule.testing import Tracker, Server
 
@@ -123,28 +130,17 @@ def test_meta_schedule_single_run():
     # Wait for the processes to start
     time.sleep(0.5)
 
-    rpc_config = type(
-        "rpc_config",
-        (),
-        {
-            "tracker_host": tracker.host,
-            "tracker_port": tracker.port,
-            "tracker_key": server.key,
-            "session_priority": 1,
-            "session_timeout_sec": 100,
-        },
-    )()
+    rpc_config = RPCConfig(
+        tracker_host=tracker.host,
+        tracker_port=tracker.port,
+        tracker_key=server.key,
+        session_priority=1,
+        session_timeout_sec=100,
+    )
 
-    evaluator_config = type(
-        "evaluator_config",
-        (),
-        {
-            "number": 1,
-            "repeat": 1,
-            "min_repeat_ms": 0,
-            "enable_cpu_cache_flush": False,
-        },
-    )()
+    evaluator_config = EvaluatorConfig(
+        number=1, repeat=1, min_repeat_ms=0, enable_cpu_cache_flush=False
+    )
 
     runner = RPCRunner(rpc_config, evaluator_config)
 
@@ -191,28 +187,17 @@ def test_meta_schedule_multiple_runs():
     # Wait for the processes to start
     time.sleep(0.5)
 
-    rpc_config = type(
-        "rpc_config",
-        (),
-        {
-            "tracker_host": tracker.host,
-            "tracker_port": tracker.port,
-            "tracker_key": server.key,
-            "session_priority": 1,
-            "session_timeout_sec": 100,
-        },
-    )()
+    rpc_config = RPCConfig(
+        tracker_host=tracker.host,
+        tracker_port=tracker.port,
+        tracker_key=server.key,
+        session_priority=1,
+        session_timeout_sec=100,
+    )
 
-    evaluator_config = type(
-        "evaluator_config",
-        (),
-        {
-            "number": 1,
-            "repeat": 1,
-            "min_repeat_ms": 0,
-            "enable_cpu_cache_flush": False,
-        },
-    )()
+    evaluator_config = EvaluatorConfig(
+        number=1, repeat=1, min_repeat_ms=0, enable_cpu_cache_flush=False
+    )
 
     runner = RPCRunner(rpc_config, evaluator_config)
 
@@ -262,28 +247,17 @@ def test_meta_schedule_rpc_runner_time_out():
     # Wait for the processes to start
     time.sleep(0.5)
 
-    rpc_config = type(
-        "rpc_config",
-        (),
-        {
-            "tracker_host": tracker.host,
-            "tracker_port": tracker.port,
-            "tracker_key": server.key,
-            "session_priority": 1,
-            "session_timeout_sec": 1,
-        },
-    )()
+    rpc_config = RPCConfig(
+        tracker_host=tracker.host,
+        tracker_port=tracker.port,
+        tracker_key=server.key,
+        session_priority=1,
+        session_timeout_sec=1,
+    )
 
-    evaluator_config = type(
-        "evaluator_config",
-        (),
-        {
-            "number": 1,
-            "repeat": 1,
-            "min_repeat_ms": 0,
-            "enable_cpu_cache_flush": False,
-        },
-    )()
+    evaluator_config = EvaluatorConfig(
+        number=1, repeat=1, min_repeat_ms=0, enable_cpu_cache_flush=False
+    )
 
     runner = RPCRunner(
         rpc_config,
@@ -320,28 +294,17 @@ def test_meta_schedule_rpc_runner_exception():
     # Wait for the processes to start
     time.sleep(0.5)
 
-    rpc_config = type(
-        "rpc_config",
-        (),
-        {
-            "tracker_host": tracker.host,
-            "tracker_port": tracker.port,
-            "tracker_key": server.key,
-            "session_priority": 1,
-            "session_timeout_sec": 100,
-        },
-    )()
+    rpc_config = RPCConfig(
+        tracker_host=tracker.host,
+        tracker_port=tracker.port,
+        tracker_key=server.key,
+        session_priority=1,
+        session_timeout_sec=100,
+    )
 
-    evaluator_config = type(
-        "evaluator_config",
-        (),
-        {
-            "number": 1,
-            "repeat": 1,
-            "min_repeat_ms": 0,
-            "enable_cpu_cache_flush": False,
-        },
-    )()
+    evaluator_config = EvaluatorConfig(
+        number=1, repeat=1, min_repeat_ms=0, enable_cpu_cache_flush=False
+    )
 
     runner = RPCRunner(
         rpc_config,
@@ -358,8 +321,4 @@ def test_meta_schedule_rpc_runner_exception():
 
 
 if __name__ == "__main__":
-    test_meta_schedule_single_run()
-    test_meta_schedule_multiple_runs()
-    test_meta_schedule_py_runner()
-    test_meta_schedule_rpc_runner_time_out()
-    test_meta_schedule_rpc_runner_exception()
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))
