@@ -95,7 +95,9 @@ def _clean_build(artifact_path: str) -> None:
 
 
 def _terminate_server(server: Server, tracker: Tracker) -> None:
-    pass
+    tracker.tracker.terminate()
+    server.server.terminate()
+    time.sleep(0.5)
 
 
 def test_meta_schedule_single_run():
@@ -113,8 +115,12 @@ def test_meta_schedule_single_run():
         "llvm",
         [TensorArgInfo("float32", (1024, 1024)) for _ in range(3)],
     )
+
     tracker = Tracker()
     server = Server(tracker)
+    # Wait for the processes to start
+    time.sleep(0.5)
+
     rpc_config = type(
         "rpc_config",
         (),
@@ -179,6 +185,8 @@ def test_meta_schedule_multiple_runs():
 
     tracker = Tracker()
     server = Server(tracker)
+    # Wait for the processes to start
+    time.sleep(0.5)
 
     rpc_config = type(
         "rpc_config",
@@ -247,6 +255,8 @@ def test_meta_schedule_rpc_runner_time_out():
 
     tracker = Tracker()
     server = Server(tracker)
+    # Wait for the processes to start
+    time.sleep(0.5)
 
     rpc_config = type(
         "rpc_config",
@@ -304,6 +314,8 @@ def test_meta_schedule_rpc_runner_exception():
 
     tracker = Tracker()
     server = Server(tracker)
+    # Wait for the processes to start
+    time.sleep(0.5)
 
     rpc_config = type(
         "rpc_config",
@@ -344,4 +356,8 @@ def test_meta_schedule_rpc_runner_exception():
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    test_meta_schedule_single_run()
+    test_meta_schedule_multiple_runs()
+    test_meta_schedule_py_runner()
+    test_meta_schedule_rpc_runner_time_out()
+    test_meta_schedule_rpc_runner_exception()
