@@ -17,6 +17,8 @@
 """Utility"""
 from typing import Callable, Optional
 
+import os
+import shutil
 import psutil
 from tvm._ffi import get_global_func, register_func
 from tvm.error import TVMError
@@ -68,3 +70,10 @@ def get_global_func_with_default_on_worker(name: Optional[str], default: Callabl
             "if there are extra functions to be registered, "
             "please send the registration logic via initializer."
         ) from error
+
+
+@register_func("meta_schedule.clean_up_build")
+def clean_up_build(artifact_path: Optional[str]):
+    """Clean up the build directory"""
+    if artifact_path is not None:
+        shutil.rmtree(os.path.dirname(artifact_path))

@@ -104,6 +104,11 @@ class RPCRunner(PyRunner):
         The function name to cleanup the session.
     pool: str
         The popen pool executor.
+
+    Note
+    ----
+    Does not support customizd function for f_create_session, f_upload_module, f_alloc_argument,
+    f_run_evaluator, f_cleanup.
     """
 
     rpc_config: RPCConfig
@@ -285,7 +290,6 @@ class RPCRunner(PyRunner):
             default_cleanup,
         )
         session: Optional[RPCSession] = None
-        local_path: str = artifact_path
         remote_path: Optional[str] = None
 
         @contextmanager
@@ -294,7 +298,7 @@ class RPCRunner(PyRunner):
                 yield
             finally:
                 # Step 5. Clean up
-                f_cleanup(session, local_path, remote_path)
+                f_cleanup(session, remote_path)
 
         with resource_handler():
             # Step 1. Create session
@@ -302,6 +306,7 @@ class RPCRunner(PyRunner):
             device = session.device(dev_type=device_type, dev_id=0)
             # Step 2. Upload the module
             _, remote_path = osp.split(artifact_path)
+            local_path: str = artifact_path
             rt_mod: Module = f_upload_module(session, local_path, remote_path)
 
             # Step 3: Allocate input arguments
@@ -455,7 +460,6 @@ def default_run_evaluator(
 
 def default_cleanup(
     session: Optional[RPCSession],
-    local_path: Optional[str],
     remote_path: Optional[str],
 ) -> None:
     """Default function to clean up the session
@@ -467,8 +471,6 @@ def default_cleanup(
     remote_path: str
         The remote path to clean up
     """
-    if local_path is not None:
-        shutil.rmtree(os.path.dirname(local_path))
     if session is not None and remote_path is not None:
         session.remove(remote_path)
         session.remove(remote_path + ".so")

@@ -16,8 +16,7 @@
 # under the License.
 """ Test Meta Schedule Runner """
 
-import os
-import sys
+import sys  # pylint: disable=unused-import
 import time
 from typing import List
 
@@ -41,16 +40,15 @@ from tvm.meta_schedule import (
 )
 from tvm.meta_schedule.arg_info import TensorArgInfo
 from tvm.meta_schedule.testing import Tracker, Server
+from tvm.meta_schedule.utils import get_global_func_with_default_on_worker
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring
 
 
 @tvm.script.tir
 class MatmulModule:
-    def matmul(  # pylint: disable=no-self-argument
-        a: ty.handle, b: ty.handle, c: ty.handle
-    ) -> None:
-        tir.func_attr({"global_symbol": "matmul", "tir.noalias": True})
+    def main(a: ty.handle, b: ty.handle, c: ty.handle) -> None:  # pylint: disable=no-self-argument
+        tir.func_attr({"global_symbol": "main", "tir.noalias": True})
         A = tir.match_buffer(a, (1024, 1024), "float32")
         B = tir.match_buffer(b, (1024, 1024), "float32")
         C = tir.match_buffer(c, (1024, 1024), "float32")
@@ -62,10 +60,8 @@ class MatmulModule:
 
 @tvm.script.tir
 class MatmulReluModule:
-    def matmul_relu(  # pylint: disable=no-self-argument
-        a: ty.handle, b: ty.handle, d: ty.handle
-    ) -> None:
-        tir.func_attr({"global_symbol": "matmul_relu", "tir.noalias": True})
+    def main(a: ty.handle, b: ty.handle, d: ty.handle) -> None:  # pylint: disable=no-self-argument
+        tir.func_attr({"global_symbol": "main", "tir.noalias": True})
         A = tir.match_buffer(a, (1024, 1024), "float32")
         B = tir.match_buffer(b, (1024, 1024), "float32")
         D = tir.match_buffer(d, (1024, 1024), "float32")
@@ -80,10 +76,8 @@ class MatmulReluModule:
 
 @tvm.script.tir
 class BatchMatmulModule:
-    def batch_matmul(  # pylint: disable=no-self-argument
-        a: ty.handle, b: ty.handle, c: ty.handle
-    ) -> None:
-        tir.func_attr({"global_symbol": "batch_matmul", "tir.noalias": True})
+    def main(a: ty.handle, b: ty.handle, c: ty.handle) -> None:  # pylint: disable=no-self-argument
+        tir.func_attr({"global_symbol": "main", "tir.noalias": True})
         A = tir.match_buffer(a, [16, 128, 128])
         B = tir.match_buffer(b, [16, 128, 128])
         C = tir.match_buffer(c, [16, 128, 128])
@@ -93,24 +87,27 @@ class BatchMatmulModule:
             C[vn, vi, vj] = C[vn, vi, vj] + A[vn, vi, vk] * B[vn, vj, vk]
 
 
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring
+@tvm.script.tir
+class AddModule:
+    def main(a: ty.handle, b: ty.handle, c: ty.handle) -> None:  # pylint: disable=no-self-argument
+        tir.func_attr({"global_symbol": "main", "tir.noalias": True})
+        A = tir.match_buffer(a, [128], "float32")
+        B = tir.match_buffer(b, [128], "float32")
+        C = tir.match_buffer(c, [128], "float32")
+        with tir.block([128], "add") as [vi]:
+            C[vi] = A[vi] + B[vi]
 
 
 def _clean_build(artifact_path: str) -> None:
-    if os.path.exists(artifact_path):
-        os.remove(artifact_path)
-    if os.path.exists(os.path.dirname(artifact_path)):
-        os.rmdir(os.path.dirname(artifact_path))
-
-
-def _check_clean(arrtifact_path: str) -> None:
-    if os.path.exists(os.path.dirname(arrtifact_path)):
-        _clean_build(arrtifact_path)
-        raise AssertionError("Build not cleaned: {}".format(arrtifact_path))
+    f_clean_build = get_global_func_with_default_on_worker("meta_schedule.clean_up_build", None)
+    if f_clean_build is not None:
+        f_clean_build(artifact_path)
+    else:
+        raise RuntimeError("Unable to find clean_up_build function.")
 
 
 def test_meta_schedule_single_run():
-    """Test meta schedule builder for a single run"""
+    """Test meta schedule runner for a single run"""
     # Build the module
     mod = MatmulModule()
     builder = LocalBuilder()
@@ -125,8 +122,8 @@ def test_meta_schedule_single_run():
         [TensorArgInfo("float32", (1024, 1024)) for _ in range(3)],
     )
 
-    tracker = Tracker()
-    server = Server(tracker)
+    tracker = Tracker(silent=True)
+    server = Server(tracker, silent=True)
     # Wait for the processes to start
     time.sleep(0.5)
 
@@ -147,17 +144,16 @@ def test_meta_schedule_single_run():
     # Run the module
     (runner_future,) = runner.run([runner_input])  # pylint: disable=unbalanced-tuple-unpacking
     runner_result = runner_future.result()
-    print(runner_result.error_msg)
     assert runner_result.error_msg is None
     for result in runner_result.run_sec:
         assert isinstance(result, (float, FloatImm))
         assert result >= 0.0
 
-    _check_clean(builder_result.artifact_path)
+    _clean_build(builder_result.artifact_path)
 
 
 def test_meta_schedule_multiple_runs():
-    """Test meta schedule builder for multiple runs"""
+    """Test meta schedule runner for multiple runs"""
     # Build the module
     mods = [
         MatmulModule(),
@@ -182,8 +178,8 @@ def test_meta_schedule_multiple_runs():
         for i in range(len(mods))
     ]
 
-    tracker = Tracker()
-    server = Server(tracker)
+    tracker = Tracker(silent=True)
+    server = Server(tracker, silent=True)
     # Wait for the processes to start
     time.sleep(0.5)
 
@@ -211,7 +207,7 @@ def test_meta_schedule_multiple_runs():
             assert result >= 0.0
 
     for builder_result in builder_results:
-        _check_clean(builder_result.artifact_path)
+        _clean_build(builder_result.artifact_path)
 
 
 def test_meta_schedule_py_runner():
@@ -242,8 +238,8 @@ def test_meta_schedule_rpc_runner_time_out():
         [TensorArgInfo("float32", (1024, 1024)) for _ in range(3)],
     )
 
-    tracker = Tracker()
-    server = Server(tracker)
+    tracker = Tracker(silent=True)
+    server = Server(tracker, silent=True)
     # Wait for the processes to start
     time.sleep(0.5)
 
@@ -289,8 +285,8 @@ def test_meta_schedule_rpc_runner_exception():
         [TensorArgInfo("float32", (1024, 1024)) for _ in range(3)],
     )
 
-    tracker = Tracker()
-    server = Server(tracker)
+    tracker = Tracker(silent=True)
+    server = Server(tracker, silent=True)
     # Wait for the processes to start
     time.sleep(0.5)
 
