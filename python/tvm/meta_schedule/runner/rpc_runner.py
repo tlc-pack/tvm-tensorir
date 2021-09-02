@@ -17,6 +17,8 @@
 """RPC Runner"""
 import concurrent.futures
 import itertools
+import tempfile
+import os
 import os.path as osp
 from contextlib import contextmanager
 from typing import Callable, List, Optional
@@ -297,7 +299,7 @@ class RPCRunner(PyRunner):
             device = session.device(dev_type=device_type, dev_id=0)
             # Step 2. Upload the module
             local_path: str = artifact_path
-            remote_path = artifact_path
+            remote_path: str = osp.join(tempfile.mkdtemp(), osp.basename(artifact_path))
             rt_mod: Module = f_upload_module(session, local_path, remote_path)
             # Step 3: Allocate input arguments
             repeated_args: List[Args] = f_alloc_argument(
@@ -355,6 +357,8 @@ def default_upload_module(
         The runtime module
     """
     session.upload(local_path, remote_path)
+    os.remove(local_path)  # clean up the local file
+    os.rmdir(os.path.dirname(local_path))  # clean up the local dir
     rt_mod: Module = session.load_module(remote_path)
     return rt_mod
 
@@ -465,5 +469,5 @@ def default_cleanup(
         return
     prefix, _ = osp.splitext(remote_path)
     session.remove(remote_path)
-    session.remove(prefix + ".so")
-    session.remove("")
+    session.remove(remote_path + ".so")
+    # unable to remove the path

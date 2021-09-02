@@ -90,8 +90,16 @@ class BatchMatmulModule:
 
 
 def _clean_build(artifact_path: str) -> None:
-    os.remove(artifact_path)
-    os.rmdir(os.path.dirname(artifact_path))
+    if os.path.exists(artifact_path):
+        os.remove(artifact_path)
+    if os.path.exists(os.path.dirname(artifact_path)):
+        os.rmdir(os.path.dirname(artifact_path))
+
+
+def _check_clean(arrtifact_path: str) -> None:
+    if os.path.exists(os.path.dirname(arrtifact_path)):
+        _clean_build(arrtifact_path)
+        raise AssertionError("Build not cleaned: {}".format(arrtifact_path))
 
 
 def test_meta_schedule_single_run():
@@ -143,11 +151,13 @@ def test_meta_schedule_single_run():
     # Run the module
     (runner_future,) = runner.run([runner_input])  # pylint: disable=unbalanced-tuple-unpacking
     runner_result = runner_future.result()
+    print(runner_result.error_msg)
     assert runner_result.error_msg is None
     for result in runner_result.run_sec:
         assert isinstance(result, (float, FloatImm))
         assert result >= 0.0
-    # Does not need to clean builds because the remote path is the same as the local path
+
+    _check_clean(builder_result.artifact_path)
 
 
 def test_meta_schedule_multiple_runs():
@@ -214,7 +224,9 @@ def test_meta_schedule_multiple_runs():
         for result in runner_result.run_sec:
             assert isinstance(result, (float, FloatImm))
             assert result >= 0.0
-    # Does not need to clean builds because the remote path is the same as the local path
+
+    for builder_result in builder_results:
+        _check_clean(builder_result.artifact_path)
 
 
 def test_meta_schedule_py_runner():
