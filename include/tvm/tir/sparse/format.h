@@ -43,43 +43,73 @@ namespace sparse {
  */
 class AxisNode : public Object {
  public:
+  /* name of current axis. */
+  String name;
+  /* length of current axis. For sparse axis, length refers to the upperbound of
+   * the current axis. */
+  PrimExpr length;
   static constexpr const char* _type_key = "Axis";
   TVM_DECLARE_BASE_OBJECT_INFO(AxisNode, Object);
 };
 
+/*!
+ * \brief Managed reference to AxisNode.
+ * \sa AxisNode
+ */
 class Axis : public ObjectRef {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(Axis, ObjectRef, AxisNode);
 };
 
+/*!
+ * \brief Root of Axis Dependency Tree.
+ */
 class RootAxisNode : public Object {
  public:
   static constexpr const char* _type_key = "RootAxis";
   TVM_DECLARE_FINAL_OBJECT_INFO(RootAxisNode, Object);
 };
 
-class RootAxis : public Object {
+/*!
+ * \brief Managed reference to RootAxisNode.
+ * \sa RootAxisNode
+ */
+class RootAxis : public ObjectRef {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(RootAxis, ObjectRef, RootAxisNode);
 };
 
+/*!
+ * \brief Dense axis whose column indices are consecutive.
+ */
 class DenseAxisNode : public AxisNode {
  public:
   static constexpr const char* _type_key = "DenseAxis";
   TVM_DECLARE_BASE_OBJECT_INFO(DenseAxisNode, AxisNode);
 };
 
+/*!
+ * \brief Managed reference to DenseAxisNode.
+ * \sa DenseAxisNode
+ */
 class DenseAxis : public Axis {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(DenseAxis, Axis, DenseAxisNode);
 };
 
+/*!
+ * \brief Dense axis with fixed length per row.
+ */
 class DenseFixedAxisNode : public DenseAxisNode {
  public:
   static constexpr const char* _type_key = "DenseFixedAxis";
   TVM_DECLARE_FINAL_OBJECT_INFO(DenseFixedAxisNode, DenseAxisNode);
 };
 
+/*!
+ * \brief Managed reference to DenseFixedAxisNode.
+ * \sa DenseFixedAxisNode
+ */
 class DenseFixedAxis : public DenseAxis {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(DenseFixedAxis, DenseAxis, DenseFixedAxisNode);
@@ -91,41 +121,68 @@ class DenseVariableAxisNode : public DenseAxisNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(DenseVariableAxisNode, DenseAxisNode);
 };
 
+/*!
+ * \brief Dense axis whose length is dependent on its predecessors on the axis
+ * dependency tree.
+ */
 class DenseVariableAxis : public DenseAxis {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(DenseVariableAxis, DenseAxis,
                                 DenseVariableAxisNode);
 };
 
+/*!
+ * \brief Sparse axis whose column indices is not consecutive.
+ */
 class SparseAxisNode : public AxisNode {
  public:
   static constexpr const char* _type_key = "SparseAxis";
   TVM_DECLARE_BASE_OBJECT_INFO(SparseAxisNode, AxisNode);
 };
 
+/*!
+ * \brief Managed reference to SparseAxisNode.
+ * \sa SparseAxisNode
+ */
 class SparseAxis : public Axis {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(SparseAxis, Axis, SparseAxisNode);
 };
 
+/*!
+ * \brief Sparse axis with fixed number of non-zero columns per row.
+ */
 class SparseFixedAxisNode : public SparseAxisNode {
  public:
+  /* (fixed) number of columns of current sparse axis. */
+  PrimExpr num_cols;
   static constexpr const char* _type_key = "SparseFixedAxis";
   TVM_DECLARE_FINAL_OBJECT_INFO(SparseFixedAxisNode, SparseAxisNode);
 };
 
+/*!
+ * \brief Managed reference to SparseFixedAxisNode.
+ * \sa SparseFixedAxisNode
+ */
 class SparseFixedAxis : public SparseAxis {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(SparseFixedAxis, SparseAxis,
                                 SparseFixedAxisNode);
 };
 
+/*!
+ * \brief Sparse axis with variable number of non-zero columns per row.
+ */
 class SparseVariableAxisNode : public SparseAxisNode {
  public:
   static constexpr const char* _type_key = "SparseVariabledAxis";
   TVM_DECLARE_FINAL_OBJECT_INFO(SparseVariableAxisNode, SparseAxisNode);
 };
 
+/*!
+ * \brief Managed reference to SparseVariableAxisNode.
+ * \sa SparseVariableAxisNode
+ */
 class SparseVariableAxis : public SparseAxis {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(SparseVariableAxis, SparseAxis,
@@ -133,53 +190,25 @@ class SparseVariableAxis : public SparseAxis {
 };
 
 /*!
- * \brief An object that refers to axis 
+ * \brief Reference of Axis on Axis Dependency Tree.
  */
 class AxisRefNode : public Object {
  public:
-  const AxisNode* axis;
-  AxisRefNode* parent;
-
+  // parent refers to the parent axis of current axis tree.
+  Optional<AxisRef> parent;
+  Axis axis;
+  Array<AxisRef> children;
   static constexpr const char* _type_key = "tir.sp.AxisRefNode";
   TVM_DECLARE_FINAL_OBJECT_INFO(AxisRefNode, Object);
-
-  /*! \brief Reset the object inplace to the invalid state. */
-  void Reset() {
-    this->axis = nullptr;
-    this->parent = nullptr;  
-  }
-
-  /*!
-   * \brief Get the referenced axis with proper type checking.
-   * It serves the same purpose as `ObjectRef::as`, but does not acquire strong reference to `axis`.
-   * \tparam AxisType The type that `this->axis` to be downcasted to.
-   * \return nullptr if type check fails, otherwise the casted result for `this->axis`
-   */
-  template <typename AxisType>
-  const AxisType* AxisAs() const {
-    if (axis != nullptr && axis->IsInstance<AxisType>()) {
-      return static_cast<const AxisType*>(axis);
-    } else {
-      return nullptr;
-    }
-  }
 };
 
+/*!
+ * \brief Managed reference to AxisRefNode.
+ * \sa AxisRefNode
+ */
 class AxisRef : public ObjectRef {
  public:
- /*!
-  * \brief The constructor
-  * \param axis The corresponding axis node.
-  * \param parent The parent AxisRef.
-  */
- TVM_DLL explicit AxisRef(const AxisNode* axis, AxisRefNode* parent);
-
- /*! \return The mutable pointer to AxisRefNode */
- AxisRefNode* get() const {
-   return static_cast<AxisRefNode*>(data_.get());
- }
-
- TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(AxisRef, ObjectRef, AxisRefNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(AxisRef, ObjectRef, AxisRefNode);
 };
 
 }  // namespace sparse

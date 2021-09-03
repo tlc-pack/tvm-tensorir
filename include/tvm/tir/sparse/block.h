@@ -25,12 +25,36 @@
 #ifndef TVM_TIR_SPARSE_BLOCK_H_
 #define TVM_TIR_SPARSE_BLOCK_H_
 
+#include <tvm/tir/sparse/format.h>
+
 namespace tvm {
 
 namespace tir {
 
 namespace sparse {
 
+/*!
+ * \brief Class of sparse block.
+ * \example
+ * with tir.sp.block([i, j, k], [False, False, True]) as [vi, vj, vk]:
+ *     pass
+ * with tir.sp.block([i, j, k], [False, False, True], [(0, 1), (2,)]) as [vi, vj, vk]:
+ *     pass
+ */
+class SparseBlockNode : public Object {
+ public:
+  AxisRef root;
+  Array<Axis> axes;
+  Array<Array<int>> fused_groups;
+  Array<bool> is_reduce_axis;
+  static constexpr const char* _type_key = "tir.sp.SparseBlockNode";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SparseBlockNode, Object);
+};
+
+class SparseBlock : public ObjectRef {
+ public:
+  TVM_DEFINE_OBJECT_REF_METHODS(SparseBlock, ObjectRef, SparseBlockNode);
+}
 
 
 }  // namespace sparse

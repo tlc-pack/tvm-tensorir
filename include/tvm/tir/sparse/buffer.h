@@ -25,6 +25,7 @@
 #define TVM_TIR_SPRASE_BUFFER_H_
 
 #include <tvm/tir/sparse/format.h>
+#include <tvm/tir/buffer.h>
 
 namespace tvm {
 
@@ -32,8 +33,36 @@ namespace tir {
 
 namespace sparse {
 
+/*!
+ * \brief Class of sparse buffer.
+ */
+class SparseBufferNode : public Object {
+ public:
+  /* Root of Axis Dependency Tree. */
+  AxisRef root;
+  /* Axes */
+  Array<Axis> axes;
+  /* Number of dimensions */
+  int ndim;
+  /* Buffer corresponding to flattened value */
+  Buffer data;
+  /* Buffer corresponding to indices pointer */
+  Array<Buffer> indptr;
+  /* Buffer of column indices */
+  Array<Buffer> indices;
 
+  static constexpr const char* _type_key = "tir.sp.SparseBufferNode";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SparseBufferNode, Object);
+};
 
+/*!
+ * \brief Managed reference to SparseBufferNode.
+ * \sa SparseBufferNode
+ */
+class SparseBuffer : public ObjectRef {
+ public:
+  TVM_DEFINE_OBJECT_REF_METHODS(SparseBuffer, ObjectRef, SparseBufferNode);
+};
 
 }  // namespace sparse
 
