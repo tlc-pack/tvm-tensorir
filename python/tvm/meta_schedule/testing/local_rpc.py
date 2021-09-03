@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+import time
 from typing import Optional
 
 import tvm.rpc
@@ -65,6 +66,7 @@ class Tracker:
         )
         self.host = self.tracker.host
         self.port = self.tracker.port
+        time.sleep(0.5)
 
 
 class Server:
@@ -126,3 +128,4 @@ class Server:
             no_fork=no_fork,
         )
         self.key = key
+        time.sleep(0.5)

@@ -136,7 +136,7 @@ class RPCRunner(PyRunner):
         max_connections: Optional[int] = None,
         initializer: Optional[Callable[[], None]] = None,
     ) -> None:
-        """Consrtuctor
+        """Constructor
 
         Parameters
         ----------
@@ -328,7 +328,7 @@ class RPCRunner(PyRunner):
 
 
 def default_create_session(rpc_config: RPCConfig) -> RPCSession:
-    """Default function to creat the session
+    """Default function to create the session
 
     Parameters
     ----------

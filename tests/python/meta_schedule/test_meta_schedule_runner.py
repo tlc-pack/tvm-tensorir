@@ -21,26 +21,26 @@ import time
 from typing import List
 
 import pytest
-
 import tvm
-from tvm._ffi import register_func
 from tvm import tir
+from tvm._ffi import register_func
+from tvm.meta_schedule import (
+    BuilderInput,
+    EvaluatorConfig,
+    LocalBuilder,
+    PyRunner,
+    RPCConfig,
+    RPCRunner,
+    RunnerFuture,
+    RunnerInput,
+)
+from tvm.meta_schedule.arg_info import TensorArgInfo
+from tvm.meta_schedule.testing import Server, Tracker
+from tvm.meta_schedule.utils import get_global_func_with_default_on_worker
+from tvm.rpc import RPCSession
 from tvm.script import ty
 from tvm.target import Target
 from tvm.tir import FloatImm
-from tvm.rpc import RPCSession
-from tvm.meta_schedule import LocalBuilder, BuilderInput
-from tvm.meta_schedule import (
-    RPCRunner,
-    RunnerInput,
-    PyRunner,
-    RunnerFuture,
-    RPCConfig,
-    EvaluatorConfig,
-)
-from tvm.meta_schedule.arg_info import TensorArgInfo
-from tvm.meta_schedule.testing import Tracker, Server
-from tvm.meta_schedule.utils import get_global_func_with_default_on_worker
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring
 
@@ -99,11 +99,11 @@ class AddModule:
 
 
 def _clean_build(artifact_path: str) -> None:
-    f_clean_build = get_global_func_with_default_on_worker("meta_schedule.clean_up_build", None)
+    f_clean_build = get_global_func_with_default_on_worker("meta_schedule.remove_build_dir", None)
     if f_clean_build is not None:
         f_clean_build(artifact_path)
     else:
-        raise RuntimeError("Unable to find clean_up_build function.")
+        raise RuntimeError("Unable to find remove_build_dir function.")
 
 
 def test_meta_schedule_single_run():
@@ -111,21 +111,22 @@ def test_meta_schedule_single_run():
     # Build the module
     mod = MatmulModule()
     builder = LocalBuilder()
-    builder_inputs = [BuilderInput(mod, Target("llvm"))]
-    (builder_result,) = builder.build(builder_inputs)  # pylint: disable=unbalanced-tuple-unpacking
+    (builder_result,) = builder.build([BuilderInput(mod, Target("llvm"))])
     assert builder_result.artifact_path is not None
     assert builder_result.error_msg is None
 
     runner_input = RunnerInput(
         builder_result.artifact_path,
         "llvm",
-        [TensorArgInfo("float32", (1024, 1024)) for _ in range(3)],
+        [
+            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (1024, 1024)),
+        ],
     )
 
     tracker = Tracker(silent=True)
     server = Server(tracker, silent=True)
-    # Wait for the processes to start
-    time.sleep(0.5)
 
     rpc_config = RPCConfig(
         tracker_host=tracker.host,
@@ -134,21 +135,22 @@ def test_meta_schedule_single_run():
         session_priority=1,
         session_timeout_sec=100,
     )
-
     evaluator_config = EvaluatorConfig(
-        number=1, repeat=1, min_repeat_ms=0, enable_cpu_cache_flush=False
+        number=1,
+        repeat=1,
+        min_repeat_ms=0,
+        enable_cpu_cache_flush=False,
     )
-
     runner = RPCRunner(rpc_config, evaluator_config)
-
     # Run the module
-    (runner_future,) = runner.run([runner_input])  # pylint: disable=unbalanced-tuple-unpacking
+    (runner_future,) = runner.run([runner_input])
     runner_result = runner_future.result()
     assert runner_result.error_msg is None
     for result in runner_result.run_sec:
-        assert isinstance(result, (float, FloatImm))
+        if isinstance(result, FloatImm):
+            result = result.value
+        assert isinstance(result, float)
         assert result >= 0.0
-
     _clean_build(builder_result.artifact_path)
 
 
@@ -162,15 +164,27 @@ def test_meta_schedule_multiple_runs():
     ]
     builder = LocalBuilder()
     builder_inputs = [BuilderInput(mod, Target("llvm")) for mod in mods]
-    builder_results = builder.build(builder_inputs)  # pylint: disable=unbalanced-tuple-unpacking
+    builder_results = builder.build(builder_inputs)
     for builder_result in builder_results:
         assert builder_result.artifact_path is not None
         assert builder_result.error_msg is None
 
     args_infos = [
-        [TensorArgInfo("float32", (1024, 1024)) for _ in range(3)],
-        [TensorArgInfo("float32", (1024, 1024)) for _ in range(3)],
-        [TensorArgInfo("float32", [16, 128, 128]) for _ in range(3)],
+        [
+            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (1024, 1024)),
+        ],
+        [
+            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (1024, 1024)),
+        ],
+        [
+            TensorArgInfo("float32", [16, 128, 128]),
+            TensorArgInfo("float32", [16, 128, 128]),
+            TensorArgInfo("float32", [16, 128, 128]),
+        ],
     ]
 
     runner_inputs = [
@@ -180,8 +194,6 @@ def test_meta_schedule_multiple_runs():
 
     tracker = Tracker(silent=True)
     server = Server(tracker, silent=True)
-    # Wait for the processes to start
-    time.sleep(0.5)
 
     rpc_config = RPCConfig(
         tracker_host=tracker.host,
@@ -192,7 +204,10 @@ def test_meta_schedule_multiple_runs():
     )
 
     evaluator_config = EvaluatorConfig(
-        number=1, repeat=1, min_repeat_ms=0, enable_cpu_cache_flush=False
+        number=1,
+        repeat=1,
+        min_repeat_ms=0,
+        enable_cpu_cache_flush=False,
     )
 
     runner = RPCRunner(rpc_config, evaluator_config)
@@ -203,7 +218,9 @@ def test_meta_schedule_multiple_runs():
         runner_result = runner_future.result()
         assert runner_result.error_msg is None
         for result in runner_result.run_sec:
-            assert isinstance(result, (float, FloatImm))
+            if isinstance(result, FloatImm):
+                result = result.value
+            assert isinstance(result, float)
             assert result >= 0.0
 
     for builder_result in builder_results:
@@ -227,7 +244,7 @@ def test_meta_schedule_rpc_runner_time_out():
 
     def initializer():
         @register_func("meta_schedule.runner.test_time_out")
-        def timeout_session_creater(  # pylint: disable=unused-variable
+        def timeout_session_creator(  # pylint: disable=unused-variable
             rpc_config: RPCConfig,  # pylint: disable=unused-argument
         ) -> RPCSession:
             time.sleep(2)
@@ -235,13 +252,15 @@ def test_meta_schedule_rpc_runner_time_out():
     runner_input = RunnerInput(
         "test",
         "llvm",
-        [TensorArgInfo("float32", (1024, 1024)) for _ in range(3)],
+        [
+            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (1024, 1024)),
+        ],
     )
 
     tracker = Tracker(silent=True)
     server = Server(tracker, silent=True)
-    # Wait for the processes to start
-    time.sleep(0.5)
 
     rpc_config = RPCConfig(
         tracker_host=tracker.host,
@@ -252,7 +271,10 @@ def test_meta_schedule_rpc_runner_time_out():
     )
 
     evaluator_config = EvaluatorConfig(
-        number=1, repeat=1, min_repeat_ms=0, enable_cpu_cache_flush=False
+        number=1,
+        repeat=1,
+        min_repeat_ms=0,
+        enable_cpu_cache_flush=False,
     )
 
     runner = RPCRunner(
@@ -261,7 +283,7 @@ def test_meta_schedule_rpc_runner_time_out():
         initializer=initializer,
         f_create_session="meta_schedule.runner.test_time_out",
     )
-    (runner_future,) = runner.run([runner_input])  # pylint: disable=unbalanced-tuple-unpacking
+    (runner_future,) = runner.run([runner_input])
     runner_result = runner_future.result()
     assert runner_result.error_msg is not None and runner_result.error_msg.startswith(
         "RPCRunner: Timeout, killed after"
@@ -274,7 +296,7 @@ def test_meta_schedule_rpc_runner_exception():
 
     def initializer():
         @register_func("meta_schedule.runner.test_exception")
-        def exception_session_creater(  # pylint: disable=unused-variable
+        def exception_session_creator(  # pylint: disable=unused-variable
             rpc_config: RPCConfig,  # pylint: disable=unused-argument
         ) -> RPCSession:
             raise Exception("Test")
@@ -282,13 +304,15 @@ def test_meta_schedule_rpc_runner_exception():
     runner_input = RunnerInput(
         "test",
         "llvm",
-        [TensorArgInfo("float32", (1024, 1024)) for _ in range(3)],
+        [
+            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (1024, 1024)),
+        ],
     )
 
     tracker = Tracker(silent=True)
     server = Server(tracker, silent=True)
-    # Wait for the processes to start
-    time.sleep(0.5)
 
     rpc_config = RPCConfig(
         tracker_host=tracker.host,
@@ -299,7 +323,10 @@ def test_meta_schedule_rpc_runner_exception():
     )
 
     evaluator_config = EvaluatorConfig(
-        number=1, repeat=1, min_repeat_ms=0, enable_cpu_cache_flush=False
+        number=1,
+        repeat=1,
+        min_repeat_ms=0,
+        enable_cpu_cache_flush=False,
     )
 
     runner = RPCRunner(

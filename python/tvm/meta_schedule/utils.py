@@ -72,8 +72,7 @@ def get_global_func_with_default_on_worker(name: Optional[str], default: Callabl
         ) from error
 
 
-@register_func("meta_schedule.clean_up_build")
-def clean_up_build(artifact_path: Optional[str]):
+@register_func("meta_schedule.remove_build_dir")
+def remove_build_dir(artifact_path: str):
     """Clean up the build directory"""
-    if artifact_path is not None:
-        shutil.rmtree(os.path.dirname(artifact_path))
+    shutil.rmtree(os.path.dirname(artifact_path))
