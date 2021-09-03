@@ -26,16 +26,16 @@ namespace meta_schedule {
 
 SearchStrategy SearchStrategy::PySearchStrategy(
     PySearchStrategyNode::FInitializeWithTuneContext f_initialize_with_tune_context,  //
-    PySearchStrategyNode::FGenerateMeasureCandidates f_generate_measure_candidates,   //
-    PySearchStrategyNode::FNotifyRunnerResults f_notify_runner_results,               //
     PySearchStrategyNode::FPreTuning f_pre_tuning,                                    //
-    PySearchStrategyNode::FPostTuning f_post_tuning) {
+    PySearchStrategyNode::FPostTuning f_post_tuning,                                  //
+    PySearchStrategyNode::FGenerateMeasureCandidates f_generate_measure_candidates,   //
+    PySearchStrategyNode::FNotifyRunnerResults f_notify_runner_results) {
   ObjectPtr<PySearchStrategyNode> n = make_object<PySearchStrategyNode>();
   n->f_initialize_with_tune_context = f_initialize_with_tune_context;
-  n->f_generate_measure_candidates = f_generate_measure_candidates;
-  n->f_notify_runner_results = f_notify_runner_results;
   n->f_pre_tuning = f_pre_tuning;
   n->f_post_tuning = f_post_tuning;
+  n->f_generate_measure_candidates = f_generate_measure_candidates;
+  n->f_notify_runner_results = f_notify_runner_results;
   return SearchStrategy(n);
 }
 
@@ -46,14 +46,14 @@ TVM_REGISTER_GLOBAL("meta_schedule.PySearchStrategy")
     .set_body_typed(SearchStrategy::PySearchStrategy);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyInitializeWithTuneContext")
     .set_body_method<SearchStrategy>(&SearchStrategyNode::InitializeWithTuneContext);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyGenerateMeasureCandidates")
-    .set_body_method<SearchStrategy>(&SearchStrategyNode::GenerateMeasureCandidates);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyNotifyRunnerResults")
-    .set_body_method<SearchStrategy>(&SearchStrategyNode::NotifyRunnerResults);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyPreTuning")
     .set_body_method<SearchStrategy>(&SearchStrategyNode::PreTuning);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyPostTuning")
     .set_body_method<SearchStrategy>(&SearchStrategyNode::PostTuning);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyGenerateMeasureCandidates")
+    .set_body_method<SearchStrategy>(&SearchStrategyNode::GenerateMeasureCandidates);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyNotifyRunnerResults")
+    .set_body_method<SearchStrategy>(&SearchStrategyNode::NotifyRunnerResults);
 
 }  // namespace meta_schedule
 }  // namespace tvm

@@ -105,7 +105,7 @@ class SpaceGenerator : public ObjectRef {
    * \param generate_design_space_func The packed function of `GenerateDesignSpace`.
    * \return The design space generator created.
    */
-  static SpaceGenerator PySpaceGenerator(
+  TVM_DLL static SpaceGenerator PySpaceGenerator(
       PySpaceGeneratorNode::FInitializeWithTuneContext initialize_with_tune_context_func,
       PySpaceGeneratorNode::FGenerateDesignSpace generate_design_space_func);
 
@@ -114,7 +114,7 @@ class SpaceGenerator : public ObjectRef {
    * \param space_generators An array of design space generators to be unioned.
    * \return The design space generator created.
    */
-  static SpaceGenerator SpaceGeneratorUnion(Array<ObjectRef> space_generators);
+  TVM_DLL static SpaceGenerator SpaceGeneratorUnion(Array<ObjectRef> space_generators);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(SpaceGenerator, ObjectRef, SpaceGeneratorNode);
 };
 

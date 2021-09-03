@@ -43,6 +43,15 @@ class SearchStrategyNode : public runtime::Object {
   virtual void InitializeWithTuneContext(const TuneContext& tune_context) = 0;
 
   /*!
+   * \brief Pre-tuning for the search strategy.
+   * \param design_spaces The design spaces for pre-tuning.
+   */
+  virtual void PreTuning(const Array<tir::Trace>& design_spaces) = 0;
+
+  /*! \brief Post-tuning for the search strategy. */
+  virtual void PostTuning() = 0;
+
+  /*!
    * \brief Generate measure candidates from design spaces for measurement.
    * \return The measure candidates generated, nullptr if finished.
    */
@@ -53,15 +62,6 @@ class SearchStrategyNode : public runtime::Object {
    * \param results The profiling results from the runner.
    */
   virtual void NotifyRunnerResults(const Array<RunnerResult>& results) = 0;
-
-  /*!
-   * \brief Pre-tuning for the search strategy.
-   * \param design_spaces The design spaces for pre-tuning.
-   */
-  virtual void PreTuning(const Array<tir::Trace>& design_spaces) = 0;
-
-  /*! \brief Post-tuning for the search strategy. */
-  virtual void PostTuning() = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SearchStrategy";
   TVM_DECLARE_BASE_OBJECT_INFO(SearchStrategyNode, Object);
@@ -76,6 +76,13 @@ class PySearchStrategyNode : public SearchStrategyNode {
    */
   using FInitializeWithTuneContext = runtime::TypedPackedFunc<void(const TuneContext&)>;
   /*!
+   * \brief The function type of `PreTuning` method.
+   * \param design_spaces The design spaces for pre-tuning.
+   */
+  using FPreTuning = runtime::TypedPackedFunc<void(const Array<tir::Trace>&)>;
+  /*! \brief The function type of `PostTuning` method. */
+  using FPostTuning = runtime::TypedPackedFunc<void()>;
+  /*!
    * \brief The function type of `GenerateMeasureCandidates` method.
    * \return The measure candidates generated, nullptr if finished.
    */
@@ -85,36 +92,35 @@ class PySearchStrategyNode : public SearchStrategyNode {
    * \param results The profiling results from the runner.
    */
   using FNotifyRunnerResults = runtime::TypedPackedFunc<void(const Array<RunnerResult>&)>;
-  /*!
-   * \brief The function type of `PreTuning` method.
-   * \param design_spaces The design spaces for pre-tuning.
-   */
-  using FPreTuning = runtime::TypedPackedFunc<void(const Array<tir::Trace>&)>;
-  /*! \brief The function type of `PostTuning` method. */
-  using FPostTuning = runtime::TypedPackedFunc<void()>;
 
   /*! \brief The packed function to the `InitializeWithTuneContext` method. */
   FInitializeWithTuneContext f_initialize_with_tune_context;
-  /*! \brief The packed function to the `GenerateMeasureCandidates` method. */
-  FGenerateMeasureCandidates f_generate_measure_candidates;
-  /*! \brief The packed function to the `NotifyRunnerResults` method. */
-  FNotifyRunnerResults f_notify_runner_results;
   /*! \brief The packed function to the `PreTuning` method. */
   FPreTuning f_pre_tuning;
   /*! \brief The packed function to the `PostTuning` method. */
   FPostTuning f_post_tuning;
+  /*! \brief The packed function to the `GenerateMeasureCandidates` method. */
+  FGenerateMeasureCandidates f_generate_measure_candidates;
+  /*! \brief The packed function to the `NotifyRunnerResults` method. */
+  FNotifyRunnerResults f_notify_runner_results;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     // `f_initialize_with_tune_context` is not visited
-    // `f_generate_measure_candidates` is not visited
-    // `f_notify_runner_results` is not visited
     // `f_pre_tuning` is not visited
     // `f_post_tuning` is not visited
+    // `f_generate_measure_candidates` is not visited
+    // `f_notify_runner_results` is not visited
   }
 
   void InitializeWithTuneContext(const TuneContext& context) final {
     this->f_initialize_with_tune_context(context);
   }
+
+  void PreTuning(const Array<tir::Trace>& design_spaces) final {
+    this->f_pre_tuning(design_spaces);
+  }
+
+  void PostTuning() final { this->f_post_tuning(); }
 
   Optional<runtime::Array<IRModule>> GenerateMeasureCandidates() final {
     return this->f_generate_measure_candidates();
@@ -123,11 +129,6 @@ class PySearchStrategyNode : public SearchStrategyNode {
   void NotifyRunnerResults(const Array<RunnerResult>& results) final {
     this->f_notify_runner_results(results);
   }
-
-  void PreTuning(const Array<tir::Trace>& design_spaces) final {
-    this->f_pre_tuning(design_spaces);
-  }
-  void PostTuning() final { this->f_post_tuning(); }
 
   static constexpr const char* _type_key = "meta_schedule.PySearchStrategy";
   TVM_DECLARE_FINAL_OBJECT_INFO(PySearchStrategyNode, SearchStrategyNode);
@@ -142,20 +143,20 @@ class SearchStrategy : public runtime::ObjectRef {
   /*!
    * \brief Create a search strategy with customized methods on the python-side.
    * \param f_initialize_with_tune_context The packed function of `InitializeWithTuneContext`.
-   * \param f_generate_measure_candidates The packed function of `GenerateMeasureCandidates`.
-   * \param f_notify_runner_results The packed function of `NotifyRunnerResults`.
    * \param f_pre_tuning The packed function of `PreTuning`.
    * \param f_post_tuning The packed function of `PostTuning`.
+   * \param f_generate_measure_candidates The packed function of `GenerateMeasureCandidates`.
+   * \param f_notify_runner_results The packed function of `NotifyRunnerResults`.
    * \return The search strategy created.
    */
-  static SearchStrategy PySearchStrategy(
+  TVM_DLL static SearchStrategy PySearchStrategy(
       PySearchStrategyNode::FInitializeWithTuneContext f_initialize_with_tune_context,  //
-      PySearchStrategyNode::FGenerateMeasureCandidates f_generate_measure_candidates,   //
-      PySearchStrategyNode::FNotifyRunnerResults f_notify_runner_results,               //
       PySearchStrategyNode::FPreTuning f_pre_tuning,                                    //
-      PySearchStrategyNode::FPostTuning f_post_tuning);
+      PySearchStrategyNode::FPostTuning f_post_tuning,                                  //
+      PySearchStrategyNode::FGenerateMeasureCandidates f_generate_measure_candidates,   //
+      PySearchStrategyNode::FNotifyRunnerResults f_notify_runner_results);
 
-  static SearchStrategy ReplayTrace(int num_trials_per_iter, int num_trials_total);
+  TVM_DLL static SearchStrategy ReplayTrace(int num_trials_per_iter, int num_trials_total);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
 };

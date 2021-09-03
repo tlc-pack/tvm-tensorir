@@ -22,6 +22,7 @@ from tvm import IRModule
 from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.target import Target
+from tvm.meta_schedule.utils import cpu_count
 
 from . import _ffi_api
 
@@ -75,53 +76,56 @@ class TuneContext(Object):
 
     def __init__(
         self,
-        mod: Optional[IRModule],
-        target: Optional[Target],
-        space_generator: Optional["SpaceGenerator"],
-        search_strategy: Optional[SearchStrategy],
-        database: Optional[Database],
-        cost_model: Optional[CostModel],
-        postprocs: Optional[List[Postproc]],
-        measure_callbacks: Optional[List[MeasureCallback]],
-        task_name: str,
-        seed: int,
-        num_threads: int,
-        verbose: int,
+        mod: Optional[IRModule] = None,
+        target: Optional[Target] = None,
+        space_generator: Optional["SpaceGenerator"] = None,
+        search_strategy: Optional[SearchStrategy] = None,
+        database: Optional[Database] = None,
+        cost_model: Optional[CostModel] = None,
+        postprocs: Optional[List[Postproc]] = None,
+        measure_callbacks: Optional[List[MeasureCallback]] = None,
+        task_name: Optional[str] = None,
+        seed: int = -1,
+        num_threads: Optional[int] = -1,
+        verbose: Optional[int] = 0,
     ):
         """Construct a TuneContext.
 
         Parameters
         ----------
-        mod : Optional[IRModule],
+        mod : Optional[IRModule] (default is None)
             The workload to be optimized.
-        target : Optional[Target],
+        target : Optional[Target] (default is None)
             The target to be optimized for.
-        space_generator : Optional[SpaceGenerator],
+        space_generator : Optional[SpaceGenerator] (default is None)
             The design space generator.
-        search_strategy : Optional[SearchStrategy],
+        search_strategy : Optional[SearchStrategy] (default is None)
            The search strategy to be used.
-        database : Optional[Database],
+        database : Optional[Database] (default is None)
             The database for querying and storage.
             Provides interface to query and store the results.
-        cost_model : Optional[CostModel],
+        cost_model : Optional[CostModel] (default is None)
              The cost model for estimation.
              Provides interface to update and query the cost model for estimation.
-        postprocs : Optional[List[Postproc]],
+        postprocs : Optional[List[Postproc]] (default is None)
             The post processing functions.
             Each post processor is a single callable function.
-        measure_callbacks : Optional[List[MeasureCallback]],
+        measure_callbacks : Optional[List[MeasureCallback]] (default is None)
             The measure callback functions.
             Each measure callback is a single callable function.
-        task_name : str,
+        task_name : Optional[str] (default is None)
             The name of the tuning task.
-        seed : int,
+        seed : int (default is -1)
             The seed value of random state.
-            Need to be in integer in [1, 2^31-1].
-        num_threads : int,
-            The number of threads to be used.
-        verbose : int,
+            Need to be in integer in [1, 2^31-1], -1 means use a random seed.
+        num_threads : int (default is -1)
+            The number of threads to be used, -1 means use the logic cpu count.
+        verbose : int (default is 0)
             The verbosity level.
         """
+        if num_threads == -1:
+            num_threads = cpu_count()
+
         self.__init_handle_by_constructor__(
             _ffi_api.TuneContext,  # pylint: disable=no-member
             mod,

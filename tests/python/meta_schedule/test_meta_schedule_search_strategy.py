@@ -58,48 +58,9 @@ def schedule_matmul(sch: Schedule):
     sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
 
 
-def test_xxxxxx_replay_trace():
-    # total trials
-    # ir module consistency
-    import ipdb
-
-    ipdb.set_trace()
+def test_meta_schedule_replay_trace():
     pass
 
 
-# def test_meta_schedule_search_strategy():
-#     class TestClass(PySearchStrategy):
-#         def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
-#             return super().initialize_with_tune_context(tune_context)
-
-#         def pre_tuning(self, design_spaces: List[Trace]) -> None:
-#             self.pre_tuning_called = True
-#             return super().pre_tuning(design_spaces)
-
-#     trials = 100
-#     batch_size = 30
-
-#     space_generator = ScheduleFn(sch_fn=schedule_matmul)
-#     # TODO: initialize-with-tune-context
-#     replay = ReplaySearchStrategy(trials, batch_size)
-#     replay.pre_tuning(design_spaces=space_generator.generate_design_space(Matmul()))
-
-#     results = []
-#     candidates = replay.generate_measure_candidates()
-#     while candidates is not None:
-#         results += candidates
-#         assert len(results) <= trials
-#         assert len(candidates) == batch_size or len(results) == trials
-#         for candidate in candidates:
-#             assert len(candidate.decisions) == 0
-#         replay.notify_runner_results(
-#             [(None, None) for candidate in candidates]
-#         )  # Assume runner return (None, None) for each candidate
-#         candidates = replay.generate_measure_candidates()
-
-#     assert len(results) == trials
-
-
 if __name__ == "__main__":
-    test_xxxxxx_replay_trace()
-    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))

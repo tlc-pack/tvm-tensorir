@@ -54,6 +54,20 @@ class SearchStrategy(Object):
             self, tune_context
         )
 
+    def pre_tuning(self, design_spaces: List[Trace]) -> None:
+        """Pre-tuning for the search strategy.
+
+        Parameters
+        ----------
+        design_spaces : List[Trace]
+            The design spaces for pre-tuning.
+        """
+        _ffi_api.SearchStrategyPreTuning(self, design_spaces)  # pylint: disable=no-member
+
+    def post_tuning(self) -> None:
+        """Post-tuning for the search strategy."""
+        _ffi_api.SearchStrategyPostTuning(self)  # pylint: disable=no-member
+
     def generate_measure_candidates(self) -> List[IRModule]:
         """Generate measure candidates from design spaces for measurement.
 
@@ -74,20 +88,6 @@ class SearchStrategy(Object):
         """
         _ffi_api.SearchStrategyNotifyRunnerResults(self, results)  # pylint: disable=no-member
 
-    def pre_tuning(self, design_spaces: List[Trace]) -> None:
-        """Pre-tuning for the search strategy.
-
-        Parameters
-        ----------
-        design_spaces : List[Trace]
-            The design spaces for pre-tuning.
-        """
-        _ffi_api.SearchStrategyPreTuning(self, design_spaces)  # pylint: disable=no-member
-
-    def post_tuning(self) -> None:
-        """Post-tuning for the search strategy."""
-        _ffi_api.SearchStrategyPostTuning(self)  # pylint: disable=no-member
-
 
 @register_object("meta_schedule.PySearchStrategy")
 class PySearchStrategy(SearchStrategy):
@@ -99,17 +99,17 @@ class PySearchStrategy(SearchStrategy):
         def f_initialize_with_tune_context(context: "TuneContext") -> None:
             self.initialize_with_tune_context(context)
 
-        def f_generate_measure_candidates() -> List[IRModule]:
-            return self.generate_measure_candidates()
-
-        def f_notify_runner_results(results: List["RunnerResult"]) -> None:
-            self.notify_runner_results(results)
-
         def f_pre_tuning(design_spaces: List[Trace]) -> None:
             self.pre_tuning(design_spaces)
 
         def f_post_tuning() -> None:
             self.post_tuning()
+
+        def f_generate_measure_candidates() -> List[IRModule]:
+            return self.generate_measure_candidates()
+
+        def f_notify_runner_results(results: List["RunnerResult"]) -> None:
+            self.notify_runner_results(results)
 
         self.__init_handle_by_constructor__(
             _ffi_api.PySearchStrategy,  # pylint: disable=no-member
