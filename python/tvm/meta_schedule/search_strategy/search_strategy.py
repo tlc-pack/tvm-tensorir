@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, List
 from tvm._ffi import register_object
 from tvm.ir import IRModule
 from tvm.runtime import Object
-from tvm.tir.schedule import Trace
+from tvm.tir.schedule import Schedule
 
 from .. import _ffi_api
 
@@ -54,12 +54,12 @@ class SearchStrategy(Object):
             self, tune_context
         )
 
-    def pre_tuning(self, design_spaces: List[Trace]) -> None:
+    def pre_tuning(self, design_spaces: List[Schedule]) -> None:
         """Pre-tuning for the search strategy.
 
         Parameters
         ----------
-        design_spaces : List[Trace]
+        design_spaces : List[Schedule]
             The design spaces for pre-tuning.
         """
         _ffi_api.SearchStrategyPreTuning(self, design_spaces)  # pylint: disable=no-member
@@ -99,7 +99,7 @@ class PySearchStrategy(SearchStrategy):
         def f_initialize_with_tune_context(context: "TuneContext") -> None:
             self.initialize_with_tune_context(context)
 
-        def f_pre_tuning(design_spaces: List[Trace]) -> None:
+        def f_pre_tuning(design_spaces: List[Schedule]) -> None:
             self.pre_tuning(design_spaces)
 
         def f_post_tuning() -> None:
@@ -114,13 +114,19 @@ class PySearchStrategy(SearchStrategy):
         self.__init_handle_by_constructor__(
             _ffi_api.PySearchStrategy,  # pylint: disable=no-member
             f_initialize_with_tune_context,
-            f_generate_measure_candidates,
-            f_notify_runner_results,
             f_pre_tuning,
             f_post_tuning,
+            f_generate_measure_candidates,
+            f_notify_runner_results,
         )
 
     def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+        raise NotImplementedError
+
+    def pre_tuning(self, design_spaces: List[Schedule]) -> None:
+        raise NotImplementedError
+
+    def post_tuning(self) -> None:
         raise NotImplementedError
 
     def generate_measure_candidates(self) -> List[IRModule]:
@@ -129,8 +135,21 @@ class PySearchStrategy(SearchStrategy):
     def notify_runner_results(self, results: List["RunnerResult"]) -> None:
         raise NotImplementedError
 
-    def pre_tuning(self, design_spaces: List[Trace]) -> None:
-        raise NotImplementedError
 
-    def post_tuning(self) -> None:
-        raise NotImplementedError
+@register_object("meta_schedule.ReplayTrace")
+class ReplayTrace(SearchStrategy):
+    """
+    Replay Search Strategy is a search strategy that always replays the trace by removing its
+    decisions so that the decisions would be randomly re-generated.
+    """
+
+    num_trials_per_iter: int
+    num_trials_total: int
+
+    def __init__(self, num_trials_per_iter: int, num_trials_total: int):
+        """Constructor"""
+        self.__init_handle_by_constructor__(
+            _ffi_api.ReplayTrace,  # pylint: disable=no-member
+            num_trials_per_iter,
+            num_trials_total,
+        )

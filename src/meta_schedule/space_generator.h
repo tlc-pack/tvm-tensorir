@@ -21,7 +21,7 @@
 #define SRC_META_SCHEDULE_SPACE_GENERATOR_H_
 
 #include <tvm/ir/module.h>
-#include <tvm/tir/schedule/trace.h>
+#include <tvm/tir/schedule/schedule.h>
 
 namespace tvm {
 namespace meta_schedule {
@@ -44,10 +44,9 @@ class SpaceGeneratorNode : public Object {
   /*!
    * \brief Generate design spaces given a module.
    * \param mod The module used for design space generation.
-   * \return The generated design spaces, i.e., traces.
-   * // TODO: change to IRModule
+   * \return The generated design spaces, i.e., schedules.
    */
-  virtual Array<tir::Trace> GenerateDesignSpace(const IRModule& mod) = 0;
+  virtual Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SpaceGenerator";
   TVM_DECLARE_BASE_OBJECT_INFO(SpaceGeneratorNode, Object);
@@ -64,9 +63,9 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
   /*!
    * \brief The function type of `GenerateDesignSpace` method.
    * \param mod The module used for design space generation.
-   * \return The generated design spaces, i.e., traces.
+   * \return The generated design spaces, i.e., schedules.
    */
-  using FGenerateDesignSpace = runtime::TypedPackedFunc<Array<tir::Trace>(const IRModule&)>;
+  using FGenerateDesignSpace = runtime::TypedPackedFunc<Array<tir::Schedule>(const IRModule&)>;
 
   /*! \brief The packed function to the `InitializeWithTuneContext` funcion. */
   FInitializeWithTuneContext f_initialize_with_tune_context;
@@ -82,7 +81,7 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
     f_initialize_with_tune_context(tune_context);
   }
 
-  Array<tir::Trace> GenerateDesignSpace(const IRModule& mod) final {
+  Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod) final {
     return f_generate_design_space(mod);
   }
 

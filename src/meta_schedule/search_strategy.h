@@ -20,7 +20,7 @@
 #define SRC_META_SCHEDULE_SEARCH_STRATEGY_H_
 
 #include <tvm/ir/module.h>
-#include <tvm/tir/schedule/trace.h>
+#include <tvm/tir/schedule/schedule.h>
 
 namespace tvm {
 namespace meta_schedule {
@@ -46,7 +46,7 @@ class SearchStrategyNode : public runtime::Object {
    * \brief Pre-tuning for the search strategy.
    * \param design_spaces The design spaces for pre-tuning.
    */
-  virtual void PreTuning(const Array<tir::Trace>& design_spaces) = 0;
+  virtual void PreTuning(const Array<tir::Schedule>& design_spaces) = 0;
 
   /*! \brief Post-tuning for the search strategy. */
   virtual void PostTuning() = 0;
@@ -79,7 +79,7 @@ class PySearchStrategyNode : public SearchStrategyNode {
    * \brief The function type of `PreTuning` method.
    * \param design_spaces The design spaces for pre-tuning.
    */
-  using FPreTuning = runtime::TypedPackedFunc<void(const Array<tir::Trace>&)>;
+  using FPreTuning = runtime::TypedPackedFunc<void(const Array<tir::Schedule>&)>;
   /*! \brief The function type of `PostTuning` method. */
   using FPostTuning = runtime::TypedPackedFunc<void()>;
   /*!
@@ -116,7 +116,7 @@ class PySearchStrategyNode : public SearchStrategyNode {
     this->f_initialize_with_tune_context(context);
   }
 
-  void PreTuning(const Array<tir::Trace>& design_spaces) final {
+  void PreTuning(const Array<tir::Schedule>& design_spaces) final {
     this->f_pre_tuning(design_spaces);
   }
 

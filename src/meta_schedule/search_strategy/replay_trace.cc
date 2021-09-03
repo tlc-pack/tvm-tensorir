@@ -17,7 +17,7 @@
  * under the License.
  */
 #include <tvm/support/parallel_for.h>
-#include <tvm/tir/schedule/schedule.h>
+#include <tvm/tir/schedule/trace.h>
 
 #include "../search_strategy.h"
 #include "../tune_context.h"
@@ -25,20 +25,32 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*! \brief A search strategy that replays the trace. */
 class ReplayTraceNode : public SearchStrategyNode {
  public:
+  /*! \brief The state of the search strategy. */
   struct State {
-    Array<tir::Trace> design_spaces;
+    /*! \brief The design spaces. */
+    Array<tir::Schedule> design_spaces;
+
+    /*! \brief The current number of candidates generated. */
     int i;
 
-    explicit State(Array<tir::Trace> design_spaces, int i) : design_spaces(design_spaces), i(i) {}
+    /*! \brief Constrcutor. */
+    explicit State(Array<tir::Schedule> design_spaces, int i)
+        : design_spaces(design_spaces), i(i) {}
   };
 
+  /*! \brief The number of trials per iteration. */
   int num_trials_per_iter;
+  /*! \brief The number of total trials. */
   int num_trials_total;
 
+  /*! \brief The module to be tuned. */
   Optional<IRModule> mod = NullOpt;
+  /*! \brief The number of threads to use. */
   int num_threads = -1;
+  /*! \brief The state of the search strategy. */
   std::unique_ptr<State> state = nullptr;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -58,7 +70,7 @@ class ReplayTraceNode : public SearchStrategyNode {
     this->num_threads = tune_context->num_threads;
   }
 
-  void PreTuning(const Array<tir::Trace>& design_spaces) final {
+  void PreTuning(const Array<tir::Schedule>& design_spaces) final {
     ICHECK(this->mod.defined());
     ICHECK(this->state == nullptr);
     this->state = std::make_unique<State>(design_spaces, 0);
@@ -82,8 +94,9 @@ class ReplayTraceNode : public SearchStrategyNode {
     runtime::Array<IRModule> results(ed - st, IRModule{nullptr});
     auto f_worker = [this, &seeds_per_thread, &results](int thread_id, int task_id) -> void {
       int64_t& seed = seeds_per_thread[thread_id];
-      tir::Trace trace = this->state->design_spaces[0];  // need rand
-      tir::Trace new_trace = tir::Trace(trace->insts, {});
+      Optional<tir::Trace> trace = this->state->design_spaces[0]->trace();  // need rand
+      ICHECK(trace.defined()) << "ValueError: The generated design space schedule is not traced.";
+      tir::Trace new_trace = tir::Trace(trace.value()->insts, {});
       tir::Schedule sch =
           tir::Schedule::Traced(this->mod.value(),  //
                                 /*seed=*/111,       // need fork from `seed`
@@ -111,8 +124,7 @@ SearchStrategy SearchStrategy::ReplayTrace(int num_trials_per_iter, int num_tria
 }
 
 TVM_REGISTER_NODE_TYPE(ReplayTraceNode);
-TVM_REGISTER_GLOBAL("meta_schedule.search_strategy.ReplayTrace")
-    .set_body_typed(SearchStrategy::ReplayTrace);
+TVM_REGISTER_GLOBAL("meta_schedule.ReplayTrace").set_body_typed(SearchStrategy::ReplayTrace);
 
 }  // namespace meta_schedule
 }  // namespace tvm

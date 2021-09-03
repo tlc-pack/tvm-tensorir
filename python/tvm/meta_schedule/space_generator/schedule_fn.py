@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Callable, List, Union
 
 from tvm.ir import IRModule
 from tvm.ir.container import Array
-from tvm.tir.schedule import Schedule, Trace
+from tvm.tir.schedule import Schedule
 
 from .space_generator import PySpaceGenerator
 
@@ -57,7 +57,7 @@ class ScheduleFn(PySpaceGenerator):
             The tuning context for initializing the design space generator.
         """
 
-    def generate_design_space(self, mod: IRModule) -> List[Trace]:
+    def generate_design_space(self, mod: IRModule) -> List[Schedule]:
         """Generate design spaces given a module.
 
         Parameters
@@ -67,15 +67,15 @@ class ScheduleFn(PySpaceGenerator):
 
         Returns
         -------
-        design_spaces : List[Trace]
-            The generated design spaces, i.e., traces.
+        design_spaces : List[Schedule]
+            The generated design spaces, i.e., schedules.
         """
         sch = Schedule(mod, traced=True)  # Make sure the schedule is traced
         result = self.sch_fn(sch)  # Call the schedule function
         if result is None:  # Case 1. No output
-            return [sch.trace]
+            return [sch]
         if isinstance(result, Schedule):  # Case 2. Single output
-            return [result.trace]
+            return [result]
         if isinstance(result, (list, tuple, Array)):  # Case 3. Multiple outputs
             for ret in result:  # enumerate the outputs
                 if not isinstance(ret, Schedule):
@@ -83,5 +83,5 @@ class ScheduleFn(PySpaceGenerator):
                         "Wrong type of element in the list, expected Schedule got "
                         + f"'{type(ret)}': {ret}"
                     )
-            return [sch.trace for sch in result]
+            return result
         raise TypeError(f"Unexpected return type {type(result)}: {result}")
