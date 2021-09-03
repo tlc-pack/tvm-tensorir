@@ -151,20 +151,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel")
     .set_body_method<Schedule>(&ScheduleNode::Parallel);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize")
     .set_body_method<Schedule>(&ScheduleNode::Vectorize);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")  //
-    .set_body_method<Schedule>(&ScheduleNode::Unroll);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBind")
-    .set_body_typed([](Schedule self, LoopRV loop_rv, ObjectRef thread) {
-      if (const auto* iter_var = thread.as<IterVarNode>()) {
-        return self->Bind(loop_rv, GetRef<IterVar>(iter_var));
-      }
-      if (const auto* str = thread.as<StringObj>()) {
-        return self->Bind(loop_rv, GetRef<String>(str));
-      }
-      LOG(FATAL) << "TypeError: Schedule.Bind doesn't support type: " << thread->GetTypeKey()
-                 << ", and the value is: " << thread;
-      throw;
-    });
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBind").set_body_method<Schedule>(&ScheduleNode::Bind);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll").set_body_method<Schedule>(&ScheduleNode::Unroll);
 
 /******** (FFI) Insert cache stages ********/
 
@@ -220,8 +208,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma")  //
 
 /******** (FFI) Misc ********/
 
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostProc")
-    .set_body_method<Schedule>(&ScheduleNode::EnterPostProc);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostproc")
+    .set_body_method<Schedule>(&ScheduleNode::EnterPostproc);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDoubleBuffer")
     .set_body_method<Schedule>(&ScheduleNode::DoubleBuffer);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSetScope")

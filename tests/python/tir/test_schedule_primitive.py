@@ -530,6 +530,36 @@ def ewise_arg_inlined(a: ty.handle, c: ty.handle) -> None:
                 tir.writes([C[vi_1, vj_1]])
                 C[vi_1, vj_1] = (B[vi_1, vj_1] + tir.float32(1))
 
+
+@tvm.script.tir
+def rowsum(a: ty.handle, b:ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128,])
+    with tir.block([tir.reduce_axis(0, 128), 128], "B") as [vk, vi]:
+        with tir.init():
+            B[vi] = 0.0
+        B[vi] = B[vi] + A[vi, vk]
+
+
+@tvm.script.tir
+def rowsum_blockized(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128])
+    with tir.block([tir.reduce_axis(0, 1), 1], "blockized_B") as [vko, vio]:
+        tir.bind(vko, 0)
+        tir.bind(vio, 0)
+        with tir.init():
+            for i1 in tir.serial(0, 128):
+                with tir.block([128], "B_init") as [vi_init]:
+                    tir.bind(vi_init, i1)
+                    B[vi_init] = tir.float32(0)
+        for i0, i1_1 in tir.grid(128, 128):
+            with tir.block([tir.reduce_axis(0, 128), 128], "B") as [vk, vi]:
+                tir.bind(vk, i0)
+                tir.bind(vi, i1_1)
+                B[vi] = (B[vi] + A[vi, vk])
+
+
 # pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
 # fmt: on
 
@@ -799,6 +829,13 @@ def test_blockize_schedule():
     tvm.ir.assert_structural_equal(s.mod["main"], blockize_schedule_2)
 
 
+def test_blockize_init_loops():
+    s = tir.Schedule(rowsum, debug_mode=True)
+    k, _ = s.get_loops(s.get_block("B"))
+    s.blockize(k)
+    tvm.ir.assert_structural_equal(s.mod["main"], rowsum_blockized)
+
+
 def test_pragma():
     func = util.matmul_stmt()
     s = tir.Schedule(func, debug_mode=True)
@@ -841,24 +878,25 @@ def test_inline_argument():
 
 
 if __name__ == "__main__":
-    test_fuse()
-    test_split_fuse()
-    test_fuse_loop_sref()
-    test_reorder_normal()
-    test_compute_at()
-    test_reverse_compute_at()
+    # test_fuse()
+    # test_split_fuse()
+    # test_fuse_loop_sref()
+    # test_reorder_normal()
+    # test_compute_at()
+    # test_reverse_compute_at()
     test_compute_at_with_consumer_predicate()
-    test_reverse_compute_at_with_producer_predicate()
-    test_compute_inline()
-    test_reverse_compute_inline()
-    test_compute_at_fail()
-    test_reduction()
-    test_cache_read()
-    test_cache_write()
-    test_cache_read_write()
-    test_blockize()
+    # test_reverse_compute_at_with_producer_predicate()
+    # test_compute_inline()
+    # test_reverse_compute_inline()
+    # test_compute_at_fail()
+    # test_reduction()
+    # test_cache_read()
+    # test_cache_write()
+    # test_cache_read_write()
+    # test_blockize()
     test_blockize_schedule()
-    test_pragma()
-    test_double_buffer()
-    test_set_scope()
+    # test_blockize_init_loops()
+    # test_pragma()
+    # test_double_buffer()
+    # test_set_scope()
     test_inline_argument()

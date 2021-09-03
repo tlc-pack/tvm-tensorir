@@ -31,8 +31,31 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
+#include "../schedule/analysis.h"
+
 namespace tvm {
 namespace tir {
+
+/*!
+ * \brief Given a reduction identity and a reduction combiner, detect the corresponding commutative
+ * reducer, and extract the combiner lhs and combiner rhs
+ * \param identity The reduction identity to be analyzed
+ * \param combiner The reduction combiner to be analyzed
+ * \return The corresponding CommReducer, the combiner lhs and the combiner rhs
+ * \throw ScheduleError If no corresponding commutative reducer can be matched
+ */
+std::tuple<CommReducer, PrimExpr, PrimExpr> GetReducerAndCombinerLhsRhs(
+    const PrimExpr& identity, const BufferStore& combiner) {
+  CommReducer reducer{nullptr};
+  PrimExpr combiner_lhs{nullptr}, combiner_rhs{nullptr};
+  bool matched = FromIdentityCombiner(identity, combiner, &reducer, &combiner_lhs, &combiner_rhs);
+  if (!matched) {
+    LOG(FATAL) << "No matched reducer for identity " << identity << " and combiner " << combiner
+               << "In this case rfactor cannot be applied. You can check tvm::tir::ReducerRegistry "
+                  "for default reducers or registering new reducers.";
+  }
+  return std::make_tuple(std::move(reducer), std::move(combiner_lhs), std::move(combiner_rhs));
+}
 
 /*!
  * \brief Detect allreduce and then transform.
@@ -307,15 +330,11 @@ class AllReduceTransformer : public StmtExprMutator {
 
     // Step 7. If the reduction can not be represented by a CommReducer, allreduce cannot
     //         be supported.
-    Optional<CommReducer> optional_reducer;
-    Optional<PrimExpr> reducer_lhs, reducer_rhs;
-    CommReducer::FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body),
-                                optional_reducer, reducer_lhs, reducer_rhs, Span());
-    ICHECK(optional_reducer.defined())
-        << "Cannot find a commutative reducer when allreduce is needed.";
-    const auto* reducer = optional_reducer.value().as<CommReducerNode>();
-    ICHECK(reducer_lhs.defined() && reducer_rhs.defined());
-    PrimExpr update_value = reducer_rhs.value();
+    CommReducer reducer;
+    PrimExpr combiner_lhs, combiner_rhs;
+    std::tie(reducer, combiner_lhs, combiner_rhs) =
+        GetReducerAndCombinerLhsRhs(init_body->value, GetRef<BufferStore>(update_body));
+    PrimExpr update_value = combiner_rhs;
 
     const bool need_normal_reduce = num_bound_rela < num_tot_rela;  // In this case, buffer
     // normal_reduce is needed.
@@ -398,8 +417,7 @@ class AllReduceTransformer : public StmtExprMutator {
       }
       PrimExpr call = Call(DataType::Handle(), tir::builtin::tvm_thread_allreduce(), reduce_args);
       Stmt body0 = Evaluate(call);
-      body0 = AttrStmt(GetRef<CommReducer>(reducer), tir::attr::reduce_scope,
-                       make_zero(DataType::Handle()), body0);
+      body0 = AttrStmt(reducer, tir::attr::reduce_scope, make_zero(DataType::Handle()), body0);
       body0 = Block({}, reads, writes, red_tmp_name, body0);
       body0 = BlockRealize({}, const_true(), GetRef<Block>(body0.as<BlockNode>()));
 
@@ -472,7 +490,7 @@ class AllReduceTransformer : public StmtExprMutator {
       PrimExpr call = Call(DataType::Handle(), tir::builtin::tvm_thread_allreduce(), reduce_args);
       ICHECK(!red_tmp_block_body.defined());
       red_tmp_block_body = Evaluate(call);
-      red_tmp_block_body = AttrStmt(GetRef<CommReducer>(reducer), tir::attr::reduce_scope,
+      red_tmp_block_body = AttrStmt(reducer, tir::attr::reduce_scope,
                                     make_zero(DataType::Handle()), red_tmp_block_body.value());
 
       status = kMutatingBlock_red_tmp;
@@ -652,6 +670,9 @@ class AllReduceTransformer : public StmtExprMutator {
 };
 
 PrimFunc AllreduceTransform(PrimFunc f) {
+  if (!f->body->IsInstance<BlockRealizeNode>()) {
+    return f;
+  }
   PrimFuncNode* fptr = f.CopyOnWrite();
 
   // Resolve allreduce.

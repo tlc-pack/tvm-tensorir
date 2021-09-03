@@ -81,8 +81,8 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
 }
 
 Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<Dependency> pred_edges = self->GetBlockScope(GetScopeRoot(block_sref).value())  //
-                                     ->GetDepsByDst(block_sref);
+  StmtSRef scope_root = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false);
+  Array<Dependency> pred_edges = self->GetBlockScope(scope_root)->GetDepsByDst(block_sref);
   Array<StmtSRef> results;
   results.reserve(pred_edges.size());
   for (const Dependency& edge : pred_edges) {
@@ -94,8 +94,8 @@ Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sr
 }
 
 Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<Dependency> succ_edges = self->GetBlockScope(GetScopeRoot(block_sref).value())  //
-                                     ->GetDepsBySrc(block_sref);
+  StmtSRef scope_root = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false);
+  Array<Dependency> succ_edges = self->GetBlockScope(scope_root)->GetDepsBySrc(block_sref);
   Array<StmtSRef> results;
   results.reserve(succ_edges.size());
   for (const Dependency& edge : succ_edges) {
@@ -229,11 +229,11 @@ struct GetConsumersTraits : public UnpackedInstTraits<GetConsumersTraits> {
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(GetBlockTraits);
-TVM_REGISTER_INST_KIND(GetLoopsTraits);
-TVM_REGISTER_INST_KIND(GetChildBlocksTraits);
-TVM_REGISTER_INST_KIND(GetProducersTraits);
-TVM_REGISTER_INST_KIND(GetConsumersTraits);
+TVM_REGISTER_INST_KIND_TRAITS(GetBlockTraits);
+TVM_REGISTER_INST_KIND_TRAITS(GetLoopsTraits);
+TVM_REGISTER_INST_KIND_TRAITS(GetChildBlocksTraits);
+TVM_REGISTER_INST_KIND_TRAITS(GetProducersTraits);
+TVM_REGISTER_INST_KIND_TRAITS(GetConsumersTraits);
 
 }  // namespace tir
 }  // namespace tvm

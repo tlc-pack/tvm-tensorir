@@ -22,14 +22,11 @@
 #include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/schedule/trace.h>
 
-#include "../tir/schedule/sampler.h"
-
 namespace tvm {
 namespace meta_schedule {
 
 using ScheduleNode = tir::TraceNode;
 using Schedule = tir::Schedule;
-using Sampler = tir::Sampler;
 using BlockRV = tir::BlockRV;
 using BlockRVNode = tir::BlockRVNode;
 using LoopRV = tir::LoopRV;
@@ -37,8 +34,8 @@ using LoopRVNode = tir::LoopRVNode;
 using ExprRV = tir::ExprRV;
 using ExprRVNode = tir::ExprRVNode;
 using Trace = tir::Trace;
-using Inst = tir::Inst;
-using InstKind = tir::InstKind;
+using Instruction = tir::Instruction;
+using InstructionKind = tir::InstructionKind;
 
 }  // namespace meta_schedule
 }  // namespace tvm

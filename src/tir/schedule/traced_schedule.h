@@ -34,7 +34,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   void VisitAttrs(tvm::AttrVisitor* v) {
     // `state_` is not visited
     // `error_render_level_` is not visited
-    // `sampler_` is not visited
+    // `rand_state_` is not visited
     // `symbol_table_` is not visited
     // `analyzer_` is not visitied
     // `trace_` is not visited
@@ -47,7 +47,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
 
  public:
   Optional<Trace> trace() const final { return trace_; }
-  Schedule Copy(int64_t new_seed = -1) const final;
+  Schedule Copy(tir::TRandState new_seed = -1) const final;
 
  public:
   /******** Schedule: Sampling ********/
@@ -77,12 +77,8 @@ class TracedScheduleNode : public ConcreteScheduleNode {
 
   void Parallel(const LoopRV& loop_rv) final;
   void Vectorize(const LoopRV& loop_rv) final;
+  void Bind(const LoopRV& loop_rv, const String& thread_axis) final;
   void Unroll(const LoopRV& loop_rv) final;
-  void Bind(const LoopRV& loop_rv, const IterVar& thread) final {
-    LOG(FATAL) << "NotImplementedError: Bind with an IterVar is not supported";
-    throw;
-  }
-  void Bind(const LoopRV& loop_rv, const String& thread) final;
 
   /******** Schedule: Insert cache stages ********/
 
@@ -121,7 +117,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
 
   /******** Schedule: Misc ********/
 
-  void EnterPostProc() final;
+  void EnterPostproc() final;
   void DoubleBuffer(const BlockRV& block_rv) final;
   void SetScope(const BlockRV& block_rv, int i, const String& storage_scope) final;
   void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,

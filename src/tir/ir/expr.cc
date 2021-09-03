@@ -26,9 +26,6 @@
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
 
-#include <limits>
-#include <memory>
-
 #include "../../support/str_escape.h"
 #include "../schedule/utils.h"
 
@@ -881,39 +878,6 @@ CommReducer::CommReducer(Array<Var> lhs, Array<Var> rhs, Array<PrimExpr> result,
   node->identity_element = identity_element;
   node->span = std::move(span);
   data_ = std::move(node);
-}
-
-bool CommReducer::ReducerMatched(const CommReducer& reducer, const PrimExpr& init,
-                                 const PrimExpr& update, Optional<PrimExpr>& lhs,
-                                 Optional<PrimExpr>& rhs) {
-  ExprDeepEqual equal;
-  if (!equal(reducer->identity_element[0], init)) {
-    lhs = rhs = NullOpt;
-    return false;
-  }
-  PatternMatcher pattern_matcher(reducer->result[0]);
-  pattern_matcher.Match(update);
-  lhs = pattern_matcher.Eval(reducer->lhs[0]);
-  rhs = pattern_matcher.Eval(reducer->rhs[0]);
-  return pattern_matcher.Success();
-}
-
-void CommReducer::FromInitUpdate(const PrimExpr& init, const BufferStore& update,
-                                 Optional<CommReducer>& res, Optional<PrimExpr>& lhs,
-                                 Optional<PrimExpr>& rhs, Span span) {
-  ExprDeepEqual equal;
-  const auto& buf_load = BufferLoad(update->buffer, update->indices);
-  // Check default patterns
-  for (const auto& reducer : default_reducer::default_reducers) {
-    bool success =
-        ReducerMatched(reducer.GetReducer(init.dtype(), span), init, update->value, lhs, rhs);
-    if (success && equal(buf_load, lhs.value())) {
-      res = reducer.GetReducer(init.dtype(), span);
-      return;
-    }
-  }
-  res = NullOpt;
-  lhs = rhs = NullOpt;
 }
 
 Array<PrimExpr> CommReducerNode::operator()(Array<PrimExpr> a, Array<PrimExpr> b) const {

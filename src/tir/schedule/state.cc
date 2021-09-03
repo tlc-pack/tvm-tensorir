@@ -112,7 +112,7 @@ bool ProducerCoversConsumer(const Array<PrimExpr>& buffer_shape,
  * \param self The schedule class
  * \param stmt The statement, or the realize node of the statement whose sref to be set
  * \param seq_index The seq_index to be set
- * \note The method is NOP for statements that are not scheduleable, i.e. not For or Block
+ * \note The method is NOP for statements that are not schedulable, i.e. not For or Block
  */
 void SetSeqIndex(ScheduleStateNode* self, const Stmt& stmt, int seq_index) {
   if (const auto* realize = stmt.as<BlockRealizeNode>()) {
@@ -159,34 +159,6 @@ void UpdateSRef(ScheduleStateNode* self, StmtSRefNode* sref, const StmtNode* new
   self->stmt2ref[new_stmt] = GetRef<StmtSRef>(sref);
   self->stmt2ref.erase(sref->stmt);
   sref->stmt = new_stmt;
-}
-
-/*!
- * \brief Get PrimFunc and GlobalVar that the root block belongs to
- * \param mod The IRModule
- * \param root_block The root block of the PrimFunc
- * \param result_g_var The result GlobalVar
- * \return The result PrimFunc where the root block belongs to
- * \note This function returns the pointer instead of ObjectRef to avoid later copy-on-write
- */
-const PrimFuncNode* GetRootPrimFunc(const IRModule& mod, const StmtNode* root_block,
-                                    GlobalVar* result_g_var) {
-  for (const auto& kv : mod->functions) {
-    const GlobalVar& g_var = kv.first;
-    const BaseFunc& base_func = kv.second;
-    if (const auto* func = base_func.as<PrimFuncNode>()) {
-      if (const auto* realize = func->body.as<BlockRealizeNode>()) {
-        if (realize->block.get() == root_block) {
-          *result_g_var = g_var;
-          return func;
-        }
-      }
-    }
-  }
-  LOG(FATAL) << "IndexError: Could not get the correpsonding function in the schedule state of the "
-                "statement:\n"
-             << GetRef<Stmt>(root_block);
-  throw;
 }
 
 /**************** Creation ****************/
@@ -433,7 +405,7 @@ class StateCreator : private StmtVisitor {
   std::unordered_map<const StmtNode*, BlockRealize> block2realize_;
   /*! \brief The stack frames of blocks in the DFS visit. */
   std::vector<Array<StmtSRef>> block_frames_;
-  /*! \brief The auxilary analyzer */
+  /*! \brief The auxiliary analyzer */
   arith::Analyzer analyzer_;
 };
 
@@ -596,7 +568,7 @@ class SRefTreePruner : public StmtVisitor {
     }
     auto it = self_->stmt2ref.find(op);
     ICHECK(it != self_->stmt2ref.end())
-        << "IndexError: Cannot find correpsonding StmtSRef for the loop:\n"
+        << "IndexError: Cannot find corresponding StmtSRef for the loop:\n"
         << GetRef<For>(op);
     StmtSRef& sref = it->second;
     // Detect reuse
@@ -619,7 +591,7 @@ class SRefTreePruner : public StmtVisitor {
     }
     auto it = self_->stmt2ref.find(op);
     ICHECK(it != self_->stmt2ref.end())
-        << "IndexError: Cannot find correpsonding StmtSRef for the block:\n"
+        << "IndexError: Cannot find corresponding StmtSRef for the block:\n"
         << GetRef<Block>(op);
     StmtSRef& sref = it->second;
     // Detect reuse
@@ -737,7 +709,7 @@ class SRefUpdater : public StmtVisitor {
   void UpdateBlockInfo(const StmtSRef& block_sref) {
     using TIter = std::unordered_map<StmtSRef, BlockInfo, ObjectPtrHash, ObjectPtrEqual>::iterator;
     // The caller is responsible for correcting the flags
-    BlockInfo new_info(BlockScope(GetChildBlocks(self_, block_sref)));
+    BlockInfo new_info((BlockScope(GetChildBlockSRefOnSRefTree(self_, block_sref))));
     std::pair<TIter, bool> insert_result = self_->block_info.emplace(block_sref, new_info);
     bool inserted = insert_result.second;
     BlockInfo& info = insert_result.first->second;

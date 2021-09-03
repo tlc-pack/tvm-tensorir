@@ -362,9 +362,19 @@ Array<Array<arith::IterMark>> TrivialSubspaceDivision(const Array<IterVar>& iter
                                                       const PrimExpr& predicate) {
   if (!is_one(predicate)) return {};
   std::vector<Array<arith::IterMark>> res;
+  std::unordered_set<const VarNode*> outer_loop_vars;
+  std::unordered_set<const VarNode*> inner_loop_vars;
+  for (const Var& var : outer_loops) {
+    outer_loop_vars.insert(var.get());
+  }
+  for (const Var& var : inner_loops) {
+    inner_loop_vars.insert(var.get());
+  }
   for (size_t i = 0; i < bindings.size(); ++i) {
-    bool outer = StmtExprContainsVar(bindings[i], outer_loops);
-    bool inner = StmtExprContainsVar(bindings[i], inner_loops);
+    bool outer = UsesVar(
+        bindings[i], [&outer_loop_vars](const VarNode* var) { return outer_loop_vars.count(var); });
+    bool inner = UsesVar(
+        bindings[i], [&inner_loop_vars](const VarNode* var) { return inner_loop_vars.count(var); });
     if (outer && !inner) {
       arith::IterMark outer(arith::IterSumExpr({}, bindings[i]), iter_vars[i]->dom->extent);
       arith::IterMark inner(arith::IterSumExpr({}, 0), 1);
@@ -373,10 +383,16 @@ Array<Array<arith::IterMark>> TrivialSubspaceDivision(const Array<IterVar>& iter
       arith::IterMark outer(arith::IterSumExpr({}, 0), 1);
       arith::IterMark inner(arith::IterSumExpr({}, bindings[i]), iter_vars[i]->dom->extent);
       res.push_back(Array<arith::IterMark>({outer, inner}));
+    } else if (!outer && !inner) {
+      arith::IterMark outer(arith::IterSumExpr({}, 0), 1);
+      arith::IterMark inner(arith::IterSumExpr({}, 0), 1);
+      res.push_back(Array<arith::IterMark>({outer, inner}));
     } else {
       return {};
     }
   }
+  res.push_back({arith::IterMark(arith::IterSumExpr({}, 0), Bool(true)),
+                 arith::IterMark(arith::IterSumExpr({}, 0), Bool(true))});
   return res;
 }
 
@@ -498,7 +514,8 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
     std::unordered_map<const IterVarNode*, int> new_block_vars2old_index;
     for (size_t i = 0; i < inner_block_vars.size(); ++i) {
       if (inner_block_vars[i]->iter_type == IterVarType::kDataPar &&
-          StmtExprContainsVar(block->init.value(), inner_block_vars[i]->var)) {
+          UsesVar(block->init.value(),
+                  [v = inner_block_vars[i]->var](const VarNode* var) { return var == v.get(); })) {
         // copy init block vars and ignore reduce block vars
         init_block_vars.push_back(i);
         IterVar init_block_var = inner_block_vars[i];
@@ -510,9 +527,8 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
     }
     for (const ForNode* inner_loop : inner_loops) {
       for (size_t i = 0; i < init_block_vars.size(); ++i) {
-        if (StmtExprContainsVar(
-                inner_bindings[new_block_vars2old_index[init_block_vars_copy[i].get()]],
-                inner_loop->loop_var)) {
+        if (UsesVar(inner_bindings[new_block_vars2old_index[init_block_vars_copy[i].get()]],
+                    [v = inner_loop->loop_var](const VarNode* var) { return var == v.get(); })) {
           // copy loops related to init block vars
           For init_loop = GetRef<For>(inner_loop);
           init_loop.CopyOnWrite()->loop_var = inner_loop->loop_var.copy_with_suffix("");
@@ -582,7 +598,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   }
   {
     StmtSRef block_sref = self->stmt2ref.at(outer_block.get());
-    StmtSRef scope_sref = GetScopeRoot(block_sref).value();
+    StmtSRef scope_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false);
     UpdateScope(self, scope_sref);
     UpdateAffineFlag(self, scope_sref);
   }
@@ -605,7 +621,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
     };
     BindingValidator validator;
     validator.self = self;
-    const PrimFuncNode* func = GetRootPrimFunc(self, loop_sref);
+    const PrimFuncNode* func = GetRootPrimFunc(self->mod, GetRootBlock(loop_sref).get(), nullptr);
     validator(func->body);
   }
   return self->stmt2ref.at(outer_block.get());
@@ -868,7 +884,7 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
     };
     BindingValidator validator;
     StmtSRef block_sref = self->stmt2ref.at(new_block.get());
-    const PrimFuncNode* func = GetRootPrimFunc(self, block_sref);
+    const PrimFuncNode* func = GetRootPrimFunc(self->mod, GetRootBlock(block_sref).get(), nullptr);
     validator.self = self;
     validator(func->body);
   }
@@ -920,8 +936,8 @@ struct TensorizeTraits : public UnpackedInstTraits<TensorizeTraits> {
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(BlockizeTraits);
-TVM_REGISTER_INST_KIND(TensorizeTraits);
+TVM_REGISTER_INST_KIND_TRAITS(BlockizeTraits);
+TVM_REGISTER_INST_KIND_TRAITS(TensorizeTraits);
 
 }  // namespace tir
 }  // namespace tvm

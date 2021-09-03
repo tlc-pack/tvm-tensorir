@@ -177,12 +177,14 @@ def test_end_to_end_resnet(log):
                 measure_callbacks=[
                     ms.RecordToFile(),
                 ]
-            )
+            ),
         )
 
     with ms.ApplyHistoryBest(log, SPACE):
-        with tvm.transform.PassContext(opt_level=3, config={"relay.with_tir_schedule": True,
-                                                            "relay.backend.use_meta_schedule": True}):
+        with tvm.transform.PassContext(
+            opt_level=3,
+            config={"relay.with_tir_schedule": True, "relay.backend.use_meta_schedule": True},
+        ):
             lib = relay.build_module.build(mod, target, params=params)
 
     def run_module(lib):
@@ -195,7 +197,10 @@ def test_end_to_end_resnet(log):
         print("Evaluate inference time cost...")
         ftimer = module.module.time_evaluator("run", ctx, repeat=3, min_repeat_ms=500)
         prof_res = np.array(ftimer().results) * 1e3  # convert to millisecond
-        print("Mean inference time (std dev): %.2f ms (%.2f ms)" % (np.mean(prof_res), np.std(prof_res)))
+        print(
+            "Mean inference time (std dev): %.2f ms (%.2f ms)"
+            % (np.mean(prof_res), np.std(prof_res))
+        )
 
         module.run()
         return module.get_output(0)

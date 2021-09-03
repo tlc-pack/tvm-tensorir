@@ -232,6 +232,7 @@ For RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int i
 /*!
  * \brief For each buffer written by the producer block, accumulate the ranges on it that are read
  * by the consumer block
+ * \param self The schedule state
  * \param produced_regions The output tensor region of producer consumer_blocks
  * \param lca_loop_sref The lca of producer and consumer
  * \param consumer_blocks The consumer consumer_blocks
@@ -240,7 +241,8 @@ For RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int i
  * \param buf The buffer in interest
  * \return Required with the same order as produce_regions
  */
-BufferRegionMap GatherRequirements(const Array<BufferRegion>& produced_regions,
+BufferRegionMap GatherRequirements(const ScheduleState& self,
+                                   const Array<BufferRegion>& produced_regions,
                                    const StmtSRef& lca_loop_sref,
                                    const std::vector<StmtSRef>& consumer_blocks,
                                    const std::unordered_map<const VarNode*, Range>& relax_vars,
@@ -261,12 +263,12 @@ BufferRegionMap GatherRequirements(const Array<BufferRegion>& produced_regions,
     std::vector<BufferRegion> deep_relaxed;
     if (gather_read) {
       RelaxRegion(block_sref, lca_loop_sref, &relaxed, nullptr, relax_vars);
-      RelaxRegion(block_sref, GetScopeRoot(lca_loop_sref).value(), &deep_relaxed, nullptr,
-                  relax_vars);
+      RelaxRegion(block_sref, GetScopeRoot(self, lca_loop_sref, /*require_stage_pipeline=*/false),
+                  &deep_relaxed, nullptr, relax_vars);
     } else {
       RelaxRegion(block_sref, lca_loop_sref, nullptr, &relaxed, relax_vars);
-      RelaxRegion(block_sref, GetScopeRoot(lca_loop_sref).value(), nullptr, &deep_relaxed,
-                  relax_vars);
+      RelaxRegion(block_sref, GetScopeRoot(self, lca_loop_sref, /*require_stage_pipeline=*/false),
+                  nullptr, &deep_relaxed, relax_vars);
     }
     ICHECK_EQ(relaxed.size(), deep_relaxed.size());
     for (int i = 0; i < static_cast<int>(relaxed.size()); ++i) {
@@ -401,7 +403,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
                           << block_sref->stmt->GetTypeKey();
   CHECK(loop != nullptr) << "TypeError: 'compute_at' expects 'loop' to be a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
-  StmtSRef parent_block_sref = GetScopeRoot(block_sref).value();
+  StmtSRef parent_block_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false);
   const auto* parent_block = parent_block_sref->StmtAs<BlockNode>();
   const BlockScope& scope = self->GetBlockScope(parent_block_sref);
   Array<Dependency> edges_to_pred = scope->GetDepsByDst(block_sref);
@@ -409,11 +411,12 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   Array<StmtSRef> producers = GetProducersFromDependency(edges_to_pred);
   Array<StmtSRef> consumers = GetConsumersFromDependency(edges_to_succ);
   // Cond 0. `block` and `loop` are in the same scope
-  CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
+  CHECK_EQ(parent_block_sref.get(),
+           GetScopeRoot(self, loop_sref, /*require_stage_pipeline=*/false).get())
       << "ValueError: 'compute_at' expects 'block' and 'loop' be in the same block";
   // Cond 1. 'block' is complete/reduction block
-  CHECK(CompleteBlock(self, block_sref, parent_block_sref) ||
-        ReductionBlock(self, block_sref, parent_block_sref))
+  CHECK(IsCompleteBlock(self, block_sref, parent_block_sref) ||
+        IsReductionBlock(self, block_sref, parent_block_sref))
       << "ValueError: 'compute_at' expects 'block' to be a complete or reduction block";
   // Cond 2. Check all RAW successors are in the subtree rooted by loop_sref
   CHECK(EachEdgePointsToABlock(edges_to_succ, GetChildBlocks(self, loop_sref, true),
@@ -458,7 +461,8 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   For new_loop = RegenerateLoops(
       block_sref, loop_sref, insert_pos,
       SolveCover(block,
-                 GatherRequirements(/*produced_regions=*/block->writes,
+                 GatherRequirements(/*self=*/self,
+                                    /*produced_regions=*/block->writes,
                                     /*lca_loop_sref=*/loop_sref,
                                     /*consumer_blocks=*/{consumers.begin(), consumers.end()},
                                     /*relax_vars=*/RelaxForExecScope(loop_sref, block_sref),
@@ -503,7 +507,7 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   CHECK(loop != nullptr)
       << "TypeError: 'reverse_compute_at' expects 'loop' to be a loop, but get type: "
       << loop_sref->stmt->GetTypeKey();
-  StmtSRef parent_block_sref = GetScopeRoot(block_sref).value();
+  StmtSRef parent_block_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false);
   const auto* parent_block = parent_block_sref->StmtAs<BlockNode>();
   const BlockScope& scope = self->GetBlockScope(parent_block_sref);
   Array<Dependency> edges_to_pred = scope->GetDepsByDst(block_sref);
@@ -511,11 +515,12 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   Array<StmtSRef> producers = GetProducersFromDependency(edges_to_pred);
   Array<StmtSRef> consumers = GetConsumersFromDependency(edges_to_succ);
   // Cond 0. `block` and `loop` are in the same scope
-  CHECK_EQ(parent_block_sref.get(), GetScopeRoot(loop_sref).get())
+  CHECK_EQ(parent_block_sref.get(),
+           GetScopeRoot(self, loop_sref, /*require_stage_pipeline=*/false).get())
       << "ValueError: 'reverse_compute_at' expects 'block' and 'loop' be in the same block";
   // Cond 1. 'block' is complete/reduction block
-  CHECK(CompleteBlock(self, block_sref, parent_block_sref) ||
-        ReductionBlock(self, block_sref, parent_block_sref))
+  CHECK(IsCompleteBlock(self, block_sref, parent_block_sref) ||
+        IsReductionBlock(self, block_sref, parent_block_sref))
       << "ValueError: 'reverse_compute_at' expects 'block' to be a complete or reduction block";
   // Cond 2. Check all RAW predecessors are in the subtree rooted by loop_sref
   CHECK(EachEdgePointsToABlock(edges_to_pred, GetChildBlocks(self, loop_sref, true),
@@ -529,8 +534,8 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   CHECK_EQ(edges_to_pred.size(), 1)
       << "ValueError: 'reverse_compute_at' expects only one producer of current block";
   // Cond 5. Check the RAW predecessor is complete/reduction block
-  CHECK(CompleteBlock(self, edges_to_pred[0]->dst, parent_block_sref) ||
-        ReductionBlock(self, edges_to_pred[0]->dst, parent_block_sref))
+  CHECK(IsCompleteBlock(self, edges_to_pred[0]->dst, parent_block_sref) ||
+        IsReductionBlock(self, edges_to_pred[0]->dst, parent_block_sref))
       << "ValueError: 'reverse_compute_at' expects producers of 'block' to be a complete or "
          "reduction block";
   // Mutation
@@ -561,7 +566,8 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   For new_loop = RegenerateLoops(
       block_sref, loop_sref, insert_pos,
       SolveCover(block,
-                 GatherRequirements(/*produced_regions=*/block->reads,
+                 GatherRequirements(/*self=*/self,
+                                    /*produced_regions=*/block->reads,
                                     /*lca_loop_sref=*/loop_sref,
                                     /*consumer_blocks=*/{producers.begin(), producers.end()},
                                     /*relax_vars=*/{},
@@ -639,8 +645,8 @@ struct ReverseComputeAtTraits : public UnpackedInstTraits<ReverseComputeAtTraits
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(ComputeAtTraits);
-TVM_REGISTER_INST_KIND(ReverseComputeAtTraits);
+TVM_REGISTER_INST_KIND_TRAITS(ComputeAtTraits);
+TVM_REGISTER_INST_KIND_TRAITS(ReverseComputeAtTraits);
 
 }  // namespace tir
 }  // namespace tvm

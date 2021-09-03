@@ -113,7 +113,7 @@ def test_vectorize_fail_on_reduce_var():
     s = tir.Schedule(func, debug_mode=True)
     update = s.get_block("update")
     _, _, k = s.get_loops(update)
-    with pytest.raises(ValueError):
+    with pytest.raises(tvm.tir.ScheduleError):
         s.vectorize(k)
 
 

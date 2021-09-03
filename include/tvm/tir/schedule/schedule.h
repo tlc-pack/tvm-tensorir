@@ -19,10 +19,14 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_H_
 
+#include <tvm/support/random_engine.h>
 #include <tvm/tir/schedule/state.h>
 
 namespace tvm {
 namespace tir {
+
+using TRandState = support::LinearCongruentialEngine::TRandState;
+using RandEngine = support::LinearCongruentialEngine;
 
 /*! \brief The level of detailed error message rendering */
 enum class ScheduleErrorRenderLevel : int32_t {
@@ -110,15 +114,15 @@ class ScheduleNode : public runtime::Object {
    * guaranteeing that
    * 1) SRef tree is completely reconstructed;
    * 2) The IRModule being scheduled is not modified;
-   * 3) All the random variables are valid in the copy, pointing to the correpsonding sref
+   * 3) All the random variables are valid in the copy, pointing to the corresponding sref
    * reconstructed
    */
-  virtual Schedule Copy(int64_t seed = -1) const = 0;
+  virtual Schedule Copy(tir::TRandState seed = -1) const = 0;
   /*!
    * \brief Seed the randomness
    * \param seed The new random seed, -1 if use device random, otherwise non-negative
    */
-  virtual void Seed(int64_t seed = -1) = 0;
+  virtual void Seed(tir::TRandState seed = -1) = 0;
   /*! \brief Fork the random state */
   virtual int64_t ForkSeed() = 0;
 
@@ -275,7 +279,7 @@ class ScheduleNode : public runtime::Object {
   /*!
    * \brief Shift the iteration range of given loops to make them zero-based.
    * \param loop_rvs The loop random variables to be normalized
-   * \return The normalized loops 
+   * \return The normalized loops
    */
   virtual void Normalize(const Array<LoopRV>& loop_rvs) = 0;
   /*!
@@ -286,32 +290,42 @@ class ScheduleNode : public runtime::Object {
 
   /******** Schedule: Manipulate ForKind ********/
   /*!
-   * \brief Parallelize a loop
-   * \param loop_rv The loop to be paralleled
+   * \brief Parallelize the input loop. It requires:
+   * 1) The scope block that the loop is in should have stage-pipeline property
+   * 2) All the blocks under the loop are complete blocks or reduction blocks, and have affine
+   * bindings
+   * 3) For each block under the loop, the loop can only be contained in data-parallel block iters'
+   * bindings
+   * \param loop_rv The loop to be parallelized
    */
   virtual void Parallel(const LoopRV& loop_rv) = 0;
   /*!
-   * \brief Vectorize a loop
+   * \brief Vectorize the input loop. It requires:
+   * 1) The scope block that the loop is in should have stage-pipeline property
+   * 2) All the blocks under the loop are complete blocks or reduction blocks, and have affine
+   * bindings
+   * 3) For each block under the loop, the loop can only be contained in data-parallel block iters'
+   * bindings
    * \param loop_rv The loop to be vectorized
    */
   virtual void Vectorize(const LoopRV& loop_rv) = 0;
   /*!
-   * \brief Unroll a loop
+   * \brief Bind the input loop to the given thread axis. It requires:
+   * 1) The scope block that the loop is in should have stage-pipeline property
+   * 2) All the blocks under the loop are complete blocks or reduction blocks, and have affine
+   * bindings
+   * 3) For each block under the loop, if the thread axis starts with "threadIdx`, the loop can only
+   * be contained in data-parallel block iter and reduction block iters' bindings. Otherwise the
+   * loop can only be contained in data-parallel block iters' bindings
+   * \param loop_rv The loop to be bound to the thread axis
+   * \param thread_axis The thread axis to be bound to the loop
+   */
+  virtual void Bind(const LoopRV& loop_rv, const String& thread_axis) = 0;
+  /*!
+   * \brief Unroll the input loop. It requires nothing
    * \param loop_rv The loop to be unrolled
    */
   virtual void Unroll(const LoopRV& loop_rv) = 0;
-  /*!
-   * \brief Bind a loop to a thread axis
-   * \param loop_rv The loop to be bound
-   * \param thread The thread axis
-   */
-  virtual void Bind(const LoopRV& loop_rv, const IterVar& thread) = 0;
-  /*!
-   * \brief Bind a loop to a thread axis
-   * \param loop_rv The loop to be bound
-   * \param thread The thread axis
-   */
-  virtual void Bind(const LoopRV& loop_rv, const String& thread) = 0;
 
   /******** Schedule: Insert cache stages ********/
   /*!
@@ -374,10 +388,20 @@ class ScheduleNode : public runtime::Object {
 
   /******** Schedule: Reduction ********/
   /*!
-   * \brief Factor a reduction block by the specified loop
+   * \brief Factorize an associative reduction block by the specified loop.
+   * \details An associative reduction cannot be parallelized directly,
+   * because it leads to potential race condition during accumulation.
+   * Alternatively, the reduction could be factorized on a loop with the following steps:
+   * - Step 1: evenly slice the reduction into `n` separate chunks, where `n` is the loop extent
+   * - Step 2: compute the chunks separately and write the result into `n` intermediate buffers;
+   * - Step 3: accumulate the `n` separate buffer into the result buffer.
+   * Note that the Step 2 above introduces opportunities for parallelization.
+   * RFactor is a schedule primitive that implements the transformation described above.
    * \param loop_rv The loop outside block we want to do rfactor
-   * \param factor_axis The position where the new dimension is placed in the new generated rfactor
-   *                      buffer
+   * \param factor_axis The position where the new dimension is placed in the new introduced rfactor
+   *                    buffer. Suppose the original reduction block writes to buffer `B` with
+   *                    ndim(B) dimensions, then `factor_axis` should be in range `[-ndim(B) - 1,
+   *                    ndim(B)]`, and the negative index will be normalized to a non-negative one
    * \return The rfactor block
    */
   virtual BlockRV RFactor(const LoopRV& loop_rv, int factor_axis) = 0;
@@ -442,7 +466,7 @@ class ScheduleNode : public runtime::Object {
 
   /******** Schedule: Misc ********/
   /*! \brief An NOP indicating entrance of post processing */
-  virtual void EnterPostProc() = 0;
+  virtual void EnterPostproc() = 0;
   /*!
    * \brief Add `double_buffer` annotation to a block
    * \param block_rv The block to be annotated
@@ -508,11 +532,11 @@ class Schedule : public runtime::ObjectRef {
    * 1) VerifySRefTree
    * 2) VerifyCachedFlags
    */
-  TVM_DLL static Schedule Concrete(IRModule mod, int64_t seed, int debug_mode,
+  TVM_DLL static Schedule Concrete(IRModule mod, tir::TRandState seed, int debug_mode,
                                    ScheduleErrorRenderLevel error_render_level);
-  TVM_DLL static Schedule Meta(IRModule mod, int64_t seed, int debug_mode,
+  TVM_DLL static Schedule Meta(IRModule mod, tir::TRandState seed, int debug_mode,
                                ScheduleErrorRenderLevel error_render_level);
-  TVM_DLL static Schedule Traced(IRModule mod, int64_t seed, int debug_mode,
+  TVM_DLL static Schedule Traced(IRModule mod, tir::TRandState seed, int debug_mode,
                                  ScheduleErrorRenderLevel error_render_level);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };

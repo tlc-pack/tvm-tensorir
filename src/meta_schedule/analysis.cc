@@ -18,6 +18,8 @@
  */
 #include "../tir/schedule/analysis.h"
 
+#include <tvm/tir/analysis.h>
+
 #include <numeric>
 
 #include "./analysis.h"
@@ -50,7 +52,8 @@ bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block
 }
 
 bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  tir::StmtSRef parent_block_sref = GetScopeRoot(block_sref).value();
+  tir::StmtSRef parent_block_sref =
+      GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false);
   return parent_block_sref->parent == nullptr;
 }
 
@@ -91,11 +94,12 @@ bool IsSpatial(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) 
 }
 
 bool IsOutputBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  tir::StmtSRef parent_sref = tir::GetScopeRoot(block_sref).value();
+  tir::StmtSRef parent_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false);
   const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
   const BlockNode* parent = TVM_SREF_TO_BLOCK(parent, parent_sref);
   if (parent_sref->parent == nullptr) {
-    const tir::PrimFuncNode* func = tir::GetRootPrimFunc(self, parent_sref);
+    const tir::PrimFuncNode* func =
+        tir::GetRootPrimFunc(self->mod, GetRootBlock(parent_sref).get(), nullptr);
     for (const tir::BufferRegion& write : block->writes) {
       for (const auto& kv : func->buffer_map) {
         if (write->buffer.get() == kv.second.get()) {
@@ -217,7 +221,8 @@ Optional<Array<Bool>> GetReadPattern(const Array<tir::IterVar>& block_vars,
 bool IsElementWiseMatch(const tir::ScheduleState& self, const tir::StmtSRef& producer_sref,
                         const tir::StmtSRef& consumer_sref) {
   // Assume consumer is the only consumer of the producer
-  tir::StmtSRef parent_sref = tir::GetScopeRoot(producer_sref).value();
+  tir::StmtSRef parent_sref =
+      tir::GetScopeRoot(self, producer_sref, /*require_stage_pipeline=*/false);
   const BlockNode* producer = TVM_SREF_TO_BLOCK(producer, producer_sref);
   const BlockNode* consumer = TVM_SREF_TO_BLOCK(consumer, consumer_sref);
   if (producer->writes.empty()) {
@@ -485,7 +490,9 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
     for (int i = 0, n = block_loops.size(); i < n; ++i) {
       // Check if block_bind = block_loops[i]->loop_var + stuff-irrelevant-of-loop-vars
       PrimExpr r = analyzer.Simplify(block_bind - block_loops[i]->loop_var);
-      if (!tir::StmtExprContainsVar(r, block_loop_vars)) {
+      if (!tir::UsesVar(r, [&block_loop_vars](const tir::VarNode* var) {
+            return block_loop_vars.count(var);
+          })) {
         block_loop = block_loops[i];
         break;
       }
@@ -498,7 +505,9 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
     for (int i = 0, n = desc_loops.size(); i < n; ++i) {
       // Check if desc_bind = loops[i]->loop_var + stuff-irrelevant-of-loop-vars
       PrimExpr r = analyzer.Simplify(desc_bind - desc_loops[i]->loop_var);
-      if (!tir::StmtExprContainsVar(r, desc_loop_vars)) {
+      if (!tir::UsesVar(r, [&desc_loop_vars](const tir::VarNode* var) {
+            return desc_loop_vars.count(var);
+          })) {
         desc_loop = desc_loops[i];
         break;
       }
@@ -772,7 +781,8 @@ bool NeedsRFactorOrCrossThreadReduction(const tir::ScheduleState& self,
   Array<tir::StmtSRef> loops = tir::GetLoops(block_sref);
 
   // Cond 1. The block is a reduction block and has trivial binding.
-  if (ReductionBlock(self, block_sref, GetScopeRoot(block_sref).value()) &&
+  if (IsReductionBlock(self, block_sref,
+                       GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false)) &&
       !IsTrivialBinding(self, block_sref)) {
     return false;
   }
@@ -836,8 +846,8 @@ bool NeedsRFactorOrCrossThreadReduction(const tir::ScheduleState& self,
 }
 
 bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv, const int& i) {
-  static tir::InstKind cache_write = tir::InstKind::Get("CacheWrite");
-  for (const Inst& inst : sch->trace().value()->insts) {
+  static tir::InstructionKind cache_write = tir::InstructionKind::Get("CacheWrite");
+  for (const Instruction& inst : sch->trace().value()->insts) {
     if (inst->kind.same_as(cache_write)) {
       CHECK_EQ(inst->inputs.size(), 1);
       const BlockRV& input_rv = Downcast<BlockRV>(inst->inputs[0]);

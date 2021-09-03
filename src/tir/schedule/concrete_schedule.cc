@@ -23,12 +23,13 @@
 namespace tvm {
 namespace tir {
 
-Schedule Schedule::Concrete(IRModule mod, int64_t seed, int debug_mode,
+Schedule Schedule::Concrete(IRModule mod, tir::TRandState seed, int debug_mode,
                             ScheduleErrorRenderLevel error_render_level) {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   n->state_ = ScheduleState(mod, debug_mode);
   n->error_render_level_ = error_render_level;
-  n->sampler_.Seed(seed);
+  if (seed == -1) seed = std::random_device()();
+  tir::RandEngine(&n->rand_state_).Seed(seed);
   n->symbol_table_ = {};
   n->analyzer_ = std::make_unique<arith::Analyzer>();
   return Schedule(std::move(n));
@@ -180,12 +181,13 @@ void ConcreteScheduleNode::Copy(ScheduleState* new_state, TSymbolTable* new_symb
   ScheduleCopier::Copy(this, new_state, new_symbol_table);
 }
 
-Schedule ConcreteScheduleNode::Copy(int64_t new_seed) const {
+Schedule ConcreteScheduleNode::Copy(tir::TRandState new_seed) const {
   ObjectPtr<ConcreteScheduleNode> n = make_object<ConcreteScheduleNode>();
   Copy(&n->state_, &n->symbol_table_);
   n->error_render_level_ = this->error_render_level_;
   n->analyzer_ = std::make_unique<arith::Analyzer>();
-  n->sampler_.Seed(new_seed);
+  if (new_seed == -1) new_seed = std::random_device()();
+  tir::RandEngine(&n->rand_state_).Seed(new_seed);
   return Schedule(std::move(n));
 }
 
@@ -218,7 +220,7 @@ Array<ExprRV> ConcreteScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int
                                                       int max_innermost_factor,
                                                       Optional<Array<Integer>> decision) {
   TVM_TIR_SCHEDULE_BEGIN();
-  return CreateRV(tir::SamplePerfectTile(state_, &this->sampler_, this->GetSRef(loop_rv), n,
+  return CreateRV(tir::SamplePerfectTile(state_, &this->rand_state_, this->GetSRef(loop_rv), n,
                                          max_innermost_factor, &decision));
   TVM_TIR_SCHEDULE_END("sample-perfect-tile", this->error_render_level_);
 }
@@ -227,7 +229,7 @@ ExprRV ConcreteScheduleNode::SampleCategorical(const Array<Integer>& candidates,
                                                const Array<FloatImm>& probs,
                                                Optional<Integer> decision) {
   TVM_TIR_SCHEDULE_BEGIN();
-  return CreateRV(tir::SampleCategorical(state_, &this->sampler_, candidates, probs, &decision));
+  return CreateRV(tir::SampleCategorical(state_, &this->rand_state_, candidates, probs, &decision));
   TVM_TIR_SCHEDULE_END("sample-categorical", this->error_render_level_);
 }
 
@@ -235,7 +237,7 @@ LoopRV ConcreteScheduleNode::SampleComputeLocation(const BlockRV& block_rv,
                                                    Optional<Integer> decision) {
   TVM_TIR_SCHEDULE_BEGIN();
   return CreateRV<LoopRV>(
-      tir::SampleComputeLocation(state_, &this->sampler_, this->GetSRef(block_rv), &decision));
+      tir::SampleComputeLocation(state_, &this->rand_state_, this->GetSRef(block_rv), &decision));
   TVM_TIR_SCHEDULE_END("sample-compute-location", this->error_render_level_);
 }
 
@@ -431,27 +433,24 @@ void ConcreteScheduleNode::Vectorize(const LoopRV& loop_rv) {
   TVM_TIR_SCHEDULE_END("vectorize", this->error_render_level_);
 }
 
+void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread_axis) {
+  if (thread_axis == "vthread") {
+    LOG(WARNING) << "`vthread` is legacy behavior and is going to be deprecated. Please use "
+                    "`vthread.x`, `vthread.y` and `vthread.z` instead";
+  }
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::Bind(state_, this->GetSRef(loop_rv),
+            IterVar(/*dom=*/Range(nullptr), /*var=*/Var(thread_axis), /*iter_type=*/kThreadIndex,
+                    /*thread_tag=*/thread_axis));
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("bind", this->error_render_level_);
+}
+
 void ConcreteScheduleNode::Unroll(const LoopRV& loop_rv) {
   TVM_TIR_SCHEDULE_BEGIN();
   tir::Unroll(state_, this->GetSRef(loop_rv));
   this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("unroll", this->error_render_level_);
-}
-
-void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const IterVar& thread) {
-  TVM_TIR_SCHEDULE_BEGIN();
-  tir::Bind(state_, this->GetSRef(loop_rv), thread);
-  this->state_->DebugVerify();
-  TVM_TIR_SCHEDULE_END("bind", this->error_render_level_);
-}
-
-void ConcreteScheduleNode::Bind(const LoopRV& loop_rv, const String& thread) {
-  TVM_TIR_SCHEDULE_BEGIN();
-  tir::Bind(state_, this->GetSRef(loop_rv),
-            IterVar(/*dom=*/Range(nullptr), /*var=*/Var(thread), /*IterVarType=*/kThreadIndex,
-                    /*thread_tag=*/thread));
-  this->state_->DebugVerify();
-  TVM_TIR_SCHEDULE_END("bind", this->error_render_level_);
 }
 
 /******** Schedule: Insert cache stages ********/
@@ -515,25 +514,26 @@ void ConcreteScheduleNode::ReverseComputeAt(const BlockRV& block_rv, const LoopR
 void ConcreteScheduleNode::ComputeInline(const BlockRV& block_rv) {
   TVM_TIR_SCHEDULE_BEGIN();
   tir::ComputeInline(state_, this->GetSRef(block_rv));
-  this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("compute-inline", this->error_render_level_);
+  this->state_->DebugVerify();
 }
 
 void ConcreteScheduleNode::ReverseComputeInline(const BlockRV& block_rv) {
   TVM_TIR_SCHEDULE_BEGIN();
   tir::ReverseComputeInline(state_, this->GetSRef(block_rv));
-  this->state_->DebugVerify();
   TVM_TIR_SCHEDULE_END("reverse-compute-inline", this->error_render_level_);
+  this->state_->DebugVerify();
 }
 
 /******** Schedule: Reduction ********/
 
 BlockRV ConcreteScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
+  StmtSRef result{nullptr};
   TVM_TIR_SCHEDULE_BEGIN();
-  StmtSRef result = tir::RFactor(state_, this->GetSRef(loop_rv), factor_axis);
+  result = tir::RFactor(state_, this->GetSRef(loop_rv), factor_axis);
+  TVM_TIR_SCHEDULE_END("rfactor", this->error_render_level_);
   this->state_->DebugVerify();
   return CreateRV<BlockRV>(result);
-  TVM_TIR_SCHEDULE_END("rfactor", this->error_render_level_);
 }
 
 BlockRV ConcreteScheduleNode::DecomposeReduction(const BlockRV& block_rv,
@@ -672,7 +672,7 @@ void ConcreteScheduleNode::SoftwarePipeline(const LoopRV& loop_rv, int num_stage
 
 TVM_REGISTER_NODE_TYPE(ConcreteScheduleNode);
 TVM_REGISTER_GLOBAL("tir.schedule.ConcreteSchedule")
-    .set_body_typed([](IRModule mod, int64_t seed, int debug_mode,
+    .set_body_typed([](IRModule mod, tir::TRandState seed, int debug_mode,
                        int error_render_level) -> Schedule {
       return Schedule::Concrete(mod, seed, debug_mode,
                                 static_cast<ScheduleErrorRenderLevel>(error_render_level));

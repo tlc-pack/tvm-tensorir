@@ -29,7 +29,7 @@ struct NormalizerInfo {
   /*! \brief the map from Variable to loop min */
   std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_map;
   /*! \brief The map used for ScheduleStateNode::Replace */
-  std::unordered_map<Block, Block, ObjectPtrHash, ObjectPtrEqual> block_map;
+  Map<Block, Block> block_map;
 };
 
 class LoopNormalizer : public StmtExprMutator {
@@ -46,16 +46,11 @@ class LoopNormalizer : public StmtExprMutator {
     }
     Stmt body = this->VisitStmt(op->body);
 
-    if (!normalize && new_min.same_as(op->min) && extent.same_as(op->extent) &&
-        body.same_as(op->body)) {
-      return GetRef<Stmt>(op);
-    } else {
-      auto n = CopyOnWrite(op);
-      n->min = std::move(new_min);
-      n->extent = std::move(extent);
-      n->body = std::move(body);
-      return Stmt(n);
-    }
+    auto n = CopyOnWrite(op);
+    n->min = std::move(new_min);
+    n->extent = std::move(extent);
+    n->body = std::move(body);
+    return Stmt(n);
   }
 
   PrimExpr VisitExpr_(const VarNode* v) final {
@@ -71,7 +66,7 @@ class LoopNormalizer : public StmtExprMutator {
   Stmt VisitStmt_(const BlockNode* op) final {
     Block old_stmt = GetRef<Block>(op);
     Block new_stmt = Downcast<Block>(StmtMutator::VisitStmt_(op));
-    info_->block_map[old_stmt] = new_stmt;
+    info_->block_map.Set(old_stmt, new_stmt);
     return std::move(new_stmt);
   }
 
@@ -84,13 +79,13 @@ void Normalize(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
     return;
   }
   NormalizerInfo info;
-  const StmtSRef& root = GetScopeRoot(loop_srefs[0]).value();
+  StmtSRef root = GetScopeRoot(self, loop_srefs[0], /*require_stage_pipeline=*/false);
   for (const StmtSRef& loop_sref : loop_srefs) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     if (!is_zero(loop->min)) {
       info.var_map[loop->loop_var] = Integer(0);  // placeholder
     }
-    CHECK(GetScopeRoot(loop_sref).get() == root.get())
+    CHECK(GetScopeRoot(self, loop_sref, /*require_stage_pipeline=*/false).get() == root.get())
         << "Normalize expects input loops to be in the same scope.";
   }
 
@@ -132,7 +127,7 @@ struct NormalizeTraits : public UnpackedInstTraits<NormalizeTraits> {
   friend struct UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND(NormalizeTraits);
+TVM_REGISTER_INST_KIND_TRAITS(NormalizeTraits);
 
 }  // namespace tir
 }  // namespace tvm

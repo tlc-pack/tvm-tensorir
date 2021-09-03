@@ -70,7 +70,7 @@ def _fix_sampling_tile_size(
             new_decisions[inst] = decision
         trace = tir.schedule.Trace(sch.trace.insts, new_decisions)
         new_sch = tir.Schedule(func, traced=True)
-        trace.apply_to_schedule(new_sch)
+        trace.apply_to_schedule(new_sch, remove_postproc=True)
         results = [tvm.ir.structural_equal(new_sch.mod["main"], i) for i in expected]
         if sum(results) >= 1:
             return
@@ -125,7 +125,7 @@ def _matmul_sketch_0(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> No
                                     tir.writes([A_shared[v0:(v0 + 1), v1:(v1 + 1)]])
                                     A_shared[v0, v1] = A[v0, v1]
                         for ax0_ax1_fused_outer_1 in range(0, 4096, annotations={"loop_type": "lazy_cooperative_fetch"}):
-                            for ax0_ax1_fused_inner_1 in range(0, 1):
+                            for ax0_ax1_fused_inner_1 in tir.vectorized(0, 1):
                                 with tir.block([512, 512], "B_shared") as [v0_1, v1_1]:
                                     tir.bind(v0_1, ((i2_outer_outer*64) + tir.floordiv(ax0_ax1_fused_outer_1, 64)))
                                     tir.bind(v1_1, ((tir.floormod(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused, 8)*64) + tir.floormod(ax0_ax1_fused_outer_1, 64)))
@@ -297,7 +297,7 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(
                         for ax0_ax1_fused_ax2_fused_ax3_fused_outer_1 in range(
                             0, 589824, annotations={"loop_type": "lazy_cooperative_fetch"}
                         ):
-                            for ax0_ax1_fused_ax2_fused_ax3_fused_inner_1 in range(0, 1):
+                            for ax0_ax1_fused_ax2_fused_ax3_fused_inner_1 in tir.vectorized(0, 1):
                                 with tir.block([512, 512, 3, 3], "W_shared") as [
                                     v0_1,
                                     v1_1,

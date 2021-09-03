@@ -50,7 +50,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 M, N, K = 1024, 1024, 1024
 target = "llvm"
-ctx = tvm.context(target, 0)
+ctx = tvm.device(target, 0)
 
 original_func = matmul
 
@@ -87,9 +87,9 @@ s = tir.Schedule(original_func, debug_mode=True)
 
 update = s.get_block("C")
 i, j, k = s.get_loops(update)
-i_o, i_i = s.split(i, factor=bn)
-j_o, j_i = s.split(j, factor=bn)
-k_o, k_i = s.split(k, factor=4)
+i_o, i_i = s.split(i, [None, bn])
+j_o, j_i = s.split(j, [None, bn])
+k_o, k_i = s.split(k, [None, 4])
 s.reorder(i_o, j_o, k_o, k_i, i_i, j_i)
 func_opt1 = s.mod
 
@@ -189,9 +189,9 @@ k = s.get_loops(packedB)[-1]
 s.vectorize(k)
 update = s.get_block("C")
 i, j, k = s.get_loops(update)
-i_o, i_i = s.split(i, factor=bn)
-j_o, j_i = s.split(j, factor=bn)
-k_o, k_i = s.split(k, factor=4)
+i_o, i_i = s.split(i, [None, bn])
+j_o, j_i = s.split(j, [None, bn])
+k_o, k_i = s.split(k, [None, 4])
 s.reorder(i_o, j_o, k_o, i_i, k_i, j_i)
 s.vectorize(j_i)
 func_opt3 = s.mod
@@ -213,13 +213,13 @@ update = s.get_block("C")
 cached_update = s.cache_write(update, 0, "global")
 
 i, j = s.get_loops(update)
-i_o, i_i = s.split(i, factor=bn)
-j_o, j_i = s.split(j, factor=bn)
+i_o, i_i = s.split(i, [None, bn])
+j_o, j_i = s.split(j, [None, bn])
 s.reorder(j_o, i_i)
 s.compute_at(cached_update, j_o)
 
 i, j, k = s.get_loops(cached_update)[-3:]
-k_o, k_i = s.split(k, factor=4)
+k_o, k_i = s.split(k, [None, 4])
 s.reorder(k_o, i, k_i, j)
 s.unroll(k_i)
 s.vectorize(j)
