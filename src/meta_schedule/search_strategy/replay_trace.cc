@@ -57,12 +57,12 @@ class ReplayTraceNode : public SearchStrategyNode {
     v->Visit("num_trials_per_iter", &num_trials_per_iter);
     v->Visit("num_trials_total", &num_trials_total);
     v->Visit("mod", &mod);
-    v->Visit("num_thread", &num_threads);
+    v->Visit("num_threads", &num_threads);
     // `state` is not visited
   }
 
-  static constexpr const char* _type_key = "meta_schedule.ReplayTraceNode";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ReplayTraceNode, Object);
+  static constexpr const char* _type_key = "meta_schedule.ReplayTrace";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ReplayTraceNode, SearchStrategyNode);
 
  public:
   void InitializeWithTuneContext(const TuneContext& tune_context) final {

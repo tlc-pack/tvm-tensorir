@@ -58,7 +58,7 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The measure callback functions. */
   Optional<Array<MeasureCallback>> measure_callbacks;
   /*! \brief The name of the tuning task. */
-  String task_name;
+  Optional<String> task_name;
   /*! \brief The seed value of random state. */
   TRandState seed;
   /*! \brief The number of threads to be used. */
@@ -116,7 +116,7 @@ class TuneContext : public runtime::ObjectRef {
                                Optional<CostModel> cost_model,                      //
                                Optional<Array<Postproc>> postprocs,                 //
                                Optional<Array<MeasureCallback>> measure_callbacks,  //
-                               String task_name,                                    //
+                               Optional<String> task_name,                          //
                                TRandState seed,                                     //
                                int num_threads,                                     //
                                int verbose);

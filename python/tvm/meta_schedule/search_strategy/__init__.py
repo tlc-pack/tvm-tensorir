@@ -17,4 +17,4 @@
 """Search Strategy"""
 
 from .search_strategy import SearchStrategy, PySearchStrategy
-from .replay_search_strategy import ReplaySearchStrategy
+from .replay_trace import ReplayTrace

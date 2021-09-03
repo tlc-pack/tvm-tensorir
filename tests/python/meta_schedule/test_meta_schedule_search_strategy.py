@@ -23,9 +23,10 @@ import pytest
 import tvm
 from tvm import tir
 from tvm.meta_schedule.search_strategy.search_strategy import PySearchStrategy
+from tvm.meta_schedule.tune_context import TuneContext
 from tvm.script import ty
 from tvm.tir import Schedule
-from tvm.meta_schedule import ReplaySearchStrategy, ScheduleFn
+from tvm.meta_schedule import ReplayTrace, ScheduleFn
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
 # fmt: off
@@ -58,8 +59,56 @@ def schedule_matmul(sch: Schedule):
     sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
 
 
+def test_meta_schedule_py_search_strategy():
+    class MySearchStrategy(PySearchStrategy):
+        """test class"""
+
+        def initialize_with_tune_context(self, tune_context):
+            raise Exception("MySearchStrategy")
+
+        def pre_tuning(self, design_spaces):
+            pass
+
+        def post_tuning(self):
+            pass
+
+        def generate_measure_candidates(self):
+            pass
+
+        def notify_runner_results(self, results):
+            pass
+
+    search_strategy = MySearchStrategy()
+    with pytest.raises(Exception, match="MySearchStrategy"):
+        search_strategy.initialize_with_tune_context(TuneContext(mod=Matmul()))
+
+
 def test_meta_schedule_replay_trace():
-    pass
+    trials = 100
+    batch_size = 30
+
+    space_generator = ScheduleFn(sch_fn=schedule_matmul)
+    tune_context = TuneContext(mod=Matmul())
+
+    replay = ReplayTrace(batch_size, trials)
+    replay.initialize_with_tune_context(tune_context)
+    replay.pre_tuning(design_spaces=space_generator.generate_design_space(Matmul()))
+
+    results = []
+    candidates = replay.generate_measure_candidates()
+    while candidates is not None:
+        results += candidates
+        assert len(results) <= trials
+        assert len(candidates) == batch_size or len(results) == trials
+        # TODO(add IRModule comparison)
+        replay.notify_runner_results(
+            [(None, None) for candidate in candidates]
+        )  # AWAIT(zxybazh) : Fix with runner
+        candidates = replay.generate_measure_candidates()
+
+    assert len(results) == trials
+
+    replay.post_tuning()
 
 
 if __name__ == "__main__":

@@ -46,13 +46,11 @@ TuneContext::TuneContext(Optional<IRModule> mod,                              //
                          Optional<CostModel> cost_model,                      //
                          Optional<Array<Postproc>> postprocs,                 //
                          Optional<Array<MeasureCallback>> measure_callbacks,  //
-                         String task_name,                                    //
+                         Optional<String> task_name,                          //
                          TRandState seed,                                     //
                          int num_threads,                                     //
                          int verbose) {
-  // Make a new TuneContextNode object.
   ObjectPtr<TuneContextNode> n = make_object<TuneContextNode>();
-  // Copy the given argument values.
   n->mod = mod;
   n->target = target;
   n->space_generator = space_generator;
@@ -77,7 +75,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
                        Optional<CostModel> cost_model,                      //
                        Optional<Array<Postproc>> postprocs,                 //
                        Optional<Array<MeasureCallback>> measure_callbacks,  //
-                       String task_name,                                    //
+                       Optional<String> task_name,                          //
                        TRandState seed,                                     //
                        int num_threads,                                     //
                        int verbose) -> TuneContext {

@@ -134,22 +134,3 @@ class PySearchStrategy(SearchStrategy):
 
     def notify_runner_results(self, results: List["RunnerResult"]) -> None:
         raise NotImplementedError
-
-
-@register_object("meta_schedule.ReplayTrace")
-class ReplayTrace(SearchStrategy):
-    """
-    Replay Search Strategy is a search strategy that always replays the trace by removing its
-    decisions so that the decisions would be randomly re-generated.
-    """
-
-    num_trials_per_iter: int
-    num_trials_total: int
-
-    def __init__(self, num_trials_per_iter: int, num_trials_total: int):
-        """Constructor"""
-        self.__init_handle_by_constructor__(
-            _ffi_api.ReplayTrace,  # pylint: disable=no-member
-            num_trials_per_iter,
-            num_trials_total,
-        )
