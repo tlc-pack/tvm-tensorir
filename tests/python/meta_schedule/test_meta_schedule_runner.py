@@ -125,26 +125,25 @@ def test_meta_schedule_single_run():
         ],
     )
 
-    tracker = Tracker(silent=True)
-    server = Server(tracker, silent=True)
-
-    rpc_config = RPCConfig(
-        tracker_host=tracker.host,
-        tracker_port=tracker.port,
-        tracker_key=server.key,
-        session_priority=1,
-        session_timeout_sec=100,
-    )
-    evaluator_config = EvaluatorConfig(
-        number=1,
-        repeat=1,
-        min_repeat_ms=0,
-        enable_cpu_cache_flush=False,
-    )
-    runner = RPCRunner(rpc_config, evaluator_config)
-    # Run the module
-    (runner_future,) = runner.run([runner_input])
-    runner_result = runner_future.result()
+    with Tracker(silent=True) as tracker:
+        with Server(tracker, silent=True) as server:
+            rpc_config = RPCConfig(
+                tracker_host=tracker.host,
+                tracker_port=tracker.port,
+                tracker_key=server.key,
+                session_priority=1,
+                session_timeout_sec=100,
+            )
+            evaluator_config = EvaluatorConfig(
+                number=1,
+                repeat=1,
+                min_repeat_ms=0,
+                enable_cpu_cache_flush=False,
+            )
+            runner = RPCRunner(rpc_config, evaluator_config)
+            # Run the module
+            (runner_future,) = runner.run([runner_input])
+            runner_result = runner_future.result()
     assert runner_result.error_msg is None
     for result in runner_result.run_sec:
         if isinstance(result, FloatImm):

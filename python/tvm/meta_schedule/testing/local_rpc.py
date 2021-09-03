@@ -68,6 +68,13 @@ class Tracker:
         self.port = self.tracker.port
         time.sleep(0.5)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.tracker.terminate()
+        del self.tracker
+
 
 class Server:
     """Server
@@ -129,3 +136,10 @@ class Server:
         )
         self.key = key
         time.sleep(0.5)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.server.terminate()
+        del self.server
