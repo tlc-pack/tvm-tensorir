@@ -72,7 +72,6 @@ class Tracker:
         return self
 
     def __exit__(self, type, value, traceback):
-        self.tracker.terminate()
         del self.tracker
 
 
@@ -141,5 +140,4 @@ class Server:
         return self
 
     def __exit__(self, type, value, traceback):
-        self.server.terminate()
         del self.server
