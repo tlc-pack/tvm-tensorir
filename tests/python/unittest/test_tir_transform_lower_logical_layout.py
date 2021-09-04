@@ -32,8 +32,8 @@ def _check(original, transformed):
 
 def _check_fail(original):
     mod = tvm.IRModule.from_expr(original)
-    with pytest.raises(tvm.TVMError):
-        mod = tvm.tir.transform.ConvertBlocksToOpaque()(mod)
+    mod = tvm.tir.transform.ConvertBlocksToOpaque()(mod)
+    with pytest.raises(ValueError):
         mod = tvm.tir.transform.LowerLogicalLayout()(mod)
 
 

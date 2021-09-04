@@ -39,7 +39,7 @@ namespace tir {
 using namespace support;
 
 /*!
- * \brief return the region collected by NDIntSet. return the oroginal buffer shape if the
+ * \brief return the region collected by NDIntSet. return the original buffer shape if the
  *        int_set is empty.
  */
 Region NarrowBufferRegionFromNDIntSet(const NDIntSet& nd_int_set,

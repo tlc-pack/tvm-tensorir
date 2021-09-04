@@ -375,13 +375,28 @@ Array<Array<arith::IterMark>> TrivialSubspaceDivision(const Array<IterVar>& iter
         bindings[i], [&outer_loop_vars](const VarNode* var) { return outer_loop_vars.count(var); });
     bool inner = UsesVar(
         bindings[i], [&inner_loop_vars](const VarNode* var) { return inner_loop_vars.count(var); });
+    bool is_var = bindings[i]->IsInstance<VarNode>();
     if (outer && !inner) {
-      arith::IterMark outer(arith::IterSumExpr({}, bindings[i]), iter_vars[i]->dom->extent);
+      arith::IterMark outer{nullptr};
+      if (is_var) {
+        outer = arith::IterMark(
+            arith::IterSplitExpr(arith::IterMark(bindings[i], iter_vars[i]->dom->extent)),
+            iter_vars[i]->dom->extent);
+      } else {
+        outer = arith::IterMark(arith::IterSumExpr({}, bindings[i]), iter_vars[i]->dom->extent);
+      }
       arith::IterMark inner(arith::IterSumExpr({}, 0), 1);
       res.push_back(Array<arith::IterMark>({outer, inner}));
     } else if (inner && !outer) {
+      arith::IterMark inner{nullptr};
+      if (is_var) {
+        inner = arith::IterMark(
+            arith::IterSplitExpr(arith::IterMark(bindings[i], iter_vars[i]->dom->extent)),
+            iter_vars[i]->dom->extent);
+      } else {
+        inner = arith::IterMark(arith::IterSumExpr({}, bindings[i]), iter_vars[i]->dom->extent);
+      }
       arith::IterMark outer(arith::IterSumExpr({}, 0), 1);
-      arith::IterMark inner(arith::IterSumExpr({}, bindings[i]), iter_vars[i]->dom->extent);
       res.push_back(Array<arith::IterMark>({outer, inner}));
     } else if (!outer && !inner) {
       arith::IterMark outer(arith::IterSumExpr({}, 0), 1);
