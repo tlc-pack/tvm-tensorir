@@ -21,7 +21,7 @@ import os
 import os.path as osp
 import shutil
 from contextlib import contextmanager
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 
 from ...contrib.popen_pool import PopenPoolExecutor
 from ...rpc import RPCSession
@@ -92,34 +92,68 @@ class RPCRunner(PyRunner):
         The cooldown in seconds.
     alloc_repeat: int
         The number of times to repeat the allocation.
-    f_create_session: Optional[str]
-        The function name to create the session.
-    f_upload_module: Optional[str]
-        The function name to upload the module.
-    f_alloc_argument: Optional[str]
-        The function name to allocate the arguments.
-    f_run_evaluator: Optional[str]
-        The function name to run the evaluator.
-    f_cleanup: Optional[str]
-        The function name to cleanup the session.
+    f_create_session: Optional[str, Callable]
+        The function name to create the session or the function itself.
+    f_upload_module: Optional[str, Callable]
+        The function name to upload the module or the function itself.
+    f_alloc_argument: Optional[str, Callable]
+        The function name to allocate the arguments or the function itself.
+    f_run_evaluator: Optional[str, Callable]
+        The function name to run the evaluator or the function itself.
+    f_cleanup: Optional[str, Callable]
+        The function name to cleanup the session or the function itself.
     pool: str
         The popen pool executor.
 
     Note
     ----
-    Does not support customizd function for f_create_session, f_upload_module, f_alloc_argument,
-    f_run_evaluator, f_cleanup.
+    Does not support customizd function name passing for f_create_session, f_upload_module,
+    f_alloc_argument, f_run_evaluator, f_cleanup. These functions must be passed directly.
     """
 
     rpc_config: RPCConfig
     evaluator_config: EvaluatorConfig
     cooldown_sec: float
     alloc_repeat: int
-    f_create_session: Optional[str] = None
-    f_upload_module: Optional[str] = None
-    f_alloc_argument: Optional[str] = None
-    f_run_evaluator: Optional[str] = None
-    f_cleanup: Optional[str] = None
+
+    f_create_session: Optional[
+        Union[
+            str,
+            Callable[
+                [RPCConfig],
+                RPCSession,
+            ],
+        ]
+    ] = None
+    f_upload_module: Optional[Union[str, Callable[[RPCSession, str, str], Module]]] = None
+    f_alloc_argument: Optional[
+        Union[
+            str,
+            Callable[
+                [RPCSession, Device, int, PyArgsInfo],
+                List[Args],
+            ],
+        ]
+    ] = None
+    f_run_evaluator: Optional[
+        Union[
+            str,
+            Callable[
+                [
+                    RPCSession,
+                    Module,
+                    Device,
+                    EvaluatorConfig,
+                    List[Args],
+                ],
+                List[float],
+            ],
+        ]
+    ] = None
+    f_cleanup: Optional[
+        Union[str, Callable[[Optional[RPCSession], Optional[str], Optional[str]], None]]
+    ] = None
+
     pool: PopenPoolExecutor
 
     def __init__(
@@ -148,16 +182,16 @@ class RPCRunner(PyRunner):
             The cooldown in seconds.
         alloc_repeat: int
             The number of times to random fill the allocation.
-        f_create_session: Optional[str]
-            The function name to create the session.
-        f_upload_module: Optional[str]
-            The function name to upload the module.
-        f_alloc_argument: Optional[str]
-            The function name to allocate the arguments.
-        f_run_evaluator: Optional[str]
-            The function name to run the evaluator.
-        f_cleanup: Optional[str]
-            The function name to cleanup the session.
+        f_create_session: Optional[str, Callable]
+            The function name to create the session or the function itself.
+        f_upload_module: Optional[str, Callable]
+            The function name to upload the module or the function itself.
+        f_alloc_argument: Optional[str, Callable]
+            The function name to allocate the arguments or the function itself.
+        f_run_evaluator: Optional[str, Callable]
+            The function name to run the evaluator or the function itself.
+        f_cleanup: Optional[str, Callable]
+            The function name to cleanup the session or the function itself.
         max_connections: Optional[int]
             The maximum number of connections.
         initializer: Optional[Callable[[], None]]
