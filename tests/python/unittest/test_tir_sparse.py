@@ -21,6 +21,7 @@ def spmm_tir(a_indptr: ty.handle, a_indices: ty.handle, a_data: ty.handle, b: ty
             C[vi, vj] = C[vi, vj] + A[vk] * B[A_indices[vk], vj]
 
 
+"""
 @tvm.script.tir
 def spmm_sparse_tir(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     m = tir.var('int32')
@@ -38,6 +39,7 @@ def spmm_sparse_tir(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 with tir.init():
                     C[vi, vj] = 0.
                 C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+"""
  
 
 @tvm.script.tir
@@ -57,6 +59,7 @@ def embedding_update(a: ty.handle, grad_out: ty.handle, grad_in: ty.handle) -> N
                 C[vk, vj] = C[vk, vj] + A[vi, vk] * B[vi, vj]
 
 
+"""
 # https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-16816-f16
 @tvm.script.tir
 def sparse_tensor_core_desr(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
@@ -74,13 +77,8 @@ def sparse_tensor_core_desr(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 with tir.init():
                     C[vi, vj] = 0.
                 C[vi, vj] = C[vi, vj] + A[vi, vk, vl] * B[vk * 4 + vl, vj]
+"""
 
-
-def test_spmm():
-    f = spmm_sparse_tir
-
-def test_sparse_tensor_core():
-    pass
 
 if __name__ == "__main__":
-    test_spmm()
+    pass

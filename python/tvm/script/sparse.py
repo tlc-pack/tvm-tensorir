@@ -36,16 +36,5 @@ class MatchSparseBuffer(SpecialStmt):
             dtype="float32",
             span=None,
         ):
-            if not isinstance(self.node, ast.Assign):
-                self.context.report_error(
-                    "sp.match_buffer must be assigned to a buffer",
-                    self.node.span
-                )
-            buffer = tvm.tir.sparse.decl_buffer(
-                shape,
-                dtype,
-
-            )
-        
-        super().__init__(match_buffer, def_symbol=True)
+            pass
 
