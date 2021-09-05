@@ -372,7 +372,7 @@ def rowsum_blockized(a: ty.handle, b: ty.handle) -> None:
                     tir.bind(k, ko * 8 + i2_1)
                     B[io, ii] = B[io, ii] + A[io, ii, k]
 
-                    
+
 @tvm.script.tir
 def multiple_reduction_blocks(a: ty.handle, f: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16, 16))
@@ -511,6 +511,7 @@ def matmul_decompose1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 # pylint: enable=no-member,invalid-name,unused-variable,unexpected-keyword-arg
+
 
 def test_reduction_decompose1():
     s = tir.Schedule(matmul, debug_mask="all")
