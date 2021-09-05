@@ -2678,9 +2678,9 @@ def vthread_func(a: ty.handle, c: ty.handle) -> None:
     tir.launch_thread(i1, 2)
     tir.launch_thread(i2, 2)
     B = tir.allocate([16], "float32", "local")
-    for j in range(0, 16):
+    for j in range(16):
         B[j] = tir.load("float32", A.data, i0 * 64 + i1 * 32 + i2 * 16 + j) + tir.float32(1)
-    for j in range(0, 16):
+    for j in range(16):
         C.data[i0 * 64 + i1 * 32 + i2 * 16 + j] = tir.load("float32", B, j) * tir.float32(2)
 
 
@@ -2712,7 +2712,7 @@ def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         with tir.block([128, 128], "init") as [vi, vj]:
             C[vi, vj] = tir.float32(0)
 
-        for k in range(0, 128):
+        for k in range(128):
             with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
                 C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
@@ -2901,8 +2901,8 @@ def opaque_block(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32")
     B = tir.match_buffer(b, (16, 16), "float32")
 
-    for i in range(0, 16):
-        for j in range(0, 16):
+    for i in range(16):
+        for j in range(16):
             with tir.block([]):
                 tir.reads([])
                 tir.writes(A[i, j])
@@ -2910,7 +2910,7 @@ def opaque_block(a: ty.handle, b: ty.handle) -> None:
         with tir.block([]):
             tir.reads([A[i, 0:16]])
             tir.writes([B[i, 0:16]])
-            for j in range(0, 16):
+            for j in range(16):
                 B[i, j] = A[i, j]
 
 
@@ -2954,7 +2954,7 @@ def rank0_block(a: ty.handle) -> None:
     with tir.block([], "update") as []:
         tir.reads([A[()]])
         tir.writes([B[()]])
-        for i in range(0, 1):
+        for i in range(1):
             B[()] = A[()]
 
 
