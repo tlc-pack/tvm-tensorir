@@ -513,7 +513,7 @@ def matmul_decompose1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 # pylint: enable=no-member,invalid-name,unused-variable,unexpected-keyword-arg
 
 def test_reduction_decompose1():
-    s = tir.Schedule(matmul, debug_mode=True)
+    s = tir.Schedule(matmul, debug_mask="all")
     C = s.get_block("update")
     i, _, _ = s.get_loops(C)
     s.decompose_reduction(C, i)
@@ -521,14 +521,14 @@ def test_reduction_decompose1():
 
 
 def test_reduction_decompose2():
-    s = tir.Schedule(matmul, debug_mode=True)
+    s = tir.Schedule(matmul, debug_mask="all")
     C = s.get_block("update")
     s.decompose_reduction(C, loop=None)
     tvm.ir.assert_structural_equal(matmul_decompose1, s.mod["main"])
 
 
 def test_reduction_decompose3():
-    s = tir.Schedule(rowsum_blockized, debug_mode=True)
+    s = tir.Schedule(rowsum_blockized, debug_mask="all")
     blockized_B = s.get_block("blockized_B")
     io, ko = s.get_loops(blockized_B)
     s.decompose_reduction(blockized_B, ko)

@@ -396,13 +396,13 @@ class StateCreator : private StmtVisitor {
    * \brief The entry function
    * \param self The schedule state to be completed
    */
-  static ObjectPtr<ScheduleStateNode> Create(IRModule mod, int debug_mode) {
+  static ObjectPtr<ScheduleStateNode> Create(IRModule mod, int debug_mask) {
     ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
     ScheduleStateNode* self = n.get();
     // Set `n->mod`
     n->mod = std::move(mod);
-    // Set `n->debug_mode`
-    n->debug_mode = debug_mode;
+    // Set `n->debug_mask`
+    n->debug_mask = debug_mask;
     // Set `n->stmt2ref` and `n->block_info`
     StateCreator creator(self);
     for (const auto& kv : n->mod->functions) {
