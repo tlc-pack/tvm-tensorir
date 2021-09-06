@@ -101,6 +101,9 @@ inline NDIntSet NDIntSetUnion(const std::vector<NDIntSet>& nd_int_sets) {
     return nd_int_sets[0];
   }
   int ndim = nd_int_sets[0].size();
+  for (int i = 1; i < n; ++i) {
+    ICHECK_EQ(nd_int_sets[i].size(), ndim);
+  }
   NDIntSet result;
   result.reserve(ndim);
   Array<arith::IntSet> int_sets(n, arith::IntSet{nullptr});
