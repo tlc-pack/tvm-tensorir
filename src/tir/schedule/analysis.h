@@ -138,7 +138,7 @@ void CheckReductionBlock(const ScheduleState& self, const StmtSRef& block_sref,
                          const StmtSRef& scope_root_sref);
 
 /*!
- * \brief Check if the block is a reduction block under the scope
+ * \brief Check if the block is a complete block or a reduction block under the scope
  * \param self The schedule state
  * \param block_sref The sref of the block to be checked
  * \param scope_root_sref The scope root of the block
