@@ -24,7 +24,7 @@ from tvm.script import ty
 from tvm.tir.schedule.testing import verify_trace_roundtrip
 
 # fmt: off
-# pylint: disable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
+# pylint: disable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name,unexpected-keyword-arg
 
 @tvm.script.tir
 def two_elementwise(a: ty.handle, c: ty.handle) -> None:
@@ -636,7 +636,38 @@ def fail_all_producers_under_loop(a: ty.handle, d: ty.handle) -> None:
         with tir.block([128, 128], "D") as [vi, vj]:
             D[vi, vj] = B[vi, vj] + C[vi, vj]
 
-# pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
+
+@tvm.script.tir
+def read_out_of_bound(a: ty.handle, c:ty.handle) -> None:
+    A = tir.match_buffer(a, [16], "float32")
+    B = tir.alloc_buffer([16], "float32")
+    C = tir.match_buffer(c, [16], "float32")
+    for i in tir.serial(0, 16):
+        with tir.block([16], "B") as [v]:
+            B[v] = A[v]
+    for j in tir.serial(0, 16):
+        with tir.block([16], "C") as [v]:
+            tir.reads(B[v : v + 2])
+            C[v] = tir.if_then_else(v < 15, tir.max(B[v], B[v + 1]), B[v], dtype="float32")
+
+
+@tvm.script.tir
+def read_out_of_bound_after_compute_at(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [16], "float32")
+    B = tir.alloc_buffer([16], "float32")
+    C = tir.match_buffer(c, [16], "float32")
+    for j in tir.serial(0, 16):
+        for i in tir.serial(0, tir.min(1, 15 - j) + 1):
+            with tir.block([16], "B") as [v]:
+                tir.bind(v, j + i)
+                B[v] = A[v]
+        with tir.block([16], "C") as [v]:
+            tir.bind(v, j)
+            tir.reads([B[v : v + 2]])
+            C[v] = tir.if_then_else(v < 15, tir.max(B[v], B[v + 1]), B[v], dtype="float32")
+
+
+# pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name,unexpected-keyword-arg
 # fmt: on
 
 
@@ -737,6 +768,15 @@ def test_reverse_compute_at_factorized():
     sch.reverse_compute_at(block, loop, preserve_unit_loops=False)
     tvm.ir.assert_structural_equal(factorized_after_reverse_compute_at, sch.mod["main"])
     verify_trace_roundtrip(sch=sch, mod=factorized)
+
+
+def test_read_out_of_bound():
+    sch = tir.Schedule(read_out_of_bound, debug_mask="all")
+    block = sch.get_block("B")
+    (loop,) = sch.get_loops(sch.get_block("C"))
+    sch.compute_at(block, loop)
+    tvm.ir.assert_structural_equal(read_out_of_bound_after_compute_at, sch.mod["main"])
+    verify_trace_roundtrip(sch=sch, mod=read_out_of_bound)
 
 
 def test_fail_subtree_compact_dataflow():
