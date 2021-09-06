@@ -199,7 +199,9 @@ class ScopeReconstructor : private StmtMutator {
         iter_values.push_back(iter_dom->min);
       }
     }
-    Stmt new_subtree = BlockRealize(std::move(iter_values), const_true(), std::move(block_));
+    this->new_block_realize_ =
+        BlockRealize(std::move(iter_values), const_true(), std::move(block_));
+    Stmt new_subtree = this->new_block_realize_;
     for (int i = static_cast<int>(loop_vars.size()) - 1; i >= 0; --i) {
       const Var& loop_var = loop_vars[i];
       const PrimExpr& loop_extent = loop_extents[i];
@@ -246,6 +248,8 @@ class ScopeReconstructor : private StmtMutator {
   For loop_;
   /*! \brief The new loop to replace the original loop */
   For new_loop_{nullptr};
+  /*! \brief The new block realize to the moved block */
+  BlockRealize new_block_realize_{nullptr};
   /*! \brief The plan to remove the given block by replacing this loop/block in the AST */
   Stmt rm_src_stmt_{nullptr};
   /*! \brief The plan to remove the given block by replacing to this loop/block in the AST */
@@ -501,7 +505,10 @@ void ComputeAtOrReverseComputeAtImpl(ScheduleState self, const StmtSRef& block_s
   self->Replace(scope_root_sref, new_scope_root, {{scope_root, new_scope_root}});
   // Step 8. Update the cached flags
   BlockInfo& block_info = self->block_info[block_sref];
-  block_info.affine_binding = true;
+  block_info.affine_binding = IsAffineBinding(
+      /*realize=*/reconstructor.new_block_realize_,
+      /*loop_var_ranges=*/LoopDomainOfSRefTreePath(GetRef<StmtSRef>(block_sref->parent)),
+      /*analyzer=*/&analyzer);
 }
 
 void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& loop_sref,
