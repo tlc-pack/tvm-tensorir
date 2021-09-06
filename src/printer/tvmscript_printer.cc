@@ -67,6 +67,11 @@ enum class ExprPrecedence : int {
   kUnknown = 7,
 };
 
+/*!
+ * \brief The printer for TVMScript
+ * \details The printer obtain the precedence of the top-level operation when printing each
+ *          subexpression to decide whether or not parentheses is needed.
+ */
 class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
                          public ExprFunctor<Doc(const PrimExpr&, ExprPrecedence*)>,
                          public TypeFunctor<Doc(const Type&)> {
@@ -80,16 +85,8 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
    * \param node The node to be printed.
    * \param out_precedence The operator precedence of node if it's a PrimExpr,
    *        so we can simplify the bracket.
-   * \note precedence of each op:
-   *       0: Identity(e.g., IntImm, Var) and function call(e.g., floordiv, min)
-   *       1: Multiplication, division, and remainder
-   *       2: Addition and subtraction
-   *       3: For relational operators < and <= and > and >= respectively
-   *       4: For equality operators = and != respectively
-   *       5: And (&&)
-   *       6: Or (||)
    */
-  TVM_DLL Doc Print(const ObjectRef& node, ExprPrecedence* out_precedence = nullptr);
+  TVM_DLL Doc Print(const ObjectRef& node);
 
  private:
   /*! \brief whether show meta data */
@@ -411,16 +408,13 @@ Doc TVMScriptPrinter::PrintMatchBufferRegion(const MatchBufferRegionNode* op) {
   return doc;
 }
 
-Doc TVMScriptPrinter::Print(const ObjectRef& node, ExprPrecedence* out_precedence) {
+Doc TVMScriptPrinter::Print(const ObjectRef& node) {
   if (!node.defined()) return Doc::Text("None");
   if (node->IsInstance<StmtNode>()) {
     return PrintOptionalInfo(Downcast<Stmt>(node)) << VisitStmt(Downcast<Stmt>(node));
   } else if (node->IsInstance<PrimExprNode>()) {
-    if (out_precedence == nullptr) {
-      ExprPrecedence t = ExprPrecedence::kUnknown;
-      return VisitExpr(Downcast<PrimExpr>(node), &t);
-    }
-    return VisitExpr(Downcast<PrimExpr>(node), out_precedence);
+    ExprPrecedence t = ExprPrecedence::kUnknown;
+    return VisitExpr(Downcast<PrimExpr>(node), &t);
   } else if (node->IsInstance<TypeNode>()) {
     return VisitType(Downcast<Type>(node));
   } else if (node->IsInstance<PrimFuncNode>()) {
@@ -491,8 +485,8 @@ Doc TVMScriptPrinter::VisitExpr_(const VarNode* op, ExprPrecedence* out_preceden
     ExprPrecedence lhs_precedence = ExprPrecedence::kUnknown;                          \
     ExprPrecedence rhs_precedence = ExprPrecedence::kUnknown;                          \
     /* Get children expr out_precedence */                                             \
-    Doc lhs_doc = Print(op->a, &lhs_precedence);                                       \
-    Doc rhs_doc = Print(op->b, &rhs_precedence);                                       \
+    Doc lhs_doc = VisitExpr(op->a, &lhs_precedence);                                   \
+    Doc rhs_doc = VisitExpr(op->b, &rhs_precedence);                                   \
     ICHECK(lhs_precedence != ExprPrecedence::kUnknown);                                \
     ICHECK(rhs_precedence != ExprPrecedence::kUnknown);                                \
     /* Update out_precedence of current node. */                                       \

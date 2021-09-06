@@ -3018,6 +3018,21 @@ def test_constant_folding():
 
 
 @tvm.script.tir
+def simplify_bracket() -> None:
+    a = tir.var("int32")
+    b = tir.var("int32")
+    c = tir.var("int32")
+    d = tir.var("int32")
+    tir.evaluate(a + b * (c + d))
+
+
+def test_simplify_bracket():
+    func = simplify_bracket
+    out_str = tvm.script.asscript(func, True)
+    assert out_str.count("a + b*(c + d)") == 1
+
+
+@tvm.script.tir
 def var_with_same_name(a: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32")
     with tir.block([16, 16]) as [vi, vj]:
