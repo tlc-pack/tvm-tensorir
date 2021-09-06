@@ -91,6 +91,7 @@ inline void NDIntSetUnionWith(NDIntSet* lhs, const NDIntSet& rhs) {
 
 /*!
  * \brief Union a list of N-dimensional integer sets
+ * \param nd_int_sets The N-dimensional integer sets to be merged.
  * \return The result of the union
  */
 inline NDIntSet NDIntSetUnion(const std::vector<NDIntSet>& nd_int_sets) {
