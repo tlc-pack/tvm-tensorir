@@ -363,14 +363,18 @@ class ScheduleNode : public runtime::Object {
    * \param block The block to be inlined to its producer
    */
   virtual void ReverseComputeInline(const BlockRV& block) = 0;
+  /******** Schedule: Reduction ********/
   /*!
-   * \brief Decompose a reduction block into init block and update block
-   * \param block_rv The reduction block
+   * \brief Decompose a reduction block into init block and update block, where the newly generated
+     init block will be under the specified loop. If no loop is specified, then if statement will
+     be generated. It requires:
+     1) The block is a reduction block.
+     2) The loop is higher than all the loops related to reduce block var, or loop is None.
+   * \param block_rv The reduction block to be decomposed
    * \param loop_rv The position where init block is inserted
    * \return The init block
    */
   virtual BlockRV DecomposeReduction(const BlockRV& block_rv, const Optional<LoopRV>& loop_rv) = 0;
-  /******** Schedule: Reduction ********/
   /*!
    * \brief Factorize an associative reduction block by the specified loop.
    * \details An associative reduction cannot be parallelized directly,

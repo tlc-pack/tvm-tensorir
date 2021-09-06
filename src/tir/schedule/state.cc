@@ -377,7 +377,7 @@ class BlockInfoCollector : private StmtVisitor {
     SetSeqIndexInChildren(self_, seq_stmt);
   }
 
-  /*! \brief The result ScheduleStateNode */
+  /*! \brief The ScheduleStateNode we are operating on */
   ScheduleStateNode* self_;
   /*! \brief The stack frame used to indicate the current scope */
   std::vector<StmtSRef> srefs_;

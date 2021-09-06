@@ -142,6 +142,7 @@ class ScheduleStateNode : public Object {
   /******** Property of blocks ********/
   /*! \brief Returns the BlockInfo correpsonding to the block sref */
   TVM_DLL BlockInfo GetBlockInfo(const StmtSRef& block_sref) const;
+  /*! \brief Recalculate the BlockInfo recursively under stmt */
   TVM_DLL void UpdateBlockInfo(const Stmt& stmt);
   /*!
    * \brief Get the BlockScope correpsonding to the sref of scope root block
