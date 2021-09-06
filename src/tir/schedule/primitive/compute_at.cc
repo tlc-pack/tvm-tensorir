@@ -348,7 +348,7 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
     std::string thread_tag =
         loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";
     if (write_scope == "shared" &&
-        (thread_tag.substr(0, 9) == "threadIdx" || thread_tag == "vthread")) {
+        (thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 7) == "vthread")) {
       return true;
     } else if ((write_scope == "global" || write_scope.empty()) &&
                (thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 9) == "blockIdx")) {
