@@ -35,10 +35,10 @@ using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
  * \param dom_high_exclusive The highest node in the sref tree path
  * \return An n-dimensional integer set
  */
-Array<arith::IntSet> AnalyzeRegionUpperBound(const BufferRegion& region,         //
-                                             const PrimExpr& predicate,          //
-                                             const StmtSRef& dom_low_inclusive,  //
-                                             const StmtSRef& dom_high_exclusive,
+Array<arith::IntSet> AnalyzeRegionUpperBound(const BufferRegion& region,          //
+                                             const PrimExpr& predicate,           //
+                                             const StmtSRef& dom_low_inclusive,   //
+                                             const StmtSRef& dom_high_exclusive,  //
                                              arith::Analyzer* analyzer) {
   Map<Var, Range> var_dom = LoopDomainOfSRefTreePath(
       /*low_inclusive=*/dom_low_inclusive,
