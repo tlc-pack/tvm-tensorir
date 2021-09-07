@@ -24,6 +24,7 @@ from typing import List
 
 import pytest
 import tvm
+import tvm.testing
 from tvm import tir
 from tvm._ffi import register_func
 from tvm.meta_schedule import (
@@ -36,6 +37,7 @@ from tvm.meta_schedule import (
     RunnerFuture,
     RunnerInput,
 )
+from tvm.meta_schedule.runner.rpc_runner import default_alloc_argument, default_run_evaluator
 from tvm.meta_schedule.arg_info import TensorArgInfo, PyArgsInfo, Args, ArgInfo
 from tvm.meta_schedule.testing import Server, Tracker
 from tvm.meta_schedule.utils import get_global_func_with_default_on_worker
@@ -48,27 +50,17 @@ from tvm.tir import FloatImm
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring,unbalanced-tuple-unpacking
 
 
-@tvm.script.tir
-class SmallMatmulModule:
-    def main(a: ty.handle, b: ty.handle, c: ty.handle) -> None:  # pylint: disable=no-self-argument
-        tir.func_attr({"global_symbol": "main", "tir.noalias": True})
-        A = tir.match_buffer(a, (2, 2), "float32")
-        B = tir.match_buffer(b, (2, 2), "float32")
-        C = tir.match_buffer(c, (2, 2), "float32")
-        with tir.block([2, 2, tir.reduce_axis(0, 2)], "matmul") as [vi, vj, vk]:
-            with tir.init():
-                C[vi, vj] = 0.0
-            C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
-
+MATMUL_N = 16
+MATMUL_M = 32
 
 @tvm.script.tir
 class MatmulModule:
     def main(a: ty.handle, b: ty.handle, c: ty.handle) -> None:  # pylint: disable=no-self-argument
         tir.func_attr({"global_symbol": "main", "tir.noalias": True})
-        A = tir.match_buffer(a, (1024, 1024), "float32")
-        B = tir.match_buffer(b, (1024, 1024), "float32")
-        C = tir.match_buffer(c, (1024, 1024), "float32")
-        with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
+        A = tir.match_buffer(a, (16, 16), "float32")
+        B = tir.match_buffer(b, (16, 16), "float32")
+        C = tir.match_buffer(c, (16, 16), "float32")
+        with tir.block([16, 16, tir.reduce_axis(0, 16)], "matmul") as [vi, vj, vk]:
             with tir.init():
                 C[vi, vj] = 0.0
             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
@@ -78,15 +70,15 @@ class MatmulModule:
 class MatmulReluModule:
     def main(a: ty.handle, b: ty.handle, d: ty.handle) -> None:  # pylint: disable=no-self-argument
         tir.func_attr({"global_symbol": "main", "tir.noalias": True})
-        A = tir.match_buffer(a, (1024, 1024), "float32")
-        B = tir.match_buffer(b, (1024, 1024), "float32")
-        D = tir.match_buffer(d, (1024, 1024), "float32")
-        C = tir.alloc_buffer((1024, 1024), "float32")
-        with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
+        A = tir.match_buffer(a, (16, 16), "float32")
+        B = tir.match_buffer(b, (16, 16), "float32")
+        D = tir.match_buffer(d, (16, 16), "float32")
+        C = tir.alloc_buffer((16, 16), "float32")
+        with tir.block([16, 16, tir.reduce_axis(0, 16)], "matmul") as [vi, vj, vk]:
             with tir.init():
                 C[vi, vj] = 0.0
             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
-        with tir.block([1024, 1024], "relu") as [vi, vj]:
+        with tir.block([16, 16], "relu") as [vi, vj]:
             D[vi, vj] = tir.max(C[vi, vj], 0.0)
 
 
@@ -94,10 +86,10 @@ class MatmulReluModule:
 class BatchMatmulModule:
     def main(a: ty.handle, b: ty.handle, c: ty.handle) -> None:  # pylint: disable=no-self-argument
         tir.func_attr({"global_symbol": "main", "tir.noalias": True})
-        A = tir.match_buffer(a, [16, 128, 128])
-        B = tir.match_buffer(b, [16, 128, 128])
-        C = tir.match_buffer(c, [16, 128, 128])
-        with tir.block([16, 128, 128, tir.reduce_axis(0, 128)], "update") as [vn, vi, vj, vk]:
+        A = tir.match_buffer(a, [16, 32, 32])
+        B = tir.match_buffer(b, [16, 32, 32])
+        C = tir.match_buffer(c, [16, 32, 32])
+        with tir.block([16, 32, 32, tir.reduce_axis(0, 32)], "update") as [vn, vi, vj, vk]:
             with tir.init():
                 C[vn, vi, vj] = 0.0
             C[vn, vi, vj] = C[vn, vi, vj] + A[vn, vi, vk] * B[vn, vj, vk]
@@ -107,10 +99,10 @@ class BatchMatmulModule:
 class AddModule:
     def main(a: ty.handle, b: ty.handle, c: ty.handle) -> None:  # pylint: disable=no-self-argument
         tir.func_attr({"global_symbol": "main", "tir.noalias": True})
-        A = tir.match_buffer(a, [128], "float32")
-        B = tir.match_buffer(b, [128], "float32")
-        C = tir.match_buffer(c, [128], "float32")
-        with tir.block([128], "add") as [vi]:
+        A = tir.match_buffer(a, [32], "float32")
+        B = tir.match_buffer(b, [32], "float32")
+        C = tir.match_buffer(c, [32], "float32")
+        with tir.block([32], "add") as [vi]:
             C[vi] = A[vi] + B[vi]
 
 
@@ -138,9 +130,9 @@ def test_meta_schedule_single_run():
         builder_result.artifact_path,
         "llvm",
         [
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
         ],
     )
 
@@ -189,19 +181,19 @@ def test_meta_schedule_multiple_runs():
 
     args_infos = [
         [
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
         ],
         [
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
         ],
         [
-            TensorArgInfo("float32", [16, 128, 128]),
-            TensorArgInfo("float32", [16, 128, 128]),
-            TensorArgInfo("float32", [16, 128, 128]),
+            TensorArgInfo("float32", [16, MATMUL_M, MATMUL_M]),
+            TensorArgInfo("float32", [16, MATMUL_M, MATMUL_M]),
+            TensorArgInfo("float32", [16, MATMUL_M, MATMUL_M]),
         ],
     ]
 
@@ -270,9 +262,9 @@ def test_meta_schedule_rpc_runner_time_out():
         "test",
         "llvm",
         [
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
         ],
     )
 
@@ -323,9 +315,9 @@ def test_meta_schedule_rpc_runner_exception():
         "test",
         "llvm",
         [
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
         ],
     )
 
@@ -435,9 +427,9 @@ def test_meta_schedule_runner_add_test():
         builder_result.artifact_path,
         "llvm",
         [
-            TensorArgInfo("float32", [128]),
-            TensorArgInfo("float32", [128]),
-            TensorArgInfo("float32", [128]),
+            TensorArgInfo("float32", [MATMUL_M]),
+            TensorArgInfo("float32", [MATMUL_M]),
+            TensorArgInfo("float32", [MATMUL_M]),
         ],
     )
 
@@ -477,8 +469,13 @@ def test_meta_schedule_runner_add_test():
 def test_meta_schedule_runner_matmul_test():
     """Test meta schedule runner with add module"""
 
-    repeated_args_local = []
-    repeated_args_remote = []
+    def _check_correct_matmul(args_before: List[np.array], args_after: List[np.array]) -> None:
+        a_before, b_before, c_before = args_before
+        a_after, b_after, c_after = args_after
+        c_before = np.matmul(a_before, b_before)
+        assert (a_before == a_after).all()
+        assert (b_before == b_after).all()
+        tvm.testing.assert_allclose(c_before, c_after, rtol=1e-5)
 
     def test_alloc_argument(
         session: RPCSession,
@@ -486,29 +483,14 @@ def test_meta_schedule_runner_matmul_test():
         alloc_repeat: int,
         args_info: PyArgsInfo,
     ) -> List[Args]:
-        try:
-            f_random_fill = session.get_function("tvm.contrib.random.random_fill")
-        except AttributeError as error:
-            raise AttributeError(
-                'Unable to find function "tvm.contrib.random.random_fill" on remote RPC server. '
-                "Please make sure USE_RANDOM is turned ON in the config.cmake on the RPC server."
-            ) from error
-        repeated_args: List[Args] = []
-        for _ in range(alloc_repeat):
-            args: Args = []
-            for arg_info in args_info:
-                arg = ArgInfo.alloc(arg_info, device)
-                if isinstance(arg, NDArray):
-                    f_random_fill(arg)
-                args.append(arg)
-            repeated_args_local.append([arg.asnumpy() for arg in args])
-            repeated_args.append(args)
+        global repeated_args_before
+        repeated_args_before = []
+        repeated_args = default_alloc_argument(session, device, alloc_repeat, args_info)
+        for args in repeated_args:
+            args: Args
+            for arg in args:
+                repeated_args_before.append([arg.asnumpy() for arg in args])
         return repeated_args
-
-    def _check_correct_matmul(args_local: List[np.array], args_remote: List[np.array]) -> None:
-        assert (args_local[0] == args_remote[0]).all()
-        assert (args_local[1] == args_remote[1]).all()
-        assert np.isclose(np.matmul(args_local[0], args_local[1]), args_remote[2], rtol=1e-5).all()
 
     def test_run_evaluator(
         session: RPCSession,  # pylint: disable=unused-argument
@@ -517,6 +499,8 @@ def test_meta_schedule_runner_matmul_test():
         evaluator_config: EvaluatorConfig,
         repeated_args: List[Args],
     ) -> List[float]:
+        global repeated_args_before
+        repeated_args_after = []
         evaluator = rt_mod.time_evaluator(
             func_name=rt_mod.entry_name,
             dev=device,
@@ -532,10 +516,11 @@ def test_meta_schedule_runner_matmul_test():
             device.sync()
             profile_result = evaluator(*args)
             repeated_costs.append(profile_result.results)
-            repeated_args_remote.append([arg.asnumpy() for arg in args])
-        for args_local, args_remote in zip(repeated_args_local, repeated_args_remote):
-            _check_correct_matmul(args_local, args_remote)
+            repeated_args_after.append([arg.asnumpy() for arg in args])
         costs = [float(cost) for cost in itertools.chain.from_iterable(repeated_costs)]
+        for args_before, args_after in zip(repeated_args_before, repeated_args_after):
+            _check_correct_matmul(args_before, args_after)
+        del repeated_args_before
         return costs
 
     # Build the module
@@ -549,9 +534,9 @@ def test_meta_schedule_runner_matmul_test():
         builder_result.artifact_path,
         "llvm",
         [
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
-            TensorArgInfo("float32", (1024, 1024)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
         ],
     )
 
@@ -590,3 +575,4 @@ def test_meta_schedule_runner_matmul_test():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__] + sys.argv[1:]))
+

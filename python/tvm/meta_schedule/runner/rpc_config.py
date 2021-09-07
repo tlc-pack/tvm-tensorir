@@ -18,7 +18,7 @@
 
 import os
 from threading import Thread
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Union
 
 from tvm import rpc
 
@@ -41,7 +41,7 @@ class RPCConfig(NamedTuple):
     """
 
     tracker_host: Optional[str] = None
-    tracker_port: Optional[str] = None
+    tracker_port: Union[None, int, str] = None
     tracker_key: Optional[str] = None
     session_priority: int = 1
     session_timeout_sec: int = 10
