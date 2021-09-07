@@ -89,7 +89,7 @@ class RPCRunner(PyRunner):
     evaluator_config: EvaluatorConfig
         The evaluator configuration.
     cooldown_sec: float
-        The cooldown in seconds.
+        The cooldown in seconds. TODO(@junrushao1994,zxybazh): This is not used yet.
     alloc_repeat: int
         The number of times to repeat the allocation.
     f_create_session: Optional[str, Callable]
