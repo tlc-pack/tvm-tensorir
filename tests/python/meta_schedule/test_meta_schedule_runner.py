@@ -37,12 +37,12 @@ from tvm.meta_schedule import (
     RunnerFuture,
     RunnerInput,
 )
-from tvm.meta_schedule.runner.rpc_runner import default_alloc_argument, default_run_evaluator
-from tvm.meta_schedule.arg_info import TensorArgInfo, PyArgsInfo, Args, ArgInfo
+from tvm.meta_schedule.runner.rpc_runner import default_alloc_argument
+from tvm.meta_schedule.arg_info import TensorArgInfo, PyArgsInfo, Args
 from tvm.meta_schedule.testing import Server, Tracker
 from tvm.meta_schedule.utils import get_global_func_with_default_on_worker
 from tvm.rpc import RPCSession
-from tvm.runtime import Device, Module, NDArray
+from tvm.runtime import Device, Module
 from tvm.script import ty
 from tvm.target import Target
 from tvm.tir import FloatImm
@@ -52,6 +52,7 @@ from tvm.tir import FloatImm
 
 MATMUL_N = 16
 MATMUL_M = 32
+
 
 @tvm.script.tir
 class MatmulModule:
@@ -352,120 +353,6 @@ def test_meta_schedule_rpc_runner_exception():
     assert runner_result.run_sec is None
 
 
-def test_meta_schedule_runner_add_test():
-    """Test meta schedule runner with add module"""
-
-    repeated_args_local = []
-    repeated_args_remote = []
-
-    def test_alloc_argument(
-        session: RPCSession,
-        device: Device,
-        alloc_repeat: int,
-        args_info: PyArgsInfo,
-    ) -> List[Args]:
-        try:
-            f_random_fill = session.get_function("tvm.contrib.random.random_fill")
-        except AttributeError as error:
-            raise AttributeError(
-                'Unable to find function "tvm.contrib.random.random_fill" on remote RPC server. '
-                "Please make sure USE_RANDOM is turned ON in the config.cmake on the RPC server."
-            ) from error
-        repeated_args: List[Args] = []
-        for _ in range(alloc_repeat):
-            args: Args = []
-            for arg_info in args_info:
-                arg = ArgInfo.alloc(arg_info, device)
-                if isinstance(arg, NDArray):
-                    f_random_fill(arg)
-                args.append(arg)
-            repeated_args_local.append([arg.asnumpy() for arg in args])
-            repeated_args.append(args)
-        return repeated_args
-
-    def _check_correct_add(args_local: List[np.array], args_remote: List[np.array]) -> None:
-        assert (args_local[0] == args_remote[0]).all()
-        assert (args_local[1] == args_remote[1]).all()
-        assert (args_local[0] + args_local[1] == args_remote[2]).all()
-
-    def test_run_evaluator(
-        session: RPCSession,  # pylint: disable=unused-argument
-        rt_mod: Module,
-        device: Device,
-        evaluator_config: EvaluatorConfig,
-        repeated_args: List[Args],
-    ) -> List[float]:
-        evaluator = rt_mod.time_evaluator(
-            func_name=rt_mod.entry_name,
-            dev=device,
-            number=evaluator_config.number,
-            repeat=evaluator_config.repeat,
-            min_repeat_ms=evaluator_config.min_repeat_ms,
-            f_preproc="cache_flush_cpu_non_first_arg"
-            if evaluator_config.enable_cpu_cache_flush
-            else "",
-        )
-        repeated_costs: List[List[float]] = []
-        for args in repeated_args:
-            device.sync()
-            profile_result = evaluator(*args)
-            repeated_costs.append(profile_result.results)
-            repeated_args_remote.append([arg.asnumpy() for arg in args])
-        for args_local, args_remote in zip(repeated_args_local, repeated_args_remote):
-            _check_correct_add(args_local, args_remote)
-        costs = [float(cost) for cost in itertools.chain.from_iterable(repeated_costs)]
-        return costs
-
-    # Build the module
-    mod = AddModule()
-    builder = LocalBuilder()
-    (builder_result,) = builder.build([BuilderInput(mod, Target("llvm"))])
-    assert builder_result.artifact_path is not None
-    assert builder_result.error_msg is None
-
-    runner_input = RunnerInput(
-        builder_result.artifact_path,
-        "llvm",
-        [
-            TensorArgInfo("float32", [MATMUL_M]),
-            TensorArgInfo("float32", [MATMUL_M]),
-            TensorArgInfo("float32", [MATMUL_M]),
-        ],
-    )
-
-    with Tracker(silent=True) as tracker:
-        with Server(tracker, silent=True) as server:
-            rpc_config = RPCConfig(
-                tracker_host=tracker.host,
-                tracker_port=tracker.port,
-                tracker_key=server.key,
-                session_priority=1,
-                session_timeout_sec=100,
-            )
-            evaluator_config = EvaluatorConfig(
-                number=1,
-                repeat=1,
-                min_repeat_ms=0,
-                enable_cpu_cache_flush=False,
-            )
-            runner = RPCRunner(
-                rpc_config,
-                evaluator_config,
-                f_alloc_argument=test_alloc_argument,
-                f_run_evaluator=test_run_evaluator,
-            )
-            # Run the module
-            (runner_future,) = runner.run([runner_input])
-            runner_result = runner_future.result()
-    assert runner_result.error_msg is None
-    for result in runner_result.run_sec:
-        if isinstance(result, FloatImm):
-            result = result.value
-        assert isinstance(result, float)
-        assert result >= 0.0
-    _clean_build(builder_result.artifact_path)
-
-
 def test_meta_schedule_runner_matmul_test():
     """Test meta schedule runner with add module"""
 
@@ -483,13 +370,12 @@ def test_meta_schedule_runner_matmul_test():
         alloc_repeat: int,
         args_info: PyArgsInfo,
     ) -> List[Args]:
-        global repeated_args_before
+        global repeated_args_before  # pylint: disable=global-variable-undefined, invalid-name
         repeated_args_before = []
         repeated_args = default_alloc_argument(session, device, alloc_repeat, args_info)
         for args in repeated_args:
             args: Args
-            for arg in args:
-                repeated_args_before.append([arg.asnumpy() for arg in args])
+            repeated_args_before.append([arg.asnumpy() for arg in args])
         return repeated_args
 
     def test_run_evaluator(
@@ -499,7 +385,7 @@ def test_meta_schedule_runner_matmul_test():
         evaluator_config: EvaluatorConfig,
         repeated_args: List[Args],
     ) -> List[float]:
-        global repeated_args_before
+        global repeated_args_before  # pylint: disable=global-variable-undefined, invalid-name
         repeated_args_after = []
         evaluator = rt_mod.time_evaluator(
             func_name=rt_mod.entry_name,
@@ -573,6 +459,111 @@ def test_meta_schedule_runner_matmul_test():
     _clean_build(builder_result.artifact_path)
 
 
+def test_meta_schedule_runner_add_test():
+    """Test meta schedule runner with add module"""
+
+    def _check_correct_add(args_before: List[np.array], args_after: List[np.array]) -> None:
+        a_before, b_before, c_before = args_before
+        a_after, b_after, c_after = args_after
+        c_before = a_before + b_before
+        assert (a_before == a_after).all()
+        assert (b_before == b_after).all()
+        assert (c_before == c_after).all()
+
+    def test_alloc_argument(
+        session: RPCSession,
+        device: Device,
+        alloc_repeat: int,
+        args_info: PyArgsInfo,
+    ) -> List[Args]:
+        global repeated_args_before  # pylint: disable=global-variable-undefined, invalid-name
+        repeated_args_before = []
+        repeated_args = default_alloc_argument(session, device, alloc_repeat, args_info)
+        for args in repeated_args:
+            args: Args
+            repeated_args_before.append([arg.asnumpy() for arg in args])
+        return repeated_args
+
+    def test_run_evaluator(
+        session: RPCSession,  # pylint: disable=unused-argument
+        rt_mod: Module,
+        device: Device,
+        evaluator_config: EvaluatorConfig,
+        repeated_args: List[Args],
+    ) -> List[float]:
+        global repeated_args_before  # pylint: disable=global-variable-undefined, invalid-name
+        repeated_args_after = []
+        evaluator = rt_mod.time_evaluator(
+            func_name=rt_mod.entry_name,
+            dev=device,
+            number=evaluator_config.number,
+            repeat=evaluator_config.repeat,
+            min_repeat_ms=evaluator_config.min_repeat_ms,
+            f_preproc="cache_flush_cpu_non_first_arg"
+            if evaluator_config.enable_cpu_cache_flush
+            else "",
+        )
+        repeated_costs: List[List[float]] = []
+        for args in repeated_args:
+            device.sync()
+            profile_result = evaluator(*args)
+            repeated_costs.append(profile_result.results)
+            repeated_args_after.append([arg.asnumpy() for arg in args])
+        costs = [float(cost) for cost in itertools.chain.from_iterable(repeated_costs)]
+        for args_before, args_after in zip(repeated_args_before, repeated_args_after):
+            _check_correct_add(args_before, args_after)
+        del repeated_args_before
+        return costs
+
+    # Build the module
+    mod = AddModule()
+    builder = LocalBuilder()
+    (builder_result,) = builder.build([BuilderInput(mod, Target("llvm"))])
+    assert builder_result.artifact_path is not None
+    assert builder_result.error_msg is None
+
+    runner_input = RunnerInput(
+        builder_result.artifact_path,
+        "llvm",
+        [
+            TensorArgInfo("float32", [MATMUL_M]),
+            TensorArgInfo("float32", [MATMUL_M]),
+            TensorArgInfo("float32", [MATMUL_M]),
+        ],
+    )
+
+    with Tracker(silent=True) as tracker:
+        with Server(tracker, silent=True) as server:
+            rpc_config = RPCConfig(
+                tracker_host=tracker.host,
+                tracker_port=tracker.port,
+                tracker_key=server.key,
+                session_priority=1,
+                session_timeout_sec=100,
+            )
+            evaluator_config = EvaluatorConfig(
+                number=1,
+                repeat=1,
+                min_repeat_ms=0,
+                enable_cpu_cache_flush=False,
+            )
+            runner = RPCRunner(
+                rpc_config,
+                evaluator_config,
+                f_alloc_argument=test_alloc_argument,
+                f_run_evaluator=test_run_evaluator,
+            )
+            # Run the module
+            (runner_future,) = runner.run([runner_input])
+            runner_result = runner_future.result()
+    assert runner_result.error_msg is None
+    for result in runner_result.run_sec:
+        if isinstance(result, FloatImm):
+            result = result.value
+        assert isinstance(result, float)
+        assert result >= 0.0
+    _clean_build(builder_result.artifact_path)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__] + sys.argv[1:]))
-
