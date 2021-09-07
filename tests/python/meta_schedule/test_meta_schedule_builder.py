@@ -20,16 +20,17 @@ from typing import List
 
 import os
 import sys
+import time
+
 import pytest
 
 from tvm._ffi import register_func
 import tvm
-from tvm.driver.build_module import build
 from tvm.runtime import Module
 from tvm import tir
 from tvm.script import ty
 from tvm.target import Target
-from tvm.meta_schedule import LocalBuilder, BuildInput, BuildResult, PyBuilder
+from tvm.meta_schedule import LocalBuilder, BuilderInput, BuilderResult, PyBuilder
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring
 
@@ -85,7 +86,7 @@ class BatchMatmulModule:
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring
 
 
-def _check_build_results(builder_results: List[BuildResult]):
+def _check_build_results(builder_results: List[BuilderResult]):
     """Simple check whether the build is successful"""
     for result in builder_results:
         artifact_path = result.artifact_path
@@ -100,7 +101,7 @@ def test_meta_schedule_single_build():
     """Test meta schedule builder for a single build"""
     mod = MatmulModule()
     builder = LocalBuilder()
-    builder_inputs = [BuildInput(mod, Target("llvm"))]
+    builder_inputs = [BuilderInput(mod, Target("llvm"))]
     builder_results = builder.build(builder_inputs)
     assert len(builder_results) == len(builder_inputs)
     _check_build_results(builder_results)
@@ -110,9 +111,9 @@ def test_meta_schedule_multiple_build():
     """Test meta schedule builder for multiple builds"""
     builder = LocalBuilder()
     builder_inputs = [
-        BuildInput(MatmulModule(), Target("llvm")),
-        BuildInput(MatmulReluModule(), Target("llvm")),
-        BuildInput(BatchMatmulModule(), Target("llvm")),
+        BuilderInput(MatmulModule(), Target("llvm")),
+        BuilderInput(MatmulReluModule(), Target("llvm")),
+        BuilderInput(BatchMatmulModule(), Target("llvm")),
     ]
     builder_results = builder.build(builder_inputs)
     assert len(builder_results) == len(builder_inputs)
@@ -123,14 +124,14 @@ def test_meta_schedule_error_handle_test_builder():
     """Test the error handing during building"""
 
     class TestBuilder(PyBuilder):
-        def build(self, build_inputs: List[BuildInput]) -> List[BuildResult]:
-            return [BuildResult(None, "error") for w in build_inputs]
+        def build(self, build_inputs: List[BuilderInput]) -> List[BuilderResult]:
+            return [BuilderResult(None, "error") for w in build_inputs]
 
     builder = TestBuilder()
     builder_inputs = [
-        BuildInput(MatmulModule(), Target("llvm")),
-        BuildInput(MatmulReluModule(), Target("llvm")),
-        BuildInput(BatchMatmulModule(), Target("llvm")),
+        BuilderInput(MatmulModule(), Target("llvm")),
+        BuilderInput(MatmulReluModule(), Target("llvm")),
+        BuilderInput(BatchMatmulModule(), Target("llvm")),
     ]
     builder_results = builder.build(builder_inputs)
     assert len(builder_results) == len(builder_inputs)
@@ -149,8 +150,8 @@ def test_meta_schedule_error_handle_build_func():
         def test_build(mod: Module, target: Target) -> None:  # pylint: disable=unused-variable
             raise ValueError("Builder intended Test Error (build func).")
 
-    builder = LocalBuilder(build_func="meta_schedule.builder.test_build", initializer=initializer)
-    builder_inputs = [BuildInput(MatmulModule(), Target("llvm"))]
+    builder = LocalBuilder(f_build="meta_schedule.builder.test_build", initializer=initializer)
+    builder_inputs = [BuilderInput(MatmulModule(), Target("llvm"))]
     builder_results = builder.build(builder_inputs)
     assert len(builder_results) == len(builder_inputs)
     for result in builder_results:
@@ -168,8 +169,8 @@ def test_meta_schedule_error_handle_export_func():
         def test_build(mod: Module) -> str:  # pylint: disable=unused-variable
             raise ValueError("Builder intended Test Error (export func).")
 
-    builder = LocalBuilder(export_func="meta_schedule.builder.test_export", initializer=initializer)
-    builder_inputs = [BuildInput(MatmulModule(), Target("llvm"))]
+    builder = LocalBuilder(f_export="meta_schedule.builder.test_export", initializer=initializer)
+    builder_inputs = [BuilderInput(MatmulModule(), Target("llvm"))]
     builder_results = builder.build(builder_inputs)
     assert len(builder_results) == len(builder_inputs)
     for result in builder_results:
@@ -184,17 +185,15 @@ def test_meta_schedule_error_handle_time_out():
 
     def initializer():
         @register_func("meta_schedule.builder.test_time_out")
-        def timeout_build(mod, target):  # pylint: disable=unused-variable
-            import time
-
+        def timeout_build(mod, target):  # pylint: disable=unused-argument, unused-variable
             time.sleep(2)
 
     builder = LocalBuilder(
         timeout_sec=1,
-        build_func="meta_schedule.builder.test_time_out",
+        f_build="meta_schedule.builder.test_time_out",
         initializer=initializer,
     )
-    builder_inputs = [BuildInput(MatmulModule(), Target("llvm"))]
+    builder_inputs = [BuilderInput(MatmulModule(), Target("llvm"))]
     builder_results = builder.build(builder_inputs)
     assert len(builder_results) == len(builder_inputs)
     for result in builder_results:
@@ -206,7 +205,7 @@ def test_meta_schedule_error_handle_time_out():
 
 def test_meta_schedule_missing_build_func():
     with pytest.raises(ValueError):
-        LocalBuilder(build_func="wrong-name")
+        LocalBuilder(f_build="wrong-name")
 
 
 if __name__ == "__main__":

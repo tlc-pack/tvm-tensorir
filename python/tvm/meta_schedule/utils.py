@@ -15,9 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 """Utility"""
-from typing import Callable, Optional
+import os
+import shutil
+from typing import Callable, Union
+
 import psutil
-from tvm._ffi import register_func, get_global_func
+from tvm._ffi import get_global_func, register_func
 from tvm.error import TVMError
 
 
@@ -38,13 +41,17 @@ def cpu_count(logical: bool = True) -> int:
     return psutil.cpu_count(logical=logical) or 1
 
 
-def get_global_func_with_default_on_worker(name: Optional[str], default: Callable) -> Callable:
+def get_global_func_with_default_on_worker(
+    name: Union[None, str, Callable],
+    default: Callable,
+) -> Callable:
     """Get the registered global function on the worker process.
 
     Parameters
     ----------
-    name : Optional[str]
-        If given, retrieve the function in TVM's global registry;
+    name : Union[None, str, Callable]
+        If given a string, retrieve the function in TVM's global registry;
+        If given a python function, return it as it is;
         Otherwise, return `default`.
 
     default : Callable
@@ -57,13 +64,21 @@ def get_global_func_with_default_on_worker(name: Optional[str], default: Callabl
     """
     if name is None:
         return default
+    if callable(name):
+        return name
     try:
         return get_global_func(name)
-    except TVMError:
+    except TVMError as error:
         raise ValueError(
             "Function '{name}' is not registered on the worker process. "
             "The build function and export function should be registered in the worker process. "
             "Note that the worker process is only aware of functions registered in TVM package, "
             "if there are extra functions to be registered, "
             "please send the registration logic via initializer."
-        )
+        ) from error
+
+
+@register_func("meta_schedule.remove_build_dir")
+def remove_build_dir(artifact_path: str):
+    """Clean up the build directory"""
+    shutil.rmtree(os.path.dirname(artifact_path))

@@ -26,7 +26,7 @@ namespace tvm {
 namespace meta_schedule {
 
 /*! \brief The builder's input. */
-class BuildInputNode : public runtime::Object {
+class BuilderInputNode : public runtime::Object {
  public:
   /*! \brief The IRModule to be built. */
   IRModule mod;
@@ -38,27 +38,27 @@ class BuildInputNode : public runtime::Object {
     v->Visit("target", &target);
   }
 
-  static constexpr const char* _type_key = "meta_schedule.BuildInput";
-  TVM_DECLARE_FINAL_OBJECT_INFO(BuildInputNode, runtime::Object);
+  static constexpr const char* _type_key = "meta_schedule.BuilderInput";
+  TVM_DECLARE_FINAL_OBJECT_INFO(BuilderInputNode, runtime::Object);
 };
 
 /*!
- * \brief Managed reference to BuildInputNode
- * \sa BuildInputNode
+ * \brief Managed reference to BuilderInputNode
+ * \sa BuilderInputNode
  */
-class BuildInput : public runtime::ObjectRef {
+class BuilderInput : public runtime::ObjectRef {
  public:
   /*!
-   * \brief Constructor of BuildInput.
+   * \brief Constructor of BuilderInput.
    * \param mod The IRModule to be built.
    * \param target The target to be built for.
    */
-  TVM_DLL explicit BuildInput(IRModule mod, Target target);
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BuildInput, runtime::ObjectRef, BuildInputNode);
+  TVM_DLL explicit BuilderInput(IRModule mod, Target target);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BuilderInput, runtime::ObjectRef, BuilderInputNode);
 };
 
 /*! \brief The builder's output. */
-class BuildResultNode : public runtime::Object {
+class BuilderResultNode : public runtime::Object {
  public:
   /*! \brief The path to the built artifact. */
   Optional<String> artifact_path;
@@ -70,23 +70,23 @@ class BuildResultNode : public runtime::Object {
     v->Visit("error_msg", &error_msg);
   }
 
-  static constexpr const char* _type_key = "meta_schedule.BuildResult";
-  TVM_DECLARE_FINAL_OBJECT_INFO(BuildResultNode, runtime::Object);
+  static constexpr const char* _type_key = "meta_schedule.BuilderResult";
+  TVM_DECLARE_FINAL_OBJECT_INFO(BuilderResultNode, runtime::Object);
 };
 
 /*!
- * \brief Managed reference to BuildResultNode
- * \sa BuildResultNode
+ * \brief Managed reference to BuilderResultNode
+ * \sa BuilderResultNode
  */
-class BuildResult : public runtime::ObjectRef {
+class BuilderResult : public runtime::ObjectRef {
  public:
   /*!
-   * \brief Constructor of BuildResult.
+   * \brief Constructor of BuilderResult.
    * \param artifact_path The path to the built artifact.
    * \param error_msg The error message if any.
    */
-  TVM_DLL explicit BuildResult(Optional<String> artifact_path, Optional<String> error_msg);
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BuildResult, runtime::ObjectRef, BuildResultNode);
+  TVM_DLL explicit BuilderResult(Optional<String> artifact_path, Optional<String> error_msg);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BuilderResult, runtime::ObjectRef, BuilderResultNode);
 };
 
 /*! \brief The abstract builder interface. */
@@ -99,13 +99,13 @@ class BuilderNode : public runtime::Object {
    * \param build_inputs The inputs to be built.
    * \return The build results.
    */
-  virtual Array<BuildResult> Build(const Array<BuildInput>& build_inputs) = 0;
+  virtual Array<BuilderResult> Build(const Array<BuilderInput>& build_inputs) = 0;
   /*!
    * \brief The function type of `Build` method.
    * \param build_inputs The inputs to be built.
    * \return The build results.
    */
-  using FBuild = runtime::TypedPackedFunc<Array<BuildResult>(const Array<BuildInput>&)>;
+  using FBuild = runtime::TypedPackedFunc<Array<BuilderResult>(const Array<BuilderInput>&)>;
 
   static constexpr const char* _type_key = "meta_schedule.Builder";
   TVM_DECLARE_BASE_OBJECT_INFO(BuilderNode, runtime::Object);
@@ -119,25 +119,25 @@ class Builder : public runtime::ObjectRef {
  public:
   /*!
    * \brief Create a builder with customized build method on the python-side.
-   * \param build_func The packed function to the `Build` function.
+   * \param f_build The packed function to the `Build` function..
    * \return The Builder created.
    */
-  static Builder PyBuilder(BuilderNode::FBuild build_func);
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Builder, runtime::ObjectRef, BuilderNode);
+  static Builder PyBuilder(BuilderNode::FBuild f_build);
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Builder, runtime::ObjectRef, BuilderNode);
 };
 
 /*! \brief An abstract builder with customized build method on the python-side. */
 class PyBuilderNode : public BuilderNode {
  public:
   /*! \brief The packed function to the `Build` function. */
-  FBuild build_func;
+  FBuild f_build;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    // `build_func` is not visited
+    // `f_build` is not visited
   }
 
-  Array<BuildResult> Build(const Array<BuildInput>& build_inputs) final {
-    return build_func(build_inputs);
+  Array<BuilderResult> Build(const Array<BuilderInput>& build_inputs) final {
+    return f_build(build_inputs);
   }
 
   static constexpr const char* _type_key = "meta_schedule.PyBuilder";

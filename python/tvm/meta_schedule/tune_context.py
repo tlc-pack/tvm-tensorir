@@ -16,10 +16,10 @@
 # under the License.
 """Tune Context"""
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
-from tvm._ffi import register_object
 from tvm import IRModule
+from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.target import Target
 

@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """ScheduleFn"""
-from typing import Callable, List, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, List, Union
 
 from tvm.ir import IRModule
 from tvm.ir.container import Array
@@ -56,7 +56,6 @@ class ScheduleFn(PySpaceGenerator):
         tune_context : TuneContext
             The tuning context for initializing the design space generator.
         """
-        pass
 
     def generate_design_space(self, mod: IRModule) -> List[Trace]:
         """Generate design spaces given a module.
