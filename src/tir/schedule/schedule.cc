@@ -106,6 +106,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRemoveRV")
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSamplePerfectTile")
     .set_body_method<Schedule>(&ScheduleNode::SamplePerfectTile);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSampleShapeGenericTiles")
+    .set_body_method<Schedule>(&ScheduleNode::SampleShapeGenericTiles);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSampleCategorical")
     .set_body_method<Schedule>(&ScheduleNode::SampleCategorical);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSampleComputeLocation")

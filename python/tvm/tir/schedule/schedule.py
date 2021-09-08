@@ -328,15 +328,15 @@ class Schedule(Object):
             decision,
         )
 
-    def sample_shape_generic_tile(
+    def sample_shape_generic_tiles(
         self,
         loops: List[LoopRV],
-        ns: int,
+        ns: List[int],
         target: Target,
         max_innermost_factor: int = 16,
         decision: Optional[List[List[int]]] = None
     ) -> List[List[ExprRV]]:
-        return _ffi_api_schedule.ScheduleSamplePerfectTile(  # pylint: disable=no-member
+        return _ffi_api_schedule.ScheduleSampleShapeGenericTiles(  # pylint: disable=no-member
             self,
             loops,
             ns,
