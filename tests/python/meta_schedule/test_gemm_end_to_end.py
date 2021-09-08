@@ -186,6 +186,32 @@ def test_matmul_schedule_fn():
 
 
 @pytest.mark.skip(reason="needs RPC")
+def test_matmul_shape_generic_schedule_fn():
+    os.environ["TVM_TRACKER_KEY"] = "local"
+
+    def schedule_matmul(sch):
+        block = sch.get_block(name="matmul")
+        i, j, k = sch.get_loops(block=block)
+        tiles = sch.sample_shape_generic_tiles([i, j, k], ns=[4, 4, 2],
+                                               target=tvm.target.Target('nvidia/nvidia-t4'))
+        i_tiles, j_tiles, k_tiles = list(tiles)
+        i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
+        j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
+        k_0, k_1 = sch.split(loop=k, factors=k_tiles)
+        sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
+
+    sch = ms.autotune(
+        task=matmul,
+        space=schedule_matmul,
+        strategy="replay",
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        print(tvm.script.asscript(sch.mod))
+
+
+@pytest.mark.skip(reason="needs RPC")
 def test_matmul_relu_schedule_fn():
     os.environ["TVM_TRACKER_KEY"] = "local"
 
