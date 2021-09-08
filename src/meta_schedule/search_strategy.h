@@ -22,13 +22,13 @@
 #include <tvm/ir/module.h>
 #include <tvm/tir/schedule/schedule.h>
 
+#include "./runner.h"
+
 namespace tvm {
 namespace meta_schedule {
 
 // Forward declaration
 class TuneContext;
-
-using RunnerResult = ObjectRef;  // AWAIT(zxybazh): Update with runner class.
 
 /*! \brief The search strategy for measure candidates generation. */
 class SearchStrategyNode : public runtime::Object {

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, List
 from tvm._ffi import register_object
 from tvm.ir import IRModule
 from tvm.runtime import Object
-from tvm.tir.schedule import Trace
+from tvm.tir.schedule import Schedule
 
 from .. import _ffi_api
 

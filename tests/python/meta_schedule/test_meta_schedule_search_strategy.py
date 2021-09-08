@@ -22,29 +22,55 @@ import pytest
 
 import tvm
 from tvm import tir
-from tvm.meta_schedule.search_strategy.search_strategy import PySearchStrategy
-from tvm.meta_schedule.tune_context import TuneContext
-from tvm.script import ty
-from tvm.tir import Schedule
-from tvm.meta_schedule import ReplayTrace, ScheduleFn
 
-# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
+from tvm.meta_schedule import (
+    BuilderInput,
+    RunnerInput,
+    LocalBuilder,
+    EvaluatorConfig,
+    RPCConfig,
+    RPCRunner,
+    PySearchStrategy,
+    TuneContext,
+    ReplayTrace,
+    ScheduleFn,
+    TensorArgInfo,
+)
+from tvm.meta_schedule.testing import Server, Tracker
+from tvm.meta_schedule.utils import get_global_func_with_default_on_worker
+
+from tvm.script import ty
+from tvm.target import Target
+from tvm.tir import Schedule, FloatImm
+
+
+MATMUL_M = 32
+
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument, unbalanced-tuple-unpacking
 # fmt: off
 
 @tvm.script.tir
 class Matmul:
     def main(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.func_attr({"global_symbol": "main"})
-        A = tir.match_buffer(a, (1024, 1024), "float32")
-        B = tir.match_buffer(b, (1024, 1024), "float32")
-        C = tir.match_buffer(c, (1024, 1024), "float32")
-        with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
+        A = tir.match_buffer(a, (32, 32), "float32")
+        B = tir.match_buffer(b, (32, 32), "float32")
+        C = tir.match_buffer(c, (32, 32), "float32")
+        with tir.block([32, 32, tir.reduce_axis(0, 32)], "matmul") as [vi, vj, vk]:
             with tir.init():
                 C[vi, vj] = 0.0
             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 # fmt: on
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
+
+
+def _clean_build(artifact_path: str) -> None:
+    f_clean_build = get_global_func_with_default_on_worker("meta_schedule.remove_build_dir", None)
+    if f_clean_build is not None:
+        f_clean_build(artifact_path)
+    else:
+        raise RuntimeError("Unable to find remove_build_dir function.")
 
 
 def schedule_matmul(sch: Schedule):
@@ -64,7 +90,7 @@ def test_meta_schedule_py_search_strategy():
         """test class"""
 
         def initialize_with_tune_context(self, tune_context):
-            raise Exception("MySearchStrategy")
+            raise Exception("TestSearchStrategy")
 
         def pre_tuning(self, design_spaces):
             pass
@@ -79,7 +105,7 @@ def test_meta_schedule_py_search_strategy():
             pass
 
     search_strategy = MySearchStrategy()
-    with pytest.raises(Exception, match="MySearchStrategy"):
+    with pytest.raises(Exception, match="TestSearchStrategy"):
         search_strategy.initialize_with_tune_context(TuneContext(mod=Matmul()))
 
 
@@ -94,22 +120,75 @@ def test_meta_schedule_replay_trace():
     replay.initialize_with_tune_context(tune_context)
     replay.pre_tuning(design_spaces=space_generator.generate_design_space(Matmul()))
 
+    builder = LocalBuilder()
+
     results = []
-    candidates = replay.generate_measure_candidates()
-    while candidates is not None:
-        results += candidates
-        assert len(results) <= trials
-        assert len(candidates) == batch_size or len(results) == trials
-        # TODO(add IRModule comparison)
-        replay.notify_runner_results(
-            [(None, None) for candidate in candidates]
-        )  # AWAIT(zxybazh) : Fix with runner
-        candidates = replay.generate_measure_candidates()
+    with Tracker(silent=True) as tracker:
+        with Server(tracker, silent=True) as server:
+            candidates = replay.generate_measure_candidates()
+            while candidates is not None:
+                assert len(results) <= trials
+                assert len(candidates) == batch_size or len(results) + len(candidates) == trials
+                # TODO(add IRModule comparison)
+                builder_results = builder.build(
+                    [BuilderInput(mod, Target("llvm")) for mod in candidates]
+                )
+                for builder_result in builder_results:
+                    assert builder_result.artifact_path is not None
+                    assert builder_result.error_msg is None
+
+                runner_inputs = [
+                    RunnerInput(
+                        builder_result.artifact_path,
+                        "llvm",
+                        [
+                            TensorArgInfo("float32", [MATMUL_M, MATMUL_M]),
+                            TensorArgInfo("float32", [MATMUL_M, MATMUL_M]),
+                            TensorArgInfo("float32", [MATMUL_M, MATMUL_M]),
+                        ],
+                    )
+                    for builder_result in builder_results
+                ]
+
+                rpc_config = RPCConfig(
+                    tracker_host=tracker.host,
+                    tracker_port=tracker.port,
+                    tracker_key=server.key,
+                    session_priority=1,
+                    session_timeout_sec=100,
+                )
+                evaluator_config = EvaluatorConfig(
+                    number=1,
+                    repeat=1,
+                    min_repeat_ms=0,
+                    enable_cpu_cache_flush=False,
+                )
+                runner = RPCRunner(rpc_config, evaluator_config)
+
+                # Run the module
+                current_results = []
+                runner_futures = runner.run(runner_inputs)
+                for runner_future in runner_futures:
+                    runner_result = runner_future.result()
+                    assert runner_result.error_msg is None
+                    for result in runner_result.run_sec:
+                        if isinstance(result, FloatImm):
+                            result = result.value
+                        assert isinstance(result, float)
+                        assert result >= 0.0
+                    current_results.append(runner_result)
+
+                for builder_result in builder_results:
+                    _clean_build(builder_result.artifact_path)
+
+                results += current_results
+                replay.notify_runner_results(current_results)
+                candidates = replay.generate_measure_candidates()
 
     assert len(results) == trials
-
     replay.post_tuning()
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    test_meta_schedule_replay_trace()

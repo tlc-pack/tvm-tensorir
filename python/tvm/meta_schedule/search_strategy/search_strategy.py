@@ -16,12 +16,13 @@
 # under the License.
 """Search Strategy"""
 
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from tvm._ffi import register_object
 from tvm.ir import IRModule
 from tvm.runtime import Object
 from tvm.tir.schedule import Schedule
+from ..runner import RunnerResult
 
 from .. import _ffi_api
 
@@ -68,17 +69,17 @@ class SearchStrategy(Object):
         """Post-tuning for the search strategy."""
         _ffi_api.SearchStrategyPostTuning(self)  # pylint: disable=no-member
 
-    def generate_measure_candidates(self) -> List[IRModule]:
+    def generate_measure_candidates(self) -> Optional[List[IRModule]]:
         """Generate measure candidates from design spaces for measurement.
 
         Returns
         -------
-        measure_candidates : List[IRModule]
+        measure_candidates : Optional[List[IRModule]]
             The measure candidates generated, None if finished.
         """
         return _ffi_api.SearchStrategyGenerateMeasureCandidates(self)  # pylint: disable=no-member
 
-    def notify_runner_results(self, results: List["RunnerResult"]) -> None:
+    def notify_runner_results(self, results: List[RunnerResult]) -> None:
         """Update the search strategy with profiling results.
 
         Parameters

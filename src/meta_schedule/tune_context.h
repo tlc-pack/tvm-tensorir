@@ -36,7 +36,6 @@ using Database = ObjectRef;
 using CostModel = ObjectRef;
 using Postproc = ObjectRef;
 using MeasureCallback = ObjectRef;
-using Runner = ObjectRef;
 
 /*! \brief The tuning context. */
 class TuneContextNode : public runtime::Object {
