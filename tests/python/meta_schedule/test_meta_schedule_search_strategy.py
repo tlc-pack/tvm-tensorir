@@ -42,6 +42,7 @@ from tvm.meta_schedule.utils import get_global_func_with_default_on_worker
 from tvm.script import ty
 from tvm.target import Target
 from tvm.tir import Schedule, FloatImm
+from tvm.ir import IRModule
 
 
 MATMUL_M = 32
@@ -71,6 +72,27 @@ def _clean_build(artifact_path: str) -> None:
         f_clean_build(artifact_path)
     else:
         raise RuntimeError("Unable to find remove_build_dir function.")
+
+
+def _compare_irmodule_similarity(mod1: IRModule, mod2: IRModule) -> bool:
+    try:
+        part1 = mod1["main"]
+        part2 = mod2["main"]
+    except KeyError:
+        return False
+    while part1 is not None and part2 is not None:
+        if type(part1) != type(part2):  # pylint: disable=unidiomatic-typecheck
+            return False
+        try:
+            try:
+                part1 = part1.body
+                part2 = part2.body
+            except AttributeError:
+                part1 = part1.block
+                part2 = part2.block
+        except AttributeError:
+            break
+    return True
 
 
 def schedule_matmul(sch: Schedule):
@@ -110,26 +132,35 @@ def test_meta_schedule_py_search_strategy():
 
 
 def test_meta_schedule_replay_trace():
-    trials = 100
-    batch_size = 30
+    trials = 20
+    batch_size = 7
 
     space_generator = ScheduleFn(sch_fn=schedule_matmul)
     tune_context = TuneContext(mod=Matmul())
 
     replay = ReplayTrace(batch_size, trials)
     replay.initialize_with_tune_context(tune_context)
-    replay.pre_tuning(design_spaces=space_generator.generate_design_space(Matmul()))
+    design_spaces = space_generator.generate_design_space(Matmul())
+    replay.pre_tuning(design_spaces)
 
     builder = LocalBuilder()
 
     results = []
+
     with Tracker(silent=True) as tracker:
         with Server(tracker, silent=True) as server:
             candidates = replay.generate_measure_candidates()
             while candidates is not None:
                 assert len(results) <= trials
                 assert len(candidates) == batch_size or len(results) + len(candidates) == trials
-                # TODO(add IRModule comparison)
+                for candidate in candidates:
+                    flag = True
+                    # note that in this test, there is only 1 design space
+                    for design_space in design_spaces:
+                        flag |= _compare_irmodule_similarity(design_space.mod, candidate)
+                    assert (
+                        flag
+                    ), f"The generated IRModule {candidate} does not match the design spaces."
                 builder_results = builder.build(
                     [BuilderInput(mod, Target("llvm")) for mod in candidates]
                 )
@@ -190,5 +221,4 @@ def test_meta_schedule_replay_trace():
 
 
 if __name__ == "__main__":
-    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
-    test_meta_schedule_replay_trace()
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))
