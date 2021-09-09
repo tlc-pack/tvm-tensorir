@@ -1053,10 +1053,8 @@ def tir(script_in):
         The Function or Module in IR.
     """
 
-    if inspect.isfunction(script_in):
+    if inspect.isfunction(script_in) or inspect.isclass(script_in):
         result = from_source(script_in)
-    elif inspect.isclass(script_in):
-        result = TVMScriptClass(script_in)
     else:
         raise TypeError("Only function and class definitions are supported.")
     result.__name__ = script_in.__name__
@@ -1075,14 +1073,3 @@ def module(script_in):
         The Function or Module in IR.
     """
     return tir(script_in)
-
-
-class TVMScriptClass:
-    """Helper class for decorating a class"""
-
-    def __init__(self, script_in):
-        self.script = script_in
-
-    def __call__(self, *args, **kwargs):
-        # call the parser to transform tvm script into TIR
-        return from_source(self.script)
