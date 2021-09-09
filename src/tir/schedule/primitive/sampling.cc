@@ -609,17 +609,21 @@ std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, TRandState* rand
 std::vector<std::vector<int64_t>> SampleShapeGenericTiles(tir::ScheduleState self,
                                                           TRandState* rand_state,
                                                           const Array<tir::StmtSRef>& loop_srefs,
-                                                          const std::vector<int>& ns,
+                                                          const Array<IntImm>& ns,
                                                           const Target& target,
                                                           int max_innermost_factor,
-    Optional<Array<Array<Integer>>>* decision) {
+                                                          Optional<Array<Array<Integer>>>* decision) {
   std::vector<int> extents;
   for (const StmtSRef& loop_sref : loop_srefs) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     extents.push_back(GetLoopIntExtent(loop));
   }
+  std::vector<int> n_splits;
+  for (const IntImm& n : ns) {
+    n_splits.push_back(n->value);
+  }
   std::vector<std::vector<int>> sampled_tiles =
-      SampleShapeGenericTiles(rand_state, ns, extents, target, max_innermost_factor);
+      SampleShapeGenericTiles(rand_state, n_splits, extents, target, max_innermost_factor);
   std::vector<std::vector<int64_t>> result;
   *decision = Array<Array<Integer>>();
   for (const std::vector<int>& sampled : sampled_tiles) {
@@ -734,14 +738,10 @@ struct SampleShapeGenericTilesTraits : public UnpackedInstTraits<SampleShapeGene
   static constexpr size_t kNumDecisions = 1;
 
   static Array<Array<ExprRV>> UnpackedApplyToSchedule(Schedule sch, Array<LoopRV> loop_rvs,
-                                                      Array<Integer> ns, Target target,
+                                                      Array<IntImm> ns, Target target,
                                                       Integer max_innermost_factor,
                                                       Optional<Array<Array<Integer>>> decision) {
-    std::vector<int> n_splits;
-    for (const Integer& n : ns) {
-      n_splits.push_back(n->value);
-    }
-    return sch->SampleShapeGenericTiles(loop_rvs, n_splits, target, max_innermost_factor->value,
+    return sch->SampleShapeGenericTiles(loop_rvs, ns, target, max_innermost_factor->value,
                                         decision);
   }
 

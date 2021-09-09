@@ -18,6 +18,8 @@
  */
 #include "./traced_schedule.h"
 
+#include <tvm/target/target.h>
+
 namespace tvm {
 namespace tir {
 
@@ -64,7 +66,7 @@ Array<ExprRV> TracedScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n
 }
 
 Array<Array<ExprRV>> TracedScheduleNode::SampleShapeGenericTiles(const Array<LoopRV>& loop_rvs,
-                                                                 const std::vector<int>& ns,
+                                                                 const Array<IntImm>& ns,
                                                                  const Target& target,
                                                                  int max_innermost_factor,
                                                                  Optional<Array<Array<Integer>>> decision) {
@@ -82,7 +84,7 @@ Array<Array<ExprRV>> TracedScheduleNode::SampleShapeGenericTiles(const Array<Loo
   static const InstructionKind& kind = InstructionKind::Get("SampleShapeGenericTiles");
   trace_->Append(Instruction(kind,
                              {loop_rvs},
-                             {AsArray<int, Integer>(ns), target, Integer(max_innermost_factor)},
+                             {ns, target, Integer(max_innermost_factor)},
                              {result_rvs.begin(), result_rvs.end()}),
                  decision);
   return result_rvs;

@@ -251,7 +251,7 @@ class ScheduleNode : public runtime::Object {
    * \return An array of n random variables, the result of sampling
    */
   virtual Array<Array<ExprRV>> SampleShapeGenericTiles(const Array<LoopRV>& loop_rvs,
-                                                       const std::vector<int>& ns,
+                                                       const Array<IntImm>& ns,
                                                        const Target& target, int max_innermost_factor,
                                                        Optional<Array<Array<Integer>>> decision = NullOpt) = 0;
   /*!

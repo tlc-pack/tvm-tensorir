@@ -131,7 +131,7 @@ TVM_DLL std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, tir::TRa
 TVM_DLL std::vector<std::vector<int64_t>> SampleShapeGenericTiles(tir::ScheduleState self,
                                                                   tir::TRandState* rand_state,
                                                                   const Array<tir::StmtSRef>& loop_srefs,
-                                                                  const std::vector<int>& ns,
+                                                                  const Array<IntImm>& ns,
                                                                   const Target& target,
                                                                   int max_innermost_factor,
                                                                   Optional<Array<Array<Integer>>>* decision);
