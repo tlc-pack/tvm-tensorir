@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/target/target.h>
 #include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/schedule/trace.h>
 

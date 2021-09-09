@@ -92,7 +92,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
                                   Optional<Array<Integer>> decision = NullOpt) override;
   Array<Array<ExprRV>> SampleShapeGenericTiles(const Array<LoopRV>& loop_rvs,
-                                               const std::vector<int>& ns,
+                                               const Array<IntImm>& ns,
                                                const Target& target,
                                                int max_innermost_factor,
                                                Optional<Array<Array<Integer>>> decision = NullOpt) override;
