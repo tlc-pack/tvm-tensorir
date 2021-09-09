@@ -18,6 +18,7 @@
  */
 #include "./tune_context.h"
 
+#include <random>
 #include <utility>
 
 namespace tvm {
@@ -47,7 +48,7 @@ TuneContext::TuneContext(Optional<IRModule> mod,                              //
                          Optional<Array<Postproc>> postprocs,                 //
                          Optional<Array<MeasureCallback>> measure_callbacks,  //
                          Optional<String> task_name,                          //
-                         TRandState seed,                                     //
+                         support::LinearCongruentialEngine::TRandState seed,  //
                          int num_threads,                                     //
                          int verbose) {
   ObjectPtr<TuneContextNode> n = make_object<TuneContextNode>();
@@ -60,7 +61,8 @@ TuneContext::TuneContext(Optional<IRModule> mod,                              //
   n->postprocs = postprocs;
   n->measure_callbacks = measure_callbacks;
   n->task_name = task_name;
-  n->seed = seed;  // AWAIT(zxybazh): Initialize the random seed.
+  if (seed == -1) seed = std::random_device()();
+  support::LinearCongruentialEngine(&n->seed).Seed(seed);
   n->num_threads = num_threads;
   n->verbose = verbose;
   data_ = std::move(n);
@@ -76,7 +78,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
                        Optional<Array<Postproc>> postprocs,                 //
                        Optional<Array<MeasureCallback>> measure_callbacks,  //
                        Optional<String> task_name,                          //
-                       TRandState seed,                                     //
+                       support::LinearCongruentialEngine::TRandState seed,  //
                        int num_threads,                                     //
                        int verbose) -> TuneContext {
       return TuneContext(mod, target, space_generator, search_strategy, database, cost_model,

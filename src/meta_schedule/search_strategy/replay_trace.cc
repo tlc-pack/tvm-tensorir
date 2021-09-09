@@ -48,6 +48,8 @@ class ReplayTraceNode : public SearchStrategyNode {
 
   /*! \brief The module to be tuned. */
   Optional<IRModule> mod = NullOpt;
+  /*! \brief The seed value of random state. */
+  support::LinearCongruentialEngine::TRandState* seed = nullptr;
   /*! \brief The number of threads to use. */
   int num_threads = -1;
   /*! \brief The state of the search strategy. */
@@ -58,6 +60,7 @@ class ReplayTraceNode : public SearchStrategyNode {
     v->Visit("num_trials_total", &num_trials_total);
     v->Visit("mod", &mod);
     v->Visit("num_threads", &num_threads);
+    // `seed` is not visited
     // `state` is not visited
   }
 
@@ -67,6 +70,7 @@ class ReplayTraceNode : public SearchStrategyNode {
  public:
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
     this->mod = tune_context->mod;
+    this->seed = &tune_context->seed;
     this->num_threads = tune_context->num_threads;
   }
 
@@ -84,6 +88,7 @@ class ReplayTraceNode : public SearchStrategyNode {
   Optional<runtime::Array<IRModule>> GenerateMeasureCandidates() final {
     ICHECK(this->state != nullptr);
     ICHECK(this->mod.defined());
+    ICHECK(this->seed);
     int st = this->state->i;
     int ed = std::min(st + num_trials_per_iter, num_trials_total);
     if (st >= num_trials_total) {
@@ -94,14 +99,18 @@ class ReplayTraceNode : public SearchStrategyNode {
     runtime::Array<IRModule> results(ed - st, IRModule{nullptr});
     auto f_worker = [this, &seeds_per_thread, &results](int thread_id, int task_id) -> void {
       int64_t& seed = seeds_per_thread[thread_id];
-      Optional<tir::Trace> trace = this->state->design_spaces[0]->trace();  // need rand
+      Optional<tir::Trace> trace =
+          this->state
+              ->design_spaces[support::LinearCongruentialEngine(this->seed)() %
+                              this->state->design_spaces.size()]  // AWAIT(@zxybazh): SampleInt
+              ->trace();
       ICHECK(trace.defined()) << "ValueError: The generated design space schedule is not traced.";
       tir::Trace new_trace = tir::Trace(trace.value()->insts, {});
-      tir::Schedule sch =
-          tir::Schedule::Traced(this->mod.value(),  //
-                                /*seed=*/111,       // need fork from `seed`
-                                /*debug_mode=*/0,   //
-                                /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
+      tir::Schedule sch = tir::Schedule::Traced(                              //
+          this->mod.value(),                                                  //
+          /*seed=*/support::LinearCongruentialEngine(this->seed).ForkSeed(),  //
+          /*debug_mode=*/0,                                                   //
+          /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
       new_trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
       // AWAIT: postproc
       results.Set(task_id, sch->mod());

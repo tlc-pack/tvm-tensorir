@@ -20,6 +20,7 @@
 #define SRC_META_SCHEDULE_TUNE_CONTEXT_H_
 
 #include <tvm/ir/module.h>
+#include <tvm/support/random_engine.h>
 #include <tvm/target/target.h>
 
 #include "./search_strategy.h"
@@ -28,10 +29,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-// AWAIT(zxybazh): Merge with Sampling PR.
-using TRandState = int64_t;
-
-// AWAIT(zxybazh): Merge with actual implementation.
 using Database = ObjectRef;
 using CostModel = ObjectRef;
 using Postproc = ObjectRef;
@@ -59,7 +56,7 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The name of the tuning task. */
   Optional<String> task_name;
   /*! \brief The seed value of random state. */
-  TRandState seed;
+  support::LinearCongruentialEngine::TRandState seed;
   /*! \brief The number of threads to be used. */
   int num_threads;
   /*! \brief The verbosity level. */
@@ -116,7 +113,7 @@ class TuneContext : public runtime::ObjectRef {
                                Optional<Array<Postproc>> postprocs,                 //
                                Optional<Array<MeasureCallback>> measure_callbacks,  //
                                Optional<String> task_name,                          //
-                               TRandState seed,                                     //
+                               support::LinearCongruentialEngine::TRandState seed,  //
                                int num_threads,                                     //
                                int verbose);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TuneContext, ObjectRef, TuneContextNode);
