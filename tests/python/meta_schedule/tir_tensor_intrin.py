@@ -134,12 +134,12 @@ def wmma_sync_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
-        tir.reads([C[0: 16, 0: 16], A[0: 16, 0: 16], B[0: 16, 0: 16]])
-        tir.writes(C[0: 16, 0: 16])
-        tir.evaluate(tir.tvm_mma_sync(C.data, C.elem_offset // 256,
-                                      A.data, A.elem_offset // 256,
-                                      B.data, B.elem_offset // 256,
-                                      C.data, C.elem_offset // 256,
+        tir.reads([C[vi: vi+16, vj: vj+16], A[vi: vi+16, vk: vk+16], B[vk: vk+16, vj: vj+16]])
+        tir.writes(C[vi: vi+16, vj: vj+16])
+        tir.evaluate(tir.tvm_mma_sync(C.data, C.elem_offset // 256 + tir.floordiv(tir.floormod(C.elem_offset, 256), 16),
+                                      A.data, A.elem_offset // 256 + tir.floordiv(tir.floormod(A.elem_offset, 256), 16),
+                                      B.data, B.elem_offset // 256 + tir.floordiv(tir.floormod(B.elem_offset, 256), 16),
+                                      C.data, C.elem_offset // 256 + tir.floordiv(tir.floormod(C.elem_offset, 256), 16),
                                       dtype="handle"))
 
 
@@ -168,10 +168,10 @@ def wmma_load_a_impl(a: ty.handle, c: ty.handle) -> None:
     with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
-        tir.reads(A[0: 16, 0: 16])
-        tir.writes(C[0: 16, 0: 16])
+        tir.reads(A[vi: vi+16, vj: vj+16])
+        tir.writes(C[vi: vi+16, vj: vj+16])
         tir.evaluate(tir.tvm_load_matrix_sync(
-            C.data, 16, 16, 16, C.elem_offset // 256, A.access_ptr("r"), 16, "row_major",
+            C.data, 16, 16, 16, C.elem_offset // 256 + tir.floordiv(tir.floormod(C.elem_offset, 256), 16), A.access_ptr("r"), 16, "row_major",
             dtype="handle"))
 
 
@@ -196,10 +196,10 @@ def wmma_load_b_impl(a: ty.handle, c: ty.handle) -> None:
     with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
-        tir.reads(A[0: 16, 0: 16])
-        tir.writes(C[0: 16, 0: 16])
+        tir.reads(A[vi: vi+16, vj: vj+16])
+        tir.writes(C[vi: vi+16, vj: vj+16])
         tir.evaluate(tir.tvm_load_matrix_sync(
-            C.data, 16, 16, 16, C.elem_offset // 256, A.access_ptr("r"), 16, "row_major",
+            C.data, 16, 16, 16, C.elem_offset // 256 + tir.floordiv(tir.floormod(C.elem_offset, 256), 16), A.access_ptr("r"), 16, "row_major",
             dtype="handle"))
 
 
@@ -223,14 +223,14 @@ def wmma_fill_impl(c: ty.handle) -> None:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads([])
-        tir.writes(C[0: 16, 0: 16])
-        tir.evaluate(tir.tvm_fill_fragment(C.data, 16, 16, 16, C.elem_offset // 256, tir.float32(0), dtype="handle"))
+        tir.writes(C[vi : vi + 16, vj : vj + 16])
+        tir.evaluate(tir.tvm_fill_fragment(C.data, 16, 16, 16, C.elem_offset // 256 + tir.floordiv(tir.floormod(C.elem_offset, 256), 16), tir.float32(0), dtype="handle"))
 
 
 @tvm.script.tir
 def wmma_store_desc(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32", align=128, offset_factor=256, scope="wmma.accumulator")
-    C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="local")
+    C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="global")
     with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
@@ -244,14 +244,14 @@ def wmma_store_desc(a: ty.handle, c: ty.handle) -> None:
 @tvm.script.tir
 def wmma_store_impl(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32", align=128, offset_factor=256, scope="wmma.accumulator")
-    C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="local")
+    C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256, scope="global")
     with tir.block([16, 16], "root") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
-        tir.reads(A[0: 16, 0: 16])
-        tir.writes(C[0: 16, 0: 16])
+        tir.reads(A[vi: vi + 16, vj: vj + 16])
+        tir.writes(C[vi: vi+16, vj: vj+16])
         tir.evaluate(tir.tvm_store_matrix_sync(
-            A.data, 16, 16, 16, A.elem_offset // 256, C.access_ptr("w"), 16, "row_major",
+            A.data, 16, 16, 16, A.elem_offset // 256 + tir.floordiv(tir.floormod(A.elem_offset, 256), 16), C.access_ptr("w"), 16, "row_major",
             dtype="handle"))
 
 
