@@ -70,7 +70,7 @@ class TuneContext(Object):
     postprocs: List[Postproc]
     measure_callbacks: List[MeasureCallback]
     task_name: str
-    seed: int
+    rand_state: int
     num_threads: int
     verbose: int
 
@@ -85,7 +85,7 @@ class TuneContext(Object):
         postprocs: Optional[List[Postproc]] = None,
         measure_callbacks: Optional[List[MeasureCallback]] = None,
         task_name: Optional[str] = None,
-        seed: int = -1,
+        rand_state: int = -1,
         num_threads: Optional[int] = -1,
         verbose: Optional[int] = 0,
     ):
@@ -115,9 +115,9 @@ class TuneContext(Object):
             Each measure callback is a single callable function.
         task_name : Optional[str] (default is None)
             The name of the tuning task.
-        seed : int (default is -1)
-            The seed value of random state.
-            Need to be in integer in [1, 2^31-1], -1 means use a random seed.
+        rand_state : int (default is -1)
+            The random state.
+            Need to be in integer in [1, 2^31-1], -1 means use random number.
         num_threads : int (default is -1)
             The number of threads to be used, -1 means use the logic cpu count.
         verbose : int (default is 0)
@@ -137,7 +137,7 @@ class TuneContext(Object):
             postprocs,
             measure_callbacks,
             task_name,
-            seed,
+            rand_state,
             num_threads,
             verbose,
         )

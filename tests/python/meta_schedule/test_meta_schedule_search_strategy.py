@@ -74,6 +74,27 @@ def _clean_build(artifact_path: str) -> None:
         raise RuntimeError("Unable to find remove_build_dir function.")
 
 
+def _compare_irmodule_similarity(mod1: IRModule, mod2: IRModule) -> bool:
+    try:
+        part1 = mod1["main"]
+        part2 = mod2["main"]
+    except KeyError:
+        return False
+    while part1 is not None and part2 is not None:
+        if type(part1) != type(part2):  # pylint: disable=unidiomatic-typecheck
+            return False
+        try:
+            try:
+                part1 = part1.body
+                part2 = part2.body
+            except AttributeError:
+                part1 = part1.block
+                part2 = part2.block
+        except AttributeError:
+            break
+    return True
+
+
 def schedule_matmul(sch: Schedule):
     block = sch.get_block("matmul")
     i, j, k = sch.get_loops(block=block)
@@ -135,14 +156,7 @@ def test_meta_schedule_replay_trace():
                 for candidate in candidates:
                     flag = False
                     for design_space in design_spaces:
-                        try:
-                            tvm.ir.assert_structural_equal(
-                                design_space.mod["main"], candidate["main"]
-                            )
-                        except ValueError:
-                            continue
-                        flag = True
-                        break
+                        flag |= _compare_irmodule_similarity(candidate, design_space.mod)
                     assert (
                         flag
                     ), f"The generated IRModule {candidate} does not match any design spaces."

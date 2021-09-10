@@ -55,8 +55,8 @@ class TuneContextNode : public runtime::Object {
   Optional<Array<MeasureCallback>> measure_callbacks;
   /*! \brief The name of the tuning task. */
   Optional<String> task_name;
-  /*! \brief The seed value of random state. */
-  support::LinearCongruentialEngine::TRandState seed;
+  /*! \brief The random state. */
+  support::LinearCongruentialEngine::TRandState rand_state;
   /*! \brief The number of threads to be used. */
   int num_threads;
   /*! \brief The verbosity level. */
@@ -74,7 +74,7 @@ class TuneContextNode : public runtime::Object {
     v->Visit("postprocs", &postprocs);
     v->Visit("measure_callbacks", &measure_callbacks);
     v->Visit("task_name", &task_name);
-    v->Visit("seed", &seed);
+    v->Visit("rand_state", &rand_state);
     v->Visit("num_threads", &num_threads);
     v->Visit("verbose", &verbose);
   }
@@ -100,21 +100,21 @@ class TuneContext : public runtime::ObjectRef {
    * \param postprocs The post processing functions.
    * \param measure_callbacks The measure callback functions.
    * \param task_name The task_name of the tuning task.
-   * \param seed The seed value of random state.
+   * \param rand_state The random state.
    * \param num_threads The number of threads to be used.
    * \param verbose The verbosity level.
    */
-  TVM_DLL explicit TuneContext(Optional<IRModule> mod,                              //
-                               Optional<Target> target,                             //
-                               Optional<SpaceGenerator> space_generator,            //
-                               Optional<SearchStrategy> search_strategy,            //
-                               Optional<Database> database,                         //
-                               Optional<CostModel> cost_model,                      //
-                               Optional<Array<Postproc>> postprocs,                 //
-                               Optional<Array<MeasureCallback>> measure_callbacks,  //
-                               Optional<String> task_name,                          //
-                               support::LinearCongruentialEngine::TRandState seed,  //
-                               int num_threads,                                     //
+  TVM_DLL explicit TuneContext(Optional<IRModule> mod,                                    //
+                               Optional<Target> target,                                   //
+                               Optional<SpaceGenerator> space_generator,                  //
+                               Optional<SearchStrategy> search_strategy,                  //
+                               Optional<Database> database,                               //
+                               Optional<CostModel> cost_model,                            //
+                               Optional<Array<Postproc>> postprocs,                       //
+                               Optional<Array<MeasureCallback>> measure_callbacks,        //
+                               Optional<String> task_name,                                //
+                               support::LinearCongruentialEngine::TRandState rand_state,  //
+                               int num_threads,                                           //
                                int verbose);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TuneContext, ObjectRef, TuneContextNode);
 };
