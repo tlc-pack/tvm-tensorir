@@ -93,34 +93,34 @@ class TuneContext(Object):
 
         Parameters
         ----------
-        mod : Optional[IRModule] (default is None)
+        mod : Optional[IRModule] = None
             The workload to be optimized.
-        target : Optional[Target] (default is None)
+        target : Optional[Target] = None
             The target to be optimized for.
-        space_generator : Optional[SpaceGenerator] (default is None)
+        space_generator : Optional[SpaceGenerator] = None
             The design space generator.
-        search_strategy : Optional[SearchStrategy] (default is None)
+        search_strategy : Optional[SearchStrategy] = None
            The search strategy to be used.
-        database : Optional[Database] (default is None)
+        database : Optional[Database] = None
             The database for querying and storage.
             Provides interface to query and store the results.
-        cost_model : Optional[CostModel] (default is None)
+        cost_model : Optional[CostModel]  = None
              The cost model for estimation.
              Provides interface to update and query the cost model for estimation.
-        postprocs : Optional[List[Postproc]] (default is None)
+        postprocs : Optional[List[Postproc]] = None
             The post processing functions.
             Each post processor is a single callable function.
-        measure_callbacks : Optional[List[MeasureCallback]] (default is None)
+        measure_callbacks : Optional[List[MeasureCallback]] = None
             The measure callback functions.
             Each measure callback is a single callable function.
-        task_name : Optional[str] (default is None)
+        task_name : Optional[str] = None
             The name of the tuning task.
-        rand_state : int (default is -1)
+        rand_state : int = -1
             The random state.
             Need to be in integer in [1, 2^31-1], -1 means use random number.
-        num_threads : int (default is -1)
+        num_threads : int = -1
             The number of threads to be used, -1 means use the logic cpu count.
-        verbose : int (default is 0)
+        verbose : int = 0
             The verbosity level.
         """
         if num_threads == -1:

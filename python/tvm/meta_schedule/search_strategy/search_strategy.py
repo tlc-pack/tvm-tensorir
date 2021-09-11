@@ -30,9 +30,6 @@ if TYPE_CHECKING:
     from ..tune_context import TuneContext
 
 
-RunnerResult = Any
-
-
 @register_object("meta_schedule.SearchStrategy")
 class SearchStrategy(Object):
     """
