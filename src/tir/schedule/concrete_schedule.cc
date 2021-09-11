@@ -503,13 +503,10 @@ void ConcreteScheduleNode::StorageAlign(const BlockRV& block_rv, int buffer_inde
 
 /******** Schedule: Reduction ********/
 
-BlockRV ConcreteScheduleNode::DecomposeReduction(const BlockRV& block_rv,
-                                                 const Optional<LoopRV>& opt_loop_rv) {
+BlockRV ConcreteScheduleNode::DecomposeReduction(const BlockRV& block_rv, const LoopRV& loop_rv) {
   StmtSRef result{nullptr};
   TVM_TIR_SCHEDULE_BEGIN();
-  result = tir::DecomposeReduction(
-      state_, this->GetSRef(block_rv),
-      opt_loop_rv.defined() ? this->GetSRef(opt_loop_rv.value()) : Optional<StmtSRef>(NullOpt));
+  result = tir::DecomposeReduction(state_, this->GetSRef(block_rv), this->GetSRef(loop_rv));
   TVM_TIR_SCHEDULE_END("decompose-reduction", this->error_render_level_);
   this->state_->DebugVerify();
   return CreateRV<BlockRV>(result);

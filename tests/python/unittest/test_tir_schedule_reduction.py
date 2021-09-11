@@ -499,40 +499,86 @@ def matmul_decompose0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.script.tir
-def matmul_decompose1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+def matmul_decompose1(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, [32, 4, 128], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [32, 4], elem_offset=0, align=128, offset_factor=1)
+
+    for i0 in tir.serial(0, 32):
+        with tir.block([32], "blockized_B_init") as [io]:
+            for i1 in tir.serial(0, 4):
+                with tir.block([4], "B_init") as [ii]:
+                    B[io, ii] = tir.float32(0)
+    for i0, i2_o in tir.grid(32, 16):
+        with tir.block([32, tir.reduce_axis(0, 16)], "blockized_B_update") as [io, ko]:
+            for i1, i2_i in tir.grid(4, 8):
+                with tir.block([4, tir.reduce_axis(0, 128)], "B") as [ii, k]:
+                    tir.bind(ii, i1)
+                    tir.bind(k, ((ko * 8) + i2_i))
+                    B[io, ii] = B[io, ii] + A[io, ii, k]
+
+
+@tvm.script.tir
+def matmul_decompose2(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+
+    for i0, i1 in tir.grid(128, 128):
+        with tir.block([128, 128], "update_init") as [vi_init, vj_init]:
+            C[vi_init, vj_init] = tir.float32(0)
+        for i2 in tir.serial(0, 128):
+            with tir.block([128, 128, tir.reduce_axis(0, 128)], "update_update") as [vi, vj, vk]:
+                C[vi, vj] = C[vi, vj] + (A[vi, vk] * B[vj, vk])
+
+@tvm.script.tir
+def matmul_decompose_fail3(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [128, 128])
     B = tir.match_buffer(b, [128, 128])
     C = tir.match_buffer(c, [128, 128])
 
-    with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
-        if vk == 0:
-            C[vi, vj] = 0.0
-        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
+    for i, k, j in tir.grid(128, 128, 128):
+        with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
+            with tir.init():
+                C[vi, vj] = 0.0
+            tir.bind(vi, i)
+            tir.bind(vj, j)
+            tir.bind(vk, k)
+            C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
 # pylint: enable=no-member,invalid-name,unused-variable,unexpected-keyword-arg
 
 
-def test_reduction_decompose1():
+def test_reduction_decompose0():
     s = tir.Schedule(matmul, debug_mask="all")
     C = s.get_block("update")
-    i, _, _ = s.get_loops(C)
+    i, j, k = s.get_loops(C)
     s.decompose_reduction(C, i)
     tvm.ir.assert_structural_equal(matmul_decompose0, s.mod["main"])
+
+
+def test_reduction_decompose1():
+    s = tir.Schedule(rowsum_blockized, debug_mask="all")
+    blockized_B = s.get_block("blockized_B")
+    io, ko = s.get_loops(blockized_B)
+    s.decompose_reduction(blockized_B, io)
+    tvm.ir.assert_structural_equal(matmul_decompose1, s.mod["main"])
 
 
 def test_reduction_decompose2():
     s = tir.Schedule(matmul, debug_mask="all")
     C = s.get_block("update")
-    s.decompose_reduction(C, loop=None)
-    tvm.ir.assert_structural_equal(matmul_decompose1, s.mod["main"])
+    i, j, k = s.get_loops(C)
+    s.decompose_reduction(C, k)
+    tvm.ir.assert_structural_equal(matmul_decompose2, s.mod["main"])
 
 
 def test_reduction_decompose3():
-    s = tir.Schedule(rowsum_blockized, debug_mask="all")
-    blockized_B = s.get_block("blockized_B")
-    io, ko = s.get_loops(blockized_B)
-    s.decompose_reduction(blockized_B, ko)
+    s = tir.Schedule(matmul_decompose_fail3, debug_mask="all")
+    C = s.get_block("update")
+    i, j, k = s.get_loops(C)
+    with pytest.raises(tvm.tir.ScheduleError):
+        s.decompose_reduction(C, k)
 
 
 def test_reduction_rfactor_matmul():
@@ -707,4 +753,5 @@ def test_reduction_rfactor_outermost_loop_multiple_children():  # pylint: disabl
 
 
 if __name__ == "__main__":
+    test_reduction_decompose2()
     sys.exit(pytest.main([__file__] + sys.argv[1:]))

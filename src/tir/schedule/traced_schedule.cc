@@ -236,8 +236,7 @@ void TracedScheduleNode::ReverseComputeInline(const BlockRV& block_rv) {
 
 /******** Schedule: Reduction ********/
 
-BlockRV TracedScheduleNode::DecomposeReduction(const BlockRV& block_rv,
-                                               const Optional<LoopRV>& loop_rv) {
+BlockRV TracedScheduleNode::DecomposeReduction(const BlockRV& block_rv, const LoopRV& loop_rv) {
   BlockRV result = ConcreteScheduleNode::DecomposeReduction(block_rv, loop_rv);
   static const InstructionKind& kind = InstructionKind::Get("DecomposeReduction");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,

@@ -1223,14 +1223,13 @@ class Schedule(Object):
 
     ########## Schedule: Reduction ##########
 
-    def decompose_reduction(self, block: BlockRV, loop: Optional[LoopRV]) -> BlockRV:
+    def decompose_reduction(self, block: BlockRV, loop: LoopRV) -> BlockRV:
         """Decompose a reduction block into init block and update block, where the newly generated
-        init block will be under the specified loop. If no loop is specified, then if statement will
-        be generated. It requires:
+        init block will be before the specified loop.
 
         1) The block is a reduction block.
 
-        2) The loop is higher than all the loops related to reduce block var, or loop is None.
+        2) The loop is not lower than all the loops related to reduce block var.
 
         Parameters
         ----------
@@ -1253,12 +1252,13 @@ class Schedule(Object):
                 B = tir.match_buffer(b, [128, 128])
                 C = tir.match_buffer(c, [128, 128])
 
-                with tir.block([128, 128, tir.reduce_axis(0, 128)], "C") as [vi, vj, vk]:
-                    with tir.init():
-                        C[vi, vj] = 0.0
-                    C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
+                for i, j, k in tir.grid(128, 128, 128):
+                    with tir.block([128, 128, tir.reduce_axis(0, 128)], "C") as [vi, vj, vk]:
+                        with tir.init():
+                            C[vi, vj] = 0.0
+                        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
-        1. Create the schedule and do decompose-reduction with specified loop:
+        Create the schedule and do decompose-reduction with specified loop:
 
         .. code-block:: python
 
@@ -1282,34 +1282,11 @@ class Schedule(Object):
                     for j in tir.serial(128):
                         with tir.block([128, 128]) as [vi, vj]:
                             C[vi, vj] = 0.0
+                for i in tir.serial(128):
                     for j in tir.serial(128):
                         for k in tir.serial(128):
                             with tir.block([128, 128, tir.reduce_axis(0, 128)], "C") as [vi, vj, vk]:
                                 C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
-
-        2. Create the schedule and do decompose-reduction without specified loop:
-
-        .. code-block:: python
-
-            sch = tir.Schedule(before_decompose)
-            C = sch.get_block("C")
-            sch.decompose_reduction(C)
-            print(tvm.script.asscript(sch.mod["main"]))
-
-        After applying decompose-reduction, the IR becomes:
-
-        .. code-block:: python
-
-            @tvm.script.tir
-            def after_decompose(a: ty.handle, c: ty.handle) -> None:
-                A = tir.match_buffer(a, [128, 128])
-                B = tir.match_buffer(b, [128, 128])
-                C = tir.match_buffer(c, [128, 128])
-
-                with tir.block([128, 128, tir.reduce_axis(0, 128)], "C") as [vi, vj, vk]:
-                    if k == 0:
-                        C[vi, vj] = 0.0
-                    C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
         """
         _ffi_api.ScheduleDecomposeReduction(self, block, loop)  # type: ignore # pylint: disable=no-member
