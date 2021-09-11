@@ -19,7 +19,6 @@
 #ifndef SRC_META_SCHEDULE_SEARCH_STRATEGY_H_
 #define SRC_META_SCHEDULE_SEARCH_STRATEGY_H_
 
-#include <tvm/ir/module.h>
 #include <tvm/tir/schedule/schedule.h>
 
 #include "./runner.h"

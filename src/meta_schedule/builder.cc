@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./builder.h"  // NOLINT(build/include)
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {

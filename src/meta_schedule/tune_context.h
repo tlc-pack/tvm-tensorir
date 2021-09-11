@@ -49,7 +49,7 @@ class TuneContextNode : public runtime::Object {
   Optional<Database> database;
   /*! \brief The cost model for estimation. */
   Optional<CostModel> cost_model;
-  /* \brief The post processing functions. */
+  /*! \brief The post processing functions. */
   Optional<Array<Postproc>> postprocs;
   /*! \brief The measure callback functions. */
   Optional<Array<MeasureCallback>> measure_callbacks;
@@ -61,8 +61,6 @@ class TuneContextNode : public runtime::Object {
   int num_threads;
   /*! \brief The verbosity level. */
   int verbose;
-
-  // AWAIT(zxybazh): Convenient functions for post-processing and measure callbacks.
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("mod", &mod);

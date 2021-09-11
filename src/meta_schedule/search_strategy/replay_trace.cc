@@ -16,11 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include <tvm/support/parallel_for.h>
-#include <tvm/tir/schedule/trace.h>
-
-#include "../search_strategy.h"
-#include "../tune_context.h"
+#include "../utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -28,17 +24,24 @@ namespace meta_schedule {
 /*! \brief A search strategy that replays the trace. */
 class ReplayTraceNode : public SearchStrategyNode {
  public:
+  using TRandState = support::LinearCongruentialEngine::TRandState;
+
   /*! \brief The state of the search strategy. */
   struct State {
+    /*! \brief The search strategy itself */
+    ReplayTraceNode* self;
     /*! \brief The design spaces. */
     Array<tir::Schedule> design_spaces;
+    /*! \brief `[st, ed)` are the indices of the next batch of candidates. */
+    int st;
+    /*! \brief `[st, ed)` are the indices of the next batch of candidates. */
+    int ed;
 
-    /*! \brief The current number of candidates generated. */
-    int i;
+    explicit State(ReplayTraceNode* self, Array<tir::Schedule> design_spaces)
+        : self(self), design_spaces(design_spaces), st(0), ed(self->num_trials_per_iter) {}
 
-    /*! \brief Constrcutor. */
-    explicit State(Array<tir::Schedule> design_spaces, int i)
-        : design_spaces(design_spaces), i(i) {}
+    inline Optional<runtime::Array<IRModule>> GenerateMeasureCandidates();
+    inline void NotifyRunnerResults(const Array<RunnerResult>& results);
   };
 
   /*! \brief The number of trials per iteration. */
@@ -47,21 +50,21 @@ class ReplayTraceNode : public SearchStrategyNode {
   int num_trials_total;
 
   /*! \brief The module to be tuned. */
-  Optional<IRModule> mod = NullOpt;
-  /*! \brief The random state. */
-  support::LinearCongruentialEngine::TRandState* rand_state = nullptr;
+  IRModule mod_{nullptr};
   /*! \brief The number of threads to use. */
-  int num_threads = -1;
+  int num_threads_ = -1;
+  /*! \brief The random state */
+  TRandState rand_state_ = -1;
   /*! \brief The state of the search strategy. */
-  std::unique_ptr<State> state = nullptr;
+  std::unique_ptr<State> state_ = nullptr;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("num_trials_per_iter", &num_trials_per_iter);
     v->Visit("num_trials_total", &num_trials_total);
-    v->Visit("mod", &mod);
-    v->Visit("num_threads", &num_threads);
-    // `rand_state` is not visited
-    // `state` is not visited
+    // `mod_` is not visited
+    // `num_threads_` is not visited
+    // `rand_state_` is not visited
+    // `state_` is not visited
   }
 
   static constexpr const char* _type_key = "meta_schedule.ReplayTrace";
@@ -69,63 +72,65 @@ class ReplayTraceNode : public SearchStrategyNode {
 
  public:
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
-    this->mod = tune_context->mod;
-    this->rand_state = &tune_context->rand_state;
-    this->num_threads = tune_context->num_threads;
+    this->mod_ = tune_context->mod.value();
+    this->num_threads_ = tune_context->num_threads;
+    this->rand_state_ = ForkSeed(&tune_context->rand_state);
+    this->state_.reset();
   }
 
   void PreTuning(const Array<tir::Schedule>& design_spaces) final {
-    ICHECK(this->mod.defined());
-    ICHECK(this->state == nullptr);
-    this->state = std::make_unique<State>(design_spaces, 0);
+    ICHECK(!design_spaces.empty());
+    ICHECK(this->state_ == nullptr);
+    this->state_ = std::make_unique<State>(this, design_spaces);
   }
 
   void PostTuning() final {
-    ICHECK(this->state != nullptr);
-    this->state.reset();
+    ICHECK(this->state_ != nullptr);
+    this->state_.reset();
   }
 
   Optional<runtime::Array<IRModule>> GenerateMeasureCandidates() final {
-    ICHECK(this->state != nullptr);
-    ICHECK(this->mod.defined());
-    ICHECK(this->rand_state);
-    int st = this->state->i;
-    int ed = std::min(st + num_trials_per_iter, num_trials_total);
-    if (st >= num_trials_total) {
-      return NullOpt;
-    }
-
-    std::vector<support::LinearCongruentialEngine::TRandState> seeds_per_thread(this->num_threads,
-                                                                                0);
-    runtime::Array<IRModule> results(ed - st, IRModule{nullptr});
-    auto f_worker = [this, &seeds_per_thread, &results](int thread_id, int task_id) -> void {
-      support::LinearCongruentialEngine::TRandState& rand_state = seeds_per_thread[thread_id];
-      rand_state = support::LinearCongruentialEngine(this->rand_state).ForkSeed();
-      Optional<tir::Trace> trace =
-          this->state
-              ->design_spaces[support::LinearCongruentialEngine(this->rand_state)() %
-                              this->state->design_spaces.size()]  // AWAIT(@zxybazh): SampleInt
-              ->trace();
-      ICHECK(trace.defined()) << "ValueError: The generated design space schedule is not traced.";
-      tir::Trace new_trace = tir::Trace(trace.value()->insts, {});
-      tir::Schedule sch = tir::Schedule::Traced(                                     //
-          this->mod.value(),                                                         //
-          /*rand_state=*/support::LinearCongruentialEngine(&rand_state).ForkSeed(),  //
-          /*debug_mode=*/0,                                                          //
-          /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
-      new_trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
-      // AWAIT: postproc
-      results.Set(task_id, sch->mod());
-    };
-    support::parallel_persist_for(0, ed - st, f_worker, this->num_threads);
-    return results;
+    ICHECK(this->state_ != nullptr);
+    return this->state_->GenerateMeasureCandidates();
   }
 
   void NotifyRunnerResults(const Array<RunnerResult>& results) final {
-    ICHECK(this->state != nullptr);
-    this->state->i += results.size();
+    ICHECK(this->state_ != nullptr);
+    this->state_->NotifyRunnerResults(results);
   }
 };
+
+inline Optional<runtime::Array<IRModule>> ReplayTraceNode::State::GenerateMeasureCandidates() {
+  if (st >= self->num_trials_total) {
+    return NullOpt;
+  }
+  ed = std::min(ed, self->num_trials_total);
+  ICHECK_LT(st, ed);
+  std::vector<TRandState> per_thread_rand_state = ForkSeed(&self->rand_state_, self->num_threads_);
+  runtime::Array<IRModule> per_task_result(ed - st, IRModule{nullptr});
+  auto f_worker = [this, &per_thread_rand_state, &per_task_result](int thread_id,
+                                                                   int task_id) -> void {
+    TRandState& rand_state = per_thread_rand_state[thread_id];
+    // TODO: SampleInt
+    tir::Trace trace = design_spaces[0]->trace().value();
+    tir::Trace new_trace = tir::Trace(trace->insts, {});
+    tir::Schedule sch = tir::Schedule::Traced(  //
+        self->mod_,                             //
+        /*rand_state=*/ForkSeed(&rand_state),   //
+        /*debug_mode=*/0,                       //
+        /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
+    new_trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
+    // TODO: postproc
+    per_task_result.Set(task_id, sch->mod());
+  };
+  support::parallel_persist_for(0, ed - st, f_worker, self->num_threads_);
+  return per_task_result;
+}
+
+inline void ReplayTraceNode::State::NotifyRunnerResults(const Array<RunnerResult>& results) {
+  st += self->num_trials_per_iter;
+  ed += self->num_trials_per_iter;
+}
 
 SearchStrategy SearchStrategy::ReplayTrace(int num_trials_per_iter, int num_trials_total) {
   ObjectPtr<ReplayTraceNode> n = make_object<ReplayTraceNode>();

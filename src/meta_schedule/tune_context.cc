@@ -16,10 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./tune_context.h"
-
 #include <random>
 #include <utility>
+
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -61,7 +61,9 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   n->postprocs = postprocs;
   n->measure_callbacks = measure_callbacks;
   n->task_name = task_name;
-  if (rand_state == -1) rand_state = std::random_device()();
+  if (rand_state == -1) {
+    rand_state = std::random_device()();
+  }
   support::LinearCongruentialEngine(&n->rand_state).Seed(rand_state);
   n->num_threads = num_threads;
   n->verbose = verbose;

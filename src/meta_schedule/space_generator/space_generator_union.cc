@@ -16,9 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-#include "../space_generator.h"
-#include "../tune_context.h"
+#include "../utils.h"
 
 namespace tvm {
 namespace meta_schedule {
