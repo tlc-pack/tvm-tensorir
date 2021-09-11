@@ -54,7 +54,7 @@ class SearchStrategyNode : public runtime::Object {
    * \brief Generate measure candidates from design spaces for measurement.
    * \return The measure candidates generated, nullptr if finished.
    */
-  virtual Optional<runtime::Array<IRModule>> GenerateMeasureCandidates() = 0;
+  virtual Optional<runtime::Array<tir::Schedule>> GenerateMeasureCandidates() = 0;
 
   /*!
    * \brief Update the search strategy with profiling results.
@@ -85,7 +85,8 @@ class PySearchStrategyNode : public SearchStrategyNode {
    * \brief The function type of `GenerateMeasureCandidates` method.
    * \return The measure candidates generated, nullptr if finished.
    */
-  using FGenerateMeasureCandidates = runtime::TypedPackedFunc<Optional<runtime::Array<IRModule>>()>;
+  using FGenerateMeasureCandidates =
+      runtime::TypedPackedFunc<Optional<runtime::Array<tir::Schedule>>()>;
   /*!
    * \brief The function type of `NotifyRunnerResults` method.
    * \param results The profiling results from the runner.
@@ -121,7 +122,7 @@ class PySearchStrategyNode : public SearchStrategyNode {
 
   void PostTuning() final { this->f_post_tuning(); }
 
-  Optional<runtime::Array<IRModule>> GenerateMeasureCandidates() final {
+  Optional<runtime::Array<tir::Schedule>> GenerateMeasureCandidates() final {
     return this->f_generate_measure_candidates();
   }
 

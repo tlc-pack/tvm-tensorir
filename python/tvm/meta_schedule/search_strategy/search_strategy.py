@@ -66,7 +66,7 @@ class SearchStrategy(Object):
         """Post-tuning for the search strategy."""
         _ffi_api.SearchStrategyPostTuning(self)  # pylint: disable=no-member
 
-    def generate_measure_candidates(self) -> Optional[List[IRModule]]:
+    def generate_measure_candidates(self) -> Optional[List[Schedule]]:
         """Generate measure candidates from design spaces for measurement.
 
         Returns
@@ -103,7 +103,7 @@ class PySearchStrategy(SearchStrategy):
         def f_post_tuning() -> None:
             self.post_tuning()
 
-        def f_generate_measure_candidates() -> List[IRModule]:
+        def f_generate_measure_candidates() -> List[Schedule]:
             return self.generate_measure_candidates()
 
         def f_notify_runner_results(results: List["RunnerResult"]) -> None:
@@ -127,7 +127,7 @@ class PySearchStrategy(SearchStrategy):
     def post_tuning(self) -> None:
         raise NotImplementedError
 
-    def generate_measure_candidates(self) -> List[IRModule]:
+    def generate_measure_candidates(self) -> List[Schedule]:
         raise NotImplementedError
 
     def notify_runner_results(self, results: List["RunnerResult"]) -> None:

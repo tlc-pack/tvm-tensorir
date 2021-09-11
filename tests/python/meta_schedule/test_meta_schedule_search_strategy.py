@@ -16,33 +16,23 @@
 # under the License.
 """ Test Meta Schedule SearchStrategy """
 # pylint: disable=missing-function-docstring
+from typing import List
 
 import sys
+
 import pytest
 
 import tvm
 from tvm import tir
-
 from tvm.meta_schedule import (
-    BuilderInput,
-    RunnerInput,
-    LocalBuilder,
-    EvaluatorConfig,
-    RPCConfig,
-    RPCRunner,
     PySearchStrategy,
-    TuneContext,
     ReplayTrace,
     ScheduleFn,
-    TensorArgInfo,
+    TuneContext,
+    RunnerResult,
 )
-from tvm.meta_schedule.testing import Server, Tracker
-from tvm.meta_schedule.utils import get_global_func_with_default_on_worker
-
 from tvm.script import ty
-from tvm.target import Target
-from tvm.tir import Schedule, FloatImm
-from tvm.ir import IRModule
+from tvm.tir.schedule import Schedule, Trace
 
 
 MATMUL_M = 32
@@ -66,36 +56,13 @@ class Matmul:
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
 
 
-def _clean_build(artifact_path: str) -> None:
-    f_clean_build = get_global_func_with_default_on_worker("meta_schedule.remove_build_dir", None)
-    if f_clean_build is not None:
-        f_clean_build(artifact_path)
-    else:
-        raise RuntimeError("Unable to find remove_build_dir function.")
+def _is_trace_equal(sch_1: Schedule, sch_2: Schedule) -> bool:
+    trace_1 = Trace(sch_1.trace.insts, {})
+    trace_2 = Trace(sch_2.trace.insts, {})
+    return str(trace_1) == str(trace_2)
 
 
-def _compare_irmodule_similarity(mod1: IRModule, mod2: IRModule) -> bool:
-    try:
-        part1 = mod1["main"]
-        part2 = mod2["main"]
-    except KeyError:
-        return False
-    while part1 is not None and part2 is not None:
-        if type(part1) != type(part2):  # pylint: disable=unidiomatic-typecheck
-            return False
-        try:
-            try:
-                part1 = part1.body
-                part2 = part2.body
-            except AttributeError:
-                part1 = part1.block
-                part2 = part2.block
-        except AttributeError:
-            break
-    return True
-
-
-def schedule_matmul(sch: Schedule):
+def _schedule_matmul(sch: Schedule):
     block = sch.get_block("matmul")
     i, j, k = sch.get_loops(block=block)
     i_tiles = sch.sample_perfect_tile(i, n=4)
@@ -132,92 +99,31 @@ def test_meta_schedule_py_search_strategy():
 
 
 def test_meta_schedule_replay_trace():
-    trials = 20
-    batch_size = 7
+    num_trials_per_iter = 7
+    num_trials_total = 20
 
-    space_generator = ScheduleFn(sch_fn=schedule_matmul)
+    (example_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(Matmul())
+    replay = ReplayTrace(num_trials_per_iter=num_trials_per_iter, num_trials_total=num_trials_total)
     tune_context = TuneContext(mod=Matmul())
-
-    replay = ReplayTrace(batch_size, trials)
     replay.initialize_with_tune_context(tune_context)
-    design_spaces = space_generator.generate_design_space(Matmul())
-    replay.pre_tuning(design_spaces)
 
-    builder = LocalBuilder()
-
-    results = []
-
-    with Tracker(silent=True) as tracker:
-        with Server(tracker, silent=True) as server:
-            candidates = replay.generate_measure_candidates()
-            while candidates is not None:
-                assert len(results) <= trials
-                assert len(candidates) == batch_size or len(results) + len(candidates) == trials
-                for candidate in candidates:
-                    flag = False
-                    for design_space in design_spaces:
-                        flag |= _compare_irmodule_similarity(candidate, design_space.mod)
-                    assert (
-                        flag
-                    ), f"The generated IRModule {candidate} does not match any design spaces."
-                builder_results = builder.build(
-                    [BuilderInput(mod, Target("llvm")) for mod in candidates]
-                )
-                for builder_result in builder_results:
-                    assert builder_result.artifact_path is not None
-                    assert builder_result.error_msg is None
-
-                runner_inputs = [
-                    RunnerInput(
-                        builder_result.artifact_path,
-                        "llvm",
-                        [
-                            TensorArgInfo("float32", [MATMUL_M, MATMUL_M]),
-                            TensorArgInfo("float32", [MATMUL_M, MATMUL_M]),
-                            TensorArgInfo("float32", [MATMUL_M, MATMUL_M]),
-                        ],
-                    )
-                    for builder_result in builder_results
-                ]
-
-                rpc_config = RPCConfig(
-                    tracker_host=tracker.host,
-                    tracker_port=tracker.port,
-                    tracker_key=server.key,
-                    session_priority=1,
-                    session_timeout_sec=100,
-                )
-                evaluator_config = EvaluatorConfig(
-                    number=1,
-                    repeat=1,
-                    min_repeat_ms=0,
-                    enable_cpu_cache_flush=False,
-                )
-                runner = RPCRunner(rpc_config, evaluator_config)
-
-                # Run the module
-                current_results = []
-                runner_futures = runner.run(runner_inputs)
-                for runner_future in runner_futures:
-                    runner_result = runner_future.result()
-                    assert runner_result.error_msg is None
-                    for result in runner_result.run_sec:
-                        if isinstance(result, FloatImm):
-                            result = result.value
-                        assert isinstance(result, float)
-                        assert result >= 0.0
-                    current_results.append(runner_result)
-
-                for builder_result in builder_results:
-                    _clean_build(builder_result.artifact_path)
-
-                results += current_results
-                replay.notify_runner_results(current_results)
-                candidates = replay.generate_measure_candidates()
-
-    assert len(results) == trials
+    num_trials_each_round: List[int] = []
+    replay.pre_tuning([example_sch])
+    while True:
+        candidates = replay.generate_measure_candidates()
+        if candidates is None:
+            break
+        num_trials_each_round.append(len(candidates))
+        runner_results: List[RunnerResult] = []
+        for candidate in candidates:
+            assert _is_trace_equal(candidate, example_sch)
+            runner_results.append(RunnerResult(run_sec=[0.5, 0.4, 0.3], error_msg=None))
+        replay.notify_runner_results(runner_results)
     replay.post_tuning()
+    assert num_trials_each_round == [7, 7, 6]
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    test_meta_schedule_py_search_strategy()
+    test_meta_schedule_replay_trace()
+    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
