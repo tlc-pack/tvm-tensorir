@@ -366,14 +366,6 @@ TVM_DLL PrimExpr Substitute(PrimExpr expr, std::function<Optional<PrimExpr>(cons
 TVM_DLL Array<Range> Substitute(const Array<Range>& region, const Map<Var, PrimExpr>& vmap);
 
 /*!
- * \brief Substitute the var specified by vmap.
- * \param buffer_region The object whose vars are to be substituted
- * \param vmap The map of new values.
- * \return The result.
- */
-TVM_DLL BufferRegion Substitute(const BufferRegion& region, const Map<Var, PrimExpr>& vmap);
-
-/*!
  * \brief Sugar for substitute via a given map.
  * \param input The input to be updated.
  * \param value_map The map of new values.

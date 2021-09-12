@@ -229,7 +229,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
   // Step 2. After copying block vars, substitute them in init block
   init_block->body = Substitute(block->init.value(), block_var_map);
   for (const BufferRegion& write : block->writes) {
-    init_block->writes.push_back(Substitute(write, block_var_map));
+    init_block->writes.push_back(BufferRegion(write->buffer, Substitute(write->region, block_var_map)));
   }
   // Step 3. Create loops above the init block
   Stmt body = BlockRealize(init_realize);
