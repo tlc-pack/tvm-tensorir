@@ -471,6 +471,12 @@ TVM_DLL Pass UnifyThreadBinding();
 TVM_DLL Pass MergeDynamicSharedMemoryAllocations();
 
 /*!
+ * \brief Automatically generate thread binding for auto copy blocks
+ * \return The pass.
+ */
+TVM_DLL Pass LowerAutoCopy();
+
+/*!
  * \brief Transform annotated loops into pipelined one that parallelize producers and consumers.
  * \return The IR transform pass.
  */

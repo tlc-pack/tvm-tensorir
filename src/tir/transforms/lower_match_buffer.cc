@@ -213,7 +213,7 @@ class MatchBufferLower : public StmtExprMutator {
         }
       }
     }
-
+    
     // Step 2.4. Check and update shape
     for (size_t i = 0; i < buffer->shape.size(); ++i) {
       const Range& range = source->region[i + offset];

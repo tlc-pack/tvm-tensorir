@@ -739,6 +739,16 @@ def MergeDynamicSharedMemoryAllocations():
     """
     return _ffi_api.MergeDynamicSharedMemoryAllocations()  # type: ignore
 
+def LowerAutoCopy():
+    """Automatically generate thread binding for auto copy blocks
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.LowerAutoCopy()
+
 
 def InjectSoftwarePipeline():
     """Transform annotated loops into pipelined one that parallelize producers and consumers

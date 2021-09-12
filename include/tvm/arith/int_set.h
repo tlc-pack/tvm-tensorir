@@ -155,6 +155,8 @@ class IntSet : public ObjectRef {
  * \return The converted map.
  */
 Map<Var, IntSet> ConvertDomMap(const std::unordered_map<const VarNode*, IntSet>& dom_map);
+
+IntSet EvalSet(PrimExpr e, const Map<Var, IntSet>& dom_map);
 /*!
  * \brief Find an symbolic integer set that contains all possible values of
  *  e given the domain of each iteration variables.
