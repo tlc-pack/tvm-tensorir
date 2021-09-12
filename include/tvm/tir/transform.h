@@ -550,6 +550,12 @@ TVM_DLL Pass InjectSoftwarePipeline();
  */
 TVM_DLL Pass LowerLogicalIntrin();
 
+/*!
+ * \brief Automatically generate thread binding for auto copy blocks
+ * \return The pass.
+ */
+TVM_DLL Pass LowerAutoCopy();
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm

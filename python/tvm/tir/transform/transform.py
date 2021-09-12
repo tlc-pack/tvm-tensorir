@@ -823,3 +823,12 @@ def LowerLogicalIntrin():
         The result pass
     """
     return _ffi_api.LowerLogicalIntrin()
+def LowerAutoCopy():
+    """Automatically generate thread binding for auto copy blocks
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.LowerAutoCopy()
