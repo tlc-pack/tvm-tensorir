@@ -15,13 +15,18 @@
 # specific language governing permissions and limitations
 # under the License.
 """Utility"""
+import json
 import os
 import shutil
-from typing import Callable, Union
+from typing import Any, Callable, List, Union
 
 import psutil
+
 from tvm._ffi import get_global_func, register_func
 from tvm.error import TVMError
+from tvm.ir import Array, Map
+from tvm.runtime import String
+from tvm.tir import FloatImm, IntImm
 
 
 @register_func("meta_schedule.cpu_count")
@@ -82,3 +87,34 @@ def get_global_func_with_default_on_worker(
 def remove_build_dir(artifact_path: str):
     """Clean up the build directory"""
     shutil.rmtree(os.path.dirname(artifact_path))
+
+
+@register_func("meta_schedule.batch_json_str2obj")
+def batch_json_str2obj(json_strs: List[str]) -> List[Any]:
+    """TODO: docstring"""
+    return [
+        json.loads(json_str)
+        for json_str in map(str.strip, json_strs)
+        if json_str and (not json_str.startswith("#")) and (not json_str.startswith("//"))
+    ]
+
+
+def _json_de_tvm(obj: Any) -> Any:
+    """TODO: docstring"""
+    if obj is None:
+        return None
+    if isinstance(obj, Array):
+        return [_json_de_tvm(i) for i in obj]
+    if isinstance(obj, Map):
+        return {_json_de_tvm(k): _json_de_tvm(v) for k, v in obj.items()}
+    if isinstance(obj, String):
+        return str(obj)
+    if isinstance(obj, (IntImm, FloatImm)):
+        return obj.value
+    raise TypeError("Not supported type: " + str(type(obj)))
+
+
+@register_func("meta_schedule.json_obj2str")
+def json_obj2str(json_obj: Any) -> str:
+    json_obj = _json_de_tvm(json_obj)
+    return json.dumps(json_obj)

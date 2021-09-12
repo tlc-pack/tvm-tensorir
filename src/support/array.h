@@ -134,6 +134,15 @@ inline std::vector<TDst> AsVector(const Array<TSrc>& vec) {
   return details::AsVectorImpl<TSrc, TDst>()(vec);
 }
 
+inline Array<Integer> AsArray(const ShapeTuple& shape) {
+  Array<Integer> result;
+  result.reserve(shape->size);
+  for (ShapeTuple::index_type i : shape) {
+    result.push_back(Integer(i));
+  }
+  return result;
+}
+
 }  // namespace support
 }  // namespace tvm
 #endif  // TVM_SUPPORT_ARRAY_H_

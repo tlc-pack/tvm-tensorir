@@ -14,28 +14,25 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Union of SpaceGenerators"""
-from typing import List
+"""Default database"""
 
 from tvm._ffi import register_object
 
+from .database import Database
 from .. import _ffi_api
-from .space_generator import SpaceGenerator
 
 
-@register_object("meta_schedule.SpaceGeneratorUnion")
-class SpaceGeneratorUnion(SpaceGenerator):
-    """Union of design space generators."""
-
-    def __init__(self, space_generators: List[SpaceGenerator]):
-        """Constructor.
-
-        Parameters
-        ----------
-        space_generators : List[SpaceGenerator]
-            The list of design space generators to be unioned.
-        """
+@register_object("meta_schedule.DefaultDatabase")
+class DefaultDatabase(Database):
+    def __init__(
+        self,
+        record_path: str,
+        workload_path: str,
+        allow_missing: bool = True,
+    ) -> None:
         self.__init_handle_by_constructor__(
-            _ffi_api.SpaceGeneratorSpaceGeneratorUnion,  # pylint: disable=no-member
-            space_generators,
+            _ffi_api.DatabaseDefaultDatabase,  # type: ignore # pylint: disable=no-member
+            record_path,
+            workload_path,
+            allow_missing,
         )

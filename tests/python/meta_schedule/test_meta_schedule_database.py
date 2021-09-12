@@ -14,28 +14,18 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Union of SpaceGenerators"""
-from typing import List
-
-from tvm._ffi import register_object
-
-from .. import _ffi_api
-from .space_generator import SpaceGenerator
+"""Test Meta Schedule Database"""
+import tempfile
+import os.path as osp
+from tvm.meta_schedule import DefaultDatabase, TuningRecord
 
 
-@register_object("meta_schedule.SpaceGeneratorUnion")
-class SpaceGeneratorUnion(SpaceGenerator):
-    """Union of design space generators."""
+def test_meta_schedule_database_create():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        record_path = osp.join(tmpdir, "records.json")
+        workload_path = osp.join(tmpdir, "workloads.json")
+        database = DefaultDatabase(record_path=record_path, workload_path=workload_path)
 
-    def __init__(self, space_generators: List[SpaceGenerator]):
-        """Constructor.
 
-        Parameters
-        ----------
-        space_generators : List[SpaceGenerator]
-            The list of design space generators to be unioned.
-        """
-        self.__init_handle_by_constructor__(
-            _ffi_api.SpaceGeneratorSpaceGeneratorUnion,  # pylint: disable=no-member
-            space_generators,
-        )
+if __name__ == "__main__":
+    test_meta_schedule_database_create()

@@ -16,6 +16,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/runtime/registry.h>
+
+#include "../src/support/array.h"
 #include "./utils.h"
 
 namespace tvm {
@@ -37,6 +40,23 @@ Array<ArgInfo> ArgInfo::FromPrimFunc(const tir::PrimFunc& func) {
   return result;
 }
 
+ArgInfo ArgInfo::FromJSON(const ObjectRef& json_obj) {
+  String tag{runtime::ObjectPtr<runtime::StringObj>(nullptr)};
+  try {
+    const ArrayNode* json_array = json_obj.as<ArrayNode>();
+    CHECK(json_array && json_array->size() >= 1);
+    tag = Downcast<String>(json_array->at(0));
+  } catch (const std::runtime_error& e) {  // includes tvm::Error and dmlc::Error
+    LOG(FATAL) << "ValueError: Unable to parse the JSON object: " << json_obj
+               << "\nThe error is: " << e.what();
+  }
+  if (tag == "TENSOR") {
+    return TensorArgInfo::FromJSON(json_obj);
+  }
+  LOG(FATAL) << "ValueError: Unable to parse the JSON object: " << json_obj;
+  throw;
+}
+
 TensorArgInfo::TensorArgInfo(runtime::DataType dtype, runtime::ShapeTuple shape) {
   ObjectPtr<TensorArgInfoNode> n = make_object<TensorArgInfoNode>();
   n->dtype = dtype;
@@ -44,9 +64,38 @@ TensorArgInfo::TensorArgInfo(runtime::DataType dtype, runtime::ShapeTuple shape)
   this->data_ = std::move(n);
 }
 
+ObjectRef TensorArgInfoNode::AsJSON() const {
+  static String tag = "TENSOR";
+  String dtype = DLDataType2String(this->dtype);
+  Array<Integer> shape = support::AsArray(this->shape);
+  return Array<ObjectRef>{tag, dtype, shape};
+}
+
+TensorArgInfo TensorArgInfo::FromJSON(const ObjectRef& json_obj) {
+  DLDataType dtype;
+  Array<Integer> shape;
+  try {
+    const ArrayNode* json_array = json_obj.as<ArrayNode>();
+    CHECK(json_array && json_array->size() == 3);
+    // Load json[1] => dtype
+    {
+      String dtype_str = Downcast<String>(json_array->at(1));
+      dtype = runtime::String2DLDataType(dtype_str);
+    }
+    // Load json[2] => shape
+    shape = Downcast<Array<Integer>>(json_array->at(2));
+  } catch (const std::runtime_error& e) {  // includes tvm::Error and dmlc::Error
+    LOG(FATAL) << "ValueError: Unable to parse the JSON object: " << json_obj
+               << "\nThe error is: " << e.what();
+  }
+  return TensorArgInfo(DataType(dtype), ShapeTuple(shape.begin(), shape.end()));
+}
+
 TVM_REGISTER_OBJECT_TYPE(ArgInfoNode);
 TVM_REGISTER_NODE_TYPE(TensorArgInfoNode);
 
+TVM_REGISTER_GLOBAL("meta_schedule.ArgInfoAsJSON").set_body_method<ArgInfo>(&ArgInfoNode::AsJSON);
+TVM_REGISTER_GLOBAL("meta_schedule.ArgInfoFromJSON").set_body_typed(ArgInfo::FromJSON);
 TVM_REGISTER_GLOBAL("meta_schedule.TensorArgInfo")
     .set_body_typed([](runtime::DataType dtype, runtime::ShapeTuple shape) -> TensorArgInfo {
       return TensorArgInfo(dtype, shape);

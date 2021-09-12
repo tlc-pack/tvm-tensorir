@@ -18,6 +18,8 @@
  */
 #include "../utils.h"
 
+#include <tvm/runtime/registry.h>
+
 namespace tvm {
 namespace meta_schedule {
 
@@ -80,7 +82,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.RunnerFutureResult")
 
 TVM_REGISTER_GLOBAL("meta_schedule.RunnerRun").set_body_method<Runner>(&RunnerNode::Run);
 
-TVM_REGISTER_GLOBAL("meta_schedule.PyRunner").set_body_typed(Runner::PyRunner);
+TVM_REGISTER_GLOBAL("meta_schedule.RunnerPyRunner").set_body_typed(Runner::PyRunner);
 
 }  // namespace meta_schedule
 }  // namespace tvm

@@ -21,8 +21,6 @@
 
 #include <tvm/node/node.h>
 #include <tvm/runtime/container/shape_tuple.h>
-#include <tvm/runtime/registry.h>
-#include <tvm/tir/function.h>
 
 namespace tvm {
 namespace meta_schedule {
@@ -31,6 +29,8 @@ namespace meta_schedule {
 class ArgInfoNode : public runtime::Object {
  public:
   virtual ~ArgInfoNode() = default;
+
+  virtual ObjectRef AsJSON() const = 0;
 
   static constexpr const char* _type_key = "meta_schedule.ArgInfo";
   TVM_DECLARE_BASE_OBJECT_INFO(ArgInfoNode, runtime::Object);
@@ -43,7 +43,7 @@ class ArgInfoNode : public runtime::Object {
 class ArgInfo : public runtime::ObjectRef {
  public:
   TVM_DLL static Array<ArgInfo, void> FromPrimFunc(const tir::PrimFunc& func);
-
+  TVM_DLL static ArgInfo FromJSON(const ObjectRef& json_obj);
   TVM_DEFINE_OBJECT_REF_METHODS(ArgInfo, runtime::ObjectRef, ArgInfoNode);
 };
 
@@ -62,6 +62,9 @@ class TensorArgInfoNode : public ArgInfoNode {
 
   static constexpr const char* _type_key = "meta_schedule.TensorArgInfo";
   TVM_DECLARE_BASE_OBJECT_INFO(TensorArgInfoNode, ArgInfoNode);
+
+ public:
+  ObjectRef AsJSON() const;
 };
 
 /*!
@@ -71,6 +74,7 @@ class TensorArgInfoNode : public ArgInfoNode {
 class TensorArgInfo : public ArgInfo {
  public:
   TVM_DLL TensorArgInfo(runtime::DataType dtype, runtime::ShapeTuple shape);
+  TVM_DLL static TensorArgInfo FromJSON(const ObjectRef& json_obj);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(TensorArgInfo, ArgInfo, TensorArgInfoNode);
 };
 

@@ -162,7 +162,7 @@ class PyRunner(Runner):
             return self.run(runner_inputs)
 
         self.__init_handle_by_constructor__(
-            _ffi_api.PyRunner,  # type: ignore # pylint: disable=no-member
+            _ffi_api.RunnerPyRunner,  # type: ignore # pylint: disable=no-member
             f_run,
         )
 
@@ -186,8 +186,8 @@ class EvaluatorConfig(NamedTuple):
 
     Note
     ----
-    The total number of acutal executions is 1+number*repeat because we would warm up 1 time before
-    actaul run. The number of runs would be increased if run time is below min_repeat_ms.
+    The total number of actual executions is 1+number*repeat because we would warm up 1 time before
+    actual run. The number of runs would be increased if run time is below min_repeat_ms.
     """
 
     number: int = 3

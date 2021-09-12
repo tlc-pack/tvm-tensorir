@@ -16,11 +16,9 @@
 # under the License.
 """RPC Runner"""
 import concurrent.futures
-import itertools
-import os
-import os.path as osp
-import shutil
 from contextlib import contextmanager
+import itertools
+import os.path as osp
 from typing import Callable, List, Optional, Union
 
 from ...contrib.popen_pool import PopenPoolExecutor
@@ -89,7 +87,7 @@ class RPCRunner(PyRunner):
     evaluator_config: EvaluatorConfig
         The evaluator configuration.
     cooldown_sec: float
-        The cooldown in seconds. TODO(@junrushao1994,zxybazh): This is not used yet.
+        The cooldown in seconds. TODO(@junrushao1994,@zxybazh): This is not used yet.
     alloc_repeat: int
         The number of times to repeat the allocation.
     f_create_session: Optional[str, Callable]
@@ -107,7 +105,7 @@ class RPCRunner(PyRunner):
 
     Note
     ----
-    Does not support customizd function name passing for f_create_session, f_upload_module,
+    Does not support customized function name passing for f_create_session, f_upload_module,
     f_alloc_argument, f_run_evaluator, f_cleanup. These functions must be passed directly.
     """
 
@@ -150,9 +148,7 @@ class RPCRunner(PyRunner):
             ],
         ]
     ] = None
-    f_cleanup: Optional[
-        Union[str, Callable[[Optional[RPCSession], Optional[str], Optional[str]], None]]
-    ] = None
+    f_cleanup: Optional[Union[str, Callable[[Optional[RPCSession], Optional[str]], None]]] = None
 
     pool: PopenPoolExecutor
 
@@ -318,7 +314,7 @@ class RPCRunner(PyRunner):
             default_run_evaluator,
         )
         f_cleanup: Callable[
-            [Optional[RPCSession], Optional[str], Optional[str]], None
+            [Optional[RPCSession], Optional[str]], None
         ] = get_global_func_with_default_on_worker(
             _f_cleanup,
             default_cleanup,

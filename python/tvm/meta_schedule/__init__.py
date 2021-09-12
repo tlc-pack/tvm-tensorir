@@ -17,6 +17,7 @@
 """The meta schedule infrastructure."""
 from .arg_info import ArgInfo, TensorArgInfo, PyArgsInfo, Args
 from .builder import Builder, BuilderInput, BuilderResult, LocalBuilder, PyBuilder
+from .database import Database, TuningRecord, DefaultDatabase
 from .runner import (
     Runner,
     PyRunner,
@@ -31,3 +32,4 @@ from .runner import (
 from .tune_context import TuneContext
 from .space_generator import SpaceGenerator, SpaceGeneratorUnion, PySpaceGenerator, ScheduleFn
 from .search_strategy import SearchStrategy, PySearchStrategy, ReplayTrace
+from .workload_registry import WorkloadRegistry, WorkloadToken

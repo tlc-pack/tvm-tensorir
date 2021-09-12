@@ -41,6 +41,13 @@ class ArgInfo(Object):
     def as_python(self) -> PyArgInfo:
         raise NotImplementedError
 
+    def as_json(self) -> Any:
+        return _ffi_api.ArgInfoAsJSON(self)  # type: ignore # pylint: disable=no-member
+
+    @staticmethod
+    def from_json(json_obj: Any) -> "ArgInfo":
+        return _ffi_api.ArgInfoFromJSON(json_obj)  # type: ignore # pylint: disable=no-member
+
     @staticmethod
     def alloc(arg_info: PyArgInfo, device: Device) -> Arg:
         """Allocate argument information."""

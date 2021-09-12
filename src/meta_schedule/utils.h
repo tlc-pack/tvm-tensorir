@@ -18,15 +18,21 @@
  */
 #ifndef TVM_META_SCHEDULE_UTILS_H_
 #define TVM_META_SCHEDULE_UTILS_H_
+#include <dmlc/memory_io.h>
 #include <tvm/ir/module.h>
+#include <tvm/node/node.h>
 #include <tvm/support/parallel_for.h>
 #include <tvm/support/random_engine.h>
 #include <tvm/tir/schedule/trace.h>
 
+#include <fstream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "../printer/text_printer.h"
 #include "../support/array.h"
+#include "../support/base64.h"
 #include "./arg_info.h"
 #include "./builder.h"
 #include "./runner.h"
@@ -110,6 +116,65 @@ inline int SampleInt(support::LinearCongruentialEngine::TRandState* rand_state, 
   support::LinearCongruentialEngine rand_(rand_state);
   std::uniform_int_distribution<int> dist(min_inclusive, max_exclusive - 1);
   return dist(rand_);
+}
+
+inline Array<String> JSONFileReadLines(const String& path, bool allow_missing) {
+  std::ifstream is(path);
+  if (is.good()) {
+    Array<String> results;
+    for (std::string str; std::getline(is, str);) {
+      results.push_back(str);
+    }
+    return results;
+  }
+  CHECK(allow_missing) << "ValueError: File doesn't exist: " << path;
+  std::ofstream os(path);
+  CHECK(os.good()) << "ValueError: Cannot create new file: " << path;
+  return {};
+}
+
+inline void JSONFileAppendLine(const String& path, const std::string& line) {
+  std::ofstream os(path, std::ofstream::app);
+  CHECK(os.good()) << "ValueError: Cannot open the file to write: " << path;
+  os << line << std::endl;
+}
+
+inline Array<ObjectRef> JSONStr2Obj(const Array<String>& lines) {
+  static const runtime::PackedFunc* f_to_obj =
+      runtime::Registry::Get("meta_schedule.batch_json_str2obj");
+  ICHECK(f_to_obj) << "IndexError: Cannot find the packed function "
+                      "`meta_schedule.batch_json_str2obj` in the global registry";
+  return (*f_to_obj)(lines);
+}
+
+inline String JSONObj2Str(const ObjectRef& json_obj) {
+  static const runtime::PackedFunc* f_to_str = runtime::Registry::Get("meta_schedule.json_obj2str");
+  ICHECK(f_to_str) << "IndexError: Cannot find the packed function "
+                      "`meta_schedule.json_obj2str` in the global registry";
+  return (*f_to_str)(json_obj);
+}
+
+inline String GetSHash(const IRModule& mod) {
+  size_t shash = tvm::StructuralHash()(mod);
+  return std::to_string(shash);
+}
+
+inline std::string Base64Encode(std::string str) {
+  std::string result;
+  dmlc::MemoryStringStream m_stream(&result);
+  support::Base64OutStream b64stream(&m_stream);
+  static_cast<dmlc::Stream*>(&b64stream)->Write(str);
+  b64stream.Finish();
+  return result;
+}
+
+inline std::string Base64Decode(std::string str) {
+  std::string result;
+  dmlc::MemoryStringStream m_stream(&str);
+  support::Base64InStream b64stream(&m_stream);
+  b64stream.InitPosition();
+  static_cast<dmlc::Stream*>(&b64stream)->Read(&result);
+  return result;
 }
 
 }  // namespace meta_schedule
