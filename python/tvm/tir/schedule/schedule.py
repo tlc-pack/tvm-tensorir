@@ -1229,7 +1229,9 @@ class Schedule(Object):
 
         1) The block is a reduction block.
 
-        2) The loop is not lower than all the loops related to reduce block var.
+        2) The loop is the ancestor of the block.
+
+        3) The loop is not lower than all the loops related to reduce block var.
 
         Parameters
         ----------
