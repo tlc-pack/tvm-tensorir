@@ -36,6 +36,7 @@ TensorIR is a domain specific languages for deep learning programs serving two b
 
 import tvm
 from tvm import tir
+from tvm.ir.module import IRModule
 from tvm.script import ty
 
 import numpy as np
@@ -57,44 +58,41 @@ import numpy as np
 
 
 @tvm.script.tir
-class MyModule:
+def main(a: ty.handle, b: ty.handle) -> None:
     # We exchange data between function by handles, which are similar to pointer.
-    def main(a: ty.handle, b: ty.handle) -> None:
-        # TODO: can we add it automatically?
-        tir.func_attr({"global_symbol": "main", "tir.noalias": True})
-        # Create high-dimensional buffer from handles.
-        A = tir.match_buffer(a, (1024, 1024), dtype="float32")
-        B = tir.match_buffer(b, (1024, 1024), dtype="float32")
-        for i, j in tir.grid(1024, 1024):
-            # A block is an abstraction for computation.
-            with tir.block([1024, 1024], "B") as [vi, vj]:
-                B[vi, vj] = A[vi, vj] + 2.0
+    tir.func_attr({"global_symbol": "main", "tir.noalias": True})
+    # Create high-dimensional buffer from handles.
+    A = tir.match_buffer(a, (8,), dtype="float32")
+    B = tir.match_buffer(b, (8,), dtype="float32")
+    for i in range(8):
+        # A block is an abstraction for computation.
+        with tir.block([8], "B") as [vi]:
+            B[vi] = A[vi] + 1.0
 
 
 ################################################################################################
 # We can get the module and check it is created successfully by printing it out.
 #
 
-my_module = MyModule
+my_module = IRModule.from_expr(main)
 print(tvm.script.asscript(my_module))
 
 ################################################################################################
-# Build and run an IRModule
+# Build and Run an IRModule
 # ~~~~~~~~~~~~~~~~~~~~~~~~~
 # Also we can build and run my module on our devices using CPU. First, we random generate an
 # input array and calcutate the standard result for testing.
 #
-
-a_np = np.random.rand(1024, 1024).astype("float32")
-b_np = a_np + 2.0
 
 ################################################################################################
 # Then we get our device and alloc the memory for TVM module.
 #
 
 ctx = tvm.cpu(0)
-a = tvm.nd.array(a_np, ctx)
-b = tvm.nd.array(np.zeros((1024, 1024)).astype("float32"), ctx)
+a = tvm.nd.array(np.arange(8).astype("float32"), ctx)
+b = tvm.nd.array(np.zeros((8,)).astype("float32"), ctx)
+print(a)
+
 
 ################################################################################################
 # Finally build our module, test the result and evaluate the performance
@@ -102,10 +100,8 @@ b = tvm.nd.array(np.zeros((1024, 1024)).astype("float32"), ctx)
 
 mod = tvm.build(my_module, target="llvm")
 mod(a, b)
-np.testing.assert_allclose(b.numpy(), b_np, rtol=1e-5)
+print(b)
 
-evaluator = mod.time_evaluator(mod.entry_name, ctx, number=10)
-print("Running time: %f ms" % (evaluator(a, b).mean * 1e3))
 
 ################################################################################################
 # Schedule on IRModule
