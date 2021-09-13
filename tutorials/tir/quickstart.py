@@ -36,145 +36,96 @@ TensorIR is a domain specific languages for deep learning programs serving two b
 
 import tvm
 from tvm import tir
-from tvm.ir.module import IRModule
 from tvm.script import ty
 
 import numpy as np
 
 ################################################################################################
-# Create an IRModule from TVMScript
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# TVMScript is a round-trip format for TensorIR in Python style. Any TensorIR can be printed
-# to TVMScript and created from it.
-#
-# TVMScript allows users to write a Python-styled program and convert it into TVM stack that can
-# be optimized and deployed on various hardware backends. This make it possible for users to
-# optimize their own tensor program
-#
-# For a detailed introduction to TVMScript, please see the reference.
-#
-# Here we write a simple IRModule with one vector add function.
+# Create an IRModule
+# ------------------
+# IRModule can be created by writing TVMScript, which is a script syntax for TVM IR. (see the ref)
+# Here is a simple module for vector add.
 #
 
 
 @tvm.script.tir
-def main(a: ty.handle, b: ty.handle) -> None:
-    # We exchange data between function by handles, which are similar to pointer.
-    tir.func_attr({"global_symbol": "main", "tir.noalias": True})
-    # Create high-dimensional buffer from handles.
-    A = tir.match_buffer(a, (8,), dtype="float32")
-    B = tir.match_buffer(b, (8,), dtype="float32")
-    for i in range(8):
-        # A block is an abstraction for computation.
-        with tir.block([8], "B") as [vi]:
-            B[vi] = A[vi] + 1.0
+class MyModule:
+    def main(a: ty.handle, b: ty.handle) -> None:
+        # We exchange data between function by handles, which are similar to pointer.
+        tir.func_attr({"global_symbol": "main", "tir.noalias": True})
+        # Create high-dimensional buffer from handles.
+        A = tir.match_buffer(a, (8,), dtype="float32")
+        B = tir.match_buffer(b, (8,), dtype="float32")
+        for i in range(8):
+            # A block is an abstraction for computation.
+            with tir.block([8], "B") as [vi]:
+                B[vi] = A[vi] + 1.0
 
 
-################################################################################################
-# We can get the module and check it is created successfully by printing it out.
-#
-
-my_module = IRModule.from_expr(main)
-print(tvm.script.asscript(my_module))
+ir_module = MyModule
+print(type(ir_module))
+print(tvm.script.asscript(ir_module))
 
 ################################################################################################
 # Build and Run an IRModule
-# ~~~~~~~~~~~~~~~~~~~~~~~~~
-# Also we can build and run my module on our devices using CPU. First, we random generate an
-# input array and calcutate the standard result for testing.
+# -------------------------
+# We can build the IRModule into a runnable module with specific target backends.
 #
+
+mod = tvm.build(ir_module, target="llvm")  # The module for CPU backends.
+print(type(mod))
 
 ################################################################################################
-# Then we get our device and alloc the memory for TVM module.
+# Prepare the input array and output array, then run the module.
 #
 
-ctx = tvm.cpu(0)
-a = tvm.nd.array(np.arange(8).astype("float32"), ctx)
-b = tvm.nd.array(np.zeros((8,)).astype("float32"), ctx)
+a = tvm.nd.array(np.arange(8).astype("float32"))
 print(a)
-
-
-################################################################################################
-# Finally build our module, test the result and evaluate the performance
-#
-
-mod = tvm.build(my_module, target="llvm")
+b = tvm.nd.array(np.zeros((8,)).astype("float32"))
 mod(a, b)
 print(b)
 
 
 ################################################################################################
-# Schedule on IRModule
+# Transform an IRModule
 # --------------------
-# A Schedule is a set of transformations working on an IRModule. We call each basic
-# transformation a schedule primitive, including loop spliting, fusing, reordering, and more
-# are comprehensively described in the API reference.
-#
-# We will show some simple schedule in this tutorial, please see our other tutorals for
-# advanced schedule and optimization skills.
-#
-# Blocks and loops are two major statement of interest. They are the basic schedule unit in
-# TensorIR.
+# The IRModule is the central data structure for program optimization, which can be transformed
+# by :code:`Schedule`.
+# Schedule is consist of primitives. Each primitive does a simple job on IR transformation,
+# such as loop tiling or make computation parallel. (Please see ref)
 #
 
-sch = tir.Schedule(my_module)
+sch = tir.Schedule(ir_module)
+print(type(sch))
+
+################################################################################################
+# Tile the loops 8 into 3 loops and print the result.
+
 # Get block by its name
 block_b = sch.get_block("B")
 # Get loops surronding the block
-i, j = sch.get_loops(block_b)
+(i,) = sch.get_loops(block_b)
+# Tile the loop nesting.
+i_0, i_1, i_2 = sch.split(i, factors=[2, 2, 2])
+print(tvm.script.asscript(sch.mod))
+
 
 ################################################################################################
-# Schedule on CPU
-# ~~~~~~~~~~~~~~~
-# In CPU schedule, we will show how to use multi-threading and vectorization to speed up our
-# module. We can see the IRModule after scheduling.
+# If you want to deploy your module on GPUs, threads binding is necessary. Fortunately, we can
+# also use primitives and do incrementally transformation.
 #
 
-j_0, j_1 = sch.split(j, factors=[None, 32])
-sch.vectorize(j_1)
-sch.parallel(i)
-cpu_module = sch.mod
-print(tvm.script.asscript(cpu_module))
+sch.bind(i_0, "blockIdx.x")
+sch.bind(i_1, "threadIdx.x")
+print(tvm.script.asscript(sch.mod))
+
 
 ################################################################################################
-# Evaluate the performance. Here we reuse the data generated before and the allocated memory.
-#
-
-mod = tvm.build(cpu_module, target="llvm")
-mod(a, b)
-np.testing.assert_allclose(b.numpy(), b_np, rtol=1e-5)
-
-evaluator = mod.time_evaluator(mod.entry_name, ctx, number=10)
-print("Running time: %f ms" % (evaluator(a, b).mean * 1e3))
-
-################################################################################################
-# Schedule on GPU
-# ~~~~~~~~~~~~~~~
-# We create a new schedule from original IRModule.
-# Different from CPU, GPU required explicit binding :code:`threadIdx` and :code:`blockIdx`.
-#
-
-sch = tir.Schedule(my_module)
-block_b = sch.get_block("B")
-i, j = sch.get_loops(block_b)
-j_0, j_1 = sch.split(j, factors=[None, 4])
-sch.bind(i, "blockIdx.x")
-sch.bind(j_0, "threadIdx.x")
-sch.vectorize(j_1)
-gpu_module = sch.mod
-print(tvm.script.asscript(gpu_module))
-
-################################################################################################
-# Allocate new memory for GPU and evaluate the result again.
-#
-
+# After binding the threads, now build the IRModule with :code:`cuda` backends.
 ctx = tvm.cuda(0)
-a_cuda = tvm.nd.array(a_np, ctx)
-b_cuda = tvm.nd.array(np.zeros((1024, 1024)).astype("float32"), ctx)
-
-mod = tvm.build(gpu_module, target="cuda")
-mod(a_cuda, b_cuda)
-np.testing.assert_allclose(b_cuda.numpy(), b_np, rtol=1e-5)
-
-evaluator = mod.time_evaluator(mod.entry_name, ctx, number=10)
-print("Running time: %f ms" % (evaluator(a_cuda, b_cuda).mean * 1e3))
+cuda_mod = tvm.build(sch.mod, target="cuda")
+cuda_a = tvm.nd.array(np.arange(8).astype("float32"), ctx)
+cuda_b = tvm.nd.array(np.zeros((8,)).astype("float32"), ctx)
+cuda_mod(cuda_a, cuda_b)
+print(cuda_a)
+print(cuda_b)
