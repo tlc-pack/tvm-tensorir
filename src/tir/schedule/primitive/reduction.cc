@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include "../../../arith/pattern_match.h"
 #include "../utils.h"
 
 namespace tvm {
@@ -172,6 +173,25 @@ class LoopHeightError : public ScheduleError {
   Block block_;
 };
 
+PrimExpr RemakePredicate(PrimExpr pred, const std::unordered_set<const VarNode*>& discarded_loops) {
+  PrimExpr new_pred = Bool(true);
+  if (is_one(pred)) return new_pred;
+  auto f = [&](const VarNode* var) { return discarded_loops.find(var) != discarded_loops.end(); };
+  arith::PVar<PrimExpr> lhs, rhs, rest;
+  for (;;) {
+    if ((rest && (lhs < rhs)).Match(pred)) {
+      if (!UsesVar(lhs.Eval(), f)) new_pred = new_pred && (lhs.Eval() < rhs.Eval());
+      pred = rest.Eval();
+    } else if ((lhs < rhs).Match(pred)) {
+      if (!UsesVar(lhs.Eval(), f)) new_pred = new_pred && (lhs.Eval() < rhs.Eval());
+      break;
+    } else {
+      LOG(FATAL) << "Unexpected predicate for reduction block";
+    }
+  }
+  return new_pred;
+}
+
 StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
                             const StmtSRef& loop_sref) {
   /*!
@@ -187,6 +207,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
       << "ValueError: 'decompose_reduction' expect a block as first argument, but get value 'None'";
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  // Get the outer loops from high to low
   Array<StmtSRef> loops = GetLoops(block_sref);
   const BlockRealizeNode* realize = GetBlockRealize(self, block_sref).get();
   // Cond 0. Check loop_sref is an ancestor of block_sref
@@ -229,35 +250,49 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
   // Step 2. After copying block vars, substitute them in init block
   init_block->body = Substitute(block->init.value(), block_var_map);
   for (const BufferRegion& write : block->writes) {
-    init_block->writes.push_back(BufferRegion(write->buffer, Substitute(write->region, block_var_map)));
+    init_block->writes.push_back(
+        BufferRegion(write->buffer, Substitute(write->region, block_var_map)));
   }
-  // Step 3. Create loops above the init block
-  Stmt body = BlockRealize(init_realize);
+  // Step 3. Scan loops not higher than the specified loop above the reduction block.
+  //         If the loop is used in the init block binding, then it is chosen.
+  //         Otherwise, it is discarded.
+  std::unordered_set<const VarNode*> discarded_loops;
+  std::vector<int> chosen_loops;
   for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
-    const auto* higher_loop = loops[i]->StmtAs<ForNode>();
+    const auto* loop_var = loops[i]->StmtAs<ForNode>()->loop_var.get();
+    bool discarded = true;
     for (const PrimExpr& expr : init_realize->iter_values) {
-      // Skip irrelevant loops
-      if (!UsesVar(expr,
-                   [v = higher_loop->loop_var.get()](const VarNode* var) { return var == v; })) {
+      if (!UsesVar(expr, [v = loop_var](const VarNode* var) { return var == v; })) {
         continue;
       }
-      // Create a new equivalent to the loop
-      Var old_loop_var = higher_loop->loop_var;
-      Var new_loop_var = old_loop_var.copy_with_suffix("_init");
-      std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_map{
-          {old_loop_var, new_loop_var}};
-      body = For(/*loop_var=*/new_loop_var,
-                 /*min=*/higher_loop->min,
-                 /*extent=*/higher_loop->extent,
-                 /*kind=*/ForKind::kSerial,
-                 /*body=body*/ Substitute(body, var_map));
+      // The loop is related to init block bindings;
+      chosen_loops.push_back(i);
+      discarded = false;
+      break;
     }
-    // Only consider loops higher than the given loop
+    if (discarded) discarded_loops.insert(loop_var);
+    // Only scan loops not higher than the given loop
     if (loops[i].same_as(loop_sref)) {
       break;
     }
   }
-  // Step 4. Mutate IR
+  // Step 4. After scanning loops, make a new predicate in the init block realize
+  //         We discard predicate that is related to discarded loops
+  init_realize->predicate = RemakePredicate(init_realize->predicate, discarded_loops);
+  // Step 5. Create new loops above init block
+  Stmt body = BlockRealize(init_realize);
+  for (const int& i : chosen_loops) {
+    const auto* old_loop = TVM_SREF_TO_FOR(old_loop, loops[i]);
+    // Create a new equivalent to the chosen loop
+    Var old_loop_var = old_loop->loop_var;
+    Var new_loop_var = old_loop_var.copy_with_suffix("_init");
+    body = For(/*loop_var=*/new_loop_var,
+               /*min=*/old_loop->min,
+               /*extent=*/old_loop->extent,
+               /*kind=*/ForKind::kSerial,
+               /*body=body*/ Substitute(body, {{old_loop_var, new_loop_var}}));
+  }
+  // Step 6. Mutate IR
   const BlockNode* old_scope_root = TVM_SREF_TO_BLOCK(old_scope_root, scope_root_sref);
   Block new_scope_root;
   Block new_reduction_block;
