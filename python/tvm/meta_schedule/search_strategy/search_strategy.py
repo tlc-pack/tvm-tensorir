@@ -32,6 +32,10 @@ if TYPE_CHECKING:
 
 @register_object("meta_schedule.MeasureCandidate")
 class MeasureCandidate(Object):
+
+    sch: Schedule
+    args_info: List[ArgInfo]
+
     def __init__(self, sch: Schedule, args_info: List[ArgInfo]) -> None:
         self.__init_handle_by_constructor__(
             _ffi_api.MeasureCandidate,  # pylint: disable=no-member
