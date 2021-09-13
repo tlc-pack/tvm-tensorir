@@ -617,7 +617,6 @@ def test_reduction_decompose4():
     io, ii = s.split(i, factors=[16, 8])
     ko, ki = s.split(k, factors=[19, 7])
     s.decompose_reduction(C, ii)
-    print(tvm.script.asscript(s.mod["main"]))
     tvm.ir.assert_structural_equal(matmul_decompose4, s.mod["main"])
 
 
