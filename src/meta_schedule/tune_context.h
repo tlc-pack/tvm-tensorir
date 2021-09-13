@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_TUNE_CONTEXT_H_
-#define SRC_META_SCHEDULE_TUNE_CONTEXT_H_
+#ifndef TVM_META_SCHEDULE_TUNE_CONTEXT_H_
+#define TVM_META_SCHEDULE_TUNE_CONTEXT_H_
 
 #include <tvm/ir/module.h>
 #include <tvm/support/random_engine.h>
@@ -120,4 +120,4 @@ class TuneContext : public runtime::ObjectRef {
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_TUNE_CONTEXT_H_
+#endif  // TVM_META_SCHEDULE_TUNE_CONTEXT_H_

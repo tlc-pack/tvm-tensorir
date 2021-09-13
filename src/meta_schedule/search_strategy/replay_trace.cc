@@ -112,7 +112,7 @@ inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasure
   auto f_worker = [this, &per_thread_rand_state, &per_task_result](int thread_id,
                                                                    int task_id) -> void {
     TRandState& rand_state = per_thread_rand_state[thread_id];
-    // TODO: SampleInt
+    // TODO(@junrushao1994,@zxybazh): SampleInt
     tir::Trace trace = design_spaces[0]->trace().value();
     tir::Trace new_trace = tir::Trace(trace->insts, {});
     tir::Schedule sch = tir::Schedule::Traced(  //
@@ -121,8 +121,8 @@ inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasure
         /*debug_mode=*/0,                       //
         /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
     new_trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
-    // TODO: postproc
-    // TODO: arg_info
+    // TODO(@junrushao1994,@zxybazh): postproc
+    // TODO(@junrushao1994,@zxybazh): arg_info
     per_task_result.Set(task_id, MeasureCandidate(sch, Array<ArgInfo>{nullptr}));
   };
   support::parallel_persist_for(0, ed - st, f_worker, self->num_threads_);

@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_ARG_INFO_H_
-#define SRC_META_SCHEDULE_ARG_INFO_H_
+#ifndef TVM_META_SCHEDULE_ARG_INFO_H_
+#define TVM_META_SCHEDULE_ARG_INFO_H_
 
 #include <tvm/node/node.h>
 #include <tvm/runtime/container/shape_tuple.h>
@@ -74,4 +74,4 @@ class TensorArgInfo : public ArgInfo {
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_ARG_INFO_H_
+#endif  // TVM_META_SCHEDULE_ARG_INFO_H_
