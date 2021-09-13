@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "../../../arith/pattern_match.h"
 #include "../utils.h"
 
 namespace tvm {
@@ -84,8 +83,7 @@ class DecomposeReductionBlockReplacer : public StmtMutator {
   Stmt VisitStmt_(const SeqStmtNode* seq) final {
     Array<Stmt> new_stmts;
     new_stmts.reserve(static_cast<int>(seq->seq.size()));
-
-    for (const Stmt old_stmt : seq->seq) {
+    for (const Stmt& old_stmt : seq->seq) {
       new_stmts.push_back(VisitStmt(old_stmt));
     }
     return SeqStmt::Flatten(new_stmts);
@@ -186,7 +184,7 @@ PrimExpr RemakePredicate(PrimExpr pred, const std::unordered_set<const VarNode*>
       if (!UsesVar(lhs.Eval(), f)) new_pred = new_pred && (lhs.Eval() < rhs.Eval());
       break;
     } else {
-      LOG(FATAL) << "Unexpected predicate for reduction block";
+      ICHECK(false) << "Unexpected predicate for reduction block";
     }
   }
   return new_pred;
@@ -290,7 +288,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
                /*min=*/old_loop->min,
                /*extent=*/old_loop->extent,
                /*kind=*/ForKind::kSerial,
-               /*body=body*/ Substitute(body, {{old_loop_var, new_loop_var}}));
+               /*body=body*/Substitute(body, {{old_loop_var, new_loop_var}}));
   }
   // Step 6. Mutate IR
   const BlockNode* old_scope_root = TVM_SREF_TO_BLOCK(old_scope_root, scope_root_sref);
