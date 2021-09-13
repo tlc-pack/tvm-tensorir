@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_BUILDER_H_
-#define SRC_META_SCHEDULE_BUILDER_H_
+#ifndef TVM_META_SCHEDULE_BUILDER_H_
+#define TVM_META_SCHEDULE_BUILDER_H_
 
 #include <tvm/ir/module.h>
 #include <tvm/target/target.h>
@@ -147,4 +147,4 @@ class PyBuilderNode : public BuilderNode {
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_BUILDER_H_
+#endif  // TVM_META_SCHEDULE_BUILDER_H_

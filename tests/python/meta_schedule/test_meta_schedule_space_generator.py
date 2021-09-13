@@ -28,16 +28,13 @@ from tvm.script import ty
 
 from tvm.tir.schedule import Schedule, Trace
 from tvm.meta_schedule import ScheduleFn, SpaceGeneratorUnion
-from tvm.ir import IRModule
-from tvm.tir import PrimFunc
 
 
-# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
 # fmt: off
 
 @tvm.script.tir
 class Matmul:
-
     def main(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.func_attr({"global_symbol": "main"})
         A = tir.match_buffer(a, (1024, 1024), "float32")
@@ -49,7 +46,7 @@ class Matmul:
             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 # fmt: on
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
 
 
 def schedule_matmul(sch: Schedule):
@@ -64,7 +61,8 @@ def schedule_matmul(sch: Schedule):
     sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
 
 
-def _check_correct(trace: Trace):
+def _check_correct(schedule: Schedule):
+    trace = schedule.trace
     for inst in trace.decisions:
         assert math.prod(trace.decisions[inst]) == 1024
 
@@ -74,8 +72,8 @@ def test_meta_schedule_space_generator_schedule_fn():
     space_generator = ScheduleFn(sch_fn=schedule_matmul)
     design_spaces = space_generator.generate_design_space(mod)
     assert len(design_spaces) == 1
-    (trace,) = design_spaces
-    _check_correct(trace)
+    (schedule,) = design_spaces
+    _check_correct(schedule)
 
 
 def test_meta_schedule_design_space_generator_union():

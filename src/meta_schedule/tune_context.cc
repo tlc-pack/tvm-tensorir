@@ -16,9 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./tune_context.h"
-
+#include <random>
 #include <utility>
+
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -34,25 +35,23 @@ namespace meta_schedule {
  * \param postprocs The post processing functions.
  * \param measure_callbacks The measure callback functions.
  * \param task_name The name of the tuning task.
- * \param seed The seed value of random state.
+ * \param rand_state The random state.
  * \param num_threads The number of threads to be used.
  * \param verbose The verbosity level.
  */
-TuneContext::TuneContext(Optional<IRModule> mod,                              //
-                         Optional<Target> target,                             //
-                         Optional<SpaceGenerator> space_generator,            //
-                         Optional<SearchStrategy> search_strategy,            //
-                         Optional<Database> database,                         //
-                         Optional<CostModel> cost_model,                      //
-                         Optional<Array<Postproc>> postprocs,                 //
-                         Optional<Array<MeasureCallback>> measure_callbacks,  //
-                         String task_name,                                    //
-                         TRandState seed,                                     //
-                         int num_threads,                                     //
+TuneContext::TuneContext(Optional<IRModule> mod,                                    //
+                         Optional<Target> target,                                   //
+                         Optional<SpaceGenerator> space_generator,                  //
+                         Optional<SearchStrategy> search_strategy,                  //
+                         Optional<Database> database,                               //
+                         Optional<CostModel> cost_model,                            //
+                         Optional<Array<Postproc>> postprocs,                       //
+                         Optional<Array<MeasureCallback>> measure_callbacks,        //
+                         Optional<String> task_name,                                //
+                         support::LinearCongruentialEngine::TRandState rand_state,  //
+                         int num_threads,                                           //
                          int verbose) {
-  // Make a new TuneContextNode object.
   ObjectPtr<TuneContextNode> n = make_object<TuneContextNode>();
-  // Copy the given argument values.
   n->mod = mod;
   n->target = target;
   n->space_generator = space_generator;
@@ -62,27 +61,30 @@ TuneContext::TuneContext(Optional<IRModule> mod,                              //
   n->postprocs = postprocs;
   n->measure_callbacks = measure_callbacks;
   n->task_name = task_name;
-  n->seed = seed;  // AWAIT(zxybazh): Initialize the random seed.
+  if (rand_state == -1) {
+    rand_state = std::random_device()();
+  }
+  support::LinearCongruentialEngine(&n->rand_state).Seed(rand_state);
   n->num_threads = num_threads;
   n->verbose = verbose;
   data_ = std::move(n);
 }
 
 TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
-    .set_body_typed([](Optional<IRModule> mod,                              //
-                       Optional<Target> target,                             //
-                       Optional<SpaceGenerator> space_generator,            //
-                       Optional<SearchStrategy> search_strategy,            //
-                       Optional<Database> database,                         //
-                       Optional<CostModel> cost_model,                      //
-                       Optional<Array<Postproc>> postprocs,                 //
-                       Optional<Array<MeasureCallback>> measure_callbacks,  //
-                       String task_name,                                    //
-                       TRandState seed,                                     //
-                       int num_threads,                                     //
+    .set_body_typed([](Optional<IRModule> mod,                                    //
+                       Optional<Target> target,                                   //
+                       Optional<SpaceGenerator> space_generator,                  //
+                       Optional<SearchStrategy> search_strategy,                  //
+                       Optional<Database> database,                               //
+                       Optional<CostModel> cost_model,                            //
+                       Optional<Array<Postproc>> postprocs,                       //
+                       Optional<Array<MeasureCallback>> measure_callbacks,        //
+                       Optional<String> task_name,                                //
+                       support::LinearCongruentialEngine::TRandState rand_state,  //
+                       int num_threads,                                           //
                        int verbose) -> TuneContext {
       return TuneContext(mod, target, space_generator, search_strategy, database, cost_model,
-                         postprocs, measure_callbacks, task_name, seed, num_threads, verbose);
+                         postprocs, measure_callbacks, task_name, rand_state, num_threads, verbose);
     });
 
 TVM_REGISTER_NODE_TYPE(TuneContextNode);

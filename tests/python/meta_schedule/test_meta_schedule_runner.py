@@ -19,8 +19,9 @@
 import sys  # pylint: disable=unused-import
 import time
 import itertools
-import numpy as np
 from typing import List
+
+import numpy as np
 
 import pytest
 import tvm

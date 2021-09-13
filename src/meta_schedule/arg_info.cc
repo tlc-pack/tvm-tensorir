@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./arg_info.h"
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {

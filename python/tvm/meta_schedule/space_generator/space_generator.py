@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, List
 from tvm._ffi import register_object
 from tvm.ir import IRModule
 from tvm.runtime import Object
-from tvm.tir.schedule import Trace
+from tvm.tir.schedule import Schedule
 
 from .. import _ffi_api
 
@@ -48,7 +48,7 @@ class SpaceGenerator(Object):
             self, tune_context
         )
 
-    def generate_design_space(self, mod: IRModule) -> List[Trace]:
+    def generate_design_space(self, mod: IRModule) -> List[Schedule]:
         """Generate design spaces given a module.
 
         Parameters
@@ -58,8 +58,8 @@ class SpaceGenerator(Object):
 
         Returns
         -------
-        design_spaces : List[Trace]
-            The generated design spaces, i.e., traces.
+        design_spaces : List[Schedule]
+            The generated design spaces, i.e., schedules.
         """
         return _ffi_api.SpaceGeneratorGenerateDesignSpace(self, mod)  # pylint: disable=no-member
 
@@ -71,20 +71,20 @@ class PySpaceGenerator(SpaceGenerator):
     def __init__(self):
         """Constructor."""
 
-        def initialize_with_tune_context_func(tune_context: "TuneContext") -> None:
+        def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
             self.initialize_with_tune_context(tune_context)
 
-        def generate_design_space_func(mod: IRModule) -> List[Trace]:
+        def f_generate_design_space(mod: IRModule) -> List[Schedule]:
             return self.generate_design_space(mod)
 
         self.__init_handle_by_constructor__(
             _ffi_api.PySpaceGenerator,  # pylint: disable=no-member
-            initialize_with_tune_context_func,
-            generate_design_space_func,
+            f_initialize_with_tune_context,
+            f_generate_design_space,
         )
 
     def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
         raise NotImplementedError
 
-    def generate_design_space(self, mod: IRModule) -> List[Trace]:
+    def generate_design_space(self, mod: IRModule) -> List[Schedule]:
         raise NotImplementedError
