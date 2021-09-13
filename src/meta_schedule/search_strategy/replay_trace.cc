@@ -41,7 +41,7 @@ class ReplayTraceNode : public SearchStrategyNode {
     explicit State(ReplayTraceNode* self, Array<tir::Schedule> design_spaces)
         : self(self), design_spaces(design_spaces), st(0), ed(self->num_trials_per_iter) {}
 
-    inline Optional<runtime::Array<tir::Schedule>> GenerateMeasureCandidates();
+    inline Optional<Array<MeasureCandidate>> GenerateMeasureCandidates();
     inline void NotifyRunnerResults(const Array<RunnerResult>& results);
   };
 
@@ -90,7 +90,7 @@ class ReplayTraceNode : public SearchStrategyNode {
     this->state_.reset();
   }
 
-  Optional<runtime::Array<tir::Schedule>> GenerateMeasureCandidates() final {
+  Optional<Array<MeasureCandidate>> GenerateMeasureCandidates() final {
     ICHECK(this->state_ != nullptr);
     return this->state_->GenerateMeasureCandidates();
   }
@@ -101,14 +101,14 @@ class ReplayTraceNode : public SearchStrategyNode {
   }
 };
 
-inline Optional<runtime::Array<tir::Schedule>> ReplayTraceNode::State::GenerateMeasureCandidates() {
+inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasureCandidates() {
   if (st >= self->num_trials_total) {
     return NullOpt;
   }
   ed = std::min(ed, self->num_trials_total);
   ICHECK_LT(st, ed);
   std::vector<TRandState> per_thread_rand_state = ForkSeed(&self->rand_state_, self->num_threads_);
-  runtime::Array<tir::Schedule> per_task_result(ed - st, tir::Schedule{nullptr});
+  Array<MeasureCandidate> per_task_result(ed - st, MeasureCandidate{nullptr});
   auto f_worker = [this, &per_thread_rand_state, &per_task_result](int thread_id,
                                                                    int task_id) -> void {
     TRandState& rand_state = per_thread_rand_state[thread_id];
@@ -122,7 +122,8 @@ inline Optional<runtime::Array<tir::Schedule>> ReplayTraceNode::State::GenerateM
         /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
     new_trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
     // TODO: postproc
-    per_task_result.Set(task_id, sch);
+    // TODO: arg_info
+    per_task_result.Set(task_id, MeasureCandidate(sch, Array<ArgInfo>{nullptr}));
   };
   support::parallel_persist_for(0, ed - st, f_worker, self->num_threads_);
   return per_task_result;

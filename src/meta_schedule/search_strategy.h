@@ -21,6 +21,7 @@
 
 #include <tvm/tir/schedule/schedule.h>
 
+#include "./arg_info.h"
 #include "./runner.h"
 
 namespace tvm {
@@ -28,6 +29,26 @@ namespace meta_schedule {
 
 // Forward declaration
 class TuneContext;
+
+class MeasureCandidateNode : public runtime::Object {
+ public:
+  tir::Schedule sch;
+  Array<ArgInfo> args_info;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("sch", &sch);
+    v->Visit("args_info", &args_info);
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.MeasureCandidate";
+  TVM_DECLARE_FINAL_OBJECT_INFO(MeasureCandidateNode, Object);
+};
+
+class MeasureCandidate : public runtime::ObjectRef {
+ public:
+  TVM_DLL MeasureCandidate(tir::Schedule sch, Array<ArgInfo> args_info);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(MeasureCandidate, ObjectRef, MeasureCandidateNode);
+};
 
 /*! \brief The search strategy for measure candidates generation. */
 class SearchStrategyNode : public runtime::Object {
@@ -54,7 +75,7 @@ class SearchStrategyNode : public runtime::Object {
    * \brief Generate measure candidates from design spaces for measurement.
    * \return The measure candidates generated, nullptr if finished.
    */
-  virtual Optional<runtime::Array<tir::Schedule>> GenerateMeasureCandidates() = 0;
+  virtual Optional<Array<MeasureCandidate>> GenerateMeasureCandidates() = 0;
 
   /*!
    * \brief Update the search strategy with profiling results.
@@ -85,8 +106,7 @@ class PySearchStrategyNode : public SearchStrategyNode {
    * \brief The function type of `GenerateMeasureCandidates` method.
    * \return The measure candidates generated, nullptr if finished.
    */
-  using FGenerateMeasureCandidates =
-      runtime::TypedPackedFunc<Optional<runtime::Array<tir::Schedule>>()>;
+  using FGenerateMeasureCandidates = runtime::TypedPackedFunc<Optional<Array<MeasureCandidate>>()>;
   /*!
    * \brief The function type of `NotifyRunnerResults` method.
    * \param results The profiling results from the runner.
@@ -122,7 +142,7 @@ class PySearchStrategyNode : public SearchStrategyNode {
 
   void PostTuning() final { this->f_post_tuning(); }
 
-  Optional<runtime::Array<tir::Schedule>> GenerateMeasureCandidates() final {
+  Optional<Array<MeasureCandidate>> GenerateMeasureCandidates() final {
     return this->f_generate_measure_candidates();
   }
 

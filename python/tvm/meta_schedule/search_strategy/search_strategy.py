@@ -16,25 +16,35 @@
 # under the License.
 """Search Strategy"""
 
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from tvm._ffi import register_object
-from tvm.ir import IRModule
 from tvm.runtime import Object
 from tvm.tir.schedule import Schedule
-from ..runner import RunnerResult
 
 from .. import _ffi_api
+from ..arg_info import ArgInfo
+from ..runner import RunnerResult
 
 if TYPE_CHECKING:
     from ..tune_context import TuneContext
 
 
+@register_object("meta_schedule.MeasureCandidate")
+class MeasureCandidate(Object):
+    def __init__(self, sch: Schedule, args_info: List[ArgInfo]) -> None:
+        self.__init_handle_by_constructor__(
+            _ffi_api.MeasureCandidate,  # pylint: disable=no-member
+            sch,
+            args_info,
+        )
+
+
 @register_object("meta_schedule.SearchStrategy")
 class SearchStrategy(Object):
     """
-    Search strategy is the class that generates the measure candidates. It has to be pretuned
-    before usage and posttuned after usage.
+    Search strategy is the class that generates the measure candidates. It has to be pre-tuned
+    before usage and post-tuned after usage.
     """
 
     def initialize_with_tune_context(
@@ -66,7 +76,7 @@ class SearchStrategy(Object):
         """Post-tuning for the search strategy."""
         _ffi_api.SearchStrategyPostTuning(self)  # pylint: disable=no-member
 
-    def generate_measure_candidates(self) -> Optional[List[Schedule]]:
+    def generate_measure_candidates(self) -> Optional[List[MeasureCandidate]]:
         """Generate measure candidates from design spaces for measurement.
 
         Returns
@@ -103,7 +113,7 @@ class PySearchStrategy(SearchStrategy):
         def f_post_tuning() -> None:
             self.post_tuning()
 
-        def f_generate_measure_candidates() -> List[Schedule]:
+        def f_generate_measure_candidates() -> List[MeasureCandidate]:
             return self.generate_measure_candidates()
 
         def f_notify_runner_results(results: List["RunnerResult"]) -> None:
@@ -127,7 +137,7 @@ class PySearchStrategy(SearchStrategy):
     def post_tuning(self) -> None:
         raise NotImplementedError
 
-    def generate_measure_candidates(self) -> List[Schedule]:
+    def generate_measure_candidates(self) -> List[MeasureCandidate]:
         raise NotImplementedError
 
     def notify_runner_results(self, results: List["RunnerResult"]) -> None:

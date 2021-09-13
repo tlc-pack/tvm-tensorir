@@ -21,6 +21,13 @@
 namespace tvm {
 namespace meta_schedule {
 
+MeasureCandidate::MeasureCandidate(tir::Schedule sch, Array<ArgInfo> args_info) {
+  ObjectPtr<MeasureCandidateNode> n = make_object<MeasureCandidateNode>();
+  n->sch = sch;
+  n->args_info = args_info;
+  data_ = std::move(n);
+}
+
 SearchStrategy SearchStrategy::PySearchStrategy(
     PySearchStrategyNode::FInitializeWithTuneContext f_initialize_with_tune_context,  //
     PySearchStrategyNode::FPreTuning f_pre_tuning,                                    //
@@ -36,6 +43,7 @@ SearchStrategy SearchStrategy::PySearchStrategy(
   return SearchStrategy(n);
 }
 
+TVM_REGISTER_NODE_TYPE(MeasureCandidateNode);
 TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);
 TVM_REGISTER_NODE_TYPE(PySearchStrategyNode);
 
