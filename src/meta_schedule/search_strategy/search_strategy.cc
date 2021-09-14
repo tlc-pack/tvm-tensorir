@@ -47,6 +47,10 @@ TVM_REGISTER_NODE_TYPE(MeasureCandidateNode);
 TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);
 TVM_REGISTER_NODE_TYPE(PySearchStrategyNode);
 
+TVM_REGISTER_GLOBAL("meta_schedule.MeasureCandidate")
+    .set_body_typed([](tir::Schedule sch, Array<ArgInfo> args_info) -> MeasureCandidate {
+      return MeasureCandidate(sch, args_info);
+    });
 TVM_REGISTER_GLOBAL("meta_schedule.PySearchStrategy")
     .set_body_typed(SearchStrategy::PySearchStrategy);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyInitializeWithTuneContext")

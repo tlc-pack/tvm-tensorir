@@ -124,6 +124,4 @@ def test_meta_schedule_replay_trace():
 
 
 if __name__ == "__main__":
-    test_meta_schedule_py_search_strategy()
-    test_meta_schedule_replay_trace()
-    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))

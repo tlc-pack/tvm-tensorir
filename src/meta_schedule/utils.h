@@ -18,12 +18,15 @@
  */
 #ifndef TVM_META_SCHEDULE_UTILS_H_
 #define TVM_META_SCHEDULE_UTILS_H_
+#include <tvm/ir/module.h>
 #include <tvm/support/parallel_for.h>
 #include <tvm/support/random_engine.h>
 #include <tvm/tir/schedule/trace.h>
 
 #include <vector>
 
+#include "../printer/text_printer.h"
+#include "../support/array.h"
 #include "./arg_info.h"
 #include "./builder.h"
 #include "./runner.h"
@@ -60,6 +63,53 @@ inline std::vector<support::LinearCongruentialEngine::TRandState> ForkSeed(
     results.push_back(support::LinearCongruentialEngine(rand_state).ForkSeed());
   }
   return results;
+}
+
+inline tir::PrimFunc FindEntryFunc(const IRModule& mod) {
+  // Priority 1: PrimFunc marked as `tir::attr::kIsEntryFunc`
+  int num_prim_func = 0;
+  const tir::PrimFuncNode* main_func = nullptr;
+  const tir::PrimFuncNode* last_func = nullptr;
+  for (const auto& kv : mod->functions) {
+    GlobalVar gv = kv.first;
+    BaseFunc base_func = kv.second;
+    if (const auto* func = base_func.as<tir::PrimFuncNode>()) {
+      last_func = func;
+      if (func->HasNonzeroAttr(tir::attr::kIsEntryFunc)) {
+        return GetRef<tir::PrimFunc>(func);
+      }
+      if (gv->name_hint == "main") {
+        main_func = func;
+      }
+      ++num_prim_func;
+    }
+  }
+  // Priority 2: PrimFunc whose name is `main`
+  if (main_func != nullptr) {
+    return GetRef<tir::PrimFunc>(main_func);
+  }
+  // Priority 3: The only PrimFunc in the IRModule
+  if (num_prim_func == 0) {
+    LOG(FATAL) << "ValueError: Cannot find any PrimFunc in the given IRModule: "
+               << tir::AsTVMScript(mod);
+  }
+  if (num_prim_func > 1) {
+    LOG(FATAL) << "ValueError: Multiple PrimFuncs exist in the IRModule, but none of them are "
+                  "annotated with `kIsEntryFunc`, i.e. `tir.is_entry_func`"
+               << tir::AsTVMScript(mod);
+  }
+  return GetRef<tir::PrimFunc>(last_func);
+}
+
+inline int SampleInt(support::LinearCongruentialEngine::TRandState* rand_state, int min_inclusive,
+                     int max_exclusive) {
+  // Move to better places
+  if (min_inclusive + 1 == max_exclusive) {
+    return min_inclusive;
+  }
+  support::LinearCongruentialEngine rand_(rand_state);
+  std::uniform_int_distribution<int> dist(min_inclusive, max_exclusive - 1);
+  return dist(rand_);
 }
 
 }  // namespace meta_schedule

@@ -21,6 +21,22 @@
 namespace tvm {
 namespace meta_schedule {
 
+Array<ArgInfo> ArgInfo::FromPrimFunc(const tir::PrimFunc& func) {
+  using support::AsVector;
+  Array<ArgInfo> result;
+  result.reserve(func->params.size());
+  for (const tir::Var& arg : func->params) {
+    if (Optional<tir::Buffer> _buffer = func->buffer_map.Get(arg)) {
+      tir::Buffer buffer = _buffer.value();
+      result.push_back(TensorArgInfo(/*dtype=*/buffer->dtype,
+                                     /*shape=*/AsVector<PrimExpr, int64_t>(buffer->shape)));
+    } else {
+      LOG(FATAL) << "NotImplementedError: Unsupported argument type: " << arg;
+    }
+  }
+  return result;
+}
+
 TensorArgInfo::TensorArgInfo(runtime::DataType dtype, runtime::ShapeTuple shape) {
   ObjectPtr<TensorArgInfoNode> n = make_object<TensorArgInfoNode>();
   n->dtype = dtype;
