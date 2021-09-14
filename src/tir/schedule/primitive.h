@@ -26,7 +26,6 @@
 namespace tvm {
 namespace tir {
 
-
 class Sampler;
 
 /******** Schedule: Sampling ********/

@@ -22,6 +22,7 @@
 #include <tvm/node/node.h>
 #include <tvm/runtime/container/shape_tuple.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/tir/function.h>
 
 namespace tvm {
 namespace meta_schedule {
@@ -41,6 +42,8 @@ class ArgInfoNode : public runtime::Object {
  */
 class ArgInfo : public runtime::ObjectRef {
  public:
+  TVM_DLL static Array<ArgInfo, void> FromPrimFunc(const tir::PrimFunc& func);
+
   TVM_DEFINE_OBJECT_REF_METHODS(ArgInfo, runtime::ObjectRef, ArgInfoNode);
 };
 

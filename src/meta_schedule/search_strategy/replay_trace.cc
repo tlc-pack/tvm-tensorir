@@ -17,7 +17,6 @@
  * under the License.
  */
 #include "../utils.h"
-#include "tvm/tir/schedule/schedule.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -52,6 +51,8 @@ class ReplayTraceNode : public SearchStrategyNode {
 
   /*! \brief The module to be tuned. */
   IRModule mod_{nullptr};
+  /*! \brief The metadata of the function arguments. */
+  Array<ArgInfo> args_info_{nullptr};
   /*! \brief The number of threads to use. */
   int num_threads_ = -1;
   /*! \brief The random state */
@@ -63,6 +64,7 @@ class ReplayTraceNode : public SearchStrategyNode {
     v->Visit("num_trials_per_iter", &num_trials_per_iter);
     v->Visit("num_trials_total", &num_trials_total);
     // `mod_` is not visited
+    // `args_info_` is not visited
     // `num_threads_` is not visited
     // `rand_state_` is not visited
     // `state_` is not visited
@@ -74,6 +76,7 @@ class ReplayTraceNode : public SearchStrategyNode {
  public:
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
     this->mod_ = tune_context->mod.value();
+    this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(this->mod_));
     this->num_threads_ = tune_context->num_threads;
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
     this->state_.reset();
@@ -112,8 +115,8 @@ inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasure
   auto f_worker = [this, &per_thread_rand_state, &per_task_result](int thread_id,
                                                                    int task_id) -> void {
     TRandState& rand_state = per_thread_rand_state[thread_id];
-    // TODO(@junrushao1994,@zxybazh): SampleInt
-    tir::Trace trace = design_spaces[0]->trace().value();
+    int design_space_index = SampleInt(&rand_state, 0, design_spaces.size());
+    tir::Trace trace = design_spaces[design_space_index]->trace().value();
     tir::Trace new_trace = tir::Trace(trace->insts, {});
     tir::Schedule sch = tir::Schedule::Traced(  //
         self->mod_,                             //
@@ -122,8 +125,7 @@ inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasure
         /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
     new_trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
     // TODO(@junrushao1994,@zxybazh): postproc
-    // TODO(@junrushao1994,@zxybazh): arg_info
-    per_task_result.Set(task_id, MeasureCandidate(sch, Array<ArgInfo>{nullptr}));
+    per_task_result.Set(task_id, MeasureCandidate(sch, self->args_info_));
   };
   support::parallel_persist_for(0, ed - st, f_worker, self->num_threads_);
   return per_task_result;
