@@ -37,7 +37,7 @@ class TuningRecordNode : public runtime::Object {
   tir::Trace trace;
   /*! \brief The profiling result in seconds. */
   Array<FloatImm> run_secs;
-  /*! \brief The workload. */
+  /*! \brief The workload token. */
   WorkloadToken workload{nullptr};
   /*! \brief The target for tuning. */
   Target target;
@@ -63,6 +63,10 @@ class TuningRecordNode : public runtime::Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(TuningRecordNode, runtime::Object);
 };
 
+/*!
+ * \brief The managed reference of TuningRecordNode.
+ * \sa TuningRecordNode
+ */
 class TuningRecord : public runtime::ObjectRef {
  public:
   /*!
