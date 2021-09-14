@@ -25,6 +25,7 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*! \brief The struct defining comparison function of sorting by mean run seconds. */
 struct SortByMeanRunSecs {
   static double Mean(const Array<FloatImm>& a) {
     ICHECK(!a.empty());
@@ -42,10 +43,14 @@ struct SortByMeanRunSecs {
   }
 };
 
+/*! \brief The default database implementation. */
 class DefaultDatabaseNode : public DatabaseNode {
  public:
+  /*! \brief The path to store or load database records. */
   String record_path;
+  /*! \brief The workload registry. */
   WorkloadRegistry reg{nullptr};
+  /*! \brief The database records organized using a set. */
   std::set<TuningRecord, SortByMeanRunSecs> records_;
 
   static constexpr const char* _type_key = "meta_schedule.DefaultDatabase";

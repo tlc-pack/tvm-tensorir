@@ -30,12 +30,18 @@ namespace meta_schedule {
 
 class TuneContext;
 
+/*! \brief The class of tuning records. */
 class TuningRecordNode : public runtime::Object {
  public:
+  /*! \brief The trace tuned. */
   tir::Trace trace;
+  /*! \brief The profiling result in seconds. */
   Array<FloatImm> run_secs;
+  /*! \brief The workload. */
   WorkloadToken workload{nullptr};
+  /*! \brief The target for tuning. */
   Target target;
+  /*! \brief The argument information. */
   Array<ArgInfo> args_info;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -46,6 +52,11 @@ class TuningRecordNode : public runtime::Object {
     v->Visit("args_info", &args_info);
   }
 
+  /*!
+   * \brief Export the tuning record to a JSON string.
+   * \return An array containing the trace, running secs, workload token id, serialized target, and
+   *  argument information.
+   */
   ObjectRef AsJSON() const;
 
   static constexpr const char* _type_key = "meta_schedule.TuningRecord";
@@ -54,19 +65,55 @@ class TuningRecordNode : public runtime::Object {
 
 class TuningRecord : public runtime::ObjectRef {
  public:
-  TVM_DLL TuningRecord(tir::Trace trace, Array<FloatImm> run_secs, WorkloadToken workload,
-                       Target target, Array<ArgInfo> args_info);
+  /*!
+   \brief Constructor of a tuning record.
+   \param trace The trace of the tuning record.
+   \param run_secs The running time of the tuning record.
+   \param workload The workload of the tuning record.
+   \param target The target of the tuning record.
+   \param args_info The argument information of the tuning record.
+  */
+  TVM_DLL explicit TuningRecord(tir::Trace trace, Array<FloatImm> run_secs, WorkloadToken workload,
+                                Target target, Array<ArgInfo> args_info);
+  /*!
+   * \brief Create a tuning record from a json object.
+   * \param json The json object.
+   * \param reg The workload registry.
+   * \return The tuning record created.
+   */
   TVM_DLL static TuningRecord FromJSON(const ObjectRef& json_obj, const WorkloadRegistry& reg);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(TuningRecord, runtime::ObjectRef, TuningRecordNode);
 };
 
+/* \brief The abstract interface of database. */
 class DatabaseNode : public runtime::Object {
  public:
+  /*! \brief Default destructor */
   virtual ~DatabaseNode() = default;
+  /*!
+   * \brief Initialize the database with tuning context.
+   * \param tune_context The tuning context for initialization.
+   */
   virtual void InitializeWithTuneContext(const TuneContext& tune_context) = 0;
+  /*!
+   * \brief Add a tuning record to the database.
+   * \param record The tuning record to be added.
+   */
   virtual void Add(const TuningRecord& record) = 0;
+  /*!
+   * \brief Get the top K tuning records of given workload from the database.
+   * \param workload The workload to be searched for.
+   * \param top_k The number of top records to be returned.
+   * \return An array of top K tuning records for the given workload.
+   */
   virtual Array<TuningRecord> GetTopK(const WorkloadToken& workload, int top_k) = 0;
+  /*!
+   * \brief Look up or add workload to the database if missing.
+   * \param mod The IRModule to be searched for or added.
+   * \return The workload token of the given IRModule.
+   */
   virtual WorkloadToken LookupOrAdd(const IRModule& mod) = 0;
+  /*! \brief Get the size of the database. */
   virtual int64_t Size() = 0;
 
   static constexpr const char* _type_key = "meta_schedule.Database";
@@ -75,8 +122,18 @@ class DatabaseNode : public runtime::Object {
 
 // TOOD: add PyDatabase
 
+/*!
+ * \brief Managed reference to DatabaseNode.
+ * \sa DatabaseNode
+ */
 class Database : public runtime::ObjectRef {
  public:
+  /*!
+   * \brief Default constructor
+   * \param record_path The path to the database file.
+   * \param workload_path The path to the workload registry file.
+   * \param allow_missing_files Whether to create new file when the given path is not found.
+   */
   TVM_DLL static Database DefaultDatabase(String record_path, String workload_path,
                                           bool allow_missing);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Database, runtime::ObjectRef, DatabaseNode);

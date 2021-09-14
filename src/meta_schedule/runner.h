@@ -161,6 +161,7 @@ class RunnerNode : public runtime::Object {
    */
   using FRun = runtime::TypedPackedFunc<Array<RunnerFuture>(Array<RunnerInput>)>;
 
+  /*! \brief Default destructor */
   virtual ~RunnerNode() = default;
 
   /*!

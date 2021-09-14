@@ -68,8 +68,8 @@ class WorkloadToken : public runtime::ObjectRef {
   TVM_DLL explicit WorkloadToken(IRModule mod, String shash, int64_t token_id);
 
   /*!
-   * \brief Create a workload token from a JSON string.
-   * \param json_obj The ObjectRef containing the json string.
+   * \brief Create a workload token from a json object.
+   * \param json_obj The json object.
    * \param token_id The workload's token id.
    * \return The created workload token.
    */

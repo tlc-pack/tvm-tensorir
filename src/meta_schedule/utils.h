@@ -118,6 +118,12 @@ inline int SampleInt(support::LinearCongruentialEngine::TRandState* rand_state, 
   return dist(rand_);
 }
 
+/*!
+ * \brief Read lines from a json file.
+ * \param path The path to the json file.
+ * \param allow_missing Whether to create new file when the given path is not found.
+ * \return An array containing lines read from the json file.
+ */
 inline Array<String> JSONFileReadLines(const String& path, bool allow_missing) {
   std::ifstream is(path);
   if (is.good()) {
@@ -133,12 +139,23 @@ inline Array<String> JSONFileReadLines(const String& path, bool allow_missing) {
   return {};
 }
 
+/*!
+ * \brief Append a line to a json file.
+ * \param path The path to the json file.
+ * \param line The line to append.
+ */
 inline void JSONFileAppendLine(const String& path, const std::string& line) {
   std::ofstream os(path, std::ofstream::app);
   CHECK(os.good()) << "ValueError: Cannot open the file to write: " << path;
   os << line << std::endl;
 }
 
+/*!
+ * \brief Parse lines of json string into a json object.
+ * \param lines The lines of json string.
+ * \return Array of json objects parsed.
+ * \note The function calls the python-side json parser in runtime registry.
+ */
 inline Array<ObjectRef> JSONStr2Obj(const Array<String>& lines) {
   static const runtime::PackedFunc* f_to_obj =
       runtime::Registry::Get("meta_schedule.batch_json_str2obj");
@@ -147,6 +164,12 @@ inline Array<ObjectRef> JSONStr2Obj(const Array<String>& lines) {
   return (*f_to_obj)(lines);
 }
 
+/*!
+ * \brief Serialize a json object into a json string.
+ * \param json_obj The json object to serialize.
+ * \return A string containing the serialized json object.
+ * \note The function calls the python-side json obj serializer in runtime registry.
+ */
 inline String JSONObj2Str(const ObjectRef& json_obj) {
   static const runtime::PackedFunc* f_to_str = runtime::Registry::Get("meta_schedule.json_obj2str");
   ICHECK(f_to_str) << "IndexError: Cannot find the packed function "
@@ -154,11 +177,21 @@ inline String JSONObj2Str(const ObjectRef& json_obj) {
   return (*f_to_str)(json_obj);
 }
 
+/*!
+ * \brief Get structural hash of an IRModule.
+ * \param mod The IRModule to get the hash.
+ * \return The structural hash of the IRModule.
+ */
 inline String GetSHash(const IRModule& mod) {
   size_t shash = tvm::StructuralHash()(mod);
   return std::to_string(shash);
 }
 
+/*!
+ * \brief Get the base64 encoded result of a string.
+ * \param str The string to encode.
+ * \return The base64 encoded string.
+ */
 inline std::string Base64Encode(std::string str) {
   std::string result;
   dmlc::MemoryStringStream m_stream(&result);
@@ -168,6 +201,11 @@ inline std::string Base64Encode(std::string str) {
   return result;
 }
 
+/*!
+ * \brief Get the base64 decoded result of a string.
+ * \param str The string to decode.
+ * \return The base64 decoded string.
+ */
 inline std::string Base64Decode(std::string str) {
   std::string result;
   dmlc::MemoryStringStream m_stream(&str);

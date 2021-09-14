@@ -31,7 +31,7 @@ class TuneContext;
 /*! \brief The abstract class for design space generation. */
 class SpaceGeneratorNode : public Object {
  public:
-  /*! \brief Virtual destructor */
+  /*! \brief Default destructor */
   virtual ~SpaceGeneratorNode() = default;
 
   /*!
