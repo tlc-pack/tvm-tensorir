@@ -82,7 +82,7 @@ class DecomposeReductionBlockReplacer : public StmtMutator {
 
   Stmt VisitStmt_(const SeqStmtNode* seq) final {
     Array<Stmt> new_stmts;
-    new_stmts.reserve(static_cast<int>(seq->seq.size()));
+    new_stmts.reserve(seq->seq.size());
     for (const Stmt& old_stmt : seq->seq) {
       new_stmts.push_back(VisitStmt(old_stmt));
     }
@@ -213,7 +213,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     throw LoopPositionError(self->mod, GetRef<For>(loop), GetRef<Block>(block));
   }
   // Cond 1. Check block is reduction
-  const StmtSRef& scope_root_sref = GetScopeRoot(self, block_sref, false);
+  const StmtSRef& scope_root_sref = GetScopeRoot(self, block_sref, false, false);
   CheckReductionBlock(self, block_sref, scope_root_sref);
   // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
   LoopHeightError::CheckLoopHigherThanReduceLoops(self->mod, block, realize, loops, loop_sref);
@@ -256,7 +256,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
   //         Otherwise, it is discarded.
   std::unordered_set<const VarNode*> discarded_loops;
   std::vector<int> chosen_loops;
-  for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
+  for (int i = loops.size() - 1; i >= 0; --i) {
     const auto* loop_var = loops[i]->StmtAs<ForNode>()->loop_var.get();
     bool discarded = true;
     for (const PrimExpr& expr : init_realize->iter_values) {
