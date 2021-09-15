@@ -16,8 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef TVM_META_SCHEDULE_TASK_SCHEDULER_H_
-#define TVM_META_SCHEDULE_TASK_SCHEDULER_H_
+#ifndef SRC_META_SCHEDULE_TASK_SCHEDULER_H_
+#define SRC_META_SCHEDULE_TASK_SCHEDULER_H_
+
+#include <tvm/ir/module.h>
+#include <tvm/runtime/container/array.h>
+#include <tvm/runtime/object.h>
 
 #include "./builder.h"
 #include "./runner.h"
@@ -29,129 +33,25 @@ namespace meta_schedule {
 /*! \brief The abstract interface of task schedulers. */
 class TaskSchedulerNode : public runtime::Object {
  public:
-  /*! \brief The tasks to be tuned */
-  Array<TuneContext> tasks;
-  /*! \brief The builder of the scheduler. */
-  Builder builder{nullptr};
-  /*! \brief The runner of the scheduler. */
-  Runner runner{nullptr};
-  /*! \brief The database of the scheduler. */
-  Database database{nullptr};
+  /*! \brief The function type of `TuneAllTasks` method. */
+  using FTuneAllTasks = runtime::TypedPackedFunc<void()>;
+  /*! \brief The function type of `SortAllTasks` method. */
+  using FSortAllTasks = runtime::TypedPackedFunc<void()>;
 
-  /*! \brief The default desctructor. */
   virtual ~TaskSchedulerNode() = default;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("tasks", &tasks);
-    v->Visit("builder", &builder);
-    v->Visit("runner", &runner);
-    v->Visit("database", &database);
-  }
+  /*! \brief The builder of the scheduler. */
+  Optional<Builder> builder;
+  /*! \brief The runner of the scheduler. */
+  Optional<Runner> runner;
 
-  /*! \brief Auto-tuning. */
-  virtual void Tune();
-
-  /*!
-   * \brief Set specific task to be stopped.
-   * \param task_id The task id to be stopped.
-   */
-  virtual void SetTaskStopped(int task_id);
-
-  /*!
-   * \brief Check whether the task is running.
-   * \param task_id The task id to be checked.
-   * \return Whether the task is running.
-   */
-  virtual bool IsTaskRunning(int task_id);
-
-  /*!
-   * \brief Wait until the task is finished.
-   * \param task_id The task id to be joined.
-   */
-  virtual void JoinRunningTask(int task_id);
-
-  /*!
-   * \brief Fetch the next task id.
-   * \return The next task id.
-   */
-  virtual int NextTaskId() = 0;
+  /*! \brief Sort all tuning tasks with certain priority. */
+  virtual void SortAllTasks() = 0;
+  /*! \brief Run auto-tuning on all tasks. */
+  virtual void TuneAllTasks() = 0;
 
   static constexpr const char* _type_key = "meta_schedule.TaskScheduler";
   TVM_DECLARE_BASE_OBJECT_INFO(TaskSchedulerNode, Object);
-};
-
-/*! \brief The task scheduler with customized methods on the python-side. */
-class PyTaskSchedulerNode : public TaskSchedulerNode {
- public:
-  /*! \brief The function type of `Tune` method. */
-  using FTune = runtime::TypedPackedFunc<void()>;
-
-  /*!
-   * \brief The function type of `SetTaskStopped` method.
-   * \param task_id The task id to be stopped.
-   */
-  using FSetTaskStopped = runtime::TypedPackedFunc<void(int)>;
-
-  /*!
-   * \brief The function type of `IsTaskRunning` method.
-   * \param task_id The task id to be checked.
-   * \return Whether the task is running.
-   */
-  using FIsTaskRunning = runtime::TypedPackedFunc<bool(int)>;
-
-  /*!
-   * \brief The function type of `JoinRunningTask` method.
-   * \param task_id The task id to be joined.
-   */
-  using FJoinRunningTask = runtime::TypedPackedFunc<void(int)>;
-
-  /*!
-   * \brief The function type of `NextTaskId` method.
-   * \return The next task id.
-   */
-  using FNextTaskId = runtime::TypedPackedFunc<int()>;
-
-  /*! \brief The packed function to the `Tune` funcion. */
-  FTune f_tune;
-  /*! \brief The packed function to the `SetTaskStopped` function. */
-  FSetTaskStopped f_set_task_stopped;
-  /*! \brief The packed function to the `IsTaskRunning` function. */
-  FIsTaskRunning f_is_task_running;
-  /*! \brief The packed function to the `JoinRunningTask` function. */
-  FJoinRunningTask f_join_running_task;
-  /*! \brief The packed function to the `NextTaskId` function. */
-  FNextTaskId f_next_task_id;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    // `f_tune` is not visited
-    // `f_set_task_stopped` is not visited
-    // `f_is_task_running` is not visited
-    // `f_join_running_task` is not visited
-    // `f_next_task_id` is not visited
-  }
-
-  void Tune() final {  //
-    f_tune();
-  }
-
-  void SetTaskStopped(int task_id) final {  //
-    f_set_task_stopped(task_id);
-  }
-
-  bool IsTaskRunning(int task_id) final {  //
-    return f_is_task_running(task_id);
-  }
-
-  void JoinRunningTask(int task_id) final {  //
-    f_join_running_task(task_id);
-  }
-
-  int NextTaskId() final {  //
-    return f_next_task_id();
-  }
-
-  static constexpr const char* _type_key = "meta_schedule.PyTaskScheduler";
-  TVM_DECLARE_FINAL_OBJECT_INFO(PyTaskSchedulerNode, TaskSchedulerNode);
 };
 
 /*!
@@ -161,24 +61,64 @@ class PyTaskSchedulerNode : public TaskSchedulerNode {
 class TaskScheduler : public runtime::ObjectRef {
  public:
   /*!
-   * \brief Create a task scheduler that fetches tasks in a round-robin fashion.
-   * \param tasks The tasks to be tuned.
-   * \param builder The builder of the scheduler.
-   * \param runner The runner of the scheduler.
-   * \param database The database of the scheduler.
+   * \brief Member function to create the StandardTaskScheduler class.
+   * \param tune_contexts The array of tuning contexts for different tasks.
+   * \param builder The builder of the task scheduler.
+   * \param runner The runner of the task scheduler.
+   * \return The constructed StandardTaskScheduler object but in TaskScheduler type.
    */
-  TVM_DLL static TaskScheduler RoundRobin(Array<TuneContext> tasks, Builder builder, Runner runner,
-                                          Database database);
-  TVM_DLL static TaskScheduler PyTaskScheduler(
-      PyTaskSchedulerNode::FTune f_tune,                          //
-      PyTaskSchedulerNode::FSetTaskStopped f_set_task_stopped,    //
-      PyTaskSchedulerNode::FIsTaskRunning f_is_task_running,      //
-      PyTaskSchedulerNode::FJoinRunningTask f_join_running_task,  //
-      PyTaskSchedulerNode::FNextTaskId f_next_task_id);
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TaskScheduler, ObjectRef, TaskSchedulerNode);
+  static TaskScheduler StandardTaskScheduler(Array<TuneContext> tune_contexts,  //
+                                             Optional<Builder> builder,         //
+                                             Optional<Runner> runner);
+  /*!
+   * \brief Member function to create the python side customizable PyTaskScheduler class.
+   * \param tune_contexts The array of tuning contexts for different tasks.
+   * \param builder The builder of the task scheduler.
+   * \param runner The runner of the task scheduler.
+   * \param sort_all_tasks_func The function to sort all tuning tasks with certain priority.
+   * \param tune_all_tasks_func The function to run auto-tuning on all tasks.
+   * \return The constructed PyTaskScheduler object but in TaskScheduler type.
+   */
+  static TaskScheduler PyTaskScheduler(Array<TuneContext> tune_contexts,                      //
+                                       Optional<Builder> builder,                             //
+                                       Optional<Runner> runner,                               //
+                                       TaskSchedulerNode::FSortAllTasks sort_all_tasks_func,  //
+                                       TaskSchedulerNode::FTuneAllTasks tune_all_tasks_func);
+
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(TaskScheduler, ObjectRef, TaskSchedulerNode);
+};
+
+/*! \brief The python side customizable class for task scheduling. */
+class PyTaskSchedulerNode : public TaskSchedulerNode {
+ public:
+  /*! \brief The array of tuning contexts for different tasks. */
+  Array<TuneContext> tune_contexts;
+  /*! \brief Pointer to the `SortAllTasks` funcion in python. */
+  FSortAllTasks sort_all_tasks_func;
+  /*! \brief Pointer to the `TuneAllTasks` funcion in python. */
+  FTuneAllTasks tune_all_tasks_func;
+
+  /*!
+   * \brief Visitor for variables in python.
+   * \note required for non-abstract classes.
+   */
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("tune_contexts", &tune_contexts);
+    v->Visit("builder", &builder);
+    v->Visit("runner", &runner);
+  }
+
+  /*! \brief Use the given function pointer to override the `SortAllTasks` function. */
+  void SortAllTasks() override { this->sort_all_tasks_func(); }
+
+  /*! \brief Use the given function pointer to override the `TuneAllTasks` function. */
+  void TuneAllTasks() override { this->tune_all_tasks_func(); }
+
+  static constexpr const char* _type_key = "meta_schedule.PyTaskScheduler";
+  TVM_DECLARE_FINAL_OBJECT_INFO(PyTaskSchedulerNode, TaskSchedulerNode);
 };
 
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // TVM_META_SCHEDULE_TASK_SCHEDULER_H_
+#endif  // SRC_META_SCHEDULE_TASK_SCHEDULER_H_
