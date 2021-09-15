@@ -117,14 +117,84 @@ class DatabaseNode : public runtime::Object {
    * \return The workload token of the given IRModule.
    */
   virtual WorkloadToken LookupOrAdd(const IRModule& mod) = 0;
-  /*! \brief Get the size of the database. */
+  /*!
+   * \brief Get the size of the database.
+   * \return The size of the database.
+   */
   virtual int64_t Size() = 0;
 
   static constexpr const char* _type_key = "meta_schedule.Database";
   TVM_DECLARE_FINAL_OBJECT_INFO(DatabaseNode, runtime::Object);
 };
 
-// TOOD: add PyDatabase
+/*! \brief The database with customized methods on the python-side. */
+class PyDatabaseNode : public DatabaseNode {
+ public:
+  /*!
+   * \brief The function type of `InitializeWithTuneContext` method.
+   * \param tune_context The tuning context for initialization.
+   */
+  using FInitializeWithTuneContext = runtime::TypedPackedFunc<void(const TuneContext&)>;
+  /*!
+   * \brief The function type of `Add` method.
+   * \param record The tuning record to be added.
+   */
+  using FAdd = runtime::TypedPackedFunc<void(const TuningRecord&)>;
+  /*!
+   * \brief The function type of `GetTopK` method.
+   * \param workload The workload to be searched for.
+   * \param top_k The number of top records to be returned.
+   * \return An array of top K tuning records for the given workload.
+   */
+  using FGetTopK = runtime::TypedPackedFunc<Array<TuningRecord>(const WorkloadToken&, int)>;
+  /*!
+   * \brief The function type of `LookupOrAdd` method.
+   * \param mod The IRModule to be searched for or added.
+   * \return The workload token of the given IRModule.
+   */
+  using FLookupOrAdd = runtime::TypedPackedFunc<WorkloadToken(const IRModule&)>;
+  /*!
+   * \brief The function type of `Size` method.
+   * \return The size of the database.
+   */
+  using FSize = runtime::TypedPackedFunc<int64_t()>;
+
+  /*! \brief The packed function to the `InitializeWithTuneContext` funcion. */
+  FInitializeWithTuneContext f_initialize_with_tune_context;
+  /*! \brief The packed function to the `Add` function. */
+  FAdd f_add;
+  /*! \brief The packed function to the `GetTopK` function. */
+  FGetTopK f_get_top_k;
+  /*! \brief The packed function to the `LookupOrAdd` function. */
+  FLookupOrAdd f_lookup_or_add;
+  /*! \brief The packed function to the `Size` function. */
+  FSize f_size;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    // `f_initialize_with_tune_context` is not visited
+    // `f_add` is not visited
+    // `f_get_top_k` is not visited
+    // `f_lookup_or_add` is not visited
+    // `f_size` is not visited
+  }
+
+  void InitializeWithTuneContext(const TuneContext& tune_context) final {
+    f_initialize_with_tune_context(tune_context);
+  }
+
+  void Add(const TuningRecord& record) final { f_add(record); }
+
+  Array<TuningRecord> GetTopK(const WorkloadToken& workload, int top_k) final {
+    return f_get_top_k(workload, top_k);
+  }
+
+  WorkloadToken LookupOrAdd(const IRModule& mod) final { return f_lookup_or_add(mod); }
+
+  int64_t Size() final { return f_size(); }
+
+  static constexpr const char* _type_key = "meta_schedule.PyDatabase";
+  TVM_DECLARE_FINAL_OBJECT_INFO(PyDatabaseNode, runtime::Object);
+};
 
 /*!
  * \brief Managed reference to DatabaseNode.
@@ -133,13 +203,28 @@ class DatabaseNode : public runtime::Object {
 class Database : public runtime::ObjectRef {
  public:
   /*!
-   * \brief Default constructor
+   * \brief Create a default database.
    * \param record_path The path to the database file.
    * \param workload_path The path to the workload registry file.
    * \param allow_missing_files Whether to create new file when the given path is not found.
    */
   TVM_DLL static Database DefaultDatabase(String record_path, String workload_path,
                                           bool allow_missing);
+  /*!
+   * \brief Create a database with customized methods on the python-side.
+   * \param f_initialize_with_tune_context The packed function of `InitializeWithTuneContext`.
+   * \param f_add The packed function of `Add`.
+   * \param f_get_top_k The packed function of `GetTopK`.
+   * \param f_lookup_or_add The packed function of `LookupOrAdd`.
+   * \param f_size The packed function of `Size`.
+   * \return The created database.
+   */
+  TVM_DLL static Database PyDatabase(
+      PyDatabaseNode::FInitializeWithTuneContext f_initialize_with_tune_context,  //
+      PyDatabaseNode::FAdd f_add,                                                 //
+      PyDatabaseNode::FGetTopK f_get_top_k,                                       //
+      PyDatabaseNode::FLookupOrAdd f_lookup_or_add,                               //
+      PyDatabaseNode::FSize f_size);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Database, runtime::ObjectRef, DatabaseNode);
 };
 

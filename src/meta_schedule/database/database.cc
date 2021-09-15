@@ -37,6 +37,21 @@ TuningRecord::TuningRecord(tir::Trace trace, Array<FloatImm> run_secs, WorkloadT
   this->data_ = n;
 }
 
+Database Database::PyDatabase(
+    PyDatabaseNode::FInitializeWithTuneContext f_initialize_with_tune_context,  //
+    PyDatabaseNode::FAdd f_add,                                                 //
+    PyDatabaseNode::FGetTopK f_get_top_k,                                       //
+    PyDatabaseNode::FLookupOrAdd f_lookup_or_add,                               //
+    PyDatabaseNode::FSize f_size) {
+  ObjectPtr<PyDatabaseNode> n = make_object<PyDatabaseNode>();
+  n->f_initialize_with_tune_context = std::move(f_initialize_with_tune_context);
+  n->f_add = std::move(f_add);
+  n->f_get_top_k = std::move(f_get_top_k);
+  n->f_lookup_or_add = std::move(f_lookup_or_add);
+  n->f_size = std::move(f_size);
+  return Database(n);
+}
+
 ObjectRef TuningRecordNode::AsJSON() const {
   Array<ObjectRef> json_args_info;
   json_args_info.reserve(args_info.size());
@@ -90,6 +105,8 @@ TuningRecord TuningRecord::FromJSON(const ObjectRef& json_obj, const WorkloadReg
 
 TVM_REGISTER_NODE_TYPE(TuningRecordNode);
 TVM_REGISTER_OBJECT_TYPE(DatabaseNode);
+TVM_REGISTER_NODE_TYPE(PyDatabaseNode);
+TVM_REGISTER_GLOBAL("meta_schedule.DatabasePyDatabase").set_body_typed(Database::PyDatabase);
 TVM_REGISTER_GLOBAL("meta_schedule.TuningRecord")
     .set_body_typed([](tir::Trace trace, Array<FloatImm> run_secs, WorkloadToken workload,
                        Target target, Array<ArgInfo> args_info) {

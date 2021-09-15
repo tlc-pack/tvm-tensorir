@@ -100,7 +100,7 @@ class RPCRunner(PyRunner):
         The function name to run the evaluator or the function itself.
     f_cleanup: Optional[str, Callable]
         The function name to cleanup the session or the function itself.
-    pool: str
+    pool: PopenPoolExecutor
         The popen pool executor.
 
     Note
