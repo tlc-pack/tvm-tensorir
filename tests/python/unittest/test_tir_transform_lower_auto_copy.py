@@ -28,10 +28,12 @@ def _check(original):
     mod = tvm.tir.transform.ConvertBlocksToOpaque()(mod)
     mod= tvm.tir.transform.CompactBufferAllocation()(mod)
     mod = tvm.tir.transform.Simplify()(mod)
+    print(tvm.script.asscript(mod["main"]))
     mod = tvm.tir.transform.LowerAutoCopy()(mod)
     mod = tvm.tir.transform.Simplify()(mod)
     print(tvm.script.asscript(mod["main"]))
     f = tvm.build(mod["main"], target="cuda")
+    print(f.imported_modules[0].get_source())
     a_np = np.random.uniform(size=(64, 128)).astype("float32")
     ctx = tvm.cuda(0)
     a = tvm.nd.array(a_np, ctx)
@@ -49,7 +51,7 @@ def transpose(a: ty.handle, b: ty.handle) -> None:
 
 
 @tvm.script.tir
-def func(a: ty.handle, b: ty.handle) -> None:
+def A0_func(a: ty.handle, b: ty.handle) -> None:
     B = tir.match_buffer(b, [128, 64], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [64, 128], elem_offset=0, align=128, offset_factor=1)
     # body
@@ -64,7 +66,7 @@ def func(a: ty.handle, b: ty.handle) -> None:
                 with tir.block([2, 2],"A_shared") as [v0, v1]:
                     tir.bind(v0, bx)
                     tir.bind(v1, tx)
-                    tir.block_attr({"auto_copy":1,"vector_bytes":4})
+                    tir.block_attr({"auto_copy":1,"vector_bytes":16})
                     for ax0, ax1 in tir.grid(32, 64):
                         A_shared[v0*32+ax0, v1*64+ax1] = A[v0*32+ax0, v1*64+ax1]
                 for i0, i1 in tir.grid(32, 64):
@@ -80,14 +82,61 @@ def func(a: ty.handle, b: ty.handle) -> None:
                 with tir.block([2, 2],"A_shared") as [v0, v1]:
                     tir.bind(v0, tx)
                     tir.bind(v1, bx)
-                    tir.block_attr({"auto_copy":1,"vector_bytes":4})
+                    tir.block_attr({"auto_copy":1,"vector_bytes":16})
                     for ax0, ax1 in tir.grid(64, 32):
                         B[v0*64+ax0, v1*32+ax1] = B_shared[v0*64+ax0, v1*32+ax1]
 
+@tvm.script.tir
+def A1_func1(a: ty.handle, b: ty.handle) -> None:
+    B = tir.match_buffer(b, [128, 64], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [64, 128], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root"):
+        tir.reads([])
+        tir.writes([])
+        A_shared = tir.alloc_buffer([128, 64], elem_offset=0, scope="shared", align=128, offset_factor=1)
+        for bx in tir.thread_binding(0,2,thread="blockIdx.x"):
+            for tx in tir.thread_binding(0,2, thread="threadIdx.x"):
+                with tir.block([2, 2],"A_shared") as [v0, v1]:
+                    tir.bind(v0, bx)
+                    tir.bind(v1, tx)
+                    tir.block_attr({"auto_copy":1,"vector_bytes":16})
+                    for ax0, ax1 in tir.grid(32, 64):
+                        A_shared[v1*64+ax1, v0*32+ax0] = A[v0*32+ax0, v1*64+ax1]
+                with tir.block([2, 2],"A_shared") as [v0, v1]:
+                    tir.bind(v0, tx)
+                    tir.bind(v1, bx)
+                    tir.block_attr({"auto_copy":1,"vector_bytes":16})
+                    for ax0, ax1 in tir.grid(64, 32):
+                        B[v0*64+ax0, v1*32+ax1] = A_shared[v0*64+ax0, v1*32+ax1]
+
+@tvm.script.tir
+def A1_func2(a: ty.handle, b: ty.handle) -> None:
+    B = tir.match_buffer(b, [128, 64], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [64, 128], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root"):
+        tir.reads([])
+        tir.writes([])
+        A_shared = tir.alloc_buffer([64, 128], elem_offset=0, scope="shared", align=128, offset_factor=1)
+        for bx in tir.thread_binding(0,2,thread="blockIdx.x"):
+            for tx in tir.thread_binding(0,2, thread="threadIdx.x"):
+                with tir.block([2, 2],"A_shared") as [v0, v1]:
+                    tir.bind(v0, bx)
+                    tir.bind(v1, tx)
+                    tir.block_attr({"auto_copy":1,"vector_bytes":16})
+                    for ax0, ax1 in tir.grid(32, 64):
+                        A_shared[v0*32+ax0, v1*64+ax1] = A[v0*32+ax0, v1*64+ax1]
+                with tir.block([2, 2],"A_shared") as [v0, v1]:
+                    tir.bind(v0, bx)
+                    tir.bind(v1, tx)
+                    tir.block_attr({"auto_copy":1,"vector_bytes":16})
+                    for ax0, ax1 in tir.grid(32, 64):
+                        B[v1*64+ax1, v0*32+ax0] = A_shared[v0*32+ax0, v1*64+ax1]
 
 # sch = tir.Schedule(func)
 # block_transpose=sch.get_block("transpose")
 # block_local=sch.cache_write(block_transpose,0,"local")
 # print(tvm.script.asscript(sch.mod["main"]))
 
-_check(func)
+_check(A1_func2)

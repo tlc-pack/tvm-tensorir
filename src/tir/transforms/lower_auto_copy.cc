@@ -26,6 +26,7 @@
 #include <tvm/tir/transform.h>
 
 #include "../../runtime/thread_storage_scope.h"
+#include "../schedule/utils.h"
 #include "./ir_utils.h"
 /*!
  * \brief Automatically generate thread binding for auto copy blocks
@@ -34,8 +35,6 @@
 
 namespace tvm {
 namespace tir {
-
-
 
 class AutoCopyMutator : public StmtExprMutator {
  private:
@@ -73,17 +72,23 @@ class AutoCopyMutator : public StmtExprMutator {
     new_stmt = For(fused_var, 0, fused_extent, ForKind::kSerial, new_stmt);
     return new_stmt;
   }
-  
+
   Stmt SplitBindVectorize(Stmt body, int vector_bytes) {
     const ForNode* loop = body.as<ForNode>();
-    int tot_threads=threadIdx_x_*threadIdx_y_*threadIdx_z_;
-    if (!loop || !is_zero(indexmod(loop->extent, (vector_bytes * tot_threads)))) {
+    int tot_threads = threadIdx_x_ * threadIdx_y_ * threadIdx_z_;
+    int vector_len = vector_bytes * 8 / data_bits_;
+    if (!loop || !is_zero(indexmod(loop->extent, (vector_len * tot_threads)))) {
+      if (!loop) {
+        LOG(INFO) << 1;
+      } else {
+        LOG(INFO) << loop->extent << ' ' << (vector_len * tot_threads);
+      }
       return body;
     }
-    PrimExpr outer_loop_extent = indexdiv(loop->extent, tot_threads * vector_bytes);
+    PrimExpr outer_loop_extent = indexdiv(loop->extent, tot_threads * vector_len);
     Array<PrimExpr> factors{outer_loop_extent};
     std::vector<std::string> thread_axis;
-    int new_loop_num=2;
+    int new_loop_num = 2;
     if (threadIdx_z_ != 1) {
       factors.push_back(threadIdx_z_);
       thread_axis.push_back("threadIdx.z");
@@ -99,17 +104,17 @@ class AutoCopyMutator : public StmtExprMutator {
       thread_axis.push_back("threadIdx.x");
       new_loop_num++;
     }
-    factors.push_back(vector_bytes);
+    factors.push_back(vector_len);
     std::vector<Var> new_loop_vars;
     new_loop_vars.reserve(new_loop_num);
     for (int i = 0; i < new_loop_num; i++) {
       new_loop_vars.push_back(loop->loop_var.copy_with_suffix("_" + std::to_string(i)));
     }
-    
-    PrimExpr substitute_value =0;
-    for (int i = 0;i<new_loop_num;i++) {
-      substitute_value*=factors[i];
-      substitute_value+=new_loop_vars[i];
+
+    PrimExpr substitute_value = 0;
+    for (int i = 0; i < new_loop_num; i++) {
+      substitute_value *= factors[i];
+      substitute_value += new_loop_vars[i];
     }
     body = Substitute(loop->body, [&](const Var& v) -> Optional<PrimExpr> {
       if (v.same_as(loop->loop_var)) {
@@ -119,68 +124,158 @@ class AutoCopyMutator : public StmtExprMutator {
       }
     });
 
-    For new_loop = For(new_loop_vars[new_loop_num-1], 0, vector_bytes, ForKind::kVectorized, body);
-    
-    for (int i = new_loop_num-2; i >= 1; i--) {
-      new_loop = For(new_loop_vars[i],0, factors[i], ForKind::kThreadBinding, new_loop,
-                     IterVar(Range(nullptr), Var(thread_axis[i-1]), kThreadIndex,
-                             thread_axis[i-1]));
+    For new_loop = For(new_loop_vars[new_loop_num - 1], 0, vector_len, ForKind::kVectorized, body);
+
+    for (int i = new_loop_num - 2; i >= 1; i--) {
+      new_loop =
+          For(new_loop_vars[i], 0, factors[i], ForKind::kThreadBinding, new_loop,
+              IterVar(Range(nullptr), Var(thread_axis[i - 1]), kThreadIndex, thread_axis[i - 1]));
     }
-    
+
     new_loop = For(new_loop_vars[0], 0, outer_loop_extent, ForKind::kSerial, new_loop);
     return std::move(new_loop);
   }
 
-
-  
-  Stmt UnbindThreads(Stmt stmt){
-    class ThreadBindingVarFinder: public StmtExprVisitor{
-     public:
-      ThreadBindingVarFinder(const std::vector<const ForNode*>& thread_binding_loops):thread_binding_loops_(thread_binding_loops){}
-      static std::unordered_set<const ForNode*> FindLoopsToUnbind(Stmt stmt, const
-                                                                  std::vector<const ForNode*>&
-                                                                      thread_binding_loops){
-        ThreadBindingVarFinder finder(thread_binding_loops);
-        finder(stmt);
-        return finder.loops_to_unbind_;
-      }
-     private:
-      void VisitExpr_(const VarNode* op) final{
-        for (const ForNode* loop : thread_binding_loops_) {
-          const String& thread_tag = loop->thread_binding.value()->thread_tag;
-          runtime::ThreadScope thread_scope=runtime::ThreadScope::Create(thread_tag);
-          if (op == loop->loop_var.get() && static_cast<int>(runtime::StorageRank::kShared) <=
-                                                static_cast<int>(thread_scope.rank)) {
-            loops_to_unbind_.insert(loop);
-          }
-        }
-      }
-    
-      const std::vector<const ForNode*>& thread_binding_loops_;
-      std::unordered_set<const ForNode*> loops_to_unbind_;
-    };
-    
-    std::unordered_set<const ForNode*> loops_to_unbind=ThreadBindingVarFinder::FindLoopsToUnbind
-        (stmt, thread_binding_loops_);
-    std::unordered_map<const VarNode*, PrimExpr> substitute_map;
-    Stmt new_stmt = stmt;
-    for (const ForNode* loop:loops_to_unbind) {
-      Var var = loop->loop_var.copy_with_suffix("_unbind");
-      substitute_map[loop->loop_var.get()]=var;
-      new_stmt=For(var, loop->min, loop->extent, ForKind::kSerial, std::move(new_stmt));
+  Array<PrimExpr> GetMapping(Block block) {
+    Stmt body = block->body;
+    while (const ForNode* loop = body.as<ForNode>()) {
+      body = loop->body;
     }
-    new_stmt= Substitute(std::move(new_stmt),substitute_map);
-    return new_stmt;
+    const BufferStoreNode* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
+    const Array<Range>& write_region = block->writes[0]->region;
+    const Array<PrimExpr>& write_index = buf_store->indices;
+    ICHECK(write_region.size() == write_index.size() &&
+           block->writes[0]->buffer.same_as(buf_store->buffer));
+    Array<PrimExpr> result;
+    arith::Analyzer analyzer;
+    for (int i = 0; i < static_cast<int>(write_region.size()); i++) {
+      result.push_back(analyzer.Simplify(write_index[i] - write_region[i]->min));
+    }
+    return result;
   }
 
-
-  Stmt CoalesceGlobalLoad(Stmt stmt, int vector_bytes, int warp_size) {
-    stmt = UnbindThreads(std::move(stmt));
-    stmt = FuseNestLoops(std::move(stmt));
-    stmt = SplitBindVectorize(std::move(stmt), vector_bytes);
-    return stmt;
+  Block RelaxThreads(Block block, const Array<PrimExpr>& mapping) {
+    Stmt body = block.as<BlockNode>()->body;
+    Map<Var, Range> var_range;
+    Array<Var> loop_vars;
+    while (const ForNode* loop = body.as<ForNode>()) {
+      var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      loop_vars.push_back(loop->loop_var);
+      body = loop->body;
+    }
+    for (const ForNode* loop : outer_loops_) {
+      if (loop->kind == ForKind::kThreadBinding) {
+        const String& thread_tag = loop->thread_binding.value()->thread_tag;
+        if (CanRelaxStorageUndereThread(src_scope_, runtime::ThreadScope::Create(thread_tag)) &&
+            CanRelaxStorageUndereThread(tgt_scope_, runtime::ThreadScope::Create(thread_tag))) {
+          var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+        }
+      } else {
+        var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      }
+    }
+    int n = loop_vars.size();
+    const Buffer& read_buffer = block->reads[0]->buffer;
+    const Buffer& write_buffer = block->writes[0]->buffer;
+    const Array<Range>& read_region = block->reads[0]->region;
+    const Array<Range>& write_region = block->writes[0]->region;
+    Map<Var, arith::IntSet> var_dom = AsIntSet(var_range);
+    Array<arith::IntSet> relaxed_read_region = arith::EvalSet(read_region, var_dom);
+    Array<arith::IntSet> relaxed_write_region = arith::EvalSet(write_region, var_dom);
+    Array<PrimExpr> read_index;
+    Array<PrimExpr> write_index;
+    Array<Var> relaxed_loop_vars;
+    for (int i = 0; i < n; i++) {
+      Var var = loop_vars[i].copy_with_suffix("_relaxed");
+      relaxed_loop_vars.push_back(var);
+      read_index.push_back(relaxed_read_region[i].min() + var);
+    }
+    const BufferStoreNode* old_buf_store = TVM_TYPE_AS(old_buf_store, body, BufferStoreNode);
+    Map<Var, PrimExpr> substitute_mapping;
+    for (int i = 0; i < n; i++) {
+      substitute_mapping.Set(loop_vars[i], relaxed_loop_vars[i]);
+    }
+    for (int i = 0; i < n; i++) {
+      write_index.push_back(relaxed_write_region[i].min() +
+                            Substitute(mapping[i], substitute_mapping));
+    }
+    BufferLoad new_buf_load = BufferLoad(read_buffer, read_index);
+    BufferStore new_buf_store = BufferStore(write_buffer, new_buf_load, write_index);
+    Stmt ret = new_buf_store;
+    arith::Analyzer analyzer;
+    for (int i = n - 1; i >= 0; i--) {
+      PrimExpr extent =
+          analyzer.Simplify(relaxed_read_region[i].max() - relaxed_read_region[i].min() + 1);
+      ret = For(relaxed_loop_vars[i], 0, extent, ForKind::kSerial, ret);
+    }
+    ObjectPtr<BlockNode> new_block = runtime::make_object<BlockNode>(*block.get());
+    Array<Range> new_read_region;
+    Array<Range> new_write_region;
+    Range none;
+    for (const arith::IntSet& int_set : relaxed_read_region) {
+      new_read_region.push_back(int_set.CoverRange(none));
+    }
+    for (const arith::IntSet& int_set : relaxed_write_region) {
+      new_write_region.push_back(int_set.CoverRange(none));
+    }
+    new_block->body = ret;
+    new_block->reads = {BufferRegion(read_buffer, new_read_region)};
+    new_block->writes = {BufferRegion(write_buffer, new_write_region)};
+    return Block(new_block);
   }
-  
+
+  Stmt InverseMappingTransform(Block block, const Array<PrimExpr>& mapping) {
+    Stmt body = block->body;
+    Map<Var, Range> var_range;
+    Array<PrimExpr> loop_vars;
+    while (const ForNode* loop = body.as<ForNode>()) {
+      var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      loop_vars.push_back(loop->loop_var);
+      body = loop->body;
+    }
+    arith::Analyzer analyzer;
+    Array<arith::IterSumExpr> iter_map =
+        arith::DetectIterMap(mapping, var_range, Bool(true), true, &analyzer);
+    CHECK_EQ(iter_map.size(), loop_vars.size());
+    Map<Var, PrimExpr> inverse_mapping = arith::InverseAffineIterMap(iter_map, loop_vars);
+    Array<PrimExpr> write_index;
+    Array<PrimExpr> read_index;
+    Array<Var> new_loop_vars;
+    int n= loop_vars.size();
+    Map<Var, PrimExpr> substitute_map;
+    for(int i=0;i<n;i++){
+      Var var = runtime::Downcast<Var>(loop_vars[i]).copy_with_suffix("_inverse");
+      new_loop_vars.push_back(var);
+      substitute_map.Set(runtime::Downcast<Var>(loop_vars[i]),var);
+      write_index.push_back(block->writes[0]->region[i]->min+var);
+    }
+    for (int i = 0; i < n; i++) {
+      read_index.push_back(block->reads[0]->region[i]->min+ Substitute
+                           (inverse_mapping[Downcast<Var>(loop_vars[i])],substitute_map));
+    }
+    BufferLoad new_buf_load = BufferLoad(block->reads[0]->buffer, read_index);
+    BufferStore new_buf_store = BufferStore(block->writes[0]->buffer, new_buf_load, write_index);
+    Stmt ret = new_buf_store;
+    for (int i = n - 1; i >= 0; i--) {
+      PrimExpr extent = block->writes[0]->region[i]->extent;
+      ret = For(new_loop_vars[i], 0, extent, ForKind::kSerial, ret);
+    }
+    return ret;
+  }
+
+  Stmt CoalesceGlobalLoad(Block block, int vector_bytes, bool need_inverse = false) {
+    Array<PrimExpr> mapping = GetMapping(block);
+    Block relaxed_block = RelaxThreads(block, mapping);
+    Stmt ret = relaxed_block->body;
+    if (need_inverse) {
+      Array<PrimExpr> mapping = GetMapping(relaxed_block);
+      ret = InverseMappingTransform(relaxed_block, mapping);
+    }
+    ret = FuseNestLoops(std::move(ret));
+    ret = SplitBindVectorize(std::move(ret), vector_bytes);
+    return ret;
+  }
+
   Stmt VisitStmt_(const BlockNode* op) final {
     Block block;
     if (op->annotations.count("auto_copy") &&
@@ -194,12 +289,13 @@ class AutoCopyMutator : public StmtExprMutator {
            tgt_scope_.rank == runtime::StorageRank::kGlobal)) {
         int vector_bytes;
         if (op->annotations.count("vector_bytes")) {
-          IntImm vec_bytes = Downcast<IntImm>(op->annotations["vector_bytes"]);
+          IntImm vec_bytes = Downcast<IntImm>(n->annotations["vector_bytes"]);
           vector_bytes = vec_bytes->value;
         } else {
           vector_bytes = 1;
         }
-        n->body = CoalesceGlobalLoad(op->body, vector_bytes, threadIdx_x_);
+        bool need_inverse = src_scope_.rank == runtime::StorageRank::kShared;
+        n->body = CoalesceGlobalLoad(block, vector_bytes, need_inverse);
       }
     } else {
       block = runtime::Downcast<Block>(StmtMutator::VisitStmt_(op));
@@ -210,37 +306,42 @@ class AutoCopyMutator : public StmtExprMutator {
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     if (in_auto_copy_) {
       if (const BufferLoadNode* buf_load = op->value.as<BufferLoadNode>()) {
+        CHECK(op->buffer->dtype == buf_load->buffer->dtype);
+        data_bits_ = op->buffer->dtype.bits();
+        tgt_scope_ = runtime::StorageScope::Create(op->buffer.scope());
         src_scope_ = runtime::StorageScope::Create(buf_load->buffer.scope());
       }
-      tgt_scope_ = runtime::StorageScope::Create(op->buffer.scope());
     }
     return GetRef<BufferStore>(op);
   }
-  
-  Stmt VisitStmt_(const ForNode* op) final{
+
+  Stmt VisitStmt_(const ForNode* op) final {
     if (op->thread_binding.defined()) {
-      IterVar binding=op->thread_binding.value();
+      IterVar binding = op->thread_binding.value();
       if (binding->iter_type == kThreadIndex) {
-        if(binding->thread_tag=="threadIdx.x") {
+        if (binding->thread_tag == "threadIdx.x") {
           threadIdx_x_ = Downcast<IntImm>(op->extent)->value;
-        } else if(binding->thread_tag=="threadIdx.y"){
-          threadIdx_y_=Downcast<IntImm>(op->extent)->value;
+        } else if (binding->thread_tag == "threadIdx.y") {
+          threadIdx_y_ = Downcast<IntImm>(op->extent)->value;
         } else if (binding->thread_tag == "threadIdx.z") {
-          threadIdx_z_=Downcast<IntImm>(op->extent)->value;
+          threadIdx_z_ = Downcast<IntImm>(op->extent)->value;
         }
-        thread_binding_loops_.push_back(op);
       }
     }
-    return StmtMutator::VisitStmt_(op);
+    outer_loops_.push_back(op);
+    Stmt stmt = StmtMutator::VisitStmt_(op);
+    outer_loops_.pop_back();
+    return stmt;
   }
-  
+
   bool in_auto_copy_;
   runtime::StorageScope src_scope_;
   runtime::StorageScope tgt_scope_;
   int threadIdx_x_ = 1;
   int threadIdx_y_ = 1;
-  int threadIdx_z_= 1;
-  std::vector<const ForNode*> thread_binding_loops_;
+  int threadIdx_z_ = 1;
+  int data_bits_ = -1;
+  std::vector<const ForNode*> outer_loops_;
 };
 
 namespace transform {
