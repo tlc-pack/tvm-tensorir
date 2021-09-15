@@ -135,6 +135,11 @@ inline std::vector<TDst> AsVector(const Array<TSrc>& vec) {
   return details::AsVectorImpl<TSrc, TDst>()(vec);
 }
 
+/*!
+ * \brief Get the shape tuple as array
+ * \param shape The shape tuple
+ * \return An array of the shape tuple
+ */
 inline Array<Integer> AsArray(const ShapeTuple& shape) {
   Array<Integer> result;
   result.reserve(shape->size);

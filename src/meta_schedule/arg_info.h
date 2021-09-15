@@ -43,7 +43,17 @@ class ArgInfoNode : public runtime::Object {
  */
 class ArgInfo : public runtime::ObjectRef {
  public:
+  /*!
+   * \brief Get the argument information from PrimFunc.
+   * \param func The PrimFunc to get argument information from.
+   * \return An array of the argument information derived.
+   */
   TVM_DLL static Array<ArgInfo, void> FromPrimFunc(const tir::PrimFunc& func);
+  /*!
+   * \brief Parse the argument information from a json object.
+   * \param json The json object to parse.
+   * \return The argument information parsed.
+   */
   TVM_DLL static ArgInfo FromJSON(const ObjectRef& json_obj);
   TVM_DEFINE_OBJECT_REF_METHODS(ArgInfo, runtime::ObjectRef, ArgInfoNode);
 };
@@ -74,7 +84,12 @@ class TensorArgInfoNode : public ArgInfoNode {
  */
 class TensorArgInfo : public ArgInfo {
  public:
-  TVM_DLL TensorArgInfo(runtime::DataType dtype, runtime::ShapeTuple shape);
+  /*!
+   * \brief Constructor of TensorArgInfo.
+   * \param dtype The data type of the tensor argument.
+   * \param shape The shape tuple of the tensor argument.
+   */
+  TVM_DLL explicit TensorArgInfo(runtime::DataType dtype, runtime::ShapeTuple shape);
   TVM_DLL static TensorArgInfo FromJSON(const ObjectRef& json_obj);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(TensorArgInfo, ArgInfo, TensorArgInfoNode);
 };

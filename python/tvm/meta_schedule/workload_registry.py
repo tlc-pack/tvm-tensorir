@@ -33,14 +33,14 @@ class WorkloadToken(Object):
     ----------
     mod : tvm.ir.IRModule
         The IRModule of the workload.
-    shash : int
+    shash : str
         The structural hash of the workload.
     """
 
     mod: IRModule
-    shash: int
+    shash: str
 
-    def __init__(self, mod: IRModule, shash: int, token_id: int) -> None:
+    def __init__(self, mod: IRModule, shash: str, token_id: int) -> None:
         """Constructor."""
         self.__init_handle_by_constructor__(
             _ffi_api.WorkloadToken,  # type: ignore # pylint: disable=no-member
