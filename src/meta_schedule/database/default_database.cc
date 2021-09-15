@@ -54,7 +54,7 @@ class DefaultDatabaseNode : public DatabaseNode {
   std::set<TuningRecord, SortByMeanRunSecs> records_;
 
   static constexpr const char* _type_key = "meta_schedule.DefaultDatabase";
-  TVM_DECLARE_FINAL_OBJECT_INFO(DefaultDatabaseNode, runtime::Object);
+  TVM_DECLARE_FINAL_OBJECT_INFO(DefaultDatabaseNode, DatabaseNode);
 
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {

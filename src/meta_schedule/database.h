@@ -28,6 +28,7 @@
 namespace tvm {
 namespace meta_schedule {
 
+// Forward declaration
 class TuneContext;
 
 /*! \brief The class of tuning records. */
@@ -124,7 +125,7 @@ class DatabaseNode : public runtime::Object {
   virtual int64_t Size() = 0;
 
   static constexpr const char* _type_key = "meta_schedule.Database";
-  TVM_DECLARE_FINAL_OBJECT_INFO(DatabaseNode, runtime::Object);
+  TVM_DECLARE_BASE_OBJECT_INFO(DatabaseNode, runtime::Object);
 };
 
 /*! \brief The database with customized methods on the python-side. */
@@ -178,22 +179,28 @@ class PyDatabaseNode : public DatabaseNode {
     // `f_size` is not visited
   }
 
-  void InitializeWithTuneContext(const TuneContext& tune_context) final {
+  void InitializeWithTuneContext(const TuneContext& tune_context) override {  //
     f_initialize_with_tune_context(tune_context);
   }
 
-  void Add(const TuningRecord& record) final { f_add(record); }
+  void Add(const TuningRecord& record) final {  //
+    f_add(record);
+  }
 
-  Array<TuningRecord> GetTopK(const WorkloadToken& workload, int top_k) final {
+  Array<TuningRecord> GetTopK(const WorkloadToken& workload, int top_k) final {  //
     return f_get_top_k(workload, top_k);
   }
 
-  WorkloadToken LookupOrAdd(const IRModule& mod) final { return f_lookup_or_add(mod); }
+  WorkloadToken LookupOrAdd(const IRModule& mod) final {  //
+    return f_lookup_or_add(mod);
+  }
 
-  int64_t Size() final { return f_size(); }
+  int64_t Size() final {  //
+    return f_size();
+  }
 
   static constexpr const char* _type_key = "meta_schedule.PyDatabase";
-  TVM_DECLARE_FINAL_OBJECT_INFO(PyDatabaseNode, runtime::Object);
+  TVM_DECLARE_FINAL_OBJECT_INFO(PyDatabaseNode, DatabaseNode);
 };
 
 /*!
