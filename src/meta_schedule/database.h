@@ -179,7 +179,7 @@ class PyDatabaseNode : public DatabaseNode {
     // `f_size` is not visited
   }
 
-  void InitializeWithTuneContext(const TuneContext& tune_context) override {  //
+  void InitializeWithTuneContext(const TuneContext& tune_context) final {  //
     f_initialize_with_tune_context(tune_context);
   }
 

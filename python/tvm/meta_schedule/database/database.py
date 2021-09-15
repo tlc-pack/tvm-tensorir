@@ -166,3 +166,50 @@ class Database(Object):
         num_records : int
         """
         return _ffi_api.DatabaseSize(self)  # type: ignore # pylint: disable=no-member
+
+
+@register_object("meta_schedule.PyDatabase")
+class PyDatabase(Database):
+    """An abstract Database with customized methods on the python-side."""
+
+    def __init__(self):
+        """Constructor."""
+
+        def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
+            self.initialize_with_tune_context(tune_context)
+
+        def f_add(record: TuningRecord) -> None:
+            self.add(record)
+
+        def f_get_top_k(workload: WorkloadToken, top_k: int) -> List[TuningRecord]:
+            return self.get_top_k(workload, top_k)
+
+        def f_lookup_or_add(mod: IRModule) -> WorkloadToken:
+            return self.lookup_or_add(mod)
+
+        def f_size() -> int:
+            return self.__len__()
+
+        self.__init_handle_by_constructor__(
+            _ffi_api.PyDatabase,  # pylint: disable=no-member
+            f_initialize_with_tune_context,
+            f_add,
+            f_get_top_k,
+            f_lookup_or_add,
+            f_size,
+        )
+
+    def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+        raise NotImplementedError
+
+    def add(self, record: TuningRecord) -> None:
+        raise NotImplementedError
+
+    def get_top_k(self, workload: WorkloadToken, top_k: int) -> List[TuningRecord]:
+        raise NotImplementedError
+
+    def lookup_or_add(self, mod: IRModule) -> WorkloadToken:
+        raise NotImplementedError
+
+    def __len__(self) -> int:
+        raise NotImplementedError

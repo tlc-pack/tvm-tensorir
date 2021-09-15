@@ -19,8 +19,8 @@
 #include <set>
 
 #include "../database.h"
+#include "../tune_context.h"
 #include "../utils.h"
-#include "tvm/node/reflection.h"
 
 namespace tvm {
 namespace meta_schedule {

@@ -21,7 +21,6 @@
 #include <tvm/tir/schedule/schedule.h>
 
 #include "../tune_context.h"
-#include "tvm/runtime/object.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -104,22 +103,31 @@ TuningRecord TuningRecord::FromJSON(const ObjectRef& json_obj, const WorkloadReg
 }
 
 TVM_REGISTER_NODE_TYPE(TuningRecordNode);
-TVM_REGISTER_OBJECT_TYPE(DatabaseNode);
 TVM_REGISTER_NODE_TYPE(PyDatabaseNode);
-TVM_REGISTER_GLOBAL("meta_schedule.DatabasePyDatabase").set_body_typed(Database::PyDatabase);
+TVM_REGISTER_OBJECT_TYPE(DatabaseNode);
+
 TVM_REGISTER_GLOBAL("meta_schedule.TuningRecord")
     .set_body_typed([](tir::Trace trace, Array<FloatImm> run_secs, WorkloadToken workload,
                        Target target, Array<ArgInfo> args_info) {
       return TuningRecord(trace, run_secs, workload, target, args_info);
     });
-TVM_REGISTER_GLOBAL("meta_schedule.TuningRecordAsJSON")
+TVM_REGISTER_GLOBAL("meta_schedule.TuningRecordAsJSON")  //
     .set_body_method<TuningRecord>(&TuningRecordNode::AsJSON);
-TVM_REGISTER_GLOBAL("meta_schedule.TuningRecordFromJSON").set_body_typed(TuningRecord::FromJSON);
-TVM_REGISTER_GLOBAL("meta_schedule.DatabaseInitializeWithTuneContext")
+TVM_REGISTER_GLOBAL("meta_schedule.TuningRecordFromJSON")  //
+    .set_body_typed(TuningRecord::FromJSON);
+TVM_REGISTER_GLOBAL("meta_schedule.PyDatabase")  //
+    .set_body_typed(Database::PyDatabase);
+
+TVM_REGISTER_GLOBAL("meta_schedule.DatabaseInitializeWithTuneContext")  //
     .set_body_method<Database>(&DatabaseNode::InitializeWithTuneContext);
-TVM_REGISTER_GLOBAL("meta_schedule.DatabaseAdd").set_body_method<Database>(&DatabaseNode::Add);
-TVM_REGISTER_GLOBAL("meta_schedule.DatabaseGetTopK")
+TVM_REGISTER_GLOBAL("meta_schedule.DatabaseAdd")  //
+    .set_body_method<Database>(&DatabaseNode::Add);
+TVM_REGISTER_GLOBAL("meta_schedule.DatabaseGetTopK")  //
     .set_body_method<Database>(&DatabaseNode::GetTopK);
+TVM_REGISTER_GLOBAL("meta_schedule.DatabaseLookupOrAdd")  //
+    .set_body_method<Database>(&DatabaseNode::LookupOrAdd);
+TVM_REGISTER_GLOBAL("meta_schedule.DatabaseSize")  //
+    .set_body_method<Database>(&DatabaseNode::Size);
 
 }  // namespace meta_schedule
 }  // namespace tvm
