@@ -91,7 +91,18 @@ def remove_build_dir(artifact_path: str):
 
 @register_func("meta_schedule.batch_json_str2obj")
 def batch_json_str2obj(json_strs: List[str]) -> List[Any]:
-    """TODO: docstring"""
+    """Covert a list of JSON strings to a list of json objects.
+
+    Parameters
+    ----------
+    json_strs : List[str]
+        The list of JSON strings
+
+    Returns
+    -------
+    result : List[Any]
+        The list of json objects
+    """
     return [
         json.loads(json_str)
         for json_str in map(str.strip, json_strs)
@@ -100,7 +111,18 @@ def batch_json_str2obj(json_strs: List[str]) -> List[Any]:
 
 
 def _json_de_tvm(obj: Any) -> Any:
-    """TODO: docstring"""
+    """Unpack a json object.
+
+    Parameters
+    ----------
+    obj : Any
+        The json object
+
+    Returns
+    -------
+    result : Any
+        The unpacked json object.
+    """
     if obj is None:
         return None
     if isinstance(obj, Array):
