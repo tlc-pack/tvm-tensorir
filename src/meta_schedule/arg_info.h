@@ -21,6 +21,7 @@
 
 #include <tvm/node/node.h>
 #include <tvm/runtime/container/shape_tuple.h>
+#include <tvm/tir/function.h>
 
 namespace tvm {
 namespace meta_schedule {

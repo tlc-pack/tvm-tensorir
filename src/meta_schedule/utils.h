@@ -18,6 +18,7 @@
  */
 #ifndef TVM_META_SCHEDULE_UTILS_H_
 #define TVM_META_SCHEDULE_UTILS_H_
+
 #include <dmlc/memory_io.h>
 #include <tvm/ir/module.h>
 #include <tvm/node/node.h>
@@ -35,6 +36,7 @@
 #include "../support/base64.h"
 #include "./arg_info.h"
 #include "./builder.h"
+#include "./database.h"
 #include "./runner.h"
 #include "./search_strategy.h"
 #include "./space_generator.h"

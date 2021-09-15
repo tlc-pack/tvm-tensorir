@@ -30,9 +30,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-// AWAIT(zxybazh): Merge with Sampling PR.
-using TRandState = int64_t;
-
 // AWAIT(zxybazh): Merge with actual implementation.
 using CostModel = ObjectRef;
 using Postproc = ObjectRef;

@@ -18,6 +18,7 @@
  */
 #ifndef TVM_SUPPORT_ARRAY_H_
 #define TVM_SUPPORT_ARRAY_H_
+
 #include <tvm/ir/expr.h>
 #include <tvm/runtime/container/array.h>
 
@@ -145,4 +146,5 @@ inline Array<Integer> AsArray(const ShapeTuple& shape) {
 
 }  // namespace support
 }  // namespace tvm
+
 #endif  // TVM_SUPPORT_ARRAY_H_
