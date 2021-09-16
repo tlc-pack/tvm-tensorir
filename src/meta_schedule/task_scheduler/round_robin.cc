@@ -41,7 +41,10 @@ class RoundRobinNode final : public TaskSchedulerNode {
     for (int i = 0; i < n_tasks; ++i) {
       task_id = (task_id + 1) % n_tasks;
       Task task = tasks[task_id];
-      if (!task->is_stopped && !IsTaskRunning(task_id)) {
+      if (!task->is_stopped) {
+        if (IsTaskRunning(task_id)) {
+          JoinRunningTask(task_id);
+        }
         return task_id;
       }
     }

@@ -110,7 +110,7 @@ void TaskSchedulerNode::Tune() {
       task->running =
           SendToRunner(this->runner, task->context, candidates.value(), builder_results);
     } else {
-      task->is_stopped = true;
+      SetTaskStopped(task_id);
     }
   }
   int n_tasks = this->tasks.size();
