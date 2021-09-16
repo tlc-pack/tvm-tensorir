@@ -191,7 +191,7 @@ class PyDatabase(Database):
             return self.__len__()
 
         self.__init_handle_by_constructor__(
-            _ffi_api.PyDatabase,  # pylint: disable=no-member
+            _ffi_api.DatabasePyDatabase,  # pylint: disable=no-member
             f_initialize_with_tune_context,
             f_add,
             f_get_top_k,

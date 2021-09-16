@@ -78,7 +78,7 @@ class PySpaceGenerator(SpaceGenerator):
             return self.generate_design_space(mod)
 
         self.__init_handle_by_constructor__(
-            _ffi_api.PySpaceGenerator,  # pylint: disable=no-member
+            _ffi_api.SpaceGeneratorPySpaceGenerator,  # pylint: disable=no-member
             f_initialize_with_tune_context,
             f_generate_design_space,
         )

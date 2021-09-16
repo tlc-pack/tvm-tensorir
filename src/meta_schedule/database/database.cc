@@ -115,7 +115,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.TuningRecordAsJSON")  //
     .set_body_method<TuningRecord>(&TuningRecordNode::AsJSON);
 TVM_REGISTER_GLOBAL("meta_schedule.TuningRecordFromJSON")  //
     .set_body_typed(TuningRecord::FromJSON);
-TVM_REGISTER_GLOBAL("meta_schedule.PyDatabase")  //
+TVM_REGISTER_GLOBAL("meta_schedule.DatabasePyDatabase")  //
     .set_body_typed(Database::PyDatabase);
 
 TVM_REGISTER_GLOBAL("meta_schedule.DatabaseInitializeWithTuneContext")  //

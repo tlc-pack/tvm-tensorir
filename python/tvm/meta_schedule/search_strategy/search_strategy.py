@@ -124,7 +124,7 @@ class PySearchStrategy(SearchStrategy):
             self.notify_runner_results(results)
 
         self.__init_handle_by_constructor__(
-            _ffi_api.PySearchStrategy,  # pylint: disable=no-member
+            _ffi_api.SearchStrategyPySearchStrategy,  # pylint: disable=no-member
             f_initialize_with_tune_context,
             f_pre_tuning,
             f_post_tuning,

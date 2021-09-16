@@ -37,7 +37,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorInitializeWithTuneContext")
     .set_body_method<SpaceGenerator>(&SpaceGeneratorNode::InitializeWithTuneContext);
 TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorGenerateDesignSpace")
     .set_body_method<SpaceGenerator>(&SpaceGeneratorNode::GenerateDesignSpace);
-TVM_REGISTER_GLOBAL("meta_schedule.PySpaceGenerator")
+TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorPySpaceGenerator")
     .set_body_typed(SpaceGenerator::PySpaceGenerator);
 
 }  // namespace meta_schedule
