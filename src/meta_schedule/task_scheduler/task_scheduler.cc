@@ -19,8 +19,18 @@
 
 #include "../task_scheduler.h"
 
+#include "tvm/runtime/container/base.h"
+
 namespace tvm {
 namespace meta_schedule {
+
+Task::Task(TuneContext context) {
+  ObjectPtr<TaskNode> n = make_object<TaskNode>();
+  n->context = context;
+  n->is_stopped = false;
+  n->running = NullOpt;
+  this->data_ = n;
+}
 
 Array<BuilderResult> SendToBuilder(const Builder& builder,  //
                                    const TuneContext& context,
@@ -95,12 +105,12 @@ void TaskSchedulerNode::Tune() {
   for (int task_id; (task_id = this->NextTaskId()) != -1;) {
     Task task = tasks[task_id];
     ICHECK(!task->is_stopped);
-    ICHECK(!task->running_measurements.defined());
+    ICHECK(!task->running.defined());
     SearchStrategy strategy = task->context->search_strategy.value();
     if (Optional<Array<MeasureCandidate>> candidates = strategy->GenerateMeasureCandidates()) {
       Array<BuilderResult> builder_results =
           SendToBuilder(this->builder, task->context, candidates.value());
-      task->running_measurements =
+      task->running =
           SendToRunner(this->runner, task->context, candidates.value(), builder_results);
     } else {
       task->is_stopped = true;
@@ -108,8 +118,8 @@ void TaskSchedulerNode::Tune() {
   }
   int n_tasks = this->tasks.size();
   for (int task_id = 0; task_id < n_tasks; ++task_id) {
-    this->JoinRunningTask(task_id);
     Task task = tasks[task_id];
+    this->JoinRunningTask(task_id);
     task->context->search_strategy.value()->PostTuning();
   }
 }
@@ -119,30 +129,30 @@ bool TaskSchedulerNode::IsTaskRunning(int task_id) {
   if (task->is_stopped) {
     return false;
   }
-  if (!task->running_measurements.defined()) {
+  if (!task->running.defined()) {
     return false;
   }
-  for (const RunnerFuture future : task->running_measurements.value()) {
+  for (const RunnerFuture future : task->running.value()) {
     if (!future->Done()) {
-      return false;
+      return true;
     }
   }
   this->JoinRunningTask(task_id);
-  return true;
+  return false;
 }
 
 void TaskSchedulerNode::JoinRunningTask(int task_id) {
   Task task = tasks[task_id];
-  ICHECK(task->running_measurements.defined());
-  Array<RunnerFuture> futures = task->running_measurements.value();
+  ICHECK(task->running.defined());
+  Array<RunnerFuture> futures = task->running.value();
   int n = futures.size();
   Array<RunnerResult> results;
   results.reserve(n);
-  for (const RunnerFuture future : task->running_measurements.value()) {
+  for (const RunnerFuture future : task->running.value()) {
     results.push_back(future->Result());
   }
   task->context->search_strategy.value()->NotifyRunnerResults(results);
-  task->running_measurements = NullOpt;
+  task->running = NullOpt;
 }
 
 TVM_REGISTER_OBJECT_TYPE(TaskSchedulerNode);
