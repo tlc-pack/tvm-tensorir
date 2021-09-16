@@ -23,13 +23,14 @@
 #include <tvm/support/random_engine.h>
 #include <tvm/target/target.h>
 
+#include "./database.h"
 #include "./search_strategy.h"
 #include "./space_generator.h"
 
 namespace tvm {
 namespace meta_schedule {
 
-using Database = ObjectRef;
+// AWAIT(zxybazh): Merge with actual implementation.
 using CostModel = ObjectRef;
 using Postproc = ObjectRef;
 using MeasureCallback = ObjectRef;

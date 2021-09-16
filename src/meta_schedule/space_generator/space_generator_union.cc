@@ -52,36 +52,18 @@ class SpaceGeneratorUnionNode : public SpaceGeneratorNode {
 };
 
 /*!
- * \brief Managed reference to SpaceGeneratorUnionNode.
- * \sa SpaceGeneratorUnionNode
- */
-class SpaceGeneratorUnion : public SpaceGenerator {
- public:
-  /*!
-   * \brief Constructor of SpaceGeneratorUnion.
-   * \param space_generators Array of the design space generators to be unioned.
-   */
-  TVM_DLL explicit SpaceGeneratorUnion(Array<SpaceGenerator> space_generators) {
-    ObjectPtr<SpaceGeneratorUnionNode> n = make_object<SpaceGeneratorUnionNode>();
-    n->space_generators = std::move(space_generators);
-    data_ = std::move(n);
-  }
-
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(SpaceGeneratorUnion, SpaceGenerator,
-                                                    SpaceGeneratorUnionNode);
-};
-
-/*!
  * \brief Create a design space generator as union of given design space generators.
  * \param space_generators Array of the design space generators to be unioned.
  * \return The design space generator created.
  */
-SpaceGenerator SpaceGenerator::SpaceGeneratorUnion(Array<ObjectRef> space_generators) {
-  return meta_schedule::SpaceGeneratorUnion(Downcast<Array<SpaceGenerator>>(space_generators));
+SpaceGenerator SpaceGenerator::SpaceGeneratorUnion(Array<SpaceGenerator> space_generators) {
+  ObjectPtr<SpaceGeneratorUnionNode> n = make_object<SpaceGeneratorUnionNode>();
+  n->space_generators = std::move(space_generators);
+  return SpaceGenerator(n);
 }
 
 TVM_REGISTER_NODE_TYPE(SpaceGeneratorUnionNode);
-TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorUnion")
+TVM_REGISTER_GLOBAL("meta_schedule.SpaceGeneratorSpaceGeneratorUnion")
     .set_body_typed(SpaceGenerator::SpaceGeneratorUnion);
 
 }  // namespace meta_schedule

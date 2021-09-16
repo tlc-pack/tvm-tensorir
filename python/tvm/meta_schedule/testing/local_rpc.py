@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Testing utilities in meta schedule"""
 import time
 from typing import Optional
 
@@ -71,7 +72,7 @@ class Tracker:
     def __enter__(self):
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, _type, _value, _traceback):
         del self.tracker
 
 
@@ -139,5 +140,5 @@ class Server:
     def __enter__(self):
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, _type, _value, _traceback):
         del self.server

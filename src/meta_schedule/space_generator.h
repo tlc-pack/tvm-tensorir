@@ -31,7 +31,7 @@ class TuneContext;
 /*! \brief The abstract class for design space generation. */
 class SpaceGeneratorNode : public Object {
  public:
-  /*! \brief Virtual destructor */
+  /*! \brief Default destructor */
   virtual ~SpaceGeneratorNode() = default;
 
   /*!
@@ -112,7 +112,7 @@ class SpaceGenerator : public ObjectRef {
    * \param space_generators An array of design space generators to be unioned.
    * \return The design space generator created.
    */
-  TVM_DLL static SpaceGenerator SpaceGeneratorUnion(Array<ObjectRef> space_generators);
+  TVM_DLL static SpaceGenerator SpaceGeneratorUnion(Array<SpaceGenerator, void> space_generators);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(SpaceGenerator, ObjectRef, SpaceGeneratorNode);
 };
 

@@ -18,6 +18,7 @@
  */
 #ifndef TVM_SUPPORT_ARRAY_H_
 #define TVM_SUPPORT_ARRAY_H_
+
 #include <tvm/ir/expr.h>
 #include <tvm/runtime/container/array.h>
 
@@ -134,6 +135,21 @@ inline std::vector<TDst> AsVector(const Array<TSrc>& vec) {
   return details::AsVectorImpl<TSrc, TDst>()(vec);
 }
 
+/*!
+ * \brief Get the shape tuple as array
+ * \param shape The shape tuple
+ * \return An array of the shape tuple
+ */
+inline Array<Integer> AsArray(const ShapeTuple& shape) {
+  Array<Integer> result;
+  result.reserve(shape->size);
+  for (ShapeTuple::index_type i : shape) {
+    result.push_back(Integer(i));
+  }
+  return result;
+}
+
 }  // namespace support
 }  // namespace tvm
+
 #endif  // TVM_SUPPORT_ARRAY_H_

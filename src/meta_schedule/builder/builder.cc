@@ -63,7 +63,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.BuilderResult")
 
 TVM_REGISTER_GLOBAL("meta_schedule.BuilderBuild").set_body_method<Builder>(&BuilderNode::Build);
 
-TVM_REGISTER_GLOBAL("meta_schedule.PyBuilder").set_body_typed(Builder::PyBuilder);
+TVM_REGISTER_GLOBAL("meta_schedule.BuilderPyBuilder").set_body_typed(Builder::PyBuilder);
 
 }  // namespace meta_schedule
 }  // namespace tvm
