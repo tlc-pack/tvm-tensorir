@@ -65,8 +65,6 @@ class TuneContextNode : public runtime::Object {
   bool is_stopped;
   /*! \brief Packed functions to fetch the runner results asynchronously. */
   Optional<Array<RunnerFuture>> runner_futures;
-  /*! \brief The measure candidates. */
-  Optional<Array<MeasureCandidate>> measure_candidates;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("mod", &mod);
@@ -82,7 +80,6 @@ class TuneContextNode : public runtime::Object {
     v->Visit("verbose", &verbose);
     v->Visit("is_stopped", &is_stopped);
     v->Visit("runner_futures", &runner_futures);
-    v->Visit("measure_candidates", &measure_candidates);
   }
 
   static constexpr const char* _type_key = "meta_schedule.TuneContext";

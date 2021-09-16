@@ -23,8 +23,10 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*! \brief The round-robin style task scheduler. */
 class RoundRobinNode final : public TaskSchedulerNode {
  public:
+  /*! \brief The current task id processed. */
   int task_id = -1;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -40,7 +42,7 @@ class RoundRobinNode final : public TaskSchedulerNode {
     int n_tasks = this->tasks.size();
     for (int i = 0; i < n_tasks; ++i) {
       task_id = (task_id + 1) % n_tasks;
-      Task task = tasks[task_id];
+      TuneContext task = tasks[task_id];
       if (!task->is_stopped) {
         if (IsTaskRunning(task_id)) {
           JoinRunningTask(task_id);
@@ -52,11 +54,13 @@ class RoundRobinNode final : public TaskSchedulerNode {
   }
 };
 
-TaskScheduler TaskScheduler::RoundRobin(Array<Task> tasks, Builder builder, Runner runner) {
+TaskScheduler TaskScheduler::RoundRobin(Array<TuneContext> tasks, Builder builder, Runner runner,
+                                        Database database) {
   ObjectPtr<RoundRobinNode> n = make_object<RoundRobinNode>();
   n->tasks = tasks;
   n->builder = builder;
   n->runner = runner;
+  n->database = database;
   n->task_id = -1;
   return TaskScheduler(n);
 }

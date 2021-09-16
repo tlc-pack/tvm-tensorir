@@ -26,51 +26,23 @@
 namespace tvm {
 namespace meta_schedule {
 
-/*! The task contents. */
-class TaskNode : public runtime::Object {
- public:
-  /*! \brief The tuning context. */
-  TuneContext context{nullptr};
-  /*! \brief Whether the task has been stopped or finished. */
-  bool is_stopped;
-  /*! \brief Functions to fetch the runner results asynchronously. */
-  Optional<Array<RunnerFuture>> running;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("context", &context);
-    v->Visit("is_stopped", &is_stopped);
-    v->Visit("running", &running);
-  }
-
-  static constexpr const char* _type_key = "meta_schedule.Task";
-  TVM_DECLARE_BASE_OBJECT_INFO(TaskNode, Object);
-};
-
-class Task : public runtime::ObjectRef {
- public:
-  /*!
-   * \brief Constructor of Task.
-   * \param context The tuning context.
-   */
-  TVM_DLL explicit Task(TuneContext context);
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Task, ObjectRef, TaskNode);
-};
-
 /*! \brief The abstract interface of task schedulers. */
 class TaskSchedulerNode : public runtime::Object {
  public:
   /*! \brief The tasks to be tuned */
-  Array<Task> tasks;
+  Array<TuneContext> tasks;
   /*! \brief The builder of the scheduler. */
   Builder builder{nullptr};
   /*! \brief The runner of the scheduler. */
   Runner runner{nullptr};
-  // TODO(@zxybazh,@junrushao1994): Database
+  /*! \brief The database of the scheduler. */
+  Database database{nullptr};
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("tasks", &tasks);
     v->Visit("builder", &builder);
     v->Visit("runner", &runner);
+    v->Visit("database", &database);
   }
 
   static constexpr const char* _type_key = "meta_schedule.TaskScheduler";
@@ -84,14 +56,28 @@ class TaskSchedulerNode : public runtime::Object {
   virtual void Tune();
 
  protected:
-  /*! \brief Set specific task to be stopped. */
+  /*!
+   * \brief Set specific task to be stopped.
+   * \param task_id The task id to be stopped.
+   */
   virtual void SetTaskStopped(int task_id);
 
-  /*! \brief Check whether the task is running. */
+  /*!
+   * \brief Check whether the task is running.
+   * \param task_id The task id to be checked.
+   */
   virtual bool IsTaskRunning(int task_id);
 
+  /*!
+   * \brief Wait until the task is finished.
+   * \param task_id The task id to be joined.
+   */
   virtual void JoinRunningTask(int task_id);
 
+  /*!
+   * \brief Fetch the next task by id.
+   * \return The next task id.
+   */
   virtual int NextTaskId() = 0;
 };
 
@@ -101,7 +87,15 @@ class TaskSchedulerNode : public runtime::Object {
  */
 class TaskScheduler : public runtime::ObjectRef {
  public:
-  TVM_DLL TaskScheduler RoundRobin(Array<Task> tasks, Builder builder, Runner runner);
+  /*!
+   * \brief Create a task scheduler that fetches tasks in a round-robin fashion.
+   * \param tasks The tasks to be tuned.
+   * \param builder The builder of the scheduler.
+   * \param runner The runner of the scheduler.
+   * \param database The database of the scheduler.
+   */
+  TVM_DLL TaskScheduler RoundRobin(Array<TuneContext> tasks, Builder builder, Runner runner,
+                                   Database database);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TaskScheduler, ObjectRef, TaskSchedulerNode);
 };
 
