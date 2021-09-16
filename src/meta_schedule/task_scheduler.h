@@ -54,9 +54,10 @@ class TaskSchedulerNode : public runtime::Object {
   /*! \brief The tasks to be tuned */
   Array<Task> tasks;
   /*! \brief The builder of the scheduler. */
-  Builder builder;
+  Builder builder{nullptr};
   /*! \brief The runner of the scheduler. */
-  Runner runner;
+  Runner runner{nullptr};
+  // TODO(@zxybazh,@junrushao1994): Database
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("tasks", &tasks);
@@ -73,6 +74,8 @@ class TaskSchedulerNode : public runtime::Object {
   virtual void Tune();
 
  protected:
+  virtual void SetTaskStopped(int task_id);
+
   virtual bool IsTaskRunning(int task_id);
 
   virtual void JoinRunningTask(int task_id);
