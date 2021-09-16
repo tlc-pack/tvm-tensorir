@@ -22,8 +22,6 @@ import tvm
 import tir_tensor_intrin  # pylint: disable=unused-import
 from tvm import te, tir
 from tvm import meta_schedule as ms
-from tvm.meta_schedule import postproc
-from tvm.meta_schedule.strategy import Evolutionary
 import tvm.testing
 import numpy as np
 
@@ -137,8 +135,6 @@ def test_integration_matmul():
     space = ms.space.ScheduleFn(
         schedule,
         postprocs=[
-            # ms.postproc.rewrite_cooperative_fetch_tensorcore(),
-            # ms.postproc.rewrite_parallel_vectorize_unroll(),
             ms.postproc.verify_gpu_code(),
         ],
     )
@@ -157,18 +153,16 @@ def test_integration_matmul():
             ),
             eps_greedy=0.05,
         )
-    replay = ms.strategy.Replay(200)
     sch = ms.autotune(
         task=task,
         space=space,
-        strategy=replay,
+        strategy=evolutionary,
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),
             ]
         ),
     )
-    space.postprocess(task, sch)
     if sch is None:
         print("No valid schedule found")
     else:
@@ -177,13 +171,14 @@ def test_integration_matmul():
     dev = tvm.device("cuda", 0)
     a_np = np.random.uniform(size=(512, 512)).astype("float16")
     b_np = np.random.uniform(size=(512, 512)).astype("float16")
-    c_np = np.dot(a_np.astype("float32"), b_np.T.astype("float32"))
+    c_np = np.dot(a_np.astype("float32"), b_np.astype("float32"))
     a = tvm.nd.array(a_np, dev)
     b = tvm.nd.array(b_np, dev)
     c = tvm.nd.array(np.zeros((512, 512), dtype="float32"), dev)
     f = tvm.build(sch.mod['main'], target="cuda", name="dense")
     f(a, b, c)
     tvm.testing.assert_allclose(c.numpy(), c_np, rtol=1e-3)
+
 
 @pytest.mark.skip("fix later")
 def test_integration_conv2d_nchwc():
@@ -290,4 +285,4 @@ def test_integration_conv2d_nchwc():
 
 if __name__ == "__main__":
     test_integration_matmul()
-    test_integration_conv2d_nchwc()
+    # test_integration_conv2d_nchwc()
