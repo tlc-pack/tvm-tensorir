@@ -28,10 +28,7 @@ from . import _ffi_api
 
 if TYPE_CHECKING:
     from .space_generator import SpaceGenerator
-
-
-class Database:
-    pass
+    from .search_strategy import SearchStrategy
 
 
 class CostModel:
@@ -43,10 +40,6 @@ class Postproc:
 
 
 class MeasureCallback:
-    pass
-
-
-class SearchStrategy:
     pass
 
 
@@ -64,8 +57,7 @@ class TuneContext(Object):
     mod: IRModule
     target: Target
     space_generator: "SpaceGenerator"
-    search_strategy: SearchStrategy
-    database: Database
+    search_strategy: "SearchStrategy"
     cost_model: CostModel
     postprocs: List[Postproc]
     measure_callbacks: List[MeasureCallback]
@@ -79,8 +71,7 @@ class TuneContext(Object):
         mod: Optional[IRModule] = None,
         target: Optional[Target] = None,
         space_generator: Optional["SpaceGenerator"] = None,
-        search_strategy: Optional[SearchStrategy] = None,
-        database: Optional[Database] = None,
+        search_strategy: Optional["SearchStrategy"] = None,
         cost_model: Optional[CostModel] = None,
         postprocs: Optional[List[Postproc]] = None,
         measure_callbacks: Optional[List[MeasureCallback]] = None,
@@ -101,9 +92,6 @@ class TuneContext(Object):
             The design space generator.
         search_strategy : Optional[SearchStrategy] = None
            The search strategy to be used.
-        database : Optional[Database] = None
-            The database for querying and storage.
-            Provides interface to query and store the results.
         cost_model : Optional[CostModel]  = None
              The cost model for estimation.
              Provides interface to update and query the cost model for estimation.
@@ -132,7 +120,6 @@ class TuneContext(Object):
             target,
             space_generator,
             search_strategy,
-            database,
             cost_model,
             postprocs,
             measure_callbacks,

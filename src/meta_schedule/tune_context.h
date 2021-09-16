@@ -44,10 +44,7 @@ class TuneContextNode : public runtime::Object {
   Optional<Target> target;
   /*! \brief The design space generator. */
   Optional<SpaceGenerator> space_generator;
-  /*! \brief The search strategy to be used. */
   Optional<SearchStrategy> search_strategy;
-  /*! \brief The database for querying and storage. */
-  Optional<Database> database;
   /*! \brief The cost model for estimation. */
   Optional<CostModel> cost_model;
   /*! \brief The post processing functions. */
@@ -68,7 +65,6 @@ class TuneContextNode : public runtime::Object {
     v->Visit("target", &target);
     v->Visit("space_generator", &space_generator);
     v->Visit("search_strategy", &search_strategy);
-    v->Visit("database", &database);
     v->Visit("cost_model", &cost_model);
     v->Visit("postprocs", &postprocs);
     v->Visit("measure_callbacks", &measure_callbacks);
@@ -94,7 +90,6 @@ class TuneContext : public runtime::ObjectRef {
    * \param target The target to be optimized for.
    * \param space_generator The design space generator.
    * \param search_strategy The search strategy to be used.
-   * \param database The database for querying and storage.
    * \param cost_model The cost model for estimation.
    * \param postprocs The post processing functions.
    * \param measure_callbacks The measure callback functions.
@@ -107,7 +102,6 @@ class TuneContext : public runtime::ObjectRef {
                                Optional<Target> target,                                   //
                                Optional<SpaceGenerator> space_generator,                  //
                                Optional<SearchStrategy> search_strategy,                  //
-                               Optional<Database> database,                               //
                                Optional<CostModel> cost_model,                            //
                                Optional<Array<Postproc>> postprocs,                       //
                                Optional<Array<MeasureCallback>> measure_callbacks,        //
