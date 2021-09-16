@@ -29,7 +29,6 @@ from . import _ffi_api
 if TYPE_CHECKING:
     from .space_generator import SpaceGenerator
     from .search_strategy import SearchStrategy
-    from .runner import RunnerFuture
 
 
 class CostModel:
