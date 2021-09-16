@@ -215,8 +215,8 @@ class Database : public runtime::ObjectRef {
    * \param workload_path The path to the workload registry file.
    * \param allow_missing_files Whether to create new file when the given path is not found.
    */
-  TVM_DLL static Database DefaultDatabase(String record_path, String workload_path,
-                                          bool allow_missing);
+  TVM_DLL static Database JSONFileDatabase(String record_path, String workload_path,
+                                           bool allow_missing);
   /*!
    * \brief Create a database with customized methods on the python-side.
    * \param f_initialize_with_tune_context The packed function of `InitializeWithTuneContext`.

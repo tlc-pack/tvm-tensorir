@@ -27,7 +27,7 @@ from tvm.script import ty
 from tvm.tir import Schedule
 from tvm.ir import IRModule
 from tvm.meta_schedule import (
-    DefaultDatabase,
+    JSONFileDatabase,
     TuningRecord,
     WorkloadToken,
     WorkloadRegistry,
@@ -177,7 +177,7 @@ def test_meta_schedule_database_create():
     with tempfile.TemporaryDirectory() as tmpdir:
         record_path = osp.join(tmpdir, "records.json")
         workload_path = osp.join(tmpdir, "workloads.json")
-        database = DefaultDatabase(  # pylint: disable=unused-variable
+        database = JSONFileDatabase(  # pylint: disable=unused-variable
             record_path=record_path, workload_path=workload_path
         )
 
@@ -186,7 +186,7 @@ def test_meta_schedule_database_add_entry():
     with tempfile.TemporaryDirectory() as tmpdir:
         record_path = osp.join(tmpdir, "records.json")
         workload_path = osp.join(tmpdir, "workloads.json")
-        database = DefaultDatabase(  # pylint: disable=unused-variable
+        database = JSONFileDatabase(  # pylint: disable=unused-variable
             record_path=record_path, workload_path=workload_path
         )
         mod = Matmul()
@@ -211,7 +211,7 @@ def test_meta_schedule_database_missing():
     with tempfile.TemporaryDirectory() as tmpdir:
         record_path = osp.join(tmpdir, "records.json")
         workload_path = osp.join(tmpdir, "workloads.json")
-        database = DefaultDatabase(  # pylint: disable=unused-variable
+        database = JSONFileDatabase(  # pylint: disable=unused-variable
             record_path=record_path, workload_path=workload_path
         )
         mod = Matmul()
@@ -235,7 +235,7 @@ def test_meta_schedule_database_sorting():
     with tempfile.TemporaryDirectory() as tmpdir:
         record_path = osp.join(tmpdir, "records.json")
         workload_path = osp.join(tmpdir, "workloads.json")
-        database = DefaultDatabase(  # pylint: disable=unused-variable
+        database = JSONFileDatabase(  # pylint: disable=unused-variable
             record_path=record_path, workload_path=workload_path
         )
         mod = Matmul()
@@ -302,7 +302,7 @@ def test_meta_schedule_database_reload():
     with tempfile.TemporaryDirectory() as tmpdir:
         record_path = osp.join(tmpdir, "records.json")
         workload_path = osp.join(tmpdir, "workloads.json")
-        database = DefaultDatabase(  # pylint: disable=unused-variable
+        database = JSONFileDatabase(  # pylint: disable=unused-variable
             record_path=record_path, workload_path=workload_path
         )
         mod = Matmul()
@@ -334,7 +334,7 @@ def test_meta_schedule_database_reload():
         ]
         for record in records:
             database.add(record)
-        new_database = DefaultDatabase(  # pylint: disable=unused-variable
+        new_database = JSONFileDatabase(  # pylint: disable=unused-variable
             record_path=record_path, workload_path=workload_path
         )
         token = new_database.lookup_or_add(mod)

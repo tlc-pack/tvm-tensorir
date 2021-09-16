@@ -15,4 +15,4 @@
 # specific language governing permissions and limitations
 # under the License.
 from .database import TuningRecord, Database, PyDatabase
-from .default_database import DefaultDatabase
+from .json_file_database import JSONFileDatabase

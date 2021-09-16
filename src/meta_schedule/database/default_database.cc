@@ -44,7 +44,7 @@ struct SortByMeanRunSecs {
 };
 
 /*! \brief The default database implementation. */
-class DefaultDatabaseNode : public DatabaseNode {
+class JSONFileDatabaseNode : public DatabaseNode {
  public:
   /*! \brief The path to store or load database records. */
   String record_path;
@@ -53,8 +53,8 @@ class DefaultDatabaseNode : public DatabaseNode {
   /*! \brief The database records organized using a set. */
   std::set<TuningRecord, SortByMeanRunSecs> records_;
 
-  static constexpr const char* _type_key = "meta_schedule.DefaultDatabase";
-  TVM_DECLARE_FINAL_OBJECT_INFO(DefaultDatabaseNode, DatabaseNode);
+  static constexpr const char* _type_key = "meta_schedule.JSONFileDatabase";
+  TVM_DECLARE_FINAL_OBJECT_INFO(JSONFileDatabaseNode, DatabaseNode);
 
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -92,8 +92,8 @@ class DefaultDatabaseNode : public DatabaseNode {
   }
 };
 
-Database Database::DefaultDatabase(String record_path, String workload_path, bool allow_missing) {
-  ObjectPtr<DefaultDatabaseNode> n = make_object<DefaultDatabaseNode>();
+Database Database::JSONFileDatabase(String record_path, String workload_path, bool allow_missing) {
+  ObjectPtr<JSONFileDatabaseNode> n = make_object<JSONFileDatabaseNode>();
   n->record_path = record_path;
   n->reg = WorkloadRegistry(workload_path, allow_missing);
   Array<ObjectRef> json_objs = JSONStr2Obj(JSONFileReadLines(record_path, allow_missing));
@@ -103,9 +103,9 @@ Database Database::DefaultDatabase(String record_path, String workload_path, boo
   return Database(n);
 }
 
-TVM_REGISTER_NODE_TYPE(DefaultDatabaseNode);
-TVM_REGISTER_GLOBAL("meta_schedule.DatabaseDefaultDatabase")
-    .set_body_typed(Database::DefaultDatabase);
+TVM_REGISTER_NODE_TYPE(JSONFileDatabaseNode);
+TVM_REGISTER_GLOBAL("meta_schedule.DatabaseJSONFileDatabase")
+    .set_body_typed(Database::JSONFileDatabase);
 
 }  // namespace meta_schedule
 }  // namespace tvm

@@ -22,8 +22,8 @@ from .database import Database
 from .. import _ffi_api
 
 
-@register_object("meta_schedule.DefaultDatabase")
-class DefaultDatabase(Database):
+@register_object("meta_schedule.JSONFileDatabase")
+class JSONFileDatabase(Database):
     def __init__(
         self,
         record_path: str,
@@ -31,7 +31,7 @@ class DefaultDatabase(Database):
         allow_missing: bool = True,
     ) -> None:
         self.__init_handle_by_constructor__(
-            _ffi_api.DatabaseDefaultDatabase,  # type: ignore # pylint: disable=no-member
+            _ffi_api.DatabaseJSONFileDatabase,  # type: ignore # pylint: disable=no-member
             record_path,
             workload_path,
             allow_missing,
