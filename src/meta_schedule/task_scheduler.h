@@ -30,7 +30,7 @@ class TaskNode : public runtime::Object {
  public:
   TuneContext context{nullptr};
   bool is_stopped;
-  Optional<Array<RunnerFuture>> running;
+  Optional<Array<RunnerFuture>> running;  // TODO(@zxybazh): rename to `runner_futures`
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("context", &context);
