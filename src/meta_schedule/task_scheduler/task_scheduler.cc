@@ -16,10 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 #include "../task_scheduler.h"
-
-#include "tvm/runtime/container/base.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -124,12 +121,15 @@ void TaskSchedulerNode::Tune() {
   }
 }
 
+void TaskSchedulerNode::SetTaskStopped(int task_id) {
+  Task task = tasks[task_id];
+  ICHECK(!task->is_stopped);
+  task->is_stopped = true;
+}
+
 bool TaskSchedulerNode::IsTaskRunning(int task_id) {
   Task task = tasks[task_id];
-  if (task->is_stopped) {
-    return false;
-  }
-  if (!task->running.defined()) {
+  if (task->is_stopped || !task->running.defined()) {
     return false;
   }
   for (const RunnerFuture future : task->running.value()) {
@@ -153,6 +153,7 @@ void TaskSchedulerNode::JoinRunningTask(int task_id) {
   }
   task->context->search_strategy.value()->NotifyRunnerResults(results);
   task->running = NullOpt;
+  // TODO(@zxybazh,@junrushao1994): add those records to the database
 }
 
 TVM_REGISTER_OBJECT_TYPE(TaskSchedulerNode);
