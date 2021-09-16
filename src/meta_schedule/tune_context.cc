@@ -65,6 +65,8 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   support::LinearCongruentialEngine(&n->rand_state).Seed(rand_state);
   n->num_threads = num_threads;
   n->verbose = verbose;
+  n->is_stopped = false;
+  n->runner_futures = NullOpt;
   data_ = std::move(n);
 }
 

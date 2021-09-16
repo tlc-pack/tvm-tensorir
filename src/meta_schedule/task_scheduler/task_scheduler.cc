@@ -21,14 +21,13 @@
 namespace tvm {
 namespace meta_schedule {
 
-Task::Task(TuneContext context) {
-  ObjectPtr<TaskNode> n = make_object<TaskNode>();
-  n->context = context;
-  n->is_stopped = false;
-  n->running = NullOpt;
-  this->data_ = n;
-}
-
+/*!
+ * \brief Send the measure candidates to builder.
+ * \param builder The builder to send the candidates to.
+ * \param context The tuning context.
+ * \param candidates The measure candidates.
+ * \return An array of the builder results.
+ */
 Array<BuilderResult> SendToBuilder(const Builder& builder,  //
                                    const TuneContext& context,
                                    const Array<MeasureCandidate>& candidates) {
@@ -41,6 +40,14 @@ Array<BuilderResult> SendToBuilder(const Builder& builder,  //
   return builder->Build(inputs);
 }
 
+/*!
+ * \brief Send the built measure candidates to runner.
+ * \param runner The runner to send the candidates to.
+ * \param context The tuning context.
+ * \param candidates The mesure candidates.
+ * \param builder_results The builder results.
+ * \return An array of the runner results.
+ */
 Array<RunnerFuture> SendToRunner(const Runner& runner,  //
                                  const TuneContext& context,
                                  const Array<MeasureCandidate>& candidates,
@@ -85,54 +92,51 @@ Array<RunnerFuture> SendToRunner(const Runner& runner,  //
 }
 
 void TaskSchedulerNode::Tune() {
-  for (const Task& task : this->tasks) {
-    const TuneContext& context = task->context;
-    CHECK(context->mod.defined()) << "ValueError: Require `context.mod`, but it is not defined";
-    CHECK(context->space_generator.defined())
+  for (const TuneContext& task : this->tasks) {
+    CHECK(task->mod.defined()) << "ValueError: Require `context.mod`, but it is not defined";
+    CHECK(task->space_generator.defined())
         << "ValueError: Require `context.space_generator`, but it is not defined";
-    CHECK(context->search_strategy.defined())
+    CHECK(task->search_strategy.defined())
         << "ValueError: Require `context.search_strategy`, but it is not defined";
-    IRModule mod = context->mod.value();
-    SpaceGenerator space = context->space_generator.value();
-    SearchStrategy strategy = context->search_strategy.value();
-    space->InitializeWithTuneContext(context);
-    strategy->InitializeWithTuneContext(context);
+    IRModule mod = task->mod.value();
+    SpaceGenerator space = task->space_generator.value();
+    SearchStrategy strategy = task->search_strategy.value();
+    space->InitializeWithTuneContext(task);
+    strategy->InitializeWithTuneContext(task);
     strategy->PreTuning(space->GenerateDesignSpace(mod));
   }
   for (int task_id; (task_id = this->NextTaskId()) != -1;) {
-    Task task = tasks[task_id];
+    TuneContext task = tasks[task_id];
     ICHECK(!task->is_stopped);
-    ICHECK(!task->running.defined());
-    SearchStrategy strategy = task->context->search_strategy.value();
+    ICHECK(!task->runner_futures.defined());
+    SearchStrategy strategy = task->search_strategy.value();
     if (Optional<Array<MeasureCandidate>> candidates = strategy->GenerateMeasureCandidates()) {
-      Array<BuilderResult> builder_results =
-          SendToBuilder(this->builder, task->context, candidates.value());
-      task->running =
-          SendToRunner(this->runner, task->context, candidates.value(), builder_results);
+      Array<BuilderResult> builder_results = SendToBuilder(this->builder, task, candidates.value());
+      task->runner_futures = SendToRunner(this->runner, task, candidates.value(), builder_results);
     } else {
       SetTaskStopped(task_id);
     }
   }
   int n_tasks = this->tasks.size();
   for (int task_id = 0; task_id < n_tasks; ++task_id) {
-    Task task = tasks[task_id];
+    TuneContext task = tasks[task_id];
     this->JoinRunningTask(task_id);
-    task->context->search_strategy.value()->PostTuning();
+    task->search_strategy.value()->PostTuning();
   }
 }
 
 void TaskSchedulerNode::SetTaskStopped(int task_id) {
-  Task task = tasks[task_id];
+  TuneContext task = tasks[task_id];
   ICHECK(!task->is_stopped);
   task->is_stopped = true;
 }
 
 bool TaskSchedulerNode::IsTaskRunning(int task_id) {
-  Task task = tasks[task_id];
-  if (task->is_stopped || !task->running.defined()) {
+  TuneContext task = tasks[task_id];
+  if (task->is_stopped || !task->runner_futures.defined()) {
     return false;
   }
-  for (const RunnerFuture future : task->running.value()) {
+  for (const RunnerFuture future : task->runner_futures.value()) {
     if (!future->Done()) {
       return true;
     }
@@ -142,17 +146,17 @@ bool TaskSchedulerNode::IsTaskRunning(int task_id) {
 }
 
 void TaskSchedulerNode::JoinRunningTask(int task_id) {
-  Task task = tasks[task_id];
-  ICHECK(task->running.defined());
-  Array<RunnerFuture> futures = task->running.value();
+  TuneContext task = tasks[task_id];
+  ICHECK(task->runner_futures.defined());
+  Array<RunnerFuture> futures = task->runner_futures.value();
   int n = futures.size();
   Array<RunnerResult> results;
   results.reserve(n);
-  for (const RunnerFuture future : task->running.value()) {
+  for (const RunnerFuture future : task->runner_futures.value()) {
     results.push_back(future->Result());
   }
-  task->context->search_strategy.value()->NotifyRunnerResults(results);
-  task->running = NullOpt;
+  task->search_strategy.value()->NotifyRunnerResults(results);
+  task->runner_futures = NullOpt;
   // TODO(@zxybazh,@junrushao1994): add those records to the database
 }
 

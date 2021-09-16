@@ -61,6 +61,11 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The verbosity level. */
   int verbose;
 
+  /*! \brief Whether the tuning task has been stopped or finished. */
+  bool is_stopped;
+  /*! \brief Packed functions to fetch the runner results asynchronously. */
+  Optional<Array<RunnerFuture>> runner_futures;
+
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("mod", &mod);
     v->Visit("target", &target);
@@ -73,6 +78,8 @@ class TuneContextNode : public runtime::Object {
     v->Visit("rand_state", &rand_state);
     v->Visit("num_threads", &num_threads);
     v->Visit("verbose", &verbose);
+    v->Visit("is_stopped", &is_stopped);
+    v->Visit("runner_futures", &runner_futures);
   }
 
   static constexpr const char* _type_key = "meta_schedule.TuneContext";
