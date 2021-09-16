@@ -93,6 +93,9 @@ class LogicalIntrinMutator : public StmtMutator {
   }
 
   Stmt VisitStmt_(const EvaluateNode* op) {
+    if (!Op::HasAttrMap("FLowerLogicalIntrin")) {
+      return GetRef<Stmt>(op);
+    }
     static const auto& f_lower_logical_intrin = Op::GetAttrMap<PrimFunc>("FLowerLogicalIntrin");
     if (const auto* call = op->value.as<CallNode>()) {
       if (const auto* call_op = call->op.as<OpNode>()) {
