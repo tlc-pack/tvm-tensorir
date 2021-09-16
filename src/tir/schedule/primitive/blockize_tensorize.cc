@@ -807,7 +807,7 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   const Block& desc_block = desc_block_realize->block;
   const auto* impl_block_realize =
       Downcast<BlockRealize>(intrinsic->implementation->body)->block->body.as<BlockRealizeNode>();
-  const Block& impl_block = impl_block_realize->block;
+  Block impl_block = impl_block_realize->block;
 
   const StmtSRef& block_sref = Blockize(self, loop_sref);
   const BlockRealize& block_realize = GetBlockRealize(block_sref);
@@ -835,36 +835,26 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   for (const auto& pair : buffer_map) {
     update_var_map(pair.first->data, pair.second->data);
   }
-  CHECK(impl_block_realize);
-  // Mutate implementation function
-  Stmt new_stmt = BufferReplacer(buffer_map, var_map, std::move(comparator.extra_block_vars_),
-                                 comparator.buffer_indices_)(impl_block_realize->block);
-  const auto* block_node = new_stmt.as<BlockNode>();
-  std::unordered_map<const VarNode*, PrimExpr> element_offset;
-  auto get_element_offset = [&element_offset](const Array<BufferRegion>& old_regions,
-                                              const Array<BufferRegion>& new_regions) {
-    ICHECK_EQ(old_regions.size(), new_regions.size());
-    for (size_t i = 0; i < old_regions.size(); ++i) {
-      Array<PrimExpr> indices;
-      const auto& old_region = old_regions[i];
-      const auto& new_region = new_regions[i];
-      for (const auto range : old_region->region) {
-        indices.push_back(range->min);
-      }
-      if (const auto* var = new_region->buffer->elem_offset.as<VarNode>()) {
-        PrimExpr call = Call(DataType::Int(32), builtin::get_elem_offset(),
-                             {BufferLoad(old_region->buffer, indices)});
-        auto it = element_offset.find(var);
-        if (it != element_offset.end()) {
-          CHECK(ExprDeepEqual()(it->second, call));
-        } else {
-          element_offset[var] = call;
-        }
-      }
-    }
-  };
-  get_element_offset(block_node->reads, impl_block->reads);
-  get_element_offset(block_node->writes, impl_block->writes);
+  std::unordered_map<Buffer, Array<Range>, ObjectPtrHash, ObjectPtrEqual> buffer_region_map;
+  for (const auto& read : impl_block->reads) {
+    buffer_region_map.emplace(read->buffer, read->region);
+  }
+  for (const auto& write : impl_block->writes) {
+    buffer_region_map.emplace(write->buffer, write->region);
+  }
+
+  Array<MatchBufferRegion> match_buffer_regions;
+  for (size_t i = 0; i < intrinsic->implementation->params.size(); ++i) {
+    const auto& param = intrinsic->implementation->params[i];
+    const auto& buffer = intrinsic->implementation->buffer_map.at(param);
+    const auto& source = buffer_map.at(buffer);
+    Region region = buffer_region_map.at(buffer);
+    auto extra_indices = comparator.buffer_indices_.at(source);
+    region.insert(region.begin(), extra_indices.begin(), extra_indices.end());
+    match_buffer_regions.push_back(MatchBufferRegion(buffer, BufferRegion(source, region)));
+  }
+
+  impl_block.CopyOnWrite()->match_buffers = match_buffer_regions;
   std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> bv_map;
   for (size_t i = 0; i < desc_block->iter_vars.size(); ++i) {
     auto it = comparator.equal_map_.find(desc_block->iter_vars[i]->var);
@@ -874,7 +864,7 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
       bv_map[impl_block->iter_vars[i]->var] = 0;
     }
   }
-  Stmt new_body = SubstituteInScope(Downcast<Block>(Substitute(new_stmt, element_offset))->body,
+  Stmt new_body = SubstituteInScope(impl_block,
                                     [&](const VarNode* var) -> PrimExpr {
                                       auto it = bv_map.find(GetRef<Var>(var));
                                       if (it == bv_map.end())
@@ -884,7 +874,9 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
                                     });
   // Replace
   ObjectPtr<BlockNode> new_block_ptr = make_object<BlockNode>(*block_realize->block.get());
-  new_block_ptr->body = new_body;
+  new_block_ptr->body = Downcast<Block>(new_body)->body;
+  ICHECK(new_block_ptr->match_buffers.empty());
+  new_block_ptr->match_buffers = Downcast<Block>(new_body)->match_buffers;
   Block new_block(new_block_ptr);
   self->Replace(self->stmt2ref.at(block_realize->block.get()), new_block,
                 {{block_realize->block, new_block}});
