@@ -26,11 +26,15 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*! The task contents. */
 class TaskNode : public runtime::Object {
  public:
+  /*! \brief The tuning context. */
   TuneContext context{nullptr};
+  /*! \brief Whether the task has been stopped or finished. */
   bool is_stopped;
-  Optional<Array<RunnerFuture>> running;  // TODO(@zxybazh): rename to `runner_futures`
+  /*! \brief Functions to fetch the runner results asynchronously. */
+  Optional<Array<RunnerFuture>> running;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("context", &context);
@@ -44,6 +48,10 @@ class TaskNode : public runtime::Object {
 
 class Task : public runtime::ObjectRef {
  public:
+  /*!
+   * \brief Constructor of Task.
+   * \param context The tuning context.
+   */
   TVM_DLL explicit Task(TuneContext context);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Task, ObjectRef, TaskNode);
 };
@@ -69,13 +77,17 @@ class TaskSchedulerNode : public runtime::Object {
   TVM_DECLARE_BASE_OBJECT_INFO(TaskSchedulerNode, Object);
 
  public:
+  /*! \brief The default desctructor. */
   virtual ~TaskSchedulerNode() = default;
 
+  /*! \brief Auto-tuning. */
   virtual void Tune();
 
  protected:
+  /*! \brief Set specific task to be stopped. */
   virtual void SetTaskStopped(int task_id);
 
+  /*! \brief Check whether the task is running. */
   virtual bool IsTaskRunning(int task_id);
 
   virtual void JoinRunningTask(int task_id);
