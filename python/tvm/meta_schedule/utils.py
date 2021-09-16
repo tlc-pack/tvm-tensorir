@@ -22,9 +22,10 @@ from typing import Any, Callable, List, Union
 
 import psutil
 
+import tvm
 from tvm._ffi import get_global_func, register_func
 from tvm.error import TVMError
-from tvm.ir import Array, Map
+from tvm.ir import Array, Map, IRModule
 from tvm.runtime import String
 from tvm.tir import FloatImm, IntImm
 
@@ -140,3 +141,12 @@ def _json_de_tvm(obj: Any) -> Any:
 def json_obj2str(json_obj: Any) -> str:
     json_obj = _json_de_tvm(json_obj)
     return json.dumps(json_obj)
+
+
+def structural_hash(mod: IRModule) -> str:
+    shash = tvm.ir.structural_hash(mod)
+    if shash < 0:
+        # Workaround because `structural_hash` returns a size_t, i.e., unsigned integer
+        # but ffi can't handle unsigned integers properly so it's parsed into a negative number
+        shash += 1 << 64
+    return str(shash)

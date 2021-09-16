@@ -18,6 +18,7 @@
 from typing import Any, List, Tuple, Union
 
 from tvm._ffi import register_object
+from tvm.tir import PrimFunc
 from tvm.runtime import DataType, Device, NDArray, Object, ndarray
 from tvm.runtime.container import ShapeTuple
 
@@ -49,6 +50,10 @@ class ArgInfo(Object):
         return _ffi_api.ArgInfoFromJSON(json_obj)  # type: ignore # pylint: disable=no-member
 
     @staticmethod
+    def from_prim_func(func: PrimFunc) -> List["ArgInfo"]:
+        return _ffi_api.ArgInfoFromPrimFunc(func)  # type: ignore # pylint: disable=no-member
+
+    @staticmethod
     def alloc(arg_info: PyArgInfo, device: Device) -> Arg:
         """Allocate argument information."""
         subtype = _TYPE_DICT.get(arg_info[0], None)
@@ -58,7 +63,7 @@ class ArgInfo(Object):
 
 
 @register_object("meta_schedule.TensorArgInfo")
-class TensorArgInfo(Object):
+class TensorArgInfo(ArgInfo):
     """Tensor argument information
 
     Parameters

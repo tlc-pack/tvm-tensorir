@@ -77,15 +77,17 @@ class DefaultDatabaseNode : public DatabaseNode {
   int64_t Size() final { return this->records_.size(); }
 
   Array<TuningRecord> GetTopK(const WorkloadToken& workload, int top_k) final {
+    CHECK(top_k > 0) << "top_k must be positive";
     Array<TuningRecord> results;
     results.reserve(top_k);
     int counter = 0;
-    for (const TuningRecord& record : this->records_) {
-      results.push_back(record);
-      if (++counter == top_k) {
-        break;
+    for (const TuningRecord& record : this->records_)
+      if (record->workload->token_id_ == workload->token_id_) {
+        results.push_back(record);
+        if (++counter == top_k) {
+          break;
+        }
       }
-    }
     return results;
   }
 };
