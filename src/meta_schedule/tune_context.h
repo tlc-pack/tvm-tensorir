@@ -44,6 +44,7 @@ class TuneContextNode : public runtime::Object {
   Optional<Target> target;
   /*! \brief The design space generator. */
   Optional<SpaceGenerator> space_generator;
+  /*! \brief The search strategy to be used. */
   Optional<SearchStrategy> search_strategy;
   /*! \brief The cost model for estimation. */
   Optional<CostModel> cost_model;

@@ -22,16 +22,21 @@
 #include "./builder.h"
 #include "./runner.h"
 #include "./tune_context.h"
-#include "tvm/node/reflection.h"
 
 namespace tvm {
 namespace meta_schedule {
 
 class TaskNode : public runtime::Object {
  public:
-  TuneContext context;
+  TuneContext context{nullptr};
   bool is_stopped;
-  Optional<Array<RunnerFuture>> running_measurements;
+  Optional<Array<RunnerFuture>> running;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("context", &context);
+    v->Visit("is_stopped", &is_stopped);
+    v->Visit("running", &running);
+  }
 
   static constexpr const char* _type_key = "meta_schedule.Task";
   TVM_DECLARE_BASE_OBJECT_INFO(TaskNode, Object);
@@ -39,6 +44,7 @@ class TaskNode : public runtime::Object {
 
 class Task : public runtime::ObjectRef {
  public:
+  TVM_DLL explicit Task(TuneContext context);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Task, ObjectRef, TaskNode);
 };
 
@@ -80,6 +86,7 @@ class TaskSchedulerNode : public runtime::Object {
  */
 class TaskScheduler : public runtime::ObjectRef {
  public:
+  TVM_DLL TaskScheduler RoundRobin(Array<Task> tasks, Builder builder, Runner runner);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TaskScheduler, ObjectRef, TaskSchedulerNode);
 };
 
