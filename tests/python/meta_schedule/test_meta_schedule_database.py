@@ -143,36 +143,6 @@ def test_meta_schedule_tuning_record_round_trip():
 # Test Database
 
 
-def test_meta_schedule_py_database():
-    class TestPyDatabase(PyDatabase):
-        def initialize_with_tune_context(self, tune_context: TuneContext):
-            raise Exception("initialize_with_tune_context")
-
-        def add(self, record: TuningRecord):
-            raise Exception("add")
-
-        def get_top_k(self, workload: WorkloadToken, top_k: int):
-            raise Exception("get_top_k")
-
-        def lookup_or_add(self, mod: IRModule) -> WorkloadToken:
-            raise Exception("lookup_or_add")
-
-        def __len__(self) -> int:
-            raise Exception("__len__")
-
-    test = TestPyDatabase()
-    with pytest.raises(Exception, match="initialize_with_tune_context"):
-        test.initialize_with_tune_context(None)
-    with pytest.raises(Exception, match="add"):
-        test.add(None)
-    with pytest.raises(Exception, match="get_top_k"):
-        test.get_top_k(None, None)
-    with pytest.raises(Exception, match="lookup_or_add"):
-        test.lookup_or_add(None)
-    with pytest.raises(Exception, match="__len__"):
-        len(test)
-
-
 def test_meta_schedule_database_create():
     with tempfile.TemporaryDirectory() as tmpdir:
         record_path = osp.join(tmpdir, "records.json")

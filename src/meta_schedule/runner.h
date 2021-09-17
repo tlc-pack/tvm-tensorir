@@ -205,7 +205,7 @@ class PyRunnerNode : public RunnerNode {
   Array<RunnerFuture> Run(Array<RunnerInput> runner_inputs) final { return f_run(runner_inputs); }
 
   static constexpr const char* _type_key = "meta_schedule.PyRunner";
-  TVM_DECLARE_FINAL_OBJECT_INFO(PyRunnerNode, runtime::Object);
+  TVM_DECLARE_FINAL_OBJECT_INFO(PyRunnerNode, RunnerNode);
 };
 
 }  // namespace meta_schedule

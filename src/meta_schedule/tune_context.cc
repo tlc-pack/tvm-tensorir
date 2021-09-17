@@ -43,7 +43,6 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
                          Optional<Target> target,                                   //
                          Optional<SpaceGenerator> space_generator,                  //
                          Optional<SearchStrategy> search_strategy,                  //
-                         Optional<Database> database,                               //
                          Optional<CostModel> cost_model,                            //
                          Optional<Array<Postproc>> postprocs,                       //
                          Optional<Array<MeasureCallback>> measure_callbacks,        //
@@ -56,7 +55,6 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   n->target = target;
   n->space_generator = space_generator;
   n->search_strategy = search_strategy;
-  n->database = database;
   n->cost_model = cost_model;
   n->postprocs = postprocs;
   n->measure_callbacks = measure_callbacks;
@@ -67,6 +65,9 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   support::LinearCongruentialEngine(&n->rand_state).Seed(rand_state);
   n->num_threads = num_threads;
   n->verbose = verbose;
+  n->is_stopped = false;
+  n->runner_futures = NullOpt;
+  n->measure_candidates = NullOpt;
   data_ = std::move(n);
 }
 
@@ -75,7 +76,6 @@ TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
                        Optional<Target> target,                                   //
                        Optional<SpaceGenerator> space_generator,                  //
                        Optional<SearchStrategy> search_strategy,                  //
-                       Optional<Database> database,                               //
                        Optional<CostModel> cost_model,                            //
                        Optional<Array<Postproc>> postprocs,                       //
                        Optional<Array<MeasureCallback>> measure_callbacks,        //
@@ -83,8 +83,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
                        support::LinearCongruentialEngine::TRandState rand_state,  //
                        int num_threads,                                           //
                        int verbose) -> TuneContext {
-      return TuneContext(mod, target, space_generator, search_strategy, database, cost_model,
-                         postprocs, measure_callbacks, task_name, rand_state, num_threads, verbose);
+      return TuneContext(mod, target, space_generator, search_strategy, cost_model, postprocs,
+                         measure_callbacks, task_name, rand_state, num_threads, verbose);
     });
 
 TVM_REGISTER_NODE_TYPE(TuneContextNode);
