@@ -107,25 +107,31 @@ void TaskSchedulerNode::Tune() {
     strategy->InitializeWithTuneContext(task);
     strategy->PreTuning(space->GenerateDesignSpace(mod));
   }
-  for (int task_id; (task_id = this->NextTaskId()) != -1;) {
-    TuneContext task = tasks[task_id];
-    ICHECK(!task->is_stopped);
-    ICHECK(!task->runner_futures.defined());
-    SearchStrategy strategy = task->search_strategy.value();
-    if (task->measure_candidates = strategy->GenerateMeasureCandidates()) {
-      Array<BuilderResult> builder_results =
-          SendToBuilder(this->builder, task, task->measure_candidates.value());
-      task->runner_futures =
-          SendToRunner(this->runner, task, task->measure_candidates.value(), builder_results);
-    } else {
-      SetTaskStopped(task_id);
+
+  int running_tasks = tasks.size();
+  while (running_tasks > 0) {
+    for (int task_id; (task_id = NextTaskId()) != -1;) {
+      TuneContext task = tasks[task_id];
+      ICHECK(!task->is_stopped);
+      ICHECK(!task->runner_futures.defined());
+      SearchStrategy strategy = task->search_strategy.value();
+      if (task->measure_candidates = strategy->GenerateMeasureCandidates()) {
+        Array<BuilderResult> builder_results =
+            SendToBuilder(this->builder, task, task->measure_candidates.value());
+        task->runner_futures =
+            SendToRunner(this->runner, task, task->measure_candidates.value(), builder_results);
+      } else {
+        SetTaskStopped(task_id);
+        --running_tasks;
+      }
     }
-  }
-  int n_tasks = this->tasks.size();
-  for (int task_id = 0; task_id < n_tasks; ++task_id) {
-    TuneContext task = tasks[task_id];
-    this->JoinRunningTask(task_id);
-    task->search_strategy.value()->PostTuning();
+    int n_tasks = this->tasks.size();
+    for (int task_id = 0; task_id < n_tasks; ++task_id)
+      if (IsTaskRunning(task_id)) {
+        TuneContext task = tasks[task_id];
+        this->JoinRunningTask(task_id);
+        task->search_strategy.value()->PostTuning();
+      }
   }
 }
 
