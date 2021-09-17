@@ -66,6 +66,8 @@ TaskScheduler TaskScheduler::RoundRobin(Array<TuneContext> tasks, Builder builde
 }
 
 TVM_REGISTER_NODE_TYPE(RoundRobinNode);
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerRoundRobin")
+    .set_body_typed(TaskScheduler::RoundRobin);
 
 }  // namespace meta_schedule
 }  // namespace tvm

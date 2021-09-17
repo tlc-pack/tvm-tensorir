@@ -14,25 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""JSONFile Database"""
+"""Task Scheduler"""
 
-from tvm._ffi import register_object
-
-from .database import Database
-from .. import _ffi_api
-
-
-@register_object("meta_schedule.JSONFileDatabase")
-class JSONFileDatabase(Database):
-    def __init__(
-        self,
-        record_path: str,
-        workload_path: str,
-        allow_missing: bool = True,
-    ) -> None:
-        self.__init_handle_by_constructor__(
-            _ffi_api.DatabaseJSONFileDatabase,  # type: ignore # pylint: disable=no-member
-            record_path,
-            workload_path,
-            allow_missing,
-        )
+from .task_scheduler import TaskScheduler
+from .round_robin import RoundRobin

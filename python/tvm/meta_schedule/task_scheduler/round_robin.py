@@ -14,25 +14,32 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""JSONFile Database"""
+"""Round Robin Task Scheduler"""
+
+from typing import List, TYPE_CHECKING
 
 from tvm._ffi import register_object
 
-from .database import Database
+from ..builder import Builder
+from ..runner import Runner
+from ..database import Database
+from .task_scheduler import TaskScheduler
+
 from .. import _ffi_api
 
+if TYPE_CHECKING:
+    from ..tune_context import TuneContext
 
-@register_object("meta_schedule.JSONFileDatabase")
-class JSONFileDatabase(Database):
+
+@register_object("meta_schedule.RoundRobin")
+class RoundRobin(TaskScheduler):
     def __init__(
-        self,
-        record_path: str,
-        workload_path: str,
-        allow_missing: bool = True,
+        self, tasks: List["TuneContext"], builder: Builder, runner: Runner, database: Database
     ) -> None:
         self.__init_handle_by_constructor__(
-            _ffi_api.DatabaseJSONFileDatabase,  # type: ignore # pylint: disable=no-member
-            record_path,
-            workload_path,
-            allow_missing,
+            _ffi_api.TaskSchedulerRoundRobin,  # type: ignore # pylint: disable=no-member
+            tasks,
+            builder,
+            runner,
+            database,
         )
