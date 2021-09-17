@@ -36,7 +36,11 @@ class RoundRobin(TaskScheduler):
     """Round Robin Task Scheduler"""
 
     def __init__(
-        self, tasks: List["TuneContext"], builder: Builder, runner: Runner, database: Database
+        self,
+        tasks: List["TuneContext"],
+        builder: Builder,
+        runner: Runner,
+        database: Database,
     ) -> None:
         """Constructor
 

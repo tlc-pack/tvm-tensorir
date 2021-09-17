@@ -82,6 +82,7 @@ class TuneContextNode : public runtime::Object {
     v->Visit("verbose", &verbose);
     v->Visit("is_stopped", &is_stopped);
     v->Visit("runner_futures", &runner_futures);
+    v->Visit("measure_candidates", &measure_candidates);
   }
 
   static constexpr const char* _type_key = "meta_schedule.TuneContext";
