@@ -54,11 +54,14 @@ def intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
+        # These access region must be explicitly stated. Otherwise the auto-completed region starts from (0, 0) instead of (vi, vj)
+        tir.reads([A[vi: vi+16, vk: vk+16], B[vj: vj+16, vk: vk+16], C[vi:vi+16, vj:vj+16]])
+        tir.writes([C[vi: vi+16, vj: vj+16]])
         for i, j, k in tir.grid(16, 16, 16):
             with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vii, vjj, vkk]:
-                tir.bind(vii, vi + i)
-                tir.bind(vjj, vj + j)
-                tir.bind(vkk, vk + k)
+                tir.bind(vii, i)
+                tir.bind(vjj, j)
+                tir.bind(vkk, k)
                 C[vii, vjj] = C[vii, vjj] + B[vjj, vkk] * A[vii, vkk]
 
 
@@ -102,11 +105,17 @@ def tensorized_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 tir.bind(vk, k_outer)
                 tir.reads([C[vi*16:vi*16 + 16, vj*16:vj*16 + 16], A[vi*16:vi*16 + 16, vk*16:vk*16 + 16], B[vj*16:vj*16 + 16, vk*16:vk*16 + 16]])
                 tir.writes(C[vi*16:vi*16 + 16, vj*16:vj*16 + 16])
+                A_elem_offset = tir.var('int32')
+                B_elem_offset = tir.var('int32')
+                C_elem_offset = tir.var('int32')
+                A_sub = tir.match_buffer(A[vi*16:vi*16+16, vk*16:vk*16+16], [16, 16], elem_offset=A_elem_offset)
+                B_sub = tir.match_buffer(B[vj*16:vj*16+16, vk*16:vk*16+16], [16, 16], elem_offset=B_elem_offset)
+                C_sub = tir.match_buffer(C[vi*16:vi*16+16, vj*16:vj*16+16], [16, 16], elem_offset=C_elem_offset)
                 tir.evaluate(
-                    tir.tvm_mma_sync(C.data, tir.floordiv(tir.get_elem_offset(C[vi*16, vj*16], dtype="int32"), 256),
-                                     A.data, tir.floordiv(tir.get_elem_offset(A[vi*16, vk*16], dtype="int32"), 256),
-                                     B.data, tir.floordiv(tir.get_elem_offset(B[vj*16, vk*16], dtype="int32"), 256),
-                                     C.data, tir.floordiv(tir.get_elem_offset(C[vi*16, vj*16], dtype="int32"), 256),
+                    tir.tvm_mma_sync(C_sub.data, tir.floordiv(C_sub.elem_offset, 256),
+                                     A_sub.data, tir.floordiv(A_sub.elem_offset, 256),
+                                     B_sub.data, tir.floordiv(B_sub.elem_offset, 256),
+                                     C_sub.data, tir.floordiv(C_sub.elem_offset, 256),
                                      dtype="handle"))
 
 
@@ -144,11 +153,17 @@ def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 tir.reads([C[vn:vn + 1, vi*16:vi*16 + 16, vj*16:vj*16 + 16], A[vn:vn + 1, vi*16:vi*16 + 16, vk*16:vk*16 + 16],
                            B[vn:vn + 1, vj*16:vj*16 + 16, vk*16:vk*16 + 16]])
                 tir.writes(C[vn:vn + 1, vi*16:vi*16 + 16, vj*16:vj*16 + 16])
+                A_elem_offset = tir.var('int32')
+                B_elem_offset = tir.var('int32')
+                C_elem_offset = tir.var('int32')
+                A_sub = tir.match_buffer(A[vn:vn + 1, vi*16:vi*16+16,vk*16:vk*16+16], (16, 16), elem_offset=A_elem_offset)
+                B_sub = tir.match_buffer(B[vn:vn + 1, vj*16:vj*16+16,vk*16:vk*16+16], (16, 16), elem_offset=B_elem_offset)
+                C_sub = tir.match_buffer(C[vn:vn + 1, vi*16:vi*16+16,vj*16:vj*16+16], (16, 16), elem_offset=C_elem_offset)
                 tir.evaluate(
-                    tir.tvm_mma_sync(C.data, tir.floordiv(tir.get_elem_offset(C[vn, vi*16, vj*16], dtype="int32"), 256),
-                                     A.data, tir.floordiv(tir.get_elem_offset(A[vn, vi*16, vk*16], dtype="int32"), 256),
-                                     B.data, tir.floordiv(tir.get_elem_offset(B[vn, vj*16, vk*16], dtype="int32"), 256),
-                                     C.data, tir.floordiv(tir.get_elem_offset(C[vn, vi*16, vj*16], dtype="int32"), 256),
+                    tir.tvm_mma_sync(C_sub.data, tir.floordiv(C_sub.elem_offset, 256),
+                                     A_sub.data, tir.floordiv(A_sub.elem_offset, 256),
+                                     B_sub.data, tir.floordiv(B_sub.elem_offset, 256),
+                                     C_sub.data, tir.floordiv(C_sub.elem_offset, 256),
                                      dtype="handle"))
 
 
@@ -354,4 +369,4 @@ if __name__ == "__main__":
     test_tensorize_gemm()
     test_tensorize_buffer_bind()
     test_high_dim_tensorize()
-    test_tensorize_dot_product()
+    # test_tensorize_dot_product()

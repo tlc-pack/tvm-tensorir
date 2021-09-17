@@ -850,7 +850,9 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
     const auto& source = buffer_map.at(buffer);
     Region region = buffer_region_map.at(buffer);
     auto extra_indices = comparator.buffer_indices_.at(source);
-    region.insert(region.begin(), extra_indices.begin(), extra_indices.end());
+    for (auto extra_index : extra_indices) {
+      region.insert(region.begin(), Range::FromMinExtent(extra_index, 1));
+    }
     match_buffer_regions.push_back(MatchBufferRegion(buffer, BufferRegion(source, region)));
   }
 
