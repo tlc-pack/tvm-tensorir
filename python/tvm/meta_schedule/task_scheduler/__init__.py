@@ -16,5 +16,5 @@
 # under the License.
 """Task Scheduler"""
 
-from .task_scheduler import TaskScheduler
+from .task_scheduler import TaskScheduler, PyTaskScheduler
 from .round_robin import RoundRobin
