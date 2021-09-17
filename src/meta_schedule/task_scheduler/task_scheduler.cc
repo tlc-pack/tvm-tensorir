@@ -18,6 +18,8 @@
  */
 #include "../task_scheduler.h"
 
+#include <tvm/tir/schedule/trace.h>
+
 namespace tvm {
 namespace meta_schedule {
 
@@ -110,9 +112,11 @@ void TaskSchedulerNode::Tune() {
     ICHECK(!task->is_stopped);
     ICHECK(!task->runner_futures.defined());
     SearchStrategy strategy = task->search_strategy.value();
-    if (Optional<Array<MeasureCandidate>> candidates = strategy->GenerateMeasureCandidates()) {
-      Array<BuilderResult> builder_results = SendToBuilder(this->builder, task, candidates.value());
-      task->runner_futures = SendToRunner(this->runner, task, candidates.value(), builder_results);
+    if (task->measure_candidates = strategy->GenerateMeasureCandidates()) {
+      Array<BuilderResult> builder_results =
+          SendToBuilder(this->builder, task, task->measure_candidates.value());
+      task->runner_futures =
+          SendToRunner(this->runner, task, task->measure_candidates.value(), builder_results);
     } else {
       SetTaskStopped(task_id);
     }
@@ -157,10 +161,54 @@ void TaskSchedulerNode::JoinRunningTask(int task_id) {
   }
   task->search_strategy.value()->NotifyRunnerResults(results);
   task->runner_futures = NullOpt;
-  // TODO(@zxybazh,@junrushao1994): add those records to the database
+  // Add to database
+  ICHECK(task->measure_candidates.defined());
+  ICHECK(results.size() == task->measure_candidates.value().size());
+  int index = 0;
+  for (const RunnerResult& result : results) {
+    if (!result->error_msg.defined() && result->run_sec.defined()) {
+      Optional<tir::Trace> trace = task->measure_candidates.value()[index]->sch->trace();
+      ICHECK(trace.defined());
+      this->database->Add(TuningRecord(
+          /*trace=*/trace.value(),
+          /*run_secs=*/result->run_sec.value(),
+          /*workload=*/this->database->LookupOrAdd(task->mod.value()),
+          /*target=*/task->target.value(),
+          /*args_info=*/task->measure_candidates.value()[index]->args_info));
+    }
+    index++;
+  }
+}
+
+TaskScheduler TaskScheduler::PyTaskScheduler(
+    PyTaskSchedulerNode::FTune f_tune,                          //
+    PyTaskSchedulerNode::FSetTaskStopped f_set_task_stopped,    //
+    PyTaskSchedulerNode::FIsTaskRunning f_is_task_running,      //
+    PyTaskSchedulerNode::FJoinRunningTask f_join_running_task,  //
+    PyTaskSchedulerNode::FNextTaskId f_next_task_id) {
+  ObjectPtr<PyTaskSchedulerNode> n = make_object<PyTaskSchedulerNode>();
+  n->f_tune = f_tune;
+  n->f_set_task_stopped = f_set_task_stopped;
+  n->f_is_task_running = f_is_task_running;
+  n->f_join_running_task = f_join_running_task;
+  n->f_next_task_id = f_next_task_id;
+  return TaskScheduler(n);
 }
 
 TVM_REGISTER_OBJECT_TYPE(TaskSchedulerNode);
+TVM_REGISTER_NODE_TYPE(PyTaskSchedulerNode);
+TVM_REGISTER_GLOBAL("tvm.task.TaskSchedulerPyTaskScheduler")
+    .set_body_typed(TaskScheduler::PyTaskScheduler);
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerSetTaskStopped")
+    .set_body_method<TaskScheduler>(&TaskSchedulerNode::SetTaskStopped);
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerIsTaskRunning")
+    .set_body_method<TaskScheduler>(&TaskSchedulerNode::IsTaskRunning);
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerTune")
+    .set_body_method<TaskScheduler>(&TaskSchedulerNode::Tune);
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerJoinRunningTask")
+    .set_body_method<TaskScheduler>(&TaskSchedulerNode::JoinRunningTask);
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerNextTaskId")
+    .set_body_method<TaskScheduler>(&TaskSchedulerNode::NextTaskId);
 
 }  // namespace meta_schedule
 }  // namespace tvm

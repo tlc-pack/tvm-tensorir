@@ -38,6 +38,9 @@ class TaskSchedulerNode : public runtime::Object {
   /*! \brief The database of the scheduler. */
   Database database{nullptr};
 
+  /*! \brief The default desctructor. */
+  virtual ~TaskSchedulerNode() = default;
+
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("tasks", &tasks);
     v->Visit("builder", &builder);
@@ -45,17 +48,9 @@ class TaskSchedulerNode : public runtime::Object {
     v->Visit("database", &database);
   }
 
-  static constexpr const char* _type_key = "meta_schedule.TaskScheduler";
-  TVM_DECLARE_BASE_OBJECT_INFO(TaskSchedulerNode, Object);
-
- public:
-  /*! \brief The default desctructor. */
-  virtual ~TaskSchedulerNode() = default;
-
   /*! \brief Auto-tuning. */
   virtual void Tune();
 
- protected:
   /*!
    * \brief Set specific task to be stopped.
    * \param task_id The task id to be stopped.
@@ -65,6 +60,7 @@ class TaskSchedulerNode : public runtime::Object {
   /*!
    * \brief Check whether the task is running.
    * \param task_id The task id to be checked.
+   * \return Whether the task is running.
    */
   virtual bool IsTaskRunning(int task_id);
 
@@ -75,10 +71,87 @@ class TaskSchedulerNode : public runtime::Object {
   virtual void JoinRunningTask(int task_id);
 
   /*!
-   * \brief Fetch the next task by id.
+   * \brief Fetch the next task id.
    * \return The next task id.
    */
   virtual int NextTaskId() = 0;
+
+  static constexpr const char* _type_key = "meta_schedule.TaskScheduler";
+  TVM_DECLARE_BASE_OBJECT_INFO(TaskSchedulerNode, Object);
+};
+
+/*! \brief The task scheduler with customized methods on the python-side. */
+class PyTaskSchedulerNode : public TaskSchedulerNode {
+ public:
+  /*! \brief The function type of `Tune` method. */
+  using FTune = runtime::TypedPackedFunc<void()>;
+
+  /*!
+   * \brief The function type of `SetTaskStopped` method.
+   * \param task_id The task id to be stopped.
+   */
+  using FSetTaskStopped = runtime::TypedPackedFunc<void(int)>;
+
+  /*!
+   * \brief The function type of `IsTaskRunning` method.
+   * \param task_id The task id to be checked.
+   * \return Whether the task is running.
+   */
+  using FIsTaskRunning = runtime::TypedPackedFunc<bool(int)>;
+
+  /*!
+   * \brief The function type of `JoinRunningTask` method.
+   * \param task_id The task id to be joined.
+   */
+  using FJoinRunningTask = runtime::TypedPackedFunc<void(int)>;
+
+  /*!
+   * \brief The function type of `NextTaskId` method.
+   * \return The next task id.
+   */
+  using FNextTaskId = runtime::TypedPackedFunc<int()>;
+
+  /*! \brief The packed function to the `Tune` funcion. */
+  FTune f_tune;
+  /*! \brief The packed function to the `SetTaskStopped` function. */
+  FSetTaskStopped f_set_task_stopped;
+  /*! \brief The packed function to the `IsTaskRunning` function. */
+  FIsTaskRunning f_is_task_running;
+  /*! \brief The packed function to the `JoinRunningTask` function. */
+  FJoinRunningTask f_join_running_task;
+  /*! \brief The packed function to the `NextTaskId` function. */
+  FNextTaskId f_next_task_id;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    // `f_tune` is not visited
+    // `f_set_task_stopped` is not visited
+    // `f_is_task_running` is not visited
+    // `f_join_running_task` is not visited
+    // `f_next_task_id` is not visited
+  }
+
+  void Tune() final {  //
+    f_tune();
+  }
+
+  void SetTaskStopped(int task_id) final {  //
+    f_set_task_stopped(task_id);
+  }
+
+  bool IsTaskRunning(int task_id) final {  //
+    return f_is_task_running(task_id);
+  }
+
+  void JoinRunningTask(int task_id) final {  //
+    f_join_running_task(task_id);
+  }
+
+  int NextTaskId() final {  //
+    return f_next_task_id();
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.PyTaskScheduler";
+  TVM_DECLARE_FINAL_OBJECT_INFO(PyTaskSchedulerNode, TaskSchedulerNode);
 };
 
 /*!
@@ -94,8 +167,14 @@ class TaskScheduler : public runtime::ObjectRef {
    * \param runner The runner of the scheduler.
    * \param database The database of the scheduler.
    */
-  TVM_DLL TaskScheduler RoundRobin(Array<TuneContext> tasks, Builder builder, Runner runner,
-                                   Database database);
+  TVM_DLL static TaskScheduler RoundRobin(Array<TuneContext> tasks, Builder builder, Runner runner,
+                                          Database database);
+  TVM_DLL static TaskScheduler PyTaskScheduler(
+      PyTaskSchedulerNode::FTune f_tune,                          //
+      PyTaskSchedulerNode::FSetTaskStopped f_set_task_stopped,    //
+      PyTaskSchedulerNode::FIsTaskRunning f_is_task_running,      //
+      PyTaskSchedulerNode::FJoinRunningTask f_join_running_task,  //
+      PyTaskSchedulerNode::FNextTaskId f_next_task_id);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TaskScheduler, ObjectRef, TaskSchedulerNode);
 };
 

@@ -32,5 +32,5 @@ from .runner import (
 from .tune_context import TuneContext
 from .space_generator import SpaceGenerator, SpaceGeneratorUnion, PySpaceGenerator, ScheduleFn
 from .search_strategy import SearchStrategy, PySearchStrategy, ReplayTrace
-from .task_scheduler import TaskScheduler, PyTaskScheduler, RoundRobin
+from .task_scheduler import TaskScheduler
 from .workload_registry import WorkloadRegistry, WorkloadToken

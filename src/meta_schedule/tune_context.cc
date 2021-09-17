@@ -67,6 +67,7 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   n->verbose = verbose;
   n->is_stopped = false;
   n->runner_futures = NullOpt;
+  n->measure_candidates = NullOpt;
   data_ = std::move(n);
 }
 

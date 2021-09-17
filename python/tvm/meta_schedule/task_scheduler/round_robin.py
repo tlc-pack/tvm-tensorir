@@ -33,28 +33,9 @@ if TYPE_CHECKING:
 
 @register_object("meta_schedule.RoundRobin")
 class RoundRobin(TaskScheduler):
-    """Round Robin Task Scheduler"""
-
     def __init__(
-        self,
-        tasks: List["TuneContext"],
-        builder: Builder,
-        runner: Runner,
-        database: Database,
+        self, tasks: List["TuneContext"], builder: Builder, runner: Runner, database: Database
     ) -> None:
-        """Constructor
-
-        Parameters
-        ----------
-        tasks : List[TuneContext]
-            List of tasks to schedule.
-        builder : Builder
-            The builder.
-        runner : Runner
-            The runner.
-        database : Database
-            The database.
-        """
         self.__init_handle_by_constructor__(
             _ffi_api.TaskSchedulerRoundRobin,  # type: ignore # pylint: disable=no-member
             tasks,

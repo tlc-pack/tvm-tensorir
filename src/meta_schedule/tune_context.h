@@ -65,6 +65,8 @@ class TuneContextNode : public runtime::Object {
   bool is_stopped;
   /*! \brief Packed functions to fetch the runner results asynchronously. */
   Optional<Array<RunnerFuture>> runner_futures;
+  /*! \brief The measure candidates. */
+  Optional<Array<MeasureCandidate>> measure_candidates;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("mod", &mod);
