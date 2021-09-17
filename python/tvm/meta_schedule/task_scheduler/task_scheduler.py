@@ -25,7 +25,11 @@ from .. import _ffi_api
 class TaskScheduler(Object):
     """The abstract task scheduler interface"""
 
-    def set_task_stopped(self, task_id: int) -> None:
+    def tune(self) -> None:
+        """Auto-tuning."""
+        _ffi_api.TaskSchedulerTune(self)  # pylint: disable=no-member
+
+    def _set_task_stopped(self, task_id: int) -> None:
         """Set specific task to be stopped.
 
         Parameters
@@ -35,7 +39,7 @@ class TaskScheduler(Object):
         """
         _ffi_api.TaskSchedulerSetTaskStopped(self, task_id)  # pylint: disable=no-member
 
-    def is_task_running(self, task_id: int) -> bool:
+    def _is_task_running(self, task_id: int) -> bool:
         """Check whether the task is running.
 
         Parameters
@@ -50,7 +54,7 @@ class TaskScheduler(Object):
         """
         return _ffi_api.TaskSchedulerIsTaskRunning(self, task_id)  # pylint: disable=no-member
 
-    def join_running_task(self, task_id: int) -> None:
+    def _join_running_task(self, task_id: int) -> None:
         """Wait until the task is finished.
 
         Parameters
@@ -60,7 +64,7 @@ class TaskScheduler(Object):
         """
         _ffi_api.TaskSchedulerJoinRunningTask(self, task_id)  # pylint: disable=no-member
 
-    def next_task_id(self) -> int:
+    def _next_task_id(self) -> int:
         """Fetch the next task id.
 
         Returns
@@ -69,10 +73,6 @@ class TaskScheduler(Object):
             The next task id.
         """
         return _ffi_api.TaskSchedulerNextTaskId(self)  # pylint: disable=no-member
-
-    def tune(self) -> None:
-        """Auto-tuning."""
-        _ffi_api.TaskSchedulerTune(self)  # pylint: disable=no-member
 
 
 @register_object("meta_schedule.PyTaskScheduler")
@@ -86,16 +86,16 @@ class PyTaskScheduler(TaskScheduler):
             self.tune()
 
         def f_set_task_stopped(task_id: int) -> None:
-            self.set_task_stopped(task_id)
+            self._set_task_stopped(task_id)
 
         def f_is_task_running(task_id: int) -> bool:
-            return self.is_task_running(task_id)
+            return self._is_task_running(task_id)
 
         def f_join_running_task(task_id: int) -> None:
-            self.join_running_task(task_id)
+            self._join_running_task(task_id)
 
         def f_next_task_id() -> int:
-            return self.next_task_id()
+            return self._next_task_id()
 
         self.__init_handle_by_constructor__(
             _ffi_api.TaskSchedulerPyTaskScheduler,  # pylint: disable=no-member
@@ -107,16 +107,16 @@ class PyTaskScheduler(TaskScheduler):
         )
 
     def tune(self) -> None:
-        raise NotImplementedError
+        raise NotImplementedError()
 
-    def set_task_stopped(self, task_id: int) -> None:
-        raise NotImplementedError
+    def _set_task_stopped(self, task_id: int) -> None:
+        _ffi_api.TaskSchedulerSetTaskStopped(self, task_id)  # pylint: disable=no-member
 
-    def is_task_running(self, task_id: int) -> bool:
-        raise NotImplementedError
+    def _is_task_running(self, task_id: int) -> bool:
+        return _ffi_api.TaskSchedulerIsTaskRunning(self, task_id)  # pylint: disable=no-member
 
-    def join_running_task(self, task_id: int) -> None:
-        raise NotImplementedError
+    def _join_running_task(self, task_id: int) -> None:
+        _ffi_api.TaskSchedulerJoinRunningTask(self, task_id)  # pylint: disable=no-member
 
-    def next_task_id(self) -> int:
-        raise NotImplementedError
+    def _next_task_id(self) -> int:
+        return _ffi_api.TaskSchedulerNextTaskId(self)  # pylint: disable=no-member
