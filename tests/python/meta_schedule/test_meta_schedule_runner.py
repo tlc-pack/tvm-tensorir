@@ -158,7 +158,7 @@ def test_meta_schedule_single_run():
             (runner_future,) = runner.run([runner_input])
             runner_result = runner_future.result()
     assert runner_result.error_msg is None
-    for result in runner_result.run_sec:
+    for result in runner_result.run_secs:
         if isinstance(result, FloatImm):
             result = result.value
         assert isinstance(result, float)
@@ -228,7 +228,7 @@ def test_meta_schedule_multiple_runs():
 
     for runner_result in runner_results:
         assert runner_result.error_msg is None
-        for result in runner_result.run_sec:
+        for result in runner_result.run_secs:
             if isinstance(result, FloatImm):
                 result = result.value
             assert isinstance(result, float)
@@ -300,7 +300,7 @@ def test_meta_schedule_rpc_runner_time_out():
     assert runner_result.error_msg is not None and runner_result.error_msg.startswith(
         "RPCRunner: Timeout, killed after"
     )
-    assert runner_result.run_sec is None
+    assert runner_result.run_secs is None
 
 
 def test_meta_schedule_rpc_runner_exception():
@@ -351,7 +351,7 @@ def test_meta_schedule_rpc_runner_exception():
     assert runner_result.error_msg is not None and runner_result.error_msg.startswith(
         "RPCRunner: An exception occurred\n"
     )
-    assert runner_result.run_sec is None
+    assert runner_result.run_secs is None
 
 
 def test_meta_schedule_runner_matmul_test():
@@ -452,7 +452,7 @@ def test_meta_schedule_runner_matmul_test():
             (runner_future,) = runner.run([runner_input])
             runner_result = runner_future.result()
     assert runner_result.error_msg is None
-    for result in runner_result.run_sec:
+    for result in runner_result.run_secs:
         if isinstance(result, FloatImm):
             result = result.value
         assert isinstance(result, float)
@@ -558,7 +558,7 @@ def test_meta_schedule_runner_add_test():
             (runner_future,) = runner.run([runner_input])
             runner_result = runner_future.result()
     assert runner_result.error_msg is None
-    for result in runner_result.run_sec:
+    for result in runner_result.run_secs:
         if isinstance(result, FloatImm):
             result = result.value
         assert isinstance(result, float)

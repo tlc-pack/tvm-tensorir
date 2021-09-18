@@ -66,12 +66,12 @@ class RunnerInput : public runtime::ObjectRef {
 class RunnerResultNode : public runtime::Object {
  public:
   /*! \brief The run time in seconds.*/
-  Optional<Array<FloatImm>> run_sec;
+  Optional<Array<FloatImm>> run_secs;
   /*! \brief The error message, if any. */
   Optional<String> error_msg;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("run_sec", &run_sec);
+    v->Visit("run_secs", &run_secs);
     v->Visit("error_msg", &error_msg);
   }
 
@@ -85,7 +85,7 @@ class RunnerResultNode : public runtime::Object {
  */
 class RunnerResult : public runtime::ObjectRef {
  public:
-  TVM_DLL explicit RunnerResult(Optional<Array<FloatImm>> run_sec, Optional<String> error_msg);
+  TVM_DLL explicit RunnerResult(Optional<Array<FloatImm>> run_secs, Optional<String> error_msg);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(RunnerResult, runtime::ObjectRef, RunnerResultNode);
 };
 

@@ -172,12 +172,12 @@ void TaskSchedulerNode::JoinRunningTask(int task_id) {
   ICHECK(results.size() == task->measure_candidates.value().size());
   int index = 0;
   for (const RunnerResult& result : results) {
-    if (!result->error_msg.defined() && result->run_sec.defined()) {
+    if (!result->error_msg.defined() && result->run_secs.defined()) {
       Optional<tir::Trace> trace = task->measure_candidates.value()[index]->sch->trace();
       ICHECK(trace.defined());
       this->database->Add(TuningRecord(
           /*trace=*/trace.value(),
-          /*run_secs=*/result->run_sec.value(),
+          /*run_secs=*/result->run_secs.value(),
           /*workload=*/this->database->LookupOrAdd(task->mod.value()),
           /*target=*/task->target.value(),
           /*args_info=*/task->measure_candidates.value()[index]->args_info));

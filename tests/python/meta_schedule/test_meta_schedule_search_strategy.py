@@ -117,7 +117,7 @@ def test_meta_schedule_replay_trace():
         runner_results: List[RunnerResult] = []
         for candidate in candidates:
             assert _is_trace_equal(candidate.sch, example_sch)
-            runner_results.append(RunnerResult(run_sec=[0.5, 0.4, 0.3], error_msg=None))
+            runner_results.append(RunnerResult(run_secs=[0.5, 0.4, 0.3], error_msg=None))
         replay.notify_runner_results(runner_results)
     replay.post_tuning()
     assert num_trials_each_round == [7, 7, 6]

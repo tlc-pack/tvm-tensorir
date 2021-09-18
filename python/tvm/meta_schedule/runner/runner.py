@@ -73,32 +73,32 @@ class RunnerResult(Object):
 
     Parameters
     ----------
-    run_sec : Optional[List[float]]
+    run_secs : Optional[List[float]]
         The run time in seconds.
     error_msg : Optional[str]
         The error message, if any.
     """
 
-    run_sec: Optional[List[float]]
+    run_secs: Optional[List[float]]
     error_msg: Optional[str]
 
     def __init__(
         self,
-        run_sec: Optional[List[float]],
+        run_secs: Optional[List[float]],
         error_msg: Optional[str],
     ) -> None:
         """Constructor
 
         Parameters
         ----------
-        run_sec : Optional[List[float]]
+        run_secs : Optional[List[float]]
             The run time in seconds.
         error_msg : Optional[str]
             The error message, if any.
         """
         self.__init_handle_by_constructor__(
             _ffi_api.RunnerResult,  # type: ignore # pylint: disable=no-member
-            run_sec,
+            run_secs,
             error_msg,
         )
 

@@ -63,7 +63,7 @@ class RPCRunnerFuture(RunnerFuture):
 
     def result(self) -> RunnerResult:
         try:
-            run_sec: List[float] = self.future.result()
+            run_secs: List[float] = self.future.result()
         except TimeoutError as exception:
             return RunnerResult(
                 None,
@@ -74,7 +74,7 @@ class RPCRunnerFuture(RunnerFuture):
                 None,
                 error_msg="RPCRunner: An exception occurred\n" + str(exception),
             )
-        return RunnerResult(run_sec, None)
+        return RunnerResult(run_secs, None)
 
 
 class RPCRunner(PyRunner):
