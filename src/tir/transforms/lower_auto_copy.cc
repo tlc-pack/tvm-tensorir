@@ -84,11 +84,6 @@ class AutoCopyMutator : public StmtExprMutator {
     int tot_threads = threadIdx_x_ * threadIdx_y_ * threadIdx_z_;
     int vector_len = vector_bytes * 8 / data_bits_;
     if (!loop || !is_zero(indexmod(loop->extent, (vector_len * tot_threads)))) {
-      if (!loop) {
-        LOG(INFO) << 1;
-      } else {
-        LOG(INFO) << loop->extent << ' ' << (vector_len * tot_threads);
-      }
       return body;
     }
     PrimExpr outer_loop_extent = indexdiv(loop->extent, tot_threads * vector_len);
@@ -288,56 +283,34 @@ class AutoCopyMutator : public StmtExprMutator {
     return ret;
   }
   
-  bool IsIdentical(const std::pair<Array<PrimExpr>, Array<Var>>& mapping) {
-    Array<PrimExpr> matching_pattern;
-    Array<Var> loop_vars;
-    std::tie(matching_pattern, loop_vars) = mapping;
-    for (int i = 0; i < static_cast<int>(matching_pattern.size()); i++) {
-      if (!loop_vars[i].same_as(matching_pattern[i])) {
-        return false;
-      }
-    }
-    return true;
-  }
-  
-  bool IsTranspose(const std::pair<Array<PrimExpr>, Array<Var>>& mapping) {
-    Array<PrimExpr> matching_pattern;
-    Array<Var> loop_vars;
-    std::tie(matching_pattern, loop_vars) = mapping;
-    if (matching_pattern.size() != 2) {
-      return false;
-    }
-    if (matching_pattern[0].same_as(loop_vars[1]) && matching_pattern[1].same_as(loop_vars[0])) {
-      return true;
-    } else {
-      return false;
-    }
-  }
-  
-  constexpr int simt_transpose_padding(int threads, int crosswise, int size_in_bits) {
-    return (size_in_bits >= 32 ?
-                               threads / crosswise / (size_in_bits / 32) :
-                               threads / crosswise * (32 / size_in_bits)
-    );
-  }
-  
   Array<Buffer> PadSharedMemory(const Array<Buffer>& buffers, Map<Buffer, Buffer>* buffer_map){
     Array<Buffer> result;
     
     for (const Buffer& buffer : buffers) {
       if (buffer.scope() == "shared") {
-        int pad_size = calculated_padding_size[buffer.get()];
-        ObjectPtr<BufferNode> n = make_object<BufferNode>(*buffer.get());
-        if (pad_size == -1) {
-          if(annotated_padding_size.count(buffer.get())){
-            pad_size = annotated_padding_size[buffer.get()];
-          } else {
-            pad_size = 0;
+        int type_factor = 32/buffer->dtype.bits();
+        int padding_space[]{0,type_factor,2*type_factor,4*type_factor,8*type_factor,16*type_factor};
+        int min_conflict_i;
+        int min_conflict=INT32_MAX;
+        const std::vector<int>& conflict = conflicts[buffer.get()];
+        ICHECK(fabs(std::pow(6,buffer->shape.size()-1)-conflict.size())<=1e-5);
+        for (int i = 0; i < conflict.size(); i++) {
+          if (min_conflict > conflict[i]) {
+            min_conflict = conflict[i];
+            min_conflict_i = i;
           }
         }
-        PrimExpr len = n->shape[n->shape.size() - 1];
-        n->shape.Set(n->shape.size() - 1, len + pad_size);
-        n->strides.clear();
+        std::vector<int> padding = getPadding(padding_space, min_conflict_i, buffer);
+        ObjectPtr<BufferNode> n = make_object<BufferNode>(*buffer.get());
+        Array<PrimExpr> strides;
+        strides.resize(n->shape.size());
+        PrimExpr stride = make_const(n->shape[0].dtype(), 1);
+        for (size_t i = n->shape.size(); i != 0; --i) {
+          size_t dim = i - 1;
+          strides.Set(dim, stride);
+          stride = stride * (n->shape[dim]+padding[dim]);
+        }
+        n->strides=strides;
         Buffer new_buffer(n);
         result.push_back(new_buffer);
         buffer_map->Set(buffer, new_buffer);
@@ -430,24 +403,136 @@ class AutoCopyMutator : public StmtExprMutator {
     Rewriter rewriter(buffer_map);
     return rewriter(stmt);
   }
+
   
-  void CalcPaddingSize(const BufferNode* buffer, const std::pair<Array<PrimExpr>, Array<Var>>& mapping,
-                       int crosswise){
-    if (IsIdentical(mapping)) {
-      if (!calculated_padding_size.count(buffer)) {
-        calculated_padding_size[buffer] = 0;
-      }
-    } else if (IsTranspose(mapping)) {
-      if (calculated_padding_size.count(buffer) && calculated_padding_size[buffer]!=0) {
-        calculated_padding_size[buffer]= -1;
-      } else {
-        calculated_padding_size[buffer]= simt_transpose_padding(32, crosswise, buffer->dtype.bits());
-      }
-    } else {
-      calculated_padding_size[buffer] = -1;
+  inline PrimExpr GetFlattenedIndices(Array<PrimExpr> indices, Buffer buffer, const std::vector<int>& padding){
+    PrimExpr ret=0;
+    for (int i = 0;i<static_cast<int>(indices.size());i++) {
+      ret*=(buffer->shape[i]+padding[i]);
+      ret+=indices[i];
     }
+    return ret;
   }
 
+  int CalcSharedMemoryBankConflict(Array<PrimExpr> indices, Buffer buffer,
+                                   const std::vector<const ForNode*>& bound_threads,
+                                   Map<Var, PrimExpr> substitute_map,
+                                   const std::vector<int>& padding) {
+    Var tx_var, ty_var, tz_var;
+    int prod = std::min(32, threadIdx_x_* threadIdx_y_* threadIdx_z_);
+    for (const ForNode* thread : bound_threads) {
+      String thread_tag = thread->thread_binding.value()->thread_tag;
+      if (thread_tag == "threadIdx.x") {
+        tx_var = thread->loop_var;
+      } else if (thread_tag == "threadIdx.y") {
+        ty_var = thread->loop_var;
+      } else if (thread_tag == "threadIdx.z") {
+        tz_var = thread->loop_var;
+      }
+    }
+    PrimExpr flattened_index =  GetFlattenedIndices(indices, buffer, padding);
+    int bank[32]{0};
+    for (int i = 0; i < prod; i++) {
+      if (tx_var.defined()) {
+        substitute_map.Set(tx_var, i % threadIdx_x_);
+      }
+      if (ty_var.defined()) {
+        substitute_map.Set(ty_var, i / threadIdx_x_ % threadIdx_y_);
+      }
+      if (tz_var.defined()) {
+        substitute_map.Set(tz_var, i / (threadIdx_x_* threadIdx_y_));
+      }
+      arith::Analyzer analyzer;
+      int type_factor = 32/buffer->dtype.bits();
+      ICHECK(type_factor!=0);
+      LOG(INFO)<<Substitute(flattened_index,
+                              substitute_map);
+      PrimExpr substituted_access = analyzer.Simplify(indexmod(indexdiv(Substitute(flattened_index,
+                                                                   substitute_map),type_factor),
+                                                               32));
+      int access_bank = substituted_access.as<IntImmNode>()->value;
+      bank[access_bank]++;
+    }
+    int conflict = 0;
+    for (int i = 0; i < 32; i++) {
+      conflict = std::max(conflict, bank[i]);
+    }
+    return conflict;
+  }
+  
+  inline std::vector<int> getPadding(int* padding_space, int idx, Buffer buffer){
+    std::vector<int> padding;
+    padding.resize(buffer->shape.size());
+    for (int j = static_cast<int>(buffer->shape.size()) - 1; j >= 1; j--) {
+      padding[j] = padding_space[idx%6];
+      idx/=6;
+    }
+    padding[0] = 0;
+    return std::move(padding);
+  }
+  
+  
+  void getConflictForAllPaddingSize(Stmt stmt){
+    Stmt body = stmt;
+    Map<Var, PrimExpr> substitute_map;
+    std::vector<const ForNode*> bound_threads;
+    int vectorize = 0;
+    while (const ForNode* loop = body.as<ForNode>()) {
+      substitute_map.Set(loop->loop_var, loop->min);
+      if (loop->kind == ForKind::kThreadBinding) {
+        bound_threads.push_back(loop);
+      } else if (loop->kind == ForKind::kVectorized) {
+        vectorize = loop->extent.as<IntImmNode>()->value;
+      }
+      body = loop->body;
+    }
+    for (const ForNode* loop : outer_loops_) {
+      substitute_map.Set(loop->loop_var, loop->min);
+    }
+    const BufferStoreNode* node = TVM_TYPE_AS(node, body, BufferStoreNode);
+    Buffer buffer;
+    Array<PrimExpr> indices;
+    if (node->buffer.scope() == "shared") {
+      buffer=node->buffer;
+      indices = node->indices;
+    } else  {
+      const BufferLoadNode* buf_load = node->value.as<BufferLoadNode>();
+      if (buf_load->buffer.scope() == "shared") {
+        buffer = buf_load->buffer;
+        indices = buf_load->indices;
+      } else {
+        return;
+      }
+    }
+
+    int type_factor = 32/buffer->dtype.bits();
+    int padding_space[]{0,type_factor,2*type_factor,4*type_factor,8*type_factor,16*type_factor};
+    int space_size = 1;
+    for (int i = 0; i < buffer->shape.size()-1; i++) {
+      space_size*=6;
+    }
+    std::vector<int> result;
+    for (int i = 0; i < space_size; i++) {
+      if (padding_space[i % 6] < vectorize && padding_space[i % 6]>0) {
+        result.push_back(64);
+        continue;
+      }
+      std::vector<int> padding = getPadding(padding_space, i, buffer);
+      result.push_back(CalcSharedMemoryBankConflict(indices,buffer,bound_threads,
+                                                    substitute_map,padding));
+    }
+    if (conflicts.count(buffer.get())) {
+      std::vector<int>& conflict = conflicts[buffer.get()];
+      ICHECK(conflict.size() ==result.size());
+      for (int i = 0; i < conflict.size(); i++) {
+        conflict[i]+=result[i];
+      }
+    } else {
+      conflicts[buffer.get()] = result;
+    }
+    LOG(INFO)<<AsArray<int, Integer>(conflicts[buffer.get()]);
+  }
+  
   Stmt VisitStmt_(const BlockNode* op) final {
     Block block;
     if (op->annotations.count("auto_copy") &&
@@ -457,17 +542,6 @@ class AutoCopyMutator : public StmtExprMutator {
       std::pair<Array<PrimExpr>, Array<Var>> mapping = GetMapping(block);
       block = RelaxThreads(block, mapping);
       BlockNode* n = block.CopyOnWrite();
-      if (src_scope_.rank == runtime::StorageRank::kShared) {
-        int row_extent = block->reads[0]->region[0]->extent.as<IntImmNode>()->value;
-        CalcPaddingSize(block->reads[0]->buffer.get(), mapping, row_extent);
-      } else if (tgt_scope_.rank == runtime::StorageRank::kShared) {
-        int row_extent = block->writes[0]->region[0]->extent.as<IntImmNode>()->value;
-        CalcPaddingSize(block->writes[0]->buffer.get(), mapping, row_extent);
-      }
-      if (op->annotations.count("padding")) {
-        annotated_padding_size[block->writes[0]->buffer.get()] = Downcast<IntImm>
-            (block->annotations["padding"])->value;
-      }
       if ((src_scope_.rank == runtime::StorageRank::kGlobal &&
            tgt_scope_.rank == runtime::StorageRank::kShared) ||
           (src_scope_.rank == runtime::StorageRank::kShared &&
@@ -481,6 +555,7 @@ class AutoCopyMutator : public StmtExprMutator {
         }
         bool need_inverse = src_scope_.rank == runtime::StorageRank::kShared;
         n->body = CoalesceGlobalLoad(block, mapping, vector_bytes, need_inverse);
+        getConflictForAllPaddingSize(n->body);
         n->alloc_buffers = PadSharedMemory(n->alloc_buffers, &padded_buffer_map_);
       }
     } else {
@@ -530,9 +605,8 @@ class AutoCopyMutator : public StmtExprMutator {
   int threadIdx_z_ = 1;
   int data_bits_ = -1;
   std::vector<const ForNode*> outer_loops_;
-  std::unordered_map<const BufferNode*, int> calculated_padding_size;
-  std::unordered_map<const BufferNode*, int> annotated_padding_size;
   Map<Buffer, Buffer> padded_buffer_map_;
+  std::unordered_map<const BufferNode*, std::vector<int>> conflicts;
 };
 
 namespace transform {
