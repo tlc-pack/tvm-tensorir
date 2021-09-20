@@ -30,10 +30,11 @@ from ..arg_info import ArgInfo, Args, PyArgsInfo
 from ..utils import get_global_func_with_default_on_worker
 from .runner import EvaluatorConfig, PyRunner, RunnerFuture, RunnerInput, RunnerResult
 
+
 class LocalRunnerFuture(RunnerFuture):
     future: concurrent.futures.Future
     timeout_sec: float
-    
+
     def __init__(self, future: concurrent.futures.Future, timeout_sec: float) -> None:
         """Constructor
         Parameters
@@ -46,7 +47,7 @@ class LocalRunnerFuture(RunnerFuture):
         super().__init__()
         self.future = future
         self.timeout_sec = timeout_sec
-    
+
     def done(self) -> bool:
         return self.future.done()
 
@@ -64,6 +65,7 @@ class LocalRunnerFuture(RunnerFuture):
                 error_msg="LocalRunner: An exception occurred\n" + str(exception),
             )
         return RunnerResult(run_sec, None)
+
 
 class LocalRunner(PyRunner):
     """Local runner
@@ -85,9 +87,10 @@ class LocalRunner(PyRunner):
         The popen pool executor.
     Note
     ----
-    Does not support customizd function name passing for f_alloc_argument, f_run_evaluator, 
+    Does not support customizd function name passing for f_alloc_argument, f_run_evaluator,
     f_cleanup. These functions must be passed directly.
     """
+
     timeout_sec: float
     evaluator_config: EvaluatorConfig
     cooldown_sec: float
@@ -116,14 +119,12 @@ class LocalRunner(PyRunner):
             ],
         ]
     ] = None
-    f_cleanup: Optional[
-        Union[str, Callable[[Optional[str], Optional[str]], None]]
-    ] = None
+    f_cleanup: Optional[Union[str, Callable[[Optional[str], Optional[str]], None]]] = None
 
     pool: PopenPoolExecutor
-    
+
     def __init__(
-		self,
+        self,
         timeout_sec: float,
         evaluator_config: Optional[EvaluatorConfig] = None,
         cooldown_sec: float = 0.0,
@@ -141,8 +142,7 @@ class LocalRunner(PyRunner):
         self.f_alloc_argument = f_alloc_argument
         self.f_run_evaluator = f_run_evaluator
         self.f_cleanup = f_cleanup
-        
-    
+
     def run(self, runner_inputs: List[RunnerInput]) -> List[RunnerFuture]:
         results: List[RunnerFuture] = []
         for runner_input in runner_inputs:
@@ -163,69 +163,71 @@ class LocalRunner(PyRunner):
             results.append(future)
         return results
 
-	@staticmethod
-    def _worker_func(
-        _f_alloc_argument: Optional[str],
-        _f_run_evaluator: Optional[str],
-        _f_cleanup: Optional[str],
-        evaluator_config: EvaluatorConfig,
-        alloc_repeat: int,
-        artifact_path: str,
-        device_type: str,
-        args_info: PyArgsInfo,
-    ) -> List[float]:
-        f_alloc_argument: Callable[
-            [Device, int, PyArgsInfo],
+
+@staticmethod
+def _worker_func(
+    _f_alloc_argument: Optional[str],
+    _f_run_evaluator: Optional[str],
+    _f_cleanup: Optional[str],
+    evaluator_config: EvaluatorConfig,
+    alloc_repeat: int,
+    artifact_path: str,
+    device_type: str,
+    args_info: PyArgsInfo,
+) -> List[float]:
+    f_alloc_argument: Callable[
+        [Device, int, PyArgsInfo],
+        List[Args],
+    ] = get_global_func_with_default_on_worker(
+        _f_alloc_argument,
+        default_alloc_argument,
+    )
+    f_run_evaluator: Callable[
+        [
+            Module,
+            Device,
+            EvaluatorConfig,
             List[Args],
-        ] = get_global_func_with_default_on_worker(
-            _f_alloc_argument,
-            default_alloc_argument,
+        ],
+        List[float],
+    ] = get_global_func_with_default_on_worker(
+        _f_run_evaluator,
+        default_run_evaluator,
+    )
+    f_cleanup: Callable[
+        [Optional[str], Optional[str]], None
+    ] = get_global_func_with_default_on_worker(
+        _f_cleanup,
+        default_cleanup,
+    )
+
+    @contextmanager
+    def resource_handler():
+        try:
+            yield
+        finally:
+            # Step 5. Clean up
+            f_cleanup()
+
+    with resource_handler():
+        # Step 1: create the local runtime module
+        rt_mod = tvm.module.load_module(artifact_path)
+        # Step 2: create the local device
+        device = tvm.ndarray.device(dev_type=device_type, dev_id=0)
+        # Step 3: Allocate input arguments
+        repeated_args: List[Args] = f_alloc_argument(
+            device,
+            alloc_repeat,
+            args_info,
         )
-        f_run_evaluator: Callable[
-            [
-                Module,
-                Device,
-                EvaluatorConfig,
-                List[Args],
-            ],
-            List[float],
-        ] = get_global_func_with_default_on_worker(
-            _f_run_evaluator,
-            default_run_evaluator,
+        # Step 4: Run time_evaluator
+        costs: List[float] = f_run_evaluator(
+            rt_mod,
+            device,
+            evaluator_config,
+            repeated_args,
         )
-        f_cleanup: Callable[
-            [Optional[str], Optional[str]], None
-        ] = get_global_func_with_default_on_worker(
-            _f_cleanup,
-            default_cleanup,
-        )
-        
-        @contextmanager
-        def resource_handler():
-            try:
-                yield
-            finally:
-                # Step 5. Clean up
-                f_cleanup()
-        with resource_handler():
-            # Step 1: create the local runtime module
-            rt_mod = tvm.module.load_module(artifact_path)
-            # Step 2: create the local device
-            device = tvm.ndarray.device(dev_type=device_type, dev_id=0)
-            # Step 3: Allocate input arguments
-            repeated_args: List[Args] = f_alloc_argument(
-                device,
-                alloc_repeat,
-                args_info,
-            )
-            # Step 4: Run time_evaluator
-            costs: List[float] = f_run_evaluator(
-                rt_mod,
-                device,
-                evaluator_config,
-                repeated_args,
-            )
-        return costs
+    return costs
 
 
 def default_alloc_argument(
@@ -251,6 +253,7 @@ def default_alloc_argument(
         repeated_args.append(args)
     return repeated_args
 
+
 def default_run_evaluator(
     rt_mod: Module,
     device: Device,
@@ -275,6 +278,6 @@ def default_run_evaluator(
     costs = [float(cost) for cost in itertools.chain.from_iterable(repeated_costs)]
     return costs
 
-def default_cleanup(
-) -> None:
+
+def default_cleanup() -> None:
     pass
