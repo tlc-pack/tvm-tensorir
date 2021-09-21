@@ -25,16 +25,12 @@ import tvm
 from tvm import tir
 from tvm.script import ty
 from tvm.tir import Schedule
-from tvm.ir import IRModule
 from tvm.meta_schedule import (
     JSONFileDatabase,
     TuningRecord,
-    WorkloadToken,
     WorkloadRegistry,
     ArgInfo,
     ScheduleFn,
-    PyDatabase,
-    TuneContext,
 )
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
@@ -126,13 +122,13 @@ def test_meta_schedule_tuning_record_round_trip():
         path = osp.join(tmpdir, "registry.json")
         reg = WorkloadRegistry(path, allow_missing=True)
         mod = Matmul()
-        token = reg.lookup_or_add(mod)
+        workload = reg.lookup_or_add(mod)
         (example_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(mod)
         trace = example_sch.trace
         record = TuningRecord(
             trace,
             [1.5, 2.5, 1.8],
-            token,
+            workload,
             tvm.target.Target("llvm"),
             ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
         )
@@ -160,19 +156,19 @@ def test_meta_schedule_database_add_entry():
             record_path=record_path, workload_path=workload_path
         )
         mod = Matmul()
-        token = database.lookup_or_add(mod)
+        workload = database.lookup_or_add(mod)
         (example_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(mod)
         trace = example_sch.trace
         record = TuningRecord(
             trace,
             [1.5, 2.5, 1.8],
-            token,
+            workload,
             tvm.target.Target("llvm"),
             ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
         )
         database.add(record)
         assert len(database) == 1
-        ret = database.get_top_k(token, 3)
+        ret = database.get_top_k(workload, 3)
         assert len(ret) == 1
         _equal_record(ret[0], record)
 
@@ -185,13 +181,13 @@ def test_meta_schedule_database_missing():
             record_path=record_path, workload_path=workload_path
         )
         mod = Matmul()
-        token = database.lookup_or_add(mod)
+        workload = database.lookup_or_add(mod)
         (example_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(mod)
         trace = example_sch.trace
         record = TuningRecord(
             trace,
             [1.5, 2.5, 1.8],
-            token,
+            workload,
             tvm.target.Target("llvm"),
             ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
         )
@@ -209,56 +205,56 @@ def test_meta_schedule_database_sorting():
             record_path=record_path, workload_path=workload_path
         )
         mod = Matmul()
-        token = database.lookup_or_add(mod)
+        workload = database.lookup_or_add(mod)
         (example_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(mod)
         trace = example_sch.trace
         records = [
             TuningRecord(
                 trace,
                 [7.0, 8.0, 9.0],
-                token,
+                workload,
                 tvm.target.Target("llvm"),
                 ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
             ),
             TuningRecord(
                 trace,
                 [1.0, 2.0, 3.0],
-                token,
+                workload,
                 tvm.target.Target("llvm"),
                 ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
             ),
             TuningRecord(
                 trace,
                 [4.0, 5.0, 6.0],
-                token,
+                workload,
                 tvm.target.Target("llvm"),
                 ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
             ),
             TuningRecord(
                 trace,
                 [1.1, 1.2, 600.0],
-                token,
+                workload,
                 tvm.target.Target("llvm"),
                 ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
             ),
             TuningRecord(
                 trace,
                 [1.0, 100.0, 6.0],
-                token,
+                workload,
                 tvm.target.Target("llvm"),
                 ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
             ),
             TuningRecord(
                 trace,
                 [4.0, 9.0, 8.0],
-                token,
+                workload,
                 tvm.target.Target("llvm"),
                 ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
             ),
         ]
         for record in records:
             database.add(record)
-        ret = database.get_top_k(token, 2)
+        ret = database.get_top_k(workload, 2)
         assert len(ret) == 2
         try:
             _equal_record(ret[0], records[2])
@@ -276,28 +272,28 @@ def test_meta_schedule_database_reload():
             record_path=record_path, workload_path=workload_path
         )
         mod = Matmul()
-        token = database.lookup_or_add(mod)
+        workload = database.lookup_or_add(mod)
         (example_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(mod)
         trace = example_sch.trace
         records = [
             TuningRecord(
                 trace,
                 [7.0, 8.0, 9.0],
-                token,
+                workload,
                 tvm.target.Target("llvm"),
                 ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
             ),
             TuningRecord(
                 trace,
                 [1.0, 2.0, 3.0],
-                token,
+                workload,
                 tvm.target.Target("llvm"),
                 ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
             ),
             TuningRecord(
                 trace,
                 [4.0, 5.0, 6.0],
-                token,
+                workload,
                 tvm.target.Target("llvm"),
                 ArgInfo.from_prim_func(func=mod["main"]),  # pylint: disable=unsubscriptable-object
             ),
@@ -307,8 +303,8 @@ def test_meta_schedule_database_reload():
         new_database = JSONFileDatabase(  # pylint: disable=unused-variable
             record_path=record_path, workload_path=workload_path
         )
-        token = new_database.lookup_or_add(mod)
-        ret = new_database.get_top_k(token, 2)
+        workload = new_database.lookup_or_add(mod)
+        ret = new_database.get_top_k(workload, 2)
         assert len(ret) == 2
         try:
             _equal_record(ret[0], records[2])

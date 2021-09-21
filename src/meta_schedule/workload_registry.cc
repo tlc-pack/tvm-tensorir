@@ -81,10 +81,10 @@ WorkloadToken WorkloadRegistryNode::LookupOrAdd(const IRModule& mod) {
   }
   // Case 2. Insertion succeeds: add to the lookup table
   token_id = this->workload_tokens_.size();
-  WorkloadToken token(mod, GetSHash(mod), token_id);
-  this->workload_tokens_.push_back(token);
-  JSONFileAppendLine(this->path, JSONObj2Str(token->AsJSON()));
-  return token;
+  WorkloadToken workload(mod, GetSHash(mod), token_id);
+  this->workload_tokens_.push_back(workload);
+  JSONFileAppendLine(this->path, JSONObj2Str(workload->AsJSON()));
+  return workload;
 }
 
 int64_t WorkloadRegistryNode::Size() const { return this->workload_tokens_.size(); }
@@ -103,9 +103,9 @@ WorkloadRegistry::WorkloadRegistry(String path, bool allow_missing) {
   n->mod2token_id_.reserve(json_objs.size());
   for (const ObjectRef& json_obj : json_objs) {
     int64_t token_id = n->workload_tokens_.size();
-    WorkloadToken token = WorkloadToken::FromJSON(json_obj, token_id);
-    n->mod2token_id_.emplace(token->mod, token_id);
-    n->workload_tokens_.push_back(token);
+    WorkloadToken workload = WorkloadToken::FromJSON(json_obj, token_id);
+    n->mod2token_id_.emplace(workload->mod, token_id);
+    n->workload_tokens_.push_back(workload);
   }
   data_ = std::move(n);
 }

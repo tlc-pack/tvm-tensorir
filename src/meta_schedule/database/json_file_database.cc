@@ -82,7 +82,8 @@ class JSONFileDatabaseNode : public DatabaseNode {
     results.reserve(top_k);
     int counter = 0;
     for (const TuningRecord& record : this->records_)
-      if (record->workload->shash == workload->shash) {
+      if (record->workload->shash == workload->shash &&
+          StructuralEqual()(record->workload->mod, workload->mod)) {
         results.push_back(record);
         if (++counter == top_k) {
           break;
