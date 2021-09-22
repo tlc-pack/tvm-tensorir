@@ -32,6 +32,7 @@ from tvm.meta_schedule import (
     BuilderInput,
     EvaluatorConfig,
     LocalBuilder,
+    LocalRunner,
     PyRunner,
     RPCConfig,
     RPCRunner,
@@ -157,6 +158,44 @@ def test_meta_schedule_single_run():
             # Run the module
             (runner_future,) = runner.run([runner_input])
             runner_result = runner_future.result()
+    assert runner_result.error_msg is None
+    for result in runner_result.run_sec:
+        if isinstance(result, FloatImm):
+            result = result.value
+        assert isinstance(result, float)
+        assert result >= 0.0
+    _clean_build(builder_result.artifact_path)
+
+
+def test_meta_schedule_local_single_run():
+    """Test meta schedule local runner for a single run"""
+    # Build the module
+    mod = MatmulModule()
+    builder = LocalBuilder()
+    (builder_result,) = builder.build([BuilderInput(mod, Target("llvm"))])
+    assert builder_result.artifact_path is not None
+    assert builder_result.error_msg is None
+
+    runner_input = RunnerInput(
+        builder_result.artifact_path,
+        "llvm",
+        [
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+        ],
+    )
+
+    evaluator_config = EvaluatorConfig(
+        number=1,
+        repeat=1,
+        min_repeat_ms=0,
+        enable_cpu_cache_flush=False,
+    )
+    runner = LocalRunner(timeout_sec=100, evaluator_config=evaluator_config)
+    # Run the module
+    (runner_future,) = runner.run([runner_input])
+    runner_result = runner_future.result()
     assert runner_result.error_msg is None
     for result in runner_result.run_sec:
         if isinstance(result, FloatImm):

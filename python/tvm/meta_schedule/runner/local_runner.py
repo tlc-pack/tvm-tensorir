@@ -17,9 +17,6 @@
 """Local Runner"""
 import concurrent.futures
 import itertools
-import os
-import os.path as osp
-import shutil
 from contextlib import contextmanager
 from typing import Callable, List, Optional, Union
 import tvm
@@ -32,7 +29,7 @@ from .runner import EvaluatorConfig, PyRunner, RunnerFuture, RunnerInput, Runner
 
 
 class LocalRunnerFuture(RunnerFuture):
-    future: concurrent.futures.Future
+    _result: Union[List[float], str]
     timeout_sec: float
 
     def __init__(self, result: Union[List[float], str], timeout_sec: float = None) -> None:
@@ -46,16 +43,16 @@ class LocalRunnerFuture(RunnerFuture):
             The timeout in seconds.
         """
         super().__init__()
-        self.result = result
+        self._result = result
         self.timeout_sec = timeout_sec
 
     def done(self) -> bool:
         return True
 
     def result(self) -> RunnerResult:
-        if isinstance(self.result, str):
-            return RunnerResult(None, error_msg=self.result)
-        return RunnerResult(self.result, None)
+        if isinstance(self._result, str):
+            return RunnerResult(None, error_msg=self._result)
+        return RunnerResult(self._result, None)
 
 
 class LocalRunner(PyRunner):
@@ -161,6 +158,7 @@ class LocalRunner(PyRunner):
                 result: str = f"LocalRunner: Timeout, killed after {self.timeout_sec} seconds\n"
             except Exception as exception:  # pylint: disable=broad-except
                 result: str = "LocalRunner: An exception occurred\n" + str(exception)
+            print(result)
             local_future = LocalRunnerFuture(result=result, timeout_sec=self.timeout_sec)
             results.append(local_future)
         return results
@@ -212,9 +210,9 @@ class LocalRunner(PyRunner):
 
         with resource_handler():
             # Step 1: create the local runtime module
-            rt_mod = tvm.module.load_module(artifact_path)
+            rt_mod = tvm.runtime.load_module(artifact_path)
             # Step 2: create the local device
-            device = tvm.ndarray.device(dev_type=device_type, dev_id=0)
+            device = tvm.runtime.device(dev_type=device_type, dev_id=0)
             # Step 3: Allocate input arguments
             repeated_args: List[Args] = f_alloc_argument(
                 device,
