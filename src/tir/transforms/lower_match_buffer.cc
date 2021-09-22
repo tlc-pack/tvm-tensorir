@@ -187,8 +187,8 @@ class MatchBufferLower : public StmtExprMutator {
 
       Load load = Downcast<Load>(source_buffer.vload(indices, source_buffer->dtype));
       Bind(buffer->elem_offset, load->index, buffer->name + ".elem_offset");
-      CHECK(analyzer_.CanProve(truncmod(load->index, buffer->offset_factor) == 0))
-          << "The source elem_offset " << load->index
+      CHECK(analyzer_.CanProve(truncmod(buffer->elem_offset, buffer->offset_factor) == 0))
+          << "The source elem_offset " << buffer->elem_offset
           << " does not satisfy the offset_factor " << buffer->offset_factor << ".";
     }
 
