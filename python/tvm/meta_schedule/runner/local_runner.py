@@ -35,12 +35,12 @@ class LocalRunnerFuture(RunnerFuture):
     future: concurrent.futures.Future
     timeout_sec: float
 
-    def __init__(self, result: List[float], timeout_sec: float = None) -> None:
+    def __init__(self, result: Union[List[float], str], timeout_sec: float = None) -> None:
         """Constructor
 
         Parameters
         ----------
-        result: List[float]
+        result: Union[List[float], str]
             The result of this LocalRunnerFuture to avoid async behavior
         timeout_sec: float
             The timeout in seconds.
@@ -53,18 +53,8 @@ class LocalRunnerFuture(RunnerFuture):
         return True
 
     def result(self) -> RunnerResult:
-        try:
-            run_sec: List[float] = self.future.result()
-        except TimeoutError as exception:
-            return RunnerResult(
-                None,
-                error_msg=f"LocalRunner: Timeout, killed after {self.timeout_sec} seconds",
-            )
-        except Exception as exception:  # pylint: disable=broad-except
-            return RunnerResult(
-                None,
-                error_msg="LocalRunner: An exception occurred\n" + str(exception),
-            )
+        if isinstance(self.result, str):
+            return RunnerResult(None, error_msg=self.result)
         return RunnerResult(self.result, None)
 
 
@@ -165,8 +155,13 @@ class LocalRunner(PyRunner):
                 str(runner_input.device_type),
                 tuple(arg_info.as_python() for arg_info in runner_input.args_info),
             )
-            local_future = LocalRunnerFuture(result=future.result(), timeout_sec=self.timeout_sec)
-
+            try:
+                result: List[float] = future.result()
+            except TimeoutError as exception:
+                result: str = f"LocalRunner: Timeout, killed after {self.timeout_sec} seconds\n"
+            except Exception as exception:  # pylint: disable=broad-except
+                result: str = "LocalRunner: An exception occurred\n" + str(exception)
+            local_future = LocalRunnerFuture(result=result, timeout_sec=self.timeout_sec)
             results.append(local_future)
         return results
 
