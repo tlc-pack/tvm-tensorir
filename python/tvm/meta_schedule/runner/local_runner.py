@@ -29,36 +29,29 @@ from .runner import EvaluatorConfig, PyRunner, RunnerFuture, RunnerInput, Runner
 
 
 class LocalRunnerFuture(RunnerFuture):
-    _result: Union[List[float], str]
-    timeout_sec: float
+    res: List[float]
+    error_message: str
 
-    def __init__(self, result: Union[List[float], str], timeout_sec: float = None) -> None:
+    def __init__(self, result: List[float] = None, error_message: str = None) -> None:
         """Constructor
 
         Parameters
         ----------
-        result: Union[List[float], str]
-            The result of this LocalRunnerFuture to avoid async behavior
-        timeout_sec: float
-            The timeout in seconds.
+        res: List[float]
+            The result of this LocalRunnerFuture
+        error_message: str
+            The stringfied error message of any exception during execution
 
-        Note
-        ----
-        List[float] will be passed here if the run is successful and str if the run fails.
-        Note that a str result is used as error_msg and List[float] is used as the result
-        body.
         """
         super().__init__()
-        self._result = result
-        self.timeout_sec = timeout_sec
+        self.res = result
+        self.error_message = error_message
 
     def done(self) -> bool:
         return True
 
     def result(self) -> RunnerResult:
-        if isinstance(self._result, str):
-            return RunnerResult(None, error_msg=self._result)
-        return RunnerResult(self._result, None)
+        return RunnerResult(self.res, self.error_message)
 
 
 class LocalRunner(PyRunner):
@@ -161,11 +154,16 @@ class LocalRunner(PyRunner):
             )
             try:
                 result: List[float] = future.result()
+                error_message: str = None
             except TimeoutError as exception:
-                result: str = f"LocalRunner: Timeout, killed after {self.timeout_sec} seconds\n"
+                result: List[float] = None
+                error_message: str = (
+                    f"LocalRunner: Timeout, killed after {self.timeout_sec} seconds\n"
+                )
             except Exception as exception:  # pylint: disable=broad-except
-                result: str = "LocalRunner: An exception occurred\n" + str(exception)
-            local_future = LocalRunnerFuture(result=result, timeout_sec=self.timeout_sec)
+                result: List[float] = None
+                error_message: str = "LocalRunner: An exception occurred\n" + str(exception)
+            local_future = LocalRunnerFuture(result=result, error_message=error_message)
             results.append(local_future)
         return results
 
