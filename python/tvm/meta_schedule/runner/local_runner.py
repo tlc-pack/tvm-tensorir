@@ -41,6 +41,12 @@ class LocalRunnerFuture(RunnerFuture):
             The result of this LocalRunnerFuture to avoid async behavior
         timeout_sec: float
             The timeout in seconds.
+
+        Note
+        ----
+        List[float] will be passed here if the run is successful and str if the run fails.
+        Note that a str result is used as error_msg and List[float] is used as the result
+        body.
         """
         super().__init__()
         self._result = result
@@ -74,6 +80,7 @@ class LocalRunner(PyRunner):
         The function name to cleanup the session or the function itself.
     pool: PopenPoolExecutor
         The popen pool executor.
+
     Note
     ----
     Does not support customizd function name passing for f_alloc_argument, f_run_evaluator,
@@ -158,7 +165,6 @@ class LocalRunner(PyRunner):
                 result: str = f"LocalRunner: Timeout, killed after {self.timeout_sec} seconds\n"
             except Exception as exception:  # pylint: disable=broad-except
                 result: str = "LocalRunner: An exception occurred\n" + str(exception)
-            print(result)
             local_future = LocalRunnerFuture(result=result, timeout_sec=self.timeout_sec)
             results.append(local_future)
         return results
