@@ -28,17 +28,19 @@ from .runner import EvaluatorConfig, PyRunner, RunnerFuture, RunnerInput, Runner
 
 
 class LocalRunnerFuture(RunnerFuture):
-    res: List[float]
-    error_message: str
+    res: Optional[List[float]]
+    error_message: Optional[str]
 
-    def __init__(self, result: List[float] = None, error_message: str = None) -> None:
+    def __init__(
+        self, result: Optional[List[float]] = None, error_message: Optional[str] = None
+    ) -> None:
         """Constructor
 
         Parameters
         ----------
-        res: List[float]
+        res: Optional[List[float]]
             The result of this LocalRunnerFuture
-        error_message: str
+        error_message: Optional[str]
             The stringfied error message of any exception during execution
 
         """
