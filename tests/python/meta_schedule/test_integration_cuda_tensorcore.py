@@ -138,25 +138,28 @@ def test_integration_matmul():
             ms.postproc.verify_gpu_code(),
         ],
     )
-    evolutionary = ms.strategy.Evolutionary(
-            total_measures=256,
-            num_measures_per_iter=16,
-            population=128,
-            init_measured_ratio=0.2,
-            genetic_algo_iters=10,
-            p_mutate=0.85,
-            mutator_probs={
-                ms.mutator.mutate_tile_size(): 1.0,
-            },
-            cost_model=ms.XGBModel(
-                num_warmup_samples=0,
-            ),
-            eps_greedy=0.05,
-        )
+    # Evolutionary search doesn't support using result of sch.get() as the split factor.
+    # Enable this when we have postprocessors for auto tensorization.
+    # evolutionary = ms.strategy.Evolutionary(
+    #         total_measures=256,
+    #         num_measures_per_iter=16,
+    #         population=128,
+    #         init_measured_ratio=0.2,
+    #         genetic_algo_iters=10,
+    #         p_mutate=0.85,
+    #         mutator_probs={
+    #             ms.mutator.mutate_tile_size(): 1.0,
+    #         },
+    #         cost_model=ms.XGBModel(
+    #             num_warmup_samples=0,
+    #         ),
+    #         eps_greedy=0.05,
+    #     )
+    replay = ms.strategy.Replay(256)
     sch = ms.autotune(
         task=task,
         space=space,
-        strategy=evolutionary,
+        strategy=replay,
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),
