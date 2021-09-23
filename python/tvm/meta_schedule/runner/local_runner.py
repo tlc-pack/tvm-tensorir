@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 """Local Runner"""
-import concurrent.futures
 import itertools
 from contextlib import contextmanager
 from typing import Callable, List, Optional, Union
