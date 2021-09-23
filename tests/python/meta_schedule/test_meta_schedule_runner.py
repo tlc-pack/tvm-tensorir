@@ -507,6 +507,57 @@ def test_meta_schedule_rpc_runner_exception():
     assert runner_result.run_sec is None
 
 
+def test_meta_schedule_local_runner_exception():
+    """Test meta schedule Local Runner time out"""
+    mod = MatmulModule()
+    builder = LocalBuilder()
+    (builder_result,) = builder.build([BuilderInput(mod, Target("llvm"))])
+    assert builder_result.artifact_path is not None
+    assert builder_result.error_msg is None
+
+    runner_input = RunnerInput(
+        builder_result.artifact_path,
+        "llvm",
+        [
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+        ],
+    )
+
+    def initializer():
+        @register_func("meta_schedule.runner.test_exception")
+        def timeout_session_creator(  # pylint: disable=unused-variable
+            device: Device,  # pylint: disable=unused-argument
+            alloc_repeat: int,  # pylint: disable=unused-argument
+            args_info: PyArgsInfo,  # pylint: disable=unused-argument
+        ) -> RPCSession:
+            raise Exception("Test")
+
+    evaluator_config = EvaluatorConfig(
+        number=1,
+        repeat=1,
+        min_repeat_ms=0,
+        enable_cpu_cache_flush=False,
+    )
+
+    runner = LocalRunner(
+        timeout_sec=1,
+        evaluator_config=evaluator_config,
+        initializer=initializer,
+        f_alloc_argument="meta_schedule.runner.test_exception",
+    )
+
+    # Run the module
+    (runner_future,) = runner.run([runner_input])
+    runner_result = runner_future.result()
+
+    assert runner_result.error_msg is not None and runner_result.error_msg.startswith(
+        "LocalRunner: An exception occurred\n"
+    )
+    assert runner_result.run_sec is None
+
+
 def test_meta_schedule_runner_matmul_test():
     """Test meta schedule runner with add module"""
 
