@@ -814,15 +814,23 @@ class PostprocVerifyGPUCode {
 
   static tir::transform::Sequential MakePasses() {
     return tir::transform::Sequential({
-        tir::transform::InjectPrefetch(),       //
-        tir::transform::AllreduceTransform(),   //
-        tir::transform::BufferFlatten(),        //
-        tir::transform::NarrowDataType(32),     //
-        tir::transform::Simplify(),             //
-        tir::transform::VectorizeLoop(true),    //
-        tir::transform::InjectVirtualThread(),  //
-        tir::transform::StorageRewrite(),       //
-        tir::transform::Simplify()              //
+        tir::transform::AllreduceTransform(),                     //
+        tir::transform::LowerInitBlock(),                         //
+        tir::transform::PlanAndUpdateBufferAllocationLocation(),  //
+        tir::transform::ConvertBlocksToOpaque(),                  //
+        tir::transform::CompactBufferAllocation(),                //
+        tir::transform::LowerMatchBuffer(),                       //
+        tir::transform::Simplify(),                               //
+        tir::transform::LowerLogicalLayout(),                     //
+        tir::transform::LowerLogicalIntrin(),                     //
+        tir::transform::FlattenBuffer(),                          //
+        tir::transform::UnifyThreadBinding(),                     //
+        tir::transform::NarrowDataType(32),                       //
+        tir::transform::Simplify(),                               //
+        tir::transform::VectorizeLoop(true),                      //
+        tir::transform::InjectVirtualThread(),                    //
+        tir::transform::StorageRewrite(),                         //
+        tir::transform::Simplify()                                //
     });
   }
 
