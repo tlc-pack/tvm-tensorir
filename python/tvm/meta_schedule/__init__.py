@@ -25,6 +25,8 @@ from .runner import (
     RPCConfig,
     RPCRunner,
     RPCRunnerFuture,
+    LocalRunner,
+    LocalRunnerFuture,
     RunnerFuture,
     RunnerInput,
     RunnerResult,

@@ -18,3 +18,4 @@
 from .runner import PyRunner, Runner, RunnerFuture, RunnerInput, RunnerResult, EvaluatorConfig
 from .rpc_runner import RPCRunner, RPCRunnerFuture
 from .rpc_config import RPCConfig
+from .local_runner import LocalRunner, LocalRunnerFuture
