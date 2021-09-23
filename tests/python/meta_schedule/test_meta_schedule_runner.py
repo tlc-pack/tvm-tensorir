@@ -120,8 +120,8 @@ def _clean_build(artifact_path: str) -> None:
         raise RuntimeError("Unable to find remove_build_dir function.")
 
 
-def test_meta_schedule_single_run():
-    """Test meta schedule runner for a single run"""
+def test_meta_schedule_rpc_single_run():
+    """Test meta schedule rpc runner for a single run"""
     # Build the module
     mod = MatmulModule()
     builder = LocalBuilder()
@@ -205,8 +205,8 @@ def test_meta_schedule_local_single_run():
     _clean_build(builder_result.artifact_path)
 
 
-def test_meta_schedule_multiple_runs():
-    """Test meta schedule runner for multiple runs"""
+def test_meta_schedule_rpc_multiple_runs():
+    """Test meta schedule rpc runner for multiple runs"""
     # Build the module
     mods = [
         MatmulModule(),
@@ -264,6 +264,69 @@ def test_meta_schedule_multiple_runs():
             # Run the module
             runner_futures = runner.run(runner_inputs)
             runner_results = [runner_future.result() for runner_future in runner_futures]
+
+    for runner_result in runner_results:
+        assert runner_result.error_msg is None
+        for result in runner_result.run_sec:
+            if isinstance(result, FloatImm):
+                result = result.value
+            assert isinstance(result, float)
+            assert result >= 0.0
+
+    for builder_result in builder_results:
+        _clean_build(builder_result.artifact_path)
+
+
+def test_meta_schedule_local_multiple_runs():
+    """Test meta schedule local runner for multiple runs"""
+    # Build the module
+    mods = [
+        MatmulModule(),
+        MatmulReluModule(),
+        BatchMatmulModule(),
+    ]
+    builder = LocalBuilder()
+    builder_inputs = [BuilderInput(mod, Target("llvm")) for mod in mods]
+    builder_results = builder.build(builder_inputs)
+    for builder_result in builder_results:
+        assert builder_result.artifact_path is not None
+        assert builder_result.error_msg is None
+
+    args_infos = [
+        [
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+        ],
+        [
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+        ],
+        [
+            TensorArgInfo("float32", [16, MATMUL_M, MATMUL_M]),
+            TensorArgInfo("float32", [16, MATMUL_M, MATMUL_M]),
+            TensorArgInfo("float32", [16, MATMUL_M, MATMUL_M]),
+        ],
+    ]
+
+    runner_inputs = [
+        RunnerInput(builder_results[i].artifact_path, "llvm", args_infos[i])
+        for i in range(len(mods))
+    ]
+
+    evaluator_config = EvaluatorConfig(
+        number=1,
+        repeat=1,
+        min_repeat_ms=0,
+        enable_cpu_cache_flush=False,
+    )
+
+    runner = LocalRunner(timeout_sec=100, evaluator_config=evaluator_config)
+
+    # Run the module
+    runner_futures = runner.run(runner_inputs)
+    runner_results = [runner_future.result() for runner_future in runner_futures]
 
     for runner_result in runner_results:
         assert runner_result.error_msg is None
@@ -338,6 +401,57 @@ def test_meta_schedule_rpc_runner_time_out():
 
     assert runner_result.error_msg is not None and runner_result.error_msg.startswith(
         "RPCRunner: Timeout, killed after"
+    )
+    assert runner_result.run_sec is None
+
+
+def test_meta_schedule_local_runner_time_out():
+    """Test meta schedule Local Runner time out"""
+    mod = MatmulModule()
+    builder = LocalBuilder()
+    (builder_result,) = builder.build([BuilderInput(mod, Target("llvm"))])
+    assert builder_result.artifact_path is not None
+    assert builder_result.error_msg is None
+
+    runner_input = RunnerInput(
+        builder_result.artifact_path,
+        "llvm",
+        [
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+            TensorArgInfo("float32", (MATMUL_N, MATMUL_N)),
+        ],
+    )
+
+    def initializer():
+        @register_func("meta_schedule.runner.test_time_out")
+        def timeout_session_creator(  # pylint: disable=unused-variable
+            device: Device,  # pylint: disable=unused-argument
+            alloc_repeat: int,  # pylint: disable=unused-argument
+            args_info: PyArgsInfo,  # pylint: disable=unused-argument
+        ) -> RPCSession:
+            time.sleep(2)
+
+    evaluator_config = EvaluatorConfig(
+        number=1,
+        repeat=1,
+        min_repeat_ms=0,
+        enable_cpu_cache_flush=False,
+    )
+
+    runner = LocalRunner(
+        timeout_sec=1,
+        evaluator_config=evaluator_config,
+        initializer=initializer,
+        f_alloc_argument="meta_schedule.runner.test_time_out",
+    )
+
+    # Run the module
+    (runner_future,) = runner.run([runner_input])
+    runner_result = runner_future.result()
+
+    assert runner_result.error_msg is not None and runner_result.error_msg.startswith(
+        "LocalRunner: Timeout, killed after"
     )
     assert runner_result.run_sec is None
 
