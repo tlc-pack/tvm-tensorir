@@ -498,33 +498,44 @@ class AutoCopyMutator : public StmtExprMutator {
   }
 
   int CalcSharedMemoryBankConflict(Array<PrimExpr> indices, Buffer buffer,
-                                   const std::vector<const ForNode*>& bound_threads,
+                                   const std::vector<const ForNode*>& warp_access_loops,
                                    Map<Var, PrimExpr> substitute_map,
                                    const std::vector<int>& padding) {
-    Var tx_var, ty_var, tz_var;
+    Var tx_var, ty_var, tz_var, vectorize_var;
     int prod = std::min(32, threadIdx_x_* threadIdx_y_* threadIdx_z_);
-    for (const ForNode* thread : bound_threads) {
-      String thread_tag = thread->thread_binding.value()->thread_tag;
+    int vectorize=1;
+    for (const ForNode* loop : warp_access_loops) {
+      if (loop->kind == ForKind::kVectorized) {
+        vectorize_var = loop->loop_var;
+        vectorize = loop->extent.as<IntImmNode>()->value;
+        prod*=vectorize;
+        continue;
+      }
+      String thread_tag = loop->thread_binding.value()->thread_tag;
       if (thread_tag == "threadIdx.x") {
-        tx_var = thread->loop_var;
+        tx_var = loop->loop_var;
       } else if (thread_tag == "threadIdx.y") {
-        ty_var = thread->loop_var;
+        ty_var = loop->loop_var;
       } else if (thread_tag == "threadIdx.z") {
-        tz_var = thread->loop_var;
+        tz_var = loop->loop_var;
       }
     }
     PrimExpr flattened_index =  GetFlattenedIndices(indices, buffer, padding);
     int bank[32]{0};
     for (int i = 0; i < prod; i++) {
+      if (vectorize_var.defined()) {
+        substitute_map.Set(vectorize_var, i% vectorize);
+      }
       if (tx_var.defined()) {
-        substitute_map.Set(tx_var, i % threadIdx_x_);
+        substitute_map.Set(tx_var, i /vectorize % threadIdx_x_);
       }
       if (ty_var.defined()) {
-        substitute_map.Set(ty_var, i / threadIdx_x_ % threadIdx_y_);
+        substitute_map.Set(ty_var, i / (vectorize*threadIdx_x_) % threadIdx_y_);
       }
       if (tz_var.defined()) {
-        substitute_map.Set(tz_var, i / (threadIdx_x_* threadIdx_y_));
+        substitute_map.Set(tz_var, i / (vectorize*threadIdx_x_* threadIdx_y_) );
       }
+
       arith::Analyzer analyzer;
       int type_factor = 32/buffer->dtype.bits();
       ICHECK(type_factor!=0);
@@ -556,15 +567,16 @@ class AutoCopyMutator : public StmtExprMutator {
   void getConflictForAllPaddingSize(Stmt stmt){
     Stmt body = stmt;
     Map<Var, PrimExpr> substitute_map;
-    std::vector<const ForNode*> bound_threads;
+    std::vector<const ForNode*> warp_access_loops;
     int vectorize = 1;
     PrimExpr outer_loop_ct=1;
     while (const ForNode* loop = body.as<ForNode>()) {
       substitute_map.Set(loop->loop_var, loop->min);
       if (loop->kind == ForKind::kThreadBinding) {
-        bound_threads.push_back(loop);
+        warp_access_loops.push_back(loop);
       } else if (loop->kind == ForKind::kVectorized) {
         vectorize = loop->extent.as<IntImmNode>()->value;
+        warp_access_loops.push_back(loop);
       }
       outer_loop_ct *=loop->extent;
       body = loop->body;
@@ -604,10 +616,13 @@ class AutoCopyMutator : public StmtExprMutator {
       }
       std::vector<int> padding = getPadding(padding_space, i, buffer);
       int64_t outer_extents = analyzer.Simplify(outer_loop_ct).as<IntImmNode>()->value;
+      LOG(INFO)<<outer_extents;
+      LOG(INFO)<<CalcSharedMemoryBankConflict(indices, buffer, warp_access_loops, substitute_map,
+                                                padding);
       result.push_back(
           outer_extents *
-          (CalcSharedMemoryBankConflict(indices, buffer, bound_threads, substitute_map, padding) /
-               vectorize -1) * vectorize);
+          (CalcSharedMemoryBankConflict(indices, buffer, warp_access_loops, substitute_map, padding) /
+               vectorize -1));
     }
     if (conflicts.count(buffer.get())) {
       std::vector<int64_t>& conflict = conflicts[buffer.get()];
@@ -621,6 +636,7 @@ class AutoCopyMutator : public StmtExprMutator {
     for (const auto& e : conflicts[buffer.get()]) {
       std::cout<<e<<" ";
     }
+    std::cout<<std::endl;
   }
   
   Stmt VisitStmt_(const BlockNode* op) final {
