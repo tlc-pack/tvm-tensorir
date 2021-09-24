@@ -92,17 +92,17 @@ def test_meta_schedule_workload_token_round_trip():
     mod = Matmul()
     shash = structural_hash(mod)
     shash = str(shash)
-    token = WorkloadToken(mod, shash, token_id=0)
-    json_token = token.as_json()
-    new_token = WorkloadToken.from_json(json_token, token_id=1)
-    assert token.shash == new_token.shash
-    tvm.ir.assert_structural_equal(token.mod, new_token.mod)
+    workload = WorkloadToken(mod, shash, token_id=0)
+    json_token = workload.as_json()
+    new_workload = WorkloadToken.from_json(json_token, token_id=1)
+    assert workload.shash == new_token.shash
+    tvm.ir.assert_structural_equal(toworkloadken.mod, new_token.mod)
 
 
 def test_meta_schedule_workload_token_wrong_shash():
     mod = Matmul()
-    token = WorkloadToken(mod, "wrong_hash_prefix_" + structural_hash(mod), token_id=0)
-    json_token = token.as_json()
+    workload = WorkloadToken(mod, "wrong_hash_prefix_" + structural_hash(mod), token_id=0)
+    json_token = workload.as_json()
     with pytest.raises(ValueError, match="Structural hash changed."):
         WorkloadToken.from_json(json_token, token_id=1)
 

@@ -51,7 +51,7 @@ class JSONFileDatabaseNode : public DatabaseNode {
   /*! \brief The workload registry. */
   WorkloadRegistry reg{nullptr};
   /*! \brief The database records organized using a set. */
-  std::set<TuningRecord, SortByMeanRunSecs> records_;
+  std::multiset<TuningRecord, SortByMeanRunSecs> records_;
 
   static constexpr const char* _type_key = "meta_schedule.JSONFileDatabase";
   TVM_DECLARE_FINAL_OBJECT_INFO(JSONFileDatabaseNode, DatabaseNode);
@@ -82,7 +82,8 @@ class JSONFileDatabaseNode : public DatabaseNode {
     results.reserve(top_k);
     int counter = 0;
     for (const TuningRecord& record : this->records_)
-      if (record->workload->token_id_ == workload->token_id_) {
+      if (record->workload->shash == workload->shash &&
+          StructuralEqual()(record->workload->mod, workload->mod)) {
         results.push_back(record);
         if (++counter == top_k) {
           break;

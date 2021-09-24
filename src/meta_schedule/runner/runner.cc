@@ -16,9 +16,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "../utils.h"
-
 #include <tvm/runtime/registry.h>
+
+#include "../utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -31,9 +31,9 @@ RunnerInput::RunnerInput(String artifact_path, String device_type, Array<ArgInfo
   this->data_ = n;
 }
 
-RunnerResult::RunnerResult(Optional<Array<FloatImm>> run_sec, Optional<String> error_msg) {
+RunnerResult::RunnerResult(Optional<Array<FloatImm>> run_secs, Optional<String> error_msg) {
   ObjectPtr<RunnerResultNode> n = make_object<RunnerResultNode>();
-  n->run_sec = run_sec;
+  n->run_secs = run_secs;
   n->error_msg = error_msg;
   this->data_ = n;
 }
@@ -65,8 +65,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.RunnerInput")
     });
 
 TVM_REGISTER_GLOBAL("meta_schedule.RunnerResult")
-    .set_body_typed([](Array<FloatImm> run_sec, Optional<String> error_msg) -> RunnerResult {
-      return RunnerResult(run_sec, error_msg);
+    .set_body_typed([](Array<FloatImm> run_secs, Optional<String> error_msg) -> RunnerResult {
+      return RunnerResult(run_secs, error_msg);
     });
 
 TVM_REGISTER_GLOBAL("meta_schedule.RunnerFuture")
