@@ -616,9 +616,6 @@ class AutoCopyMutator : public StmtExprMutator {
       }
       std::vector<int> padding = getPadding(padding_space, i, buffer);
       int64_t outer_extents = analyzer.Simplify(outer_loop_ct).as<IntImmNode>()->value;
-      LOG(INFO)<<outer_extents;
-      LOG(INFO)<<CalcSharedMemoryBankConflict(indices, buffer, warp_access_loops, substitute_map,
-                                                padding);
       result.push_back(
           outer_extents *
           (CalcSharedMemoryBankConflict(indices, buffer, warp_access_loops, substitute_map, padding) /
