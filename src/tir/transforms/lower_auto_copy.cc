@@ -137,6 +137,24 @@ class AutoCopyMutator : public StmtExprMutator {
     return std::move(new_loop);
   }
 
+//  void NormalizeBuffer(Stmt stmt, Buffer buffer){
+//    if (!buffer->strides.empty()) {
+//      return;
+//    }
+//    Array<PrimExpr> new_shape;
+//    for (int i = 0; i < static_cast<int>(buffer->shape.size()); i++) {
+//      if (!is_one(buffer->shape[i]) ) {
+//        new_shape.push_back(buffer->shape[i]);
+//      }
+//    }
+//    if (new_shape.size() == buffer->shape.size()) {
+//      return;
+//    }
+//    ObjectPtr<BufferNode> n = make_object<BufferNode>(*buffer.get());
+//
+//  }
+  
+  
   std::pair<Array<PrimExpr>, Array<Var>> GetMapping(Block block) {
     Stmt body = block->body;
     Array<Var> loop_vars;
@@ -152,7 +170,10 @@ class AutoCopyMutator : public StmtExprMutator {
     Array<PrimExpr> result;
     arith::Analyzer analyzer;
     for (int i = 0; i < static_cast<int>(write_region.size()); i++) {
-      result.push_back(analyzer.Simplify(write_index[i] - write_region[i]->min));
+      PrimExpr pattern = analyzer.Simplify(write_index[i] - write_region[i]->min);
+      if(!is_zero(pattern)) {
+        result.push_back(pattern);
+      }
     }
     // todo(jinhongyii): is there some cases where the size is different?
     ICHECK(result.size() == loop_vars.size());
@@ -176,8 +197,6 @@ class AutoCopyMutator : public StmtExprMutator {
             CanRelaxStorageUndereThread(tgt_scope_, runtime::ThreadScope::Create(thread_tag))) {
           var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
         }
-      } else {
-        var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
       }
     }
     int n = loop_vars.size();
@@ -191,28 +210,56 @@ class AutoCopyMutator : public StmtExprMutator {
     Array<PrimExpr> read_index;
     Array<PrimExpr> write_index;
     Array<Var> relaxed_loop_vars;
-    for (int i = 0; i < n; i++) {
-      Var var = loop_vars[i].copy_with_suffix("_relaxed");
-      relaxed_loop_vars.push_back(var);
-      read_index.push_back(relaxed_read_region[i].min() + var);
+    Map<Var, PrimExpr> extent;
+    arith::Analyzer analyzer;
+    Array<PrimExpr> original_expr;
+    BufferStore original_store = runtime::Downcast<BufferStore>(body);
+    BufferLoad original_load = Downcast<BufferLoad>(original_store->value);
+    Array<PrimExpr> new_generated_dims;
+    Array<Var> old_dims;
+    for (int i = 0, j = 0; i < static_cast<int>(relaxed_read_region.size()); i++) {
+      PrimExpr ext = analyzer.Simplify(relaxed_read_region[i].max()-relaxed_read_region[i].min()+1);
+      if(is_one(ext)){
+        read_index.push_back(relaxed_read_region[i].min());
+      } else {
+        Var var = loop_vars[0].copy_with_suffix("_relaxed"+ std::to_string(j++));
+        relaxed_loop_vars.push_back(var);
+        if(is_one(read_region[i]->extent)) {
+          original_expr.push_back(original_load->indices[i]);
+          new_generated_dims.push_back(var);
+        } else {
+          old_dims.push_back(var);
+        }
+        read_index.push_back(relaxed_read_region[i].min() + var);
+        extent.Set(var, ext);
+      }
     }
-    const BufferStoreNode* old_buf_store = TVM_TYPE_AS(old_buf_store, body, BufferStoreNode);
+    Array<arith::IterSumExpr> iter_map =
+        arith::DetectIterMap(original_expr, var_range, Bool(true), false, &analyzer);
+    Map<Var, PrimExpr> inverse_mapping = arith::InverseAffineIterMap(iter_map, new_generated_dims);
     Map<Var, PrimExpr> substitute_mapping;
-    for (int i = 0; i < n; i++) {
-      substitute_mapping.Set(loop_vars[i], relaxed_loop_vars[i]);
+    for (const auto& pair : inverse_mapping) {
+      substitute_mapping.Set(pair.first, pair.second);
     }
     for (int i = 0; i < n; i++) {
-      write_index.push_back(relaxed_write_region[i].min() +
-                            Substitute(mapping_pattern[i], substitute_mapping));
+      substitute_mapping.Set(loop_vars[i], old_dims[i]);
+    }
+    for (int i = 0, j=0; i < static_cast<int>(write_region.size()); i++) {
+      PrimExpr new_bound = Substitute(write_region[i]->min,substitute_mapping);
+      arith::IntSet relaxed_bound = arith::EvalSet(new_bound, var_dom);
+      if (is_one(write_region[i]->extent)) {
+        write_index.push_back(relaxed_bound.min());
+      } else {
+        write_index.push_back( new_bound+Substitute(mapping_pattern[j++],
+                       substitute_mapping));
+      }
     }
     BufferLoad new_buf_load = BufferLoad(read_buffer, read_index);
     BufferStore new_buf_store = BufferStore(write_buffer, new_buf_load, write_index);
     Stmt ret = new_buf_store;
-    arith::Analyzer analyzer;
-    for (int i = n - 1; i >= 0; i--) {
-      PrimExpr extent =
-          analyzer.Simplify(relaxed_read_region[i].max() - relaxed_read_region[i].min() + 1);
-      ret = For(relaxed_loop_vars[i], 0, extent, ForKind::kSerial, ret);
+    for (int i = static_cast<int>(relaxed_loop_vars.size()) - 1; i >= 0; i--) {
+      PrimExpr loop_extent =extent[relaxed_loop_vars[i]];
+      ret = For(relaxed_loop_vars[i], 0, loop_extent, ForKind::kSerial, ret);
     }
     ObjectPtr<BlockNode> new_block = runtime::make_object<BlockNode>(*block.get());
     Array<Range> new_read_region;
@@ -250,25 +297,58 @@ class AutoCopyMutator : public StmtExprMutator {
     Array<Var> new_loop_vars;
     int n = loop_vars.size();
     Map<Var, PrimExpr> substitute_map;
-    for (int i = 0; i < n; i++) {
-      Var var = runtime::Downcast<Var>(loop_vars[i]).copy_with_suffix("_inverse");
-      new_loop_vars.push_back(var);
-      substitute_map.Set(runtime::Downcast<Var>(loop_vars[i]), var);
-      write_index.push_back(block->writes[0]->region[i]->min + var);
+    for (int i = 0, j=0; i < static_cast<int>(block->writes[0]->region.size()); i++) {
+      if(is_zero(block->writes[0]->region[i]->extent)){
+        write_index.push_back(block->writes[0]->region[i]->min);
+      } else {
+        Var var = runtime::Downcast<Var>(loop_vars[j]).copy_with_suffix("_inverse");
+        new_loop_vars.push_back(var);
+        substitute_map.Set(runtime::Downcast<Var>(loop_vars[j++]), var);
+        write_index.push_back(block->writes[0]->region[i]->min + var);
+      }
     }
-    for (int i = 0; i < n; i++) {
-      read_index.push_back(
-          block->reads[0]->region[i]->min +
-          Substitute(inverse_mapping[Downcast<Var>(loop_vars[i])], substitute_map));
+    for (int i = 0, j=0; i < static_cast<int>(block->reads[0]->region.size()); i++) {
+      if(is_zero(block->reads[0]->region[i]->extent)){
+        read_index.push_back(block->reads[0]->region[i]->min);
+      } else {
+        read_index.push_back(
+            block->reads[0]->region[i]->min +
+            Substitute(inverse_mapping[Downcast<Var>(loop_vars[j++])], substitute_map));
+      }
     }
     BufferLoad new_buf_load = BufferLoad(block->reads[0]->buffer, read_index);
     BufferStore new_buf_store = BufferStore(block->writes[0]->buffer, new_buf_load, write_index);
     Stmt ret = new_buf_store;
-    for (int i = n - 1; i >= 0; i--) {
+    for (int i = static_cast<int>(new_loop_vars.size()) - 1; i >= 0; i--) {
       PrimExpr extent = block->writes[0]->region[i]->extent;
       ret = For(new_loop_vars[i], 0, extent, ForKind::kSerial, ret);
     }
     return ret;
+  }
+
+  Stmt RewriteWmmaLoad(Stmt stmt){
+    Stmt body = stmt;
+    std::vector<int> index;
+    arith::Analyzer analyzer;
+    int i=0;
+    while (const ForNode* loop = body.as<ForNode>()) {
+      if (analyzer.CanProveEqual(loop->extent, 1)) {
+        continue;
+      } else if (analyzer.CanProveEqual(loop->extent, 16)) {
+        index.push_back(i);
+      } else {
+        return stmt;
+      }
+      i++;
+    }
+    if (index.size() != 16) {
+      return stmt;
+    }
+    
+  }
+
+  Stmt RewriteWmmaStore(Stmt stmt){
+  
   }
   
   Stmt CoalesceGlobalLoad(Block block, const std::pair<Array<PrimExpr>, Array<Var>>& mapping,
@@ -291,8 +371,11 @@ class AutoCopyMutator : public StmtExprMutator {
         int type_factor = 32/buffer->dtype.bits();
         int padding_space[]{0,type_factor,2*type_factor,4*type_factor,8*type_factor,16*type_factor};
         int min_conflict_i;
-        int min_conflict=INT32_MAX;
-        const std::vector<int>& conflict = conflicts[buffer.get()];
+        int64_t min_conflict=INT64_MAX;
+        const std::vector<int64_t>& conflict = conflicts[buffer.get()];
+        if (conflict.empty()) {
+          continue;
+        }
         ICHECK(fabs(std::pow(6,buffer->shape.size()-1)-conflict.size())<=1e-5);
         for (int i = 0; i < conflict.size(); i++) {
           if (min_conflict > conflict[i]) {
@@ -445,8 +528,6 @@ class AutoCopyMutator : public StmtExprMutator {
       arith::Analyzer analyzer;
       int type_factor = 32/buffer->dtype.bits();
       ICHECK(type_factor!=0);
-      LOG(INFO)<<Substitute(flattened_index,
-                              substitute_map);
       PrimExpr substituted_access = analyzer.Simplify(indexmod(indexdiv(Substitute(flattened_index,
                                                                    substitute_map),type_factor),
                                                                32));
@@ -476,7 +557,8 @@ class AutoCopyMutator : public StmtExprMutator {
     Stmt body = stmt;
     Map<Var, PrimExpr> substitute_map;
     std::vector<const ForNode*> bound_threads;
-    int vectorize = 0;
+    int vectorize = 1;
+    PrimExpr outer_loop_ct=1;
     while (const ForNode* loop = body.as<ForNode>()) {
       substitute_map.Set(loop->loop_var, loop->min);
       if (loop->kind == ForKind::kThreadBinding) {
@@ -484,10 +566,12 @@ class AutoCopyMutator : public StmtExprMutator {
       } else if (loop->kind == ForKind::kVectorized) {
         vectorize = loop->extent.as<IntImmNode>()->value;
       }
+      outer_loop_ct *=loop->extent;
       body = loop->body;
     }
     for (const ForNode* loop : outer_loops_) {
       substitute_map.Set(loop->loop_var, loop->min);
+      outer_loop_ct*=loop->extent;
     }
     const BufferStoreNode* node = TVM_TYPE_AS(node, body, BufferStoreNode);
     Buffer buffer;
@@ -511,18 +595,22 @@ class AutoCopyMutator : public StmtExprMutator {
     for (int i = 0; i < buffer->shape.size()-1; i++) {
       space_size*=6;
     }
-    std::vector<int> result;
+    std::vector<int64_t> result;
+    arith::Analyzer analyzer;
     for (int i = 0; i < space_size; i++) {
-      if (padding_space[i % 6] < vectorize && padding_space[i % 6]>0) {
-        result.push_back(64);
+      if (padding_space[i % 6] < vectorize && padding_space[i % 6] > 0) {
+        result.push_back(2147483647);
         continue;
       }
       std::vector<int> padding = getPadding(padding_space, i, buffer);
-      result.push_back(CalcSharedMemoryBankConflict(indices,buffer,bound_threads,
-                                                    substitute_map,padding));
+      int64_t outer_extents = analyzer.Simplify(outer_loop_ct).as<IntImmNode>()->value;
+      result.push_back(
+          outer_extents *
+          (CalcSharedMemoryBankConflict(indices, buffer, bound_threads, substitute_map, padding) /
+               vectorize -1) * vectorize);
     }
     if (conflicts.count(buffer.get())) {
-      std::vector<int>& conflict = conflicts[buffer.get()];
+      std::vector<int64_t>& conflict = conflicts[buffer.get()];
       ICHECK(conflict.size() ==result.size());
       for (int i = 0; i < conflict.size(); i++) {
         conflict[i]+=result[i];
@@ -530,7 +618,9 @@ class AutoCopyMutator : public StmtExprMutator {
     } else {
       conflicts[buffer.get()] = result;
     }
-    LOG(INFO)<<AsArray<int, Integer>(conflicts[buffer.get()]);
+    for (const auto& e : conflicts[buffer.get()]) {
+      std::cout<<e<<" ";
+    }
   }
   
   Stmt VisitStmt_(const BlockNode* op) final {
@@ -606,7 +696,7 @@ class AutoCopyMutator : public StmtExprMutator {
   int data_bits_ = -1;
   std::vector<const ForNode*> outer_loops_;
   Map<Buffer, Buffer> padded_buffer_map_;
-  std::unordered_map<const BufferNode*, std::vector<int>> conflicts;
+  std::unordered_map<const BufferNode*, std::vector<int64_t>> conflicts;
 };
 
 namespace transform {
