@@ -51,12 +51,19 @@ def _check_packed_matmul_tensorcore(test_func, standard_func):
     b = tvm.nd.array(b_np, ctx)
     c1 = tvm.nd.array(np.zeros((16, 16, 16, 16), dtype="float32"), ctx)
     f(a,b,c1)
+    time_f = f.time_evaluator(f.entry_name, ctx, 1000)
+    print(time_f(a,b,c1).mean) #5.074027e-06
 
+    cpu_ctx = tvm.cpu(0)
     mod = tvm.IRModule.from_expr(standard_func)
-    f = tvm.build(mod["main"], target="cuda")
-    c2 = tvm.nd.array(np.zeros((16, 16, 16, 16), dtype="float32"), ctx)
-    f(a,b,c2)
+    f = tvm.build(mod["main"], target="llvm")
+    a_cpu = tvm.nd.array(a_np, cpu_ctx)
+    b_cpu = tvm.nd.array(b_np, cpu_ctx)
+    c2 = tvm.nd.array(np.zeros((16, 16, 16, 16), dtype="float32"), cpu_ctx)
+    f(a_cpu,b_cpu,c2)
     np.testing.assert_allclose(c1.asnumpy(), c2.asnumpy(), rtol=1e-4, atol=1e-4)
+
+
 
 def _check(original):
     mod = tvm.IRModule.from_expr(original)
@@ -188,13 +195,13 @@ def realworld_transpose(a: ty.handle, b: ty.handle)->None:
                     with tir.block([64, 128],"A_shared") as [v0, v1]:
                         tir.bind(v0, bx)
                         tir.bind(v1, by)
-                        tir.block_attr({"auto_copy":1,"vector_bytes":4})
+                        tir.block_attr({"auto_copy":1,"vector_bytes":16})
                         for ax0, ax1 in tir.grid(32, 16):
                             A_shared[v1*16+ax1, v0*32+ax0] = A[v0*32+ax0, v1*16+ax1]
                     with tir.block([64, 128],"B") as [v0, v1]:
                         tir.bind(v0, bx)
                         tir.bind(v1, by)
-                        tir.block_attr({"auto_copy":1,"vector_bytes":4})
+                        tir.block_attr({"auto_copy":1,"vector_bytes":16})
                         for ax0, ax1 in tir.grid(16, 32):
                             B[v1*16+ax0, v0*32+ax1] = A_shared[v1*16+ax0, v0*32+ax1]
 
@@ -218,77 +225,65 @@ def A3_func(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> None:
         for i0_0_i1_0_fused in tir.thread_binding(0, 4, thread = "blockIdx.x"):
             for i0_1_i1_1_fused in tir.thread_binding(0, 16, thread = "blockIdx.y"):
                 for i0_2_i1_2_fused in tir.thread_binding(0, 4, thread = "threadIdx.y"):
-                    with tir.block([16, 16, 1, 1], "blockized_C_init") as [io_init, jo_init, iio_init, jio_init]:
-                        tir.bind(io_init, ((tir.floordiv(i0_1_i1_1_fused, 2)*2) + tir.floordiv(i0_2_i1_2_fused, 2)))
-                        tir.bind(jo_init, (((i0_0_i1_0_fused*4) + (tir.floormod(i0_1_i1_1_fused, 2)*2)) + tir.floormod(i0_2_i1_2_fused, 2)))
-                        tir.bind(iio_init, 0)
-                        tir.bind(jio_init, 0)
-                        tir.reads([])
-                        tir.writes([C_wmma_accumulator[io_init, jo_init, 0:16, 0:16]])
-                        for i3, i4 in tir.grid(16, 16):
-                            with tir.block([16, 16], "C_init") as [ii_init, ji_init]:
-                                tir.bind(ii_init, i3)
-                                tir.bind(ji_init, i4)
-                                tir.reads([])
-                                tir.writes([C_wmma_accumulator[io_init, jo_init, ii_init, ji_init]])
-                                C_wmma_accumulator[io_init, jo_init, ii_init, ji_init] = tir.float32(0)
-                    for i2_0 in tir.serial(0, 16):
-                        with tir.block([16,8],"B_shared") as [v0,v1]:
-                            tir.bind(v0, i2_0)
-                            tir.bind(v1, ((i0_0_i1_0_fused*2) + (tir.floormod(i0_1_i1_1_fused, 2))))
-                            tir.block_attr({"auto_copy":1,"vector_bytes":4})
-                            for ax1, ax2, ax3 in tir.grid(2, 16, 16):
-                                B_shared[v0, v1*2+ax1, ax2, ax3] = B[v0, v1*2+ax1, ax2, ax3]
-                        with tir.block([8,16],"A_shared") as [v0,v1]:
-                            tir.bind(v0, tir.floordiv(i0_1_i1_1_fused, 2))
-                            tir.bind(v1, i2_0)
-                            tir.block_attr({"auto_copy":1,"vector_bytes":4})
-                            for ax0, ax2, ax3 in tir.grid(2, 16, 16):
-                                A_shared[v0*2+ax0, v1, ax2, ax3] = A[v0*2+ax0, v1, ax2, ax3]
-                        for i2_1, i0_3, i1_3, i2_2 in tir.grid(1, 1, 1, 1):
-                            with tir.block([16,16],"B_shared_wmma.matrix_b") as[v0,v1]:
+                    for tx in tir.thread_binding(0, 32, thread = "threadIdx.x"):
+                        with tir.block([16, 16, 1, 1], "blockized_C_init") as [io_init, jo_init, iio_init, jio_init]:
+                            tir.bind(io_init, ((tir.floordiv(i0_1_i1_1_fused, 2)*2) + tir.floordiv(i0_2_i1_2_fused, 2)))
+                            tir.bind(jo_init, (((i0_0_i1_0_fused*4) + (tir.floormod(i0_1_i1_1_fused, 2)*2)) + tir.floormod(i0_2_i1_2_fused, 2)))
+                            tir.bind(iio_init, 0)
+                            tir.bind(jio_init, 0)
+                            tir.reads([])
+                            tir.writes([C_wmma_accumulator[io_init, jo_init, 0:16, 0:16]])
+                            tir.evaluate(tir.tvm_fill_fragment(C_wmma_accumulator.data, 16, 16, 16, tir.floordiv(tir.get_elem_offset(C_wmma_accumulator[io_init, jo_init, 0, 0], dtype="int32"), 256), tir.float32(0), dtype="handle"))
+                        for i2_0 in tir.serial(0, 16):
+                            with tir.block([16,8],"B_shared") as [v0,v1]:
                                 tir.bind(v0, i2_0)
-                                tir.bind(v1, (((i0_0_i1_0_fused*4) + (tir.floormod(i0_1_i1_1_fused, 2)*2)) + tir.floormod(i0_2_i1_2_fused, 2)))
-                                tir.block_attr({"auto_copy":1,"vector_bytes":4})
-                                for  ax2, ax3 in tir.grid( 16, 16):
-                                    B_shared_wmma_matrix_b[v0, v1, ax2, ax3] = B_shared[v0, v1, ax2, ax3]
-
-                            with tir.block([16,16],"B_shared_wmma.matrix_b") as[v0,v1]:
-                                tir.bind(v0, ((tir.floordiv(i0_1_i1_1_fused, 2)*2) + tir.floordiv(i0_2_i1_2_fused, 2)))
+                                tir.bind(v1, ((i0_0_i1_0_fused*2) + (tir.floormod(i0_1_i1_1_fused, 2))))
+                                tir.block_attr({"auto_copy":1,"vector_bytes":8})
+                                for ax1, ax2, ax3 in tir.grid(2, 16, 16):
+                                    B_shared[v0, v1*2+ax1, ax2, ax3] = B[v0, v1*2+ax1, ax2, ax3]
+                            with tir.block([8,16],"A_shared") as [v0,v1]:
+                                tir.bind(v0, tir.floordiv(i0_1_i1_1_fused, 2))
                                 tir.bind(v1, i2_0)
-                                tir.block_attr({"auto_copy":1,"vector_bytes":4})
-                                for  ax2, ax3 in tir.grid( 16, 16):
-                                    A_shared_wmma_matrix_a[v0, v1, ax2, ax3] = A_shared[v0, v1, ax2, ax3]
-                            for i0_4, i1_4 in tir.grid(1, 1):
-                                with tir.block([16, 16, tir.reduce_axis(0, 16), 1, 1, tir.reduce_axis(0, 1)], "blockized_C_update") as [io, jo, ko, iio, jio, kio]:
-                                    tir.bind(io, ((tir.floordiv(i0_1_i1_1_fused, 2)*2) + tir.floordiv(i0_2_i1_2_fused, 2)))
-                                    tir.bind(jo, (((i0_0_i1_0_fused*4) + (tir.floormod(i0_1_i1_1_fused, 2)*2)) + tir.floormod(i0_2_i1_2_fused, 2)))
-                                    tir.bind(ko, i2_0)
-                                    tir.bind(iio, 0)
-                                    tir.bind(jio, 0)
-                                    tir.bind(kio, 0)
-                                    tir.reads([C_wmma_accumulator[io, jo, 0:16, 0:16], A_shared_wmma_matrix_a[io, ko, 0:16, 0:16], B_shared_wmma_matrix_b[ko, jo, 0:16, 0:16]])
-                                    tir.writes([C_wmma_accumulator[io, jo, 0:16, 0:16]])
-                                    for i3_1, i4_1, i5 in tir.grid(16, 16, 16):
-                                        with tir.block([16, 16, tir.reduce_axis(0, 16)], "C") as [ii, ji, ki]:
-                                            tir.bind(ii, i3_1)
-                                            tir.bind(ji, i4_1)
-                                            tir.bind(ki, i5)
-                                            tir.reads([C_wmma_accumulator[io, jo, ii, ji], A_shared_wmma_matrix_a[io, ko, ii, ki], B_shared_wmma_matrix_b[ko, jo, ki, ji]])
-                                            tir.writes([C_wmma_accumulator[io, jo, ii, ji]])
-                                            C_wmma_accumulator[io, jo, ii, ji] = (C_wmma_accumulator[io, jo, ii, ji] + (tir.cast(A_shared_wmma_matrix_a[io, ko, ii, ki], "float32")*tir.cast(B_shared_wmma_matrix_b[ko, jo, ki, ji], "float32")))
-                    with tir.block([16,16],"C_shared") as [v0, v1]:
-                        tir.bind(v0, ((tir.floordiv(i0_1_i1_1_fused, 2)*2) + tir.floordiv(i0_2_i1_2_fused, 2)))
-                        tir.bind(v1, (((i0_0_i1_0_fused*4) + (tir.floormod(i0_1_i1_1_fused, 2)*2)) + tir.floormod(i0_2_i1_2_fused, 2)))
-                        tir.block_attr({"auto_copy":1,"vector_bytes":4})
-                        for  ax2, ax3 in tir.grid( 16, 16):
-                            C_shared[v0, v1, ax2, ax3] = C_wmma_accumulator[v0, v1, ax2, ax3]
-                    with tir.block([16,16],"C") as [v0, v1]:
-                        tir.bind(v0, ((tir.floordiv(i0_1_i1_1_fused, 2)*2) + tir.floordiv(i0_2_i1_2_fused, 2)))
-                        tir.bind(v1, (((i0_0_i1_0_fused*4) + (tir.floormod(i0_1_i1_1_fused, 2)*2)) + tir.floormod(i0_2_i1_2_fused, 2)))
-                        tir.block_attr({"auto_copy":1,"vector_bytes":4})
-                        for ax2, ax3 in tir.grid(16, 16):
-                            C[v0, v1, ax2, ax3] = C_shared[v0, v1, ax2, ax3]
+                                tir.block_attr({"auto_copy":1,"vector_bytes":8})
+                                for ax0, ax2, ax3 in tir.grid(2, 16, 16):
+                                    A_shared[v0*2+ax0, v1, ax2, ax3] = A[v0*2+ax0, v1, ax2, ax3]
+                            for i2_1, i0_3, i1_3, i2_2 in tir.grid(1, 1, 1, 1):
+                                with tir.block([16,16],"B_shared_wmma.matrix_b") as[v0,v1]:
+                                    tir.bind(v0, i2_0)
+                                    tir.bind(v1, (((i0_0_i1_0_fused*4) + (tir.floormod(i0_1_i1_1_fused, 2)*2)) + tir.floormod(i0_2_i1_2_fused, 2)))
+                                    tir.block_attr({"auto_copy":1,"vector_bytes":4,"layout":"row_major"})
+                                    for  ax2, ax3 in tir.grid( 16, 16):
+                                        B_shared_wmma_matrix_b[v0, v1, ax2, ax3] = B_shared[v0, v1, ax2, ax3]
+
+                                with tir.block([16,16],"A_shared_wmma.matrix_b") as[v0,v1]:
+                                    tir.bind(v0, ((tir.floordiv(i0_1_i1_1_fused, 2)*2) + tir.floordiv(i0_2_i1_2_fused, 2)))
+                                    tir.bind(v1, i2_0)
+                                    tir.block_attr({"auto_copy":1,"vector_bytes":4})
+                                    for  ax2, ax3 in tir.grid( 16, 16):
+                                        A_shared_wmma_matrix_a[v0, v1, ax2, ax3] = A_shared[v0, v1, ax2, ax3]
+                                for i0_4, i1_4 in tir.grid(1, 1):
+                                    with tir.block([16, 16, tir.reduce_axis(0, 16), 1, 1, tir.reduce_axis(0, 1)], "blockized_C_update") as [io, jo, ko, iio, jio, kio]:
+                                        tir.bind(io, ((tir.floordiv(i0_1_i1_1_fused, 2)*2) + tir.floordiv(i0_2_i1_2_fused, 2)))
+                                        tir.bind(jo, (((i0_0_i1_0_fused*4) + (tir.floormod(i0_1_i1_1_fused, 2)*2)) + tir.floormod(i0_2_i1_2_fused, 2)))
+                                        tir.bind(ko, i2_0)
+                                        tir.bind(iio, 0)
+                                        tir.bind(jio, 0)
+                                        tir.bind(kio, 0)
+                                        tir.reads([C_wmma_accumulator[io, jo, 0:16, 0:16], A_shared_wmma_matrix_a[io, ko, 0:16, 0:16], B_shared_wmma_matrix_b[ko, jo, 0:16, 0:16]])
+                                        tir.writes([C_wmma_accumulator[io, jo, 0:16, 0:16]])
+                                        tir.evaluate(tir.tvm_mma_sync(C_wmma_accumulator.data, tir.floordiv(tir.get_elem_offset(C_wmma_accumulator[io, jo, 0, 0], dtype="int32"), 256), A_shared_wmma_matrix_a.data, tir.floordiv(tir.get_elem_offset(A_shared_wmma_matrix_a[io, ko, 0, 0], dtype="int32"), 256), B_shared_wmma_matrix_b.data, tir.floordiv(tir.get_elem_offset(B_shared_wmma_matrix_b[ko, jo, 0, 0], dtype="int32"), 256), C_wmma_accumulator.data, tir.floordiv(tir.get_elem_offset(C_wmma_accumulator[io, jo, 0, 0], dtype="int32"), 256), dtype="handle"))
+                        with tir.block([16,16],"C_shared") as [v0, v1]:
+                            tir.bind(v0, ((tir.floordiv(i0_1_i1_1_fused, 2)*2) + tir.floordiv(i0_2_i1_2_fused, 2)))
+                            tir.bind(v1, (((i0_0_i1_0_fused*4) + (tir.floormod(i0_1_i1_1_fused, 2)*2)) + tir.floormod(i0_2_i1_2_fused, 2)))
+                            tir.block_attr({"auto_copy":1,"vector_bytes":4})
+                            for  ax2, ax3 in tir.grid( 16, 16):
+                                C_shared[v0, v1, ax2, ax3] = C_wmma_accumulator[v0, v1, ax2, ax3]
+                        with tir.block([16,16],"C") as [v0, v1]:
+                            tir.bind(v0, ((tir.floordiv(i0_1_i1_1_fused, 2)*2) + tir.floordiv(i0_2_i1_2_fused, 2)))
+                            tir.bind(v1, (((i0_0_i1_0_fused*4) + (tir.floormod(i0_1_i1_1_fused, 2)*2)) + tir.floormod(i0_2_i1_2_fused, 2)))
+                            tir.block_attr({"auto_copy":1,"vector_bytes":16})
+                            for ax2, ax3 in tir.grid(16, 16):
+                                C[v0, v1, ax2, ax3] = C_shared[v0, v1, ax2, ax3]
 
 @tvm.script.tir
 def matmul_fp16_packed(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> None:
@@ -327,8 +322,9 @@ def matmul_fp16_packed(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> 
                 )
 
 
+# print(tvm.lower(A3_func, None))
 # _check(A3_func)
-_check(realworld_transpose)
-# _check_packed_matmul_tensorcore(A3_func, matmul_fp16_packed)
+# _check(realworld_transpose)
+_check_packed_matmul_tensorcore(A3_func, matmul_fp16_packed)
 # _measure_transpose(realworld_transpose)
 # _measure(realworld_transpose)

@@ -39,6 +39,7 @@ namespace tir {
 
 class AutoCopyMutator : public StmtExprMutator {
  public:
+  
   Stmt RewritePaddingBody(Stmt stmt){
     return RewriteBufferAccess(stmt, padded_buffer_map_);
   }
@@ -326,29 +327,92 @@ class AutoCopyMutator : public StmtExprMutator {
     return ret;
   }
 
-  Stmt RewriteWmmaLoad(Stmt stmt){
-    Stmt body = stmt;
+  Stmt RewriteWmmaLoad(Block block){
+    Stmt body = block->body;
     std::vector<int> index;
     arith::Analyzer analyzer;
+    Map<Var, PrimExpr> substitute_map;
     int i=0;
     while (const ForNode* loop = body.as<ForNode>()) {
+      if (!analyzer.CanProveEqual(loop->min, 0)) {
+        return block->body;
+      }
       if (analyzer.CanProveEqual(loop->extent, 1)) {
         continue;
       } else if (analyzer.CanProveEqual(loop->extent, 16)) {
         index.push_back(i);
       } else {
-        return stmt;
+        return block->body;
       }
+      substitute_map.Set(loop->loop_var, 0);
       i++;
+      body = loop->body;
     }
-    if (index.size() != 16) {
-      return stmt;
+    if (index.size() != 2 || index[1] != i - 1 || index[0] != i - 2) {
+      return block->body;
     }
+    const auto* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
+    Buffer src_buffer = block->reads[0]->buffer;
+    Buffer tgt_buffer = block->writes[0]->buffer;
+    //todo(jinhongyii): consider non-packed layout situation
+    auto src_elem_offset = Call(runtime::DataType::Int(32), builtin::get_elem_offset(),
+                                {Substitute(buf_store->value, substitute_map)});
+    auto tgt_elem_offset = Call(runtime::DataType::Int(32), builtin::get_elem_offset(),
+                                {Substitute(BufferLoad(tgt_buffer, buf_store->indices),
+                                                                   substitute_map)});
+    auto src_pointer = Call(runtime::DataType::Handle(), builtin::tvm_access_ptr(),
+                            {TypeAnnotation(src_buffer->dtype), src_buffer->data,
+                             src_elem_offset,
+                             256, 1});
     
+    return Evaluate(Call(runtime::DataType::Handle(),builtin::tvm_load_matrix_sync(),
+                                   {tgt_buffer->data, 16, 16, 16, floordiv(tgt_elem_offset, 256),
+                         src_pointer, src_buffer->shape[src_buffer->shape.size()-1],
+                          StringImm("row_major")}));
   }
 
-  Stmt RewriteWmmaStore(Stmt stmt){
-  
+  Stmt RewriteWmmaStore(Block block){
+    Stmt body = block->body;
+    std::vector<int> index;
+    arith::Analyzer analyzer;
+    Map<Var, PrimExpr> substitute_map;
+    int i=0;
+    while (const ForNode* loop = body.as<ForNode>()) {
+      if (!analyzer.CanProveEqual(loop->min, 0)) {
+        return block->body;
+      }
+      if (analyzer.CanProveEqual(loop->extent, 1)) {
+        continue;
+      } else if (analyzer.CanProveEqual(loop->extent, 16)) {
+        index.push_back(i);
+      } else {
+        return block->body;
+      }
+      substitute_map.Set(loop->loop_var, 0);
+      i++;
+      body = loop->body;
+    }
+    if (index.size() != 2 || index[1] != i - 1 || index[0] != i - 2) {
+      return block->body;
+    }
+    const auto* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
+    Buffer src_buffer = block->reads[0]->buffer;
+    Buffer tgt_buffer = block->writes[0]->buffer;
+    //todo(jinhongyii): consider non-packed layout situation
+    auto src_elem_offset = Call(runtime::DataType::Int(32), builtin::get_elem_offset(),
+                                {Substitute(buf_store->value, substitute_map)});
+    auto tgt_elem_offset = Call(runtime::DataType::Int(32), builtin::get_elem_offset(),
+                                {Substitute(BufferLoad(tgt_buffer, buf_store->indices),
+                                            substitute_map)});
+    auto tgt_pointer = Call(runtime::DataType::Handle(), builtin::tvm_access_ptr(),
+                            {TypeAnnotation(tgt_buffer->dtype), tgt_buffer->data,
+                             tgt_elem_offset,
+                             256, 2});
+    
+    return Evaluate(Call(runtime::DataType::Handle(),builtin::tvm_store_matrix_sync(),
+                         {src_buffer->data, 16, 16, 16, floordiv(src_elem_offset, 256),
+                          tgt_pointer, tgt_buffer->shape[tgt_buffer->shape.size()-1],
+                          StringImm("row_major")}));
   }
   
   Stmt CoalesceGlobalLoad(Block block, const std::pair<Array<PrimExpr>, Array<Var>>& mapping,
@@ -496,7 +560,45 @@ class AutoCopyMutator : public StmtExprMutator {
     }
     return ret;
   }
-
+  
+  int CalcSharedMemoryBankConflict(Array<Range> warp_access_region, Buffer buffer,
+                                   Map<Var, PrimExpr> substitute_map,
+                                   const std::vector<int>& padding){
+    int prod =1;
+    int n = warp_access_region.size();
+    std::vector<int> extents;
+    Array<PrimExpr> mins;
+    for (int i = 0; i < n; i++) {
+      int extent = warp_access_region[i]->extent.as<IntImmNode>()->value;
+      prod*=extent;
+      extents.push_back(extent);
+      mins.push_back(Substitute(warp_access_region[i]->min,substitute_map));
+    }
+    
+    int bank[32]{0};
+    for (int i = 0; i < prod; i++) {
+      Array<PrimExpr> indices;
+      indices.resize(n);
+      int idx = i;
+      for (int j = n-1; j >=0;j--) {
+        indices.Set(j, mins[j]+idx%extents[j]);
+        idx/=extents[j];
+      }
+      PrimExpr flattened_index =  GetFlattenedIndices(indices, buffer, padding);
+      arith::Analyzer analyzer;
+      int type_factor = 32/buffer->dtype.bits();
+      PrimExpr substituted_access = analyzer.Simplify(indexmod(indexdiv(flattened_index,type_factor),
+                                                               32));
+      int access_bank = substituted_access.as<IntImmNode>()->value;
+      bank[access_bank]++;
+    }
+    int conflict = 0;
+    for (int i = 0; i < 32; i++) {
+      conflict = std::max(conflict, bank[i]);
+    }
+    return conflict;
+  }
+  
   int CalcSharedMemoryBankConflict(Array<PrimExpr> indices, Buffer buffer,
                                    const std::vector<const ForNode*>& warp_access_loops,
                                    Map<Var, PrimExpr> substitute_map,
@@ -564,8 +666,8 @@ class AutoCopyMutator : public StmtExprMutator {
   }
   
   
-  void getConflictForAllPaddingSize(Stmt stmt){
-    Stmt body = stmt;
+  void getConflictForAllPaddingSize(Block block){
+    Stmt body = block->body;
     Map<Var, PrimExpr> substitute_map;
     std::vector<const ForNode*> warp_access_loops;
     int vectorize = 1;
@@ -585,17 +687,30 @@ class AutoCopyMutator : public StmtExprMutator {
       substitute_map.Set(loop->loop_var, loop->min);
       outer_loop_ct*=loop->extent;
     }
-    const BufferStoreNode* node = TVM_TYPE_AS(node, body, BufferStoreNode);
+    
     Buffer buffer;
     Array<PrimExpr> indices;
-    if (node->buffer.scope() == "shared") {
-      buffer=node->buffer;
-      indices = node->indices;
-    } else  {
-      const BufferLoadNode* buf_load = node->value.as<BufferLoadNode>();
-      if (buf_load->buffer.scope() == "shared") {
-        buffer = buf_load->buffer;
-        indices = buf_load->indices;
+    Array<Range> region;
+    if (const BufferStoreNode* node = body.as<BufferStoreNode>()) {
+      if (node->buffer.scope() == "shared") {
+        buffer=node->buffer;
+        indices = node->indices;
+      } else  {
+        const BufferLoadNode* buf_load = node->value.as<BufferLoadNode>();
+        if (buf_load->buffer.scope() == "shared") {
+          buffer = buf_load->buffer;
+          indices = buf_load->indices;
+        } else {
+          return;
+        }
+      }
+    } else {
+      if (block->reads[0]->buffer.scope() == "shared") {
+        buffer = block->reads[0]->buffer;
+        region = block->reads[0]->region;
+      } else if (block->writes[0]->buffer.scope() == "shared") {
+        buffer = block->writes[0]->buffer;
+        region = block->writes[0]->region;
       } else {
         return;
       }
@@ -616,10 +731,16 @@ class AutoCopyMutator : public StmtExprMutator {
       }
       std::vector<int> padding = getPadding(padding_space, i, buffer);
       int64_t outer_extents = analyzer.Simplify(outer_loop_ct).as<IntImmNode>()->value;
-      result.push_back(
-          outer_extents *
-          (CalcSharedMemoryBankConflict(indices, buffer, warp_access_loops, substitute_map, padding) /
-               vectorize -1));
+      if (!indices.empty()) {
+        result.push_back(
+            outer_extents *
+            (CalcSharedMemoryBankConflict(indices, buffer, warp_access_loops, substitute_map, padding) /
+                 vectorize -1));
+      } else {
+        result.push_back(outer_extents*(CalcSharedMemoryBankConflict(region, buffer,
+                                                                      substitute_map, padding) /
+                             4 -1));
+      }
     }
     if (conflicts.count(buffer.get())) {
       std::vector<int64_t>& conflict = conflicts[buffer.get()];
@@ -640,27 +761,35 @@ class AutoCopyMutator : public StmtExprMutator {
     Block block;
     if (op->annotations.count("auto_copy") &&
         is_one(Downcast<PrimExpr>(op->annotations["auto_copy"]))) {
+      LOG(INFO)<<op->name_hint;
       in_auto_copy_ = true;
       block = runtime::Downcast<Block>(StmtMutator::VisitStmt_(op));
       std::pair<Array<PrimExpr>, Array<Var>> mapping = GetMapping(block);
       block = RelaxThreads(block, mapping);
+      int vector_bytes;
+      if (block->annotations.count("vector_bytes")) {
+        IntImm vec_bytes = Downcast<IntImm>(block->annotations["vector_bytes"]);
+        vector_bytes = vec_bytes->value;
+      } else {
+        vector_bytes = 1;
+      }
       BlockNode* n = block.CopyOnWrite();
       if ((src_scope_.rank == runtime::StorageRank::kGlobal &&
            tgt_scope_.rank == runtime::StorageRank::kShared) ||
           (src_scope_.rank == runtime::StorageRank::kShared &&
            tgt_scope_.rank == runtime::StorageRank::kGlobal)) {
-        int vector_bytes;
-        if (block->annotations.count("vector_bytes")) {
-          IntImm vec_bytes = Downcast<IntImm>(block->annotations["vector_bytes"]);
-          vector_bytes = vec_bytes->value;
-        } else {
-          vector_bytes = 1;
-        }
         bool need_inverse = src_scope_.rank == runtime::StorageRank::kShared;
         n->body = CoalesceGlobalLoad(block, mapping, vector_bytes, need_inverse);
-        getConflictForAllPaddingSize(n->body);
-        n->alloc_buffers = PadSharedMemory(n->alloc_buffers, &padded_buffer_map_);
+      } else if ((tgt_scope_.rank == runtime::StorageRank::kWMMAMatrixA ||
+                  tgt_scope_.rank == runtime::StorageRank::kWMMAMatrixB)) {
+        n->body = RewriteWmmaLoad(block);
+      } else if (src_scope_.rank == runtime::StorageRank::kWMMAAccumulator) {
+        n->body = RewriteWmmaStore(block);
       }
+      LOG(INFO)<<"calc conflict";
+      getConflictForAllPaddingSize(block);
+      LOG(INFO)<<"end calc conflict";
+      n->alloc_buffers = PadSharedMemory(n->alloc_buffers, &padded_buffer_map_);
     } else {
       block = runtime::Downcast<Block>(StmtMutator::VisitStmt_(op));
       BlockNode* n = block.CopyOnWrite();
