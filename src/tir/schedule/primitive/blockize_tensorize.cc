@@ -850,9 +850,11 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
     const auto& source = buffer_map.at(buffer);
     Region region = buffer_region_map.at(buffer);
     auto extra_indices = comparator.buffer_indices_.at(source);
-    for (auto extra_index : extra_indices) {
-      region.insert(region.begin(), Range::FromMinExtent(extra_index, 1));
-    }
+    std::vector<Range> extra_buffer_ranges;
+    std::transform(extra_indices.begin(), extra_indices.end(),
+                   std::back_inserter(extra_buffer_ranges),
+                   [](const PrimExpr& index) { return Range::FromMinExtent(index, 1); });
+    region.insert(region.begin(), extra_buffer_ranges.begin(), extra_buffer_ranges.end());
     match_buffer_regions.push_back(MatchBufferRegion(buffer, BufferRegion(source, region)));
   }
 
