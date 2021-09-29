@@ -21,6 +21,9 @@ import te_workload
 import tvm
 import tir_tensor_intrin  # pylint: disable=unused-import
 from tvm import te, tir
+from tvm import meta_schedule as ms
+import tvm.testing
+import numpy as np
 
 TARGET = tvm.target.Target("nvidia/geforce-rtx-2080-ti")
 
@@ -48,15 +51,17 @@ def test_integration_matmul():
         block_outer, block_inner = block_inner, block
         del block
         # Step 2. Rule-Multi-Level-Tiling
-        i0, i1, i2, i3, i4 = sch.split(i, factors=sch.sample_perfect_tile(i, n=5))
-        j0, j1, j2, j3, j4 = sch.split(j, factors=sch.sample_perfect_tile(j, n=5))
+        i_factors = sch.sample_perfect_tile(i, n=5)
+        j_factors = sch.sample_perfect_tile(j, n=5)
+        i0, i1, i2, i3, i4 = sch.split(i, factors=i_factors)
+        j0, j1, j2, j3, j4 = sch.split(j, factors=j_factors)
         k0, k1, k2 = sch.split(k, factors=sch.sample_perfect_tile(k, n=3))
         # pylint: enable=invalid-name
         sch.reorder(
             # fmt: off
             i0, j0,   # S => blockIdx.x
-            i1, j1,   # S => vthread
-            i2, j2,   # S => threadIdx.x
+            i1, j1,   # S => blockIdx.y
+            i2, j2,   # S => threadIdx.y
             # cache_write here
             k0,       # R
             # vectorized cooperative fetching here
@@ -68,23 +73,22 @@ def test_integration_matmul():
             # fmt: on
         )
         block_idx = sch.fuse(i0, j0)
-        vthread = sch.fuse(i1, j1)
-        thread_idx = sch.fuse(i2, j2)
+        block_idy = sch.fuse(i1, j1)
+        thread_idy = sch.fuse(i2, j2)
         sch.bind(block_idx, "blockIdx.x")
-        sch.bind(vthread, "vthread")
-        sch.bind(thread_idx, "threadIdx.x")
+        sch.bind(block_idy, "blockIdx.y")
+        sch.bind(thread_idy, "threadIdx.y")
 
-        block_write_c = sch.cache_write(block_outer, 0, "local")
-        block_outer, block_write_c = block_write_c, block_outer
-        sch.reverse_compute_at(block_write_c, thread_idx)
-
+        num_ty = sch.get(i_factors[2]) * sch.get(j_factors[2])
         def fetch_to_shared(block, idx, ndim):
             block_read = sch.cache_read(block, idx, "shared")
             sch.compute_at(block_read, k0)
             fused = sch.fuse(*sch.get_loops(block_read)[-ndim:])
-            fused_0, fused_1 = sch.split(fused, factors=[None, 4])
-            sch.mark_loop(fused_0, "loop_type", "lazy_cooperative_fetch")
-            sch.vectorize(fused_1)
+            # sch.mark_loop(fused_0, "loop_type", "lazy_cooperative_fetch")
+            _, fused_0, fused_1, fused_2 = sch.split(fused, factors=[None, num_ty, 32, 4])
+            sch.vectorize(fused_2)
+            sch.bind(fused_1, 'threadIdx.x')
+            sch.bind(fused_0, 'threadIdx.y')
 
         fetch_to_shared(block_outer, 1, 2)
         fetch_to_shared(block_outer, 2, 2)
@@ -99,7 +103,12 @@ def test_integration_matmul():
         # Step 3.2. Cache write
         block_write_c = sch.cache_write(block_outer, 0, "wmma.accumulator")
         block_outer, block_write_c = block_write_c, block_outer
-        sch.reverse_compute_at(block_write_c, loop)
+        sch.reverse_compute_at(block_write_c, thread_idy)
+        # Wuwei: we also need spliting the write back stage.
+        ii, jj = sch.get_loops(block_write_c)[-2:]
+        io, ii = sch.split(ii, factors=[None, 16])
+        jo, ji = sch.split(jj, factors=[None, 16])
+        sch.reorder(io, jo, ii, ji)
         # Step 3.3. Decompose
         loop = sch.get_loops(block_outer)[3]
         block_init_c = sch.decompose_reduction(block_outer, loop)
@@ -116,9 +125,62 @@ def test_integration_matmul():
         loop = sch.get_loops(block_write_c)[-2]
         sch.tensorize(loop, "wmma_store")
 
-    sch = tir.Schedule(mod=workload, seed=1024, traced=True)
-    schedule(sch)
-    print(tvm.script.asscript(sch.mod))
+    task = ms.SearchTask(
+            workload=workload,
+            target=TARGET,
+            target_host='llvm',
+            task_name="cuda_matmul",
+            log_file="./cuda_matmul.json",
+        )
+    space = ms.space.ScheduleFn(
+        schedule,
+        postprocs=[
+            ms.postproc.verify_gpu_code(),
+        ],
+    )
+    # Evolutionary search doesn't support using result of sch.get() as the split factor.
+    # Enable this when we have postprocessors for auto tensorization.
+    # evolutionary = ms.strategy.Evolutionary(
+    #         total_measures=256,
+    #         num_measures_per_iter=16,
+    #         population=128,
+    #         init_measured_ratio=0.2,
+    #         genetic_algo_iters=10,
+    #         p_mutate=0.85,
+    #         mutator_probs={
+    #             ms.mutator.mutate_tile_size(): 1.0,
+    #         },
+    #         cost_model=ms.XGBModel(
+    #             num_warmup_samples=0,
+    #         ),
+    #         eps_greedy=0.05,
+    #     )
+    replay = ms.strategy.Replay(256)
+    sch = ms.autotune(
+        task=task,
+        space=space,
+        strategy=replay,
+        measurer=ms.ProgramMeasurer(
+            measure_callbacks=[
+                ms.RecordToFile(),
+            ]
+        ),
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        print(tvm.script.asscript(sch.mod))
+
+    dev = tvm.device("cuda", 0)
+    a_np = np.random.uniform(size=(512, 512)).astype("float16")
+    b_np = np.random.uniform(size=(512, 512)).astype("float16")
+    c_np = np.dot(a_np.astype("float32"), b_np.astype("float32"))
+    a = tvm.nd.array(a_np, dev)
+    b = tvm.nd.array(b_np, dev)
+    c = tvm.nd.array(np.zeros((512, 512), dtype="float32"), dev)
+    f = tvm.build(sch.mod['main'], target="cuda", name="dense")
+    f(a, b, c)
+    tvm.testing.assert_allclose(c.numpy(), c_np, rtol=1e-3)
 
 
 @pytest.mark.skip("fix later")
@@ -226,4 +288,4 @@ def test_integration_conv2d_nchwc():
 
 if __name__ == "__main__":
     test_integration_matmul()
-    test_integration_conv2d_nchwc()
+    # test_integration_conv2d_nchwc()
