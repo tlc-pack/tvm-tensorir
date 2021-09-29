@@ -29,7 +29,10 @@ TARGET = tvm.target.Target("nvidia/geforce-rtx-2080-ti")
 
 
 def test_integration_matmul():
-    workload = te_workload.matmul_fp16(n=512, m=512, k=512)
+    N = 1024
+    M = 1024
+    K = 1024
+    workload = te_workload.matmul_fp16(n=N, m=M, k=K)
     workload = te.create_prim_func(workload)
 
     def schedule(sch: tir.Schedule):
@@ -82,10 +85,12 @@ def test_integration_matmul():
         num_ty = sch.get(i_factors[2]) * sch.get(j_factors[2])
         def fetch_to_shared(block, idx, ndim):
             block_read = sch.cache_read(block, idx, "shared")
+            # padding 128 bits, which satisfies the requirement of stride in wmma::load_matrix_sync
+            sch.storage_align(block_read, 0, axis=-2, factor=32, offset=8)
             sch.compute_at(block_read, k0)
             fused = sch.fuse(*sch.get_loops(block_read)[-ndim:])
             # sch.mark_loop(fused_0, "loop_type", "lazy_cooperative_fetch")
-            _, fused_0, fused_1, fused_2 = sch.split(fused, factors=[None, num_ty, 32, 4])
+            _, fused_0, fused_1, fused_2 = sch.split(fused, factors=[None, num_ty, 32, 8])
             sch.vectorize(fused_2)
             sch.bind(fused_1, 'threadIdx.x')
             sch.bind(fused_0, 'threadIdx.y')
@@ -98,8 +103,8 @@ def test_integration_matmul():
         loop = sch.get_loops(block_outer)[-1]
         block_read_a = sch.cache_read(block_inner, 1, "wmma.matrix_a")
         block_read_b = sch.cache_read(block_inner, 2, "wmma.matrix_b")
-        sch.compute_at(block_read_a, loop)
-        sch.compute_at(block_read_b, loop)
+        sch.compute_at(block_read_a, k1)
+        sch.compute_at(block_read_b, k1)
         # Step 3.2. Cache write
         block_write_c = sch.cache_write(block_outer, 0, "wmma.accumulator")
         block_outer, block_write_c = block_write_c, block_outer
@@ -115,10 +120,18 @@ def test_integration_matmul():
         block_init_c_inner = sch.get_child_blocks(block_init_c)[0]
         # Step 3.4. Tensorize
         loop = sch.get_loops(block_inner)[-3]
+
+        def tile_wmma_fragment(block_read):
+            i, j = sch.get_loops(block_read)[-2:]
+            i0, i1 = sch.split(i, factors=[None, 16])
+            j0, j1 = sch.split(j, factors=[None, 16])
+            sch.reorder(i0, j0, i1, j1)
+            return i1
+
         sch.tensorize(loop, "wmma_sync")
-        loop = sch.get_loops(block_read_a)[-2]
+        loop = tile_wmma_fragment(block_read_a)
         sch.tensorize(loop, "wmma_load_a")
-        loop = sch.get_loops(block_read_b)[-2]
+        loop = tile_wmma_fragment(block_read_b)
         sch.tensorize(loop, "wmma_load_b")
         loop = sch.get_loops(block_init_c_inner)[-2]
         sch.tensorize(loop, "wmma_fill")
@@ -138,6 +151,7 @@ def test_integration_matmul():
             ms.postproc.verify_gpu_code(),
         ],
     )
+
     # Evolutionary search doesn't support using result of sch.get() as the split factor.
     # Enable this when we have postprocessors for auto tensorization.
     # evolutionary = ms.strategy.Evolutionary(
@@ -172,12 +186,12 @@ def test_integration_matmul():
         print(tvm.script.asscript(sch.mod))
 
     dev = tvm.device("cuda", 0)
-    a_np = np.random.uniform(size=(512, 512)).astype("float16")
-    b_np = np.random.uniform(size=(512, 512)).astype("float16")
+    a_np = np.random.uniform(size=(N, K)).astype("float16")
+    b_np = np.random.uniform(size=(K, M)).astype("float16")
     c_np = np.dot(a_np.astype("float32"), b_np.astype("float32"))
     a = tvm.nd.array(a_np, dev)
     b = tvm.nd.array(b_np, dev)
-    c = tvm.nd.array(np.zeros((512, 512), dtype="float32"), dev)
+    c = tvm.nd.array(np.zeros((N, M), dtype="float32"), dev)
     f = tvm.build(sch.mod['main'], target="cuda", name="dense")
     f(a, b, c)
     tvm.testing.assert_allclose(c.numpy(), c_np, rtol=1e-3)

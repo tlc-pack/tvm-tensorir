@@ -203,7 +203,7 @@ def wmma_load_b_impl(a: ty.handle, c: ty.handle) -> None:
         tir.reads(A[vi: vi+16, vj: vj+16])
         tir.writes(C[vi: vi+16, vj: vj+16])
         tir.evaluate(tir.tvm_load_matrix_sync(
-            C.data, 16, 16, 16, C.elem_offset // 256 + tir.floordiv(tir.floormod(C.elem_offset, 256), s0), A.access_ptr("r"), s1, "row_major",
+            C.data, 16, 16, 16, C.elem_offset // 256 + tir.floordiv(tir.floormod(C.elem_offset, 256), 16), A.access_ptr("r"), s1, "row_major",
             dtype="handle"))
 
 
