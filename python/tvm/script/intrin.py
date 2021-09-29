@@ -162,6 +162,11 @@ def min(a, b, span):  # pylint: disable=redefined-builtin
     return tvm.tir.Min(a, b, span)
 
 
+@register
+def lower_bound(buf, val, span):  # pylint: disable=redefined-builtin
+    return tvm.tir.LowerBound(buf, val, span)
+
+
 def get_axis(begin, end, iter_type, span):
     ana = tvm.arith.Analyzer()
     extent = ana.simplify(asscalar(end) - asscalar(begin))

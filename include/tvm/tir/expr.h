@@ -302,6 +302,42 @@ class Max : public PrimExpr {
   TVM_DEFINE_OBJECT_REF_METHODS(Max, PrimExpr, MaxNode);
 };
 
+/*! \brief lower_bound(buf, val) */
+class LowerBoundNode : public PrimExprNode {
+ public:
+  /*! \brief The 1D buffer to apply binary search on. */
+  Buffer buf;
+  /*! \brief Value of the lower bound to search for in the buffer. */
+  PrimExpr val;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("buf", &buf);
+    v->Visit("val", &val); 
+  }
+
+  bool SEqualReduce(const LowerBoundNode* other, SEqualReducer equal) const {
+    return equal(buf, other->buf) && equal(val, other->val);
+  }
+  
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce(buf);
+    hash_reduce(val);
+  }
+
+  static constexpr const char* _type_key = "tir.LowerBound";
+  TVM_DECLARE_FINAL_OBJECT_INFO(LowerBoundNode, PrimExprNode);
+};
+
+/*!
+ * \brief Managed refenrence to LowerBoundNode
+ * \sa LowerBoundNode
+ */
+class LowerBound : public PrimExpr {
+ public:
+  TVM_DLL LowerBound(Buffer buf, PrimExpr val, Span span = Span());
+  TVM_DEFINE_OBJECT_REF_METHODS(LowerBound, PrimExpr, LowerBoundNode);
+};
+
 /*!
  * \brief Base template to implement comparison ops.
  * \tparam T The type of the child class.
