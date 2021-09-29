@@ -198,11 +198,20 @@ class MatchBufferLower : public StmtExprMutator {
     size_t offset = source->region.size() - buffer->shape.size();
     if (!buffer->strides.empty()) {
       ICHECK_EQ(buffer->strides.size(), buffer->shape.size());
-      PrimExpr stride = make_const(DataType::Int(32), 1);
+      Array<PrimExpr> strides;
+      if (source_buffer->strides.empty()) {
+        PrimExpr stride = make_const(DataType::Int(32), 1);
+        strides.resize(source_buffer->shape.size());
+        for (size_t i = source_buffer->shape.size(); i > 0; --i) {
+          strides.Set(i - 1, stride);
+          stride *= source_buffer->shape[i - 1];
+        }
+      } else {
+        strides = source_buffer->strides;
+      }
       for (size_t i = buffer->shape.size(); i > 0; --i) {
-        const PrimExpr& shape = source_buffer->shape[i - 1 + offset];
+        const PrimExpr& stride = strides[i - 1 + offset];
         Bind(buffer->strides[i - 1], stride, buffer->name + ".strides_" + std::to_string(i - 1));
-        stride *= shape;
       }
     }
 
