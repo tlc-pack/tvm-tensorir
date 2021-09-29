@@ -193,13 +193,13 @@ class PostprocRewriteCooperativeFetchTensorCore {
  public:
   static std::function<bool(const tir::BlockNode* block)> MakeBlockFinder(const tir::Schedule& sch,
                                                                           int* idx) {
-    return [sch, idx](const tir::BlockNode* block) -> bool {
-      const tir::StmtSRefNode* sref = sch->GetSRef(block)->parent;
-      for (int& i = *idx = 0; sref != nullptr; sref = sref->parent, ++i) {
-        const tir::ForNode* loop = sref->GetStmt<tir::ForNode>();
-        if (!loop) {
-          break;
-        }
+     return [sch, idx](const tir::BlockNode* block) -> bool {
+       const tir::StmtSRefNode* sref = sch->GetSRef(block)->parent;
+       for (int& i = *idx = 0; sref != nullptr; sref = sref->parent, ++i) {
+         const tir::ForNode* loop = sref->StmtAs<tir::ForNode>();
+         if (!loop) {
+           break;
+         }
         if (HasAnn(sch->GetSRef(loop), tir::attr::loop_type, "lazy_cooperative_fetch")) {
           return true;
         }
@@ -207,30 +207,46 @@ class PostprocRewriteCooperativeFetchTensorCore {
       return false;
     };
   }
-
-  bool Proc(const Schedule& sch) const {
-    int idx = 0;
-    while (Optional<tir::StmtSRef> opt_block_sref =
-        FindBlockSRef(sch->state, MakeBlockFinder(sch, &idx))) {
-      // Extract block info
-      tir::StmtSRef block_sref = opt_block_sref.value();
-      const auto* block = block_sref->GetStmt<tir::BlockNode>();
-      BlockRV block_rv = sch->GetBlock(block->name_hint);
-      // Extract loop info
-      Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
-      int n_loops = loop_rvs.size();
-      CHECK_LT(idx, n_loops);
-      LoopRV loop_rv = loop_rvs[n_loops - 1 - idx];
-      tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
-      // Remove the annotation
-      DelAnn(sch->state, loop_sref, tir::attr::loop_type);
-      // Split the loop
-      Array<LoopRV> split = sch->Split(loop_rv, {NullOpt, Integer(32)});
-      ICHECK_EQ(split.size(), 2);
-      sch->Bind(split[1], "threadIdx.x");
-    }
-    return true;
-  }
+   bool Proc(const Schedule& sch) const {
+     int idx = 0;
+     while (Optional<tir::StmtSRef> opt_block_sref =
+         FindBlockSRef(sch->state(), MakeBlockFinder(sch, &idx))) {
+       // Extract block info
+       tir::StmtSRef block_sref = opt_block_sref.value();
+       const auto* block = block_sref->StmtAs<tir::BlockNode>();
+       BlockRV block_rv = sch->GetBlock(block->name_hint);
+       // Extract loop info
+       Array<LoopRV> loop_rvs = sch->GetLoops(block_rv);
+       int n_loops = loop_rvs.size();
+       CHECK_LT(idx, n_loops);
+       LoopRV loop_rv = loop_rvs[n_loops - 1 - idx];
+       tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
+       // Remove the annotation
+       DelAnn(sch->state(), loop_sref, tir::attr::loop_type);
+       // Find the threadIdx.y binding
+       PrimExpr thread_idy_extent{nullptr};
+       for (const tir::StmtSRefNode* sref = loop_sref->parent;; sref = sref->parent) {
+         ICHECK(sref) << "ValueError: Cannot find loops above with threadIdx.y";
+         if (const tir::ForNode* loop = sref->StmtAs<tir::ForNode>()) {
+           if (HasBinding(GetRef<tir::StmtSRef>(sref), "threadIdx.y")) {
+             ICHECK(tir::is_zero(loop->min))
+                 << "ValueError: Expect loops to start from 0, but gets: " << GetRef<tir::For>(loop);
+             thread_idy_extent = loop->extent;
+             break;
+           }
+         }
+       }
+       // Split the loop
+       Array<LoopRV> split = sch->Split(loop_rv, {NullOpt, thread_idy_extent, Integer(32)});
+       ICHECK_EQ(split.size(), 3);
+       LOG(INFO) << "Bind ty " << sch->Get(split[1]);
+       sch->Bind(split[1], "threadIdx.y");
+       LOG(INFO) << "Bind tx " << sch->Get(split[2]);
+       sch->Bind(split[2], "threadIdx.x");
+       LOG(INFO) << "ok";
+     }
+     return true;
+   }
 };
 
 Postproc RewriteCooperativeFetchTensorCore() {
@@ -903,6 +919,7 @@ class PostprocVerifyGPUCode {
     try {
       mod = passes(std::move(mod));
     } catch (const dmlc::Error& e) {
+      LOG(INFO) << e.what();
       return false;
     }
     return VerifyGPU(GetOnlyFunc(mod), task->target);
