@@ -18,6 +18,8 @@
 # pylint: disable=missing-function-docstring
 from typing import Tuple
 
+import tvm
+from tvm.script import ty
 from tvm import te, topi, tir
 
 
@@ -45,6 +47,44 @@ def matmul_fp16(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor
 
     c = te.compute((n, m), f_compute, name="C")
     return [a, b, c]
+
+
+@tvm.script.tir
+def matmul_fp16_packed(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> None:
+    n = tir.var("int32")
+    A = tir.match_buffer(
+        var_A, [n, n, 16, 16], dtype="float16", elem_offset=0, align=128, offset_factor=1
+    )
+    B = tir.match_buffer(
+        var_B, [n, n, 16, 16], dtype="float16", elem_offset=0, align=128, offset_factor=1
+    )
+    C = tir.match_buffer(var_C, [n, n, 16, 16], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root"):
+        tir.reads([])
+        tir.writes([])
+        for i0, i1, i2, i3, i4, i5 in tir.grid(n, n, n, 16, 16, 16):
+            with tir.block([n, n, tir.reduce_axis(0, n), 16, 16, tir.reduce_axis(0, 16)], "C") as [
+                io,
+                jo,
+                ko,
+                ii,
+                ji,
+                ki,
+            ]:
+                tir.bind(io, i0)
+                tir.bind(jo, i1)
+                tir.bind(ko, i2)
+                tir.bind(ii, i3)
+                tir.bind(ji, i4)
+                tir.bind(ki, i5)
+                tir.reads([C[io, jo, ii, ji], A[io, ko, ii, ki], B[ko, jo, ki, ji]])
+                tir.writes([C[io, jo, ii, ji]])
+                with tir.init():
+                    C[io, jo, ii, ji] = tir.float32(0)
+                C[io, jo, ii, ji] = C[io, jo, ii, ji] + (
+                    tir.cast(A[io, ko, ii, ki], "float32") * tir.cast(B[ko, jo, ki, ji], "float32")
+                )
 
 
 def matmul_relu(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor, te.Tensor]:
