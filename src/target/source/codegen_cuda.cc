@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "literal/cuda_half_t.h"
+#include "literal/cuda_binary_search.h"
 
 namespace tvm {
 namespace codegen {
@@ -108,6 +109,9 @@ std::string CodeGenCUDA::Finish() {
   decl_stream << "  #define int64_t long long\n";
   decl_stream << "  #define uint64_t unsigned long long\n";
   decl_stream << "#endif\n";
+
+  // binary search intrinsic.
+  decl_stream << _cuda_binary_search_def;
 
   return CodeGenC::Finish();
 }

@@ -375,31 +375,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << ")";
     });
 
-// LowerBound
-LowerBound::LowerBound(Buffer buf, PrimExpr val, Span span) {
-  ObjectPtr<LowerBoundNode> node = make_object<LowerBoundNode>();
-  node->buf = buf;
-  node->val = val;
-  node->span = std::move(span);
-  data_ = std::move(node);
-}
-
-TVM_REGISTER_GLOBAL("tir.LowerBound").set_body_typed([](Buffer buf, PrimExpr val, Span span) {
-  return LowerBound(buf, val, span);
-});
-
-TVM_REGISTER_NODE_TYPE(LowerBoundNode);
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-  .set_dispatch<LowerBoundNode>([](const ObjectRef& node, ReprPrinter* p) {
-    auto* op = static_cast<const LowerBoundNode*>(node.get());
-    p->stream << "lower_bound(";
-    p->Print(op->buf);
-    p->stream << ", ";
-    p->Print(op->val);
-    p->stream << ")";
-  });
-
 // EQ
 TVM_DEFINE_CMPOP_CONSTRUCTOR(EQ);
 

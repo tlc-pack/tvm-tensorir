@@ -774,26 +774,6 @@ class Min(BinaryOpExpr):
         self.__init_handle_by_constructor__(_ffi_api.Min, a, b, span)  # type: ignore
 
 
-@tvm._ffi.register_object("tir.Lowerbound")
-class LowerBound(PrimExprWithOp):
-    """LowerBound node for binary search.
-    
-    Parameters
-    ----------
-    buf : Buffer
-        The 1D buffer to apply binary search on.
-
-    val : PrimExpr
-        The value of the lower bound to search for in the buffer.
-
-    span : Optional[Span]
-        The location of this expression in the source code.
-    """
-    
-    def __init__(self, buf, val, span=None):
-        self.__init_handle_by_constructor__(_ffi_api.LowerBound, buf, val, span)  # type: ignore
-
-
 @tvm._ffi.register_object("tir.Max")
 class Max(BinaryOpExpr):
     """Max node.

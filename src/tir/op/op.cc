@@ -649,7 +649,7 @@ PrimExpr isnan(PrimExpr x, Span span) {
     if (fx) {
       return make_const(t, std::isnan(fx->value), fx->span);
     }
-    static auto op = Op::Get("tir.isnan");
+    static auto op =  Op::Get("tir.isnan");
     if (x.dtype().bits() == 16) {
       return tir::Call(t, op, {cast(DataType::Float(32, t.lanes()), std::move(x), span)}, span);
     } else {
@@ -677,6 +677,14 @@ PrimExpr isinf(PrimExpr x, Span span) {
 
 // isfinite
 PrimExpr isfinite(PrimExpr x, Span span) { return !isinf(x, span) && !isnan(x, span); }
+
+// Lower bound
+inline PrimExpr lower_bound(Buffer buf, PrimExpr val, Span span = Span()) {
+  CHECK()
+  static const Op& op = Op::Get("tir.lower_bound");
+  tir::Call(x.dtype(), op, {buf->data, val, buf->shape[0]});
+}
+
 
 PrimExpr sum(PrimExpr source, Array<IterVar> rdom, Array<PrimExpr> init, Span span) {
   Var x("x", source.dtype(), span), y("y", source.dtype(), span);
@@ -962,6 +970,10 @@ TVM_REGISTER_GLOBAL("tir._OpIfThenElse")
 
 TVM_REGISTER_GLOBAL("tir.const_true").set_body_typed([](DataType t, Span span) {
   return const_true(t.lanes(), span);
+});
+
+TVM_REGISTER_GLOBAL("tir.lower_bound").set_body_typed([](Buffer buf, PrimExpr val, Span span) {
+  
 });
 
 }  // namespace tvm

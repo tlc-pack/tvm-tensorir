@@ -1324,6 +1324,28 @@ def floormod(a, b, span=None):
     return _ffi_api._OpFloorMod(a, b, span)  # type: ignore
 
 
+def lower_bound(buf, val, span=None):
+    """LowerBound node for binary search.
+    
+    Parameters
+    ----------
+    buf : Buffer
+        The 1D buffer to apply binary search on.
+
+    val : PrimExpr
+        Value of the lower bound to search for in the buffer.
+
+    span : Optional[Span]
+        The location of this expression in the source code.
+
+    Returns
+    -------
+    PrimExpr
+        The index of element in the buffer that is no less then given value.
+    """
+    return _ffi_api._OpLowerBound(buf, val, span)  # type: ignore
+
+
 def thread_axis(dom=None, tag="", name=""):
     """Create a new IterVar to represent thread index.
 

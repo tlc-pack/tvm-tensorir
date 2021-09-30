@@ -240,6 +240,10 @@ TIR_DEFINE_BUILTIN_FUNC(vectorhigh)
 TIR_DEFINE_BUILTIN_FUNC(vectorlow).set_attr<TCallEffectKind>("TCallEffectKind",
                                                              Integer(CallEffectKind::kPure));
 
+TVM_DEFINE_BUILTIN_FUNC(tvm_lower_bound)
+    .set_num_inputs(3)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kPure));
+
 TIR_DEFINE_BUILTIN_FUNC(vectorcombine)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kPure));
 
