@@ -682,7 +682,7 @@ PrimExpr isfinite(PrimExpr x, Span span) { return !isinf(x, span) && !isnan(x, s
 inline PrimExpr lower_bound(Buffer buf, PrimExpr val, Span span = Span()) {
   CHECK(buf->shape.size() == 1) << "We only support binary search on 1D buffers.";
   static const Op& op = Op::Get("tir.lower_bound");
-  tir::Call({kDLInt, 32, 1}, op, {buf->data, val, buf->shape[0]});
+  return tir::Call({kDLInt, 32, 1}, op, {buf->data, val, buf->shape[0]});
 }
 
 
@@ -973,7 +973,7 @@ TVM_REGISTER_GLOBAL("tir.const_true").set_body_typed([](DataType t, Span span) {
 });
 
 TVM_REGISTER_GLOBAL("tir.lower_bound").set_body_typed([](Buffer buf, PrimExpr val, Span span) {
-  
+  return lower_bound(buf, val, span);
 });
 
 }  // namespace tvm
