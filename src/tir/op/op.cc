@@ -649,7 +649,7 @@ PrimExpr isnan(PrimExpr x, Span span) {
     if (fx) {
       return make_const(t, std::isnan(fx->value), fx->span);
     }
-    static auto op =  Op::Get("tir.isnan");
+    static auto op = Op::Get("tir.isnan");
     if (x.dtype().bits() == 16) {
       return tir::Call(t, op, {cast(DataType::Float(32, t.lanes()), std::move(x), span)}, span);
     } else {
@@ -677,7 +677,6 @@ PrimExpr isinf(PrimExpr x, Span span) {
 
 // isfinite
 PrimExpr isfinite(PrimExpr x, Span span) { return !isinf(x, span) && !isnan(x, span); }
-
 
 PrimExpr sum(PrimExpr source, Array<IterVar> rdom, Array<PrimExpr> init, Span span) {
   Var x("x", source.dtype(), span), y("y", source.dtype(), span);

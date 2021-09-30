@@ -26,7 +26,7 @@
 
 static constexpr const char* _cuda_binary_search_def = R"(
 template <typename DType>
-int32_t TVM_XINLINE lower_bound(const DType* __restrict__ arr, int32_t length, DType val) {
+int32_t TVM_XINLINE __lower_bound(const DType* __restrict__ arr, int32_t length, DType val) {
   int32_t low = -1, high = length;
   /* loop invariant: high - low > 1, arr[low] < val, arr[high] >= val */
   while (low + 1 < high) {
@@ -41,7 +41,7 @@ int32_t TVM_XINLINE lower_bound(const DType* __restrict__ arr, int32_t length, D
 }
 
 template <typename DType>
-int32_t TVM_XINLINE upper_bound(const DType* __restrict__ arr, int32_t length, DType val) {
+int32_t TVM_XINLINE __upper_bound(const DType* __restrict__ arr, int32_t length, DType val) {
   int32_t low = -1, high = length;
   /* loop invariant: high - low > 1, arr[low] <= val, arr[high] > val */
   while (low + 1 < high) {

@@ -197,7 +197,6 @@ Cast::Cast(DataType t, PrimExpr value, Span span) {
   data_ = std::move(node);
 }
 
-
 TVM_REGISTER_GLOBAL("tir.Cast").set_body_typed([](DataType dtype, PrimExpr value, Span span) {
   return Cast(dtype, value, span);
 });
