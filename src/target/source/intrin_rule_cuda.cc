@@ -206,6 +206,14 @@ TVM_REGISTER_OP("tir.tvm_warp_activemask")
 
 TVM_REGISTER_OP("tir.fmod")
     .set_attr<FLowerIntrinsic>("cuda.FLowerIntrinsic", DispatchPureExtern<CUDAMath>);
+  
+TVM_REGISTER_OP("tir.lower_bound")
+    .set_num_inputs(3)
+    .add_argument("arr", "Expr", "Start pointer to the array.")
+    .add_argument("length", "Expr", "The length of the array.")
+    .add_argument("val", "Expr", "Value to search for in the array.")
+    .set_attr<TGlobalSymbol>("TGlobalSymbol", "__lower_bound")
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kPure));
 
 // Register low-level builtin ops.
 // TODO(tvm-team): consider make CUDA its own subfolder and create a file for low-level builtins.
