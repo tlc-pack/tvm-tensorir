@@ -678,13 +678,6 @@ PrimExpr isinf(PrimExpr x, Span span) {
 // isfinite
 PrimExpr isfinite(PrimExpr x, Span span) { return !isinf(x, span) && !isnan(x, span); }
 
-// Lower bound
-PrimExpr lower_bound(Buffer buf, PrimExpr val, Span span) {
-  CHECK(buf->shape.size() == 1) << "We only support binary search on 1D buffers.";
-  static const Op& op = Op::Get("tir.lower_bound");
-  return tir::Call({kDLInt, 32, 1}, op, {buf->data, val, buf->shape[0]});
-}
-
 
 PrimExpr sum(PrimExpr source, Array<IterVar> rdom, Array<PrimExpr> init, Span span) {
   Var x("x", source.dtype(), span), y("y", source.dtype(), span);
