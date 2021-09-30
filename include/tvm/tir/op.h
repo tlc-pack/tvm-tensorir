@@ -1011,7 +1011,11 @@ inline PrimExpr foldl(FReduce freduce, PrimExpr init_value, const Array<PrimExpr
  * \param val Value of the lower bound to search for in the buffer.
  * \return The index of element in the buffer that is no less then given value.
  */
-inline PrimExpr lower_bound(Buffer buf, PrimExpr val, Span span = Span());
+inline PrimExpr lower_bound(Buffer buf, PrimExpr val, Span span = Span()) {
+  CHECK(buf->shape.size() == 1) << "We only support binary search on 1D buffers.";
+  static const Op& op = Op::Get("tir.lower_bound");
+  return tir::Call({kDLInt, 32, 1}, op, {buf->data, val, buf->shape[0]});
+}
 
 /*!
  * \brief Check whether x is a constant power of two
