@@ -327,7 +327,7 @@ class AutoCopyMutator : public StmtExprMutator {
     return ret;
   }
 
-  Stmt RewriteWmmaLoad(Block block){
+  Stmt RewriteWmmaLoad(Block block, Array<MatchBufferRegion>* match_buffers){
     Stmt body = block->body;
     std::vector<int> index;
     arith::Analyzer analyzer;
@@ -351,27 +351,39 @@ class AutoCopyMutator : public StmtExprMutator {
     if (index.size() != 2 || index[1] != i - 1 || index[0] != i - 2) {
       return block->body;
     }
-    const auto* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
     Buffer src_buffer = block->reads[0]->buffer;
     Buffer tgt_buffer = block->writes[0]->buffer;
-    //todo(jinhongyii): consider non-packed layout situation
-    auto src_elem_offset = Call(runtime::DataType::Int(32), builtin::get_elem_offset(),
-                                {Substitute(buf_store->value, substitute_map)});
-    auto tgt_elem_offset = Call(runtime::DataType::Int(32), builtin::get_elem_offset(),
-                                {Substitute(BufferLoad(tgt_buffer, buf_store->indices),
-                                                                   substitute_map)});
-    auto src_pointer = Call(runtime::DataType::Handle(), builtin::tvm_access_ptr(),
-                            {TypeAnnotation(src_buffer->dtype), src_buffer->data,
-                             src_elem_offset,
-                             256, 1});
+    TensorIntrin wmma_load;
+    if(tgt_buffer.scope()=="wmma.matrix_a") {
+      wmma_load = tir::TensorIntrin::Get("wmma_load_a");
+    } else {
+      wmma_load = tir::TensorIntrin::Get("wmma_load_b");
+    }
+
+    auto param = wmma_load->implementation->params[0];
+    Buffer new_src_buffer = wmma_load->implementation->buffer_map.at(param);
+    match_buffers->push_back(MatchBufferRegion(new_src_buffer, block->reads[0]));
+    param = wmma_load->implementation->params[1];
+    Buffer new_tgt_buffer = wmma_load->implementation->buffer_map.at(param);
+    match_buffers->push_back(MatchBufferRegion(new_tgt_buffer, block->writes[0]));
+
+
+    PrimExpr frag_index = floordiv(new_tgt_buffer->elem_offset,256)+ floordiv(floormod
+                                                                                (new_tgt_buffer->elem_offset,
+                                                                                 256),16);
+
+    auto new_src_pointer = Call(runtime::DataType::Handle(), builtin::tvm_access_ptr(),
+                            {TypeAnnotation(new_src_buffer->dtype), new_src_buffer->data,
+                             new_src_buffer->elem_offset,
+                             new_src_buffer->strides[new_src_buffer->strides.size()-2]*16, 1});
     
     return Evaluate(Call(runtime::DataType::Handle(),builtin::tvm_load_matrix_sync(),
-                                   {tgt_buffer->data, 16, 16, 16, floordiv(tgt_elem_offset, 256),
-                         src_pointer, src_buffer->shape[src_buffer->shape.size()-1],
+                                   {new_tgt_buffer->data, 16, 16, 16, frag_index,
+                         new_src_pointer, new_src_buffer->strides[new_src_buffer->strides.size()-2],
                           StringImm("row_major")}));
   }
 
-  Stmt RewriteWmmaStore(Block block){
+  Stmt RewriteWmmaStore(Block block, Array<MatchBufferRegion>* match_buffers){
     Stmt body = block->body;
     std::vector<int> index;
     arith::Analyzer analyzer;
@@ -395,24 +407,33 @@ class AutoCopyMutator : public StmtExprMutator {
     if (index.size() != 2 || index[1] != i - 1 || index[0] != i - 2) {
       return block->body;
     }
-    const auto* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
     Buffer src_buffer = block->reads[0]->buffer;
     Buffer tgt_buffer = block->writes[0]->buffer;
+    TensorIntrin wmma_store = tir::TensorIntrin::Get("wmma_store");
+
+    
+    auto param = wmma_store->implementation->params[0];
+    Buffer new_src_buffer = wmma_store->implementation->buffer_map.at(param);
+    match_buffers->push_back(MatchBufferRegion(new_src_buffer, block->reads[0]));
+    param = wmma_store->implementation->params[1];
+    Buffer new_tgt_buffer = wmma_store->implementation->buffer_map.at(param);
+    match_buffers->push_back(MatchBufferRegion(new_tgt_buffer, block->writes[0]));
+
     //todo(jinhongyii): consider non-packed layout situation
-    auto src_elem_offset = Call(runtime::DataType::Int(32), builtin::get_elem_offset(),
-                                {Substitute(buf_store->value, substitute_map)});
-    auto tgt_elem_offset = Call(runtime::DataType::Int(32), builtin::get_elem_offset(),
-                                {Substitute(BufferLoad(tgt_buffer, buf_store->indices),
-                                            substitute_map)});
-    auto tgt_pointer = Call(runtime::DataType::Handle(), builtin::tvm_access_ptr(),
-                            {TypeAnnotation(tgt_buffer->dtype), tgt_buffer->data,
-                             tgt_elem_offset,
-                             256, 2});
+    PrimExpr frag_index = floordiv(new_src_buffer->elem_offset,256)+ floordiv(floormod
+                                                                                (new_src_buffer->elem_offset,
+                                                                                 256),16);
+
+    auto new_tgt_pointer = Call(runtime::DataType::Handle(), builtin::tvm_access_ptr(),
+                                {TypeAnnotation(new_tgt_buffer->dtype), new_tgt_buffer->data,
+                                 new_tgt_buffer->elem_offset,
+                                 new_tgt_buffer->strides[0]*16, 2});
     
     return Evaluate(Call(runtime::DataType::Handle(),builtin::tvm_store_matrix_sync(),
-                         {src_buffer->data, 16, 16, 16, floordiv(src_elem_offset, 256),
-                          tgt_pointer, tgt_buffer->shape[tgt_buffer->shape.size()-1],
+                         {new_src_buffer->data, 16, 16, 16, frag_index,
+                          new_tgt_pointer, new_tgt_buffer->strides[0],
                           StringImm("row_major")}));
+
   }
   
   Stmt CoalesceGlobalLoad(Block block, const std::pair<Array<PrimExpr>, Array<Var>>& mapping,
@@ -782,9 +803,14 @@ class AutoCopyMutator : public StmtExprMutator {
         n->body = CoalesceGlobalLoad(block, mapping, vector_bytes, need_inverse);
       } else if ((tgt_scope_.rank == runtime::StorageRank::kWMMAMatrixA ||
                   tgt_scope_.rank == runtime::StorageRank::kWMMAMatrixB)) {
-        n->body = RewriteWmmaLoad(block);
+        Array<MatchBufferRegion> match_buffers;
+        n->body = RewriteWmmaLoad(block, &match_buffers);
+        n->match_buffers = match_buffers;
       } else if (src_scope_.rank == runtime::StorageRank::kWMMAAccumulator) {
-        n->body = RewriteWmmaStore(block);
+        Array<MatchBufferRegion> match_buffers;
+        n->body = RewriteWmmaStore(block, &match_buffers);
+        n->match_buffers = match_buffers;
+        
       }
       LOG(INFO)<<"calc conflict";
       getConflictForAllPaddingSize(block);
