@@ -964,8 +964,6 @@ TVM_REGISTER_GLOBAL("tir.const_true").set_body_typed([](DataType t, Span span) {
   return const_true(t.lanes(), span);
 });
 
-TVM_REGISTER_GLOBAL("tir.lower_bound").set_body_typed([](Buffer buf, PrimExpr val, Span span) {
-  return lower_bound(buf, val, span);
-});
+TVM_REGISTER_GLOBAL("tir.lower_bound").set_body_typed(lower_bound);
 
 }  // namespace tvm
