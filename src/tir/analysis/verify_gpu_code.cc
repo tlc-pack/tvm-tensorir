@@ -191,11 +191,11 @@ class GPUCodeVerifier : public StmtExprVisitor {
   void VisitExpr_(const LoadNode* op) {
     if (op->dtype.lanes() > 1) {
       if (static_cast<size_t>(op->dtype.lanes() * op->dtype.bytes()) > max_vector_bytes_) {
-        // std::stringstream s;
-        // s << "Number of lanes (" << op->dtype.lanes() << ") times number of bytes ("
-        //   << op->dtype.bytes() << ") for dtype " << op->dtype
-        //   << " is greater than the maximum number of vector bytes (" << max_vector_bytes_ << ")";
-        // errors_.push_back(s.str());
+        std::stringstream s;
+        s << "Number of lanes (" << op->dtype.lanes() << ") times number of bytes ("
+          << op->dtype.bytes() << ") for dtype " << op->dtype
+          << " is greater than the maximum number of vector bytes (" << max_vector_bytes_ << ")";
+        errors_.push_back(s.str());
       }
     }
     ExprVisitor::VisitExpr_(op);
@@ -203,13 +203,13 @@ class GPUCodeVerifier : public StmtExprVisitor {
 
   void VisitStmt_(const StoreNode* op) {
     if (op->index->dtype.lanes() > 1) {
-      if (static_cast<size_t>(op->index->dtype.lanes() * op->index->dtype.bytes()) >
+      if (static_cast<size_t>(op->value->dtype.lanes() * op->value->dtype.bytes()) >
           max_vector_bytes_) {
-        // std::stringstream s;
-        // s << "Number of lanes (" << op->index->dtype.lanes() << ") times number of bytes ("
-        //   << op->index->dtype.bytes() << ") for dtype " << op->index->dtype
-        //   << " is greater than the maximum number of vector bytes (" << max_vector_bytes_ << ")";
-        // errors_.push_back(s.str());
+        std::stringstream s;
+        s << "Number of lanes (" << op->value->dtype.lanes() << ") times number of bytes ("
+          << op->value->dtype.bytes() << ") for dtype " << op->value->dtype
+          << " is greater than the maximum number of vector bytes (" << max_vector_bytes_ << ")";
+        errors_.push_back(s.str());
       }
     }
     StmtVisitor::VisitStmt_(op);
