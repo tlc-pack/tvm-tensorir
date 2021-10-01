@@ -1006,18 +1006,6 @@ inline PrimExpr foldl(FReduce freduce, PrimExpr init_value, const Array<PrimExpr
                       Span span = Span());
 
 /*!
- * \brief Lower bound.
- * \param arr The 1D buffer to apply binary search on.
- * \param val Value of the lower bound to search for in the buffer.
- * \param length Length of the array.
- * \return The index of element in the buffer that is no less then given value.
- */
-inline PrimExpr lower_bound(Var arr, PrimExpr val, PrimExpr length, Span span = Span()) {
-  static const Op& op = Op::Get("tir.lower_bound");
-  return tir::Call(length->dtype, op, {arr, val, length});
-}
-
-/*!
  * \brief Check whether x is a constant power of two
  * If x is power of two, write the power to the shift.
  *
