@@ -972,6 +972,31 @@ def ldexp(x1, x2):
     return call_intrin(x1.dtype, "tir.ldexp", x1, x2)  # type: ignore
 
 
+def lower_bound(arr, val, length, span=None):
+    """LowerBound node for binary search.
+    
+    Parameters
+    ----------
+    arr : Var
+        Pointer to the 1D buffer to apply binary search on.
+
+    val : PrimExpr
+        Value of the lower bound to search for in the buffer.
+    
+    length : PrimExpr
+        Length of the 1D array.
+
+    span : Optional[Span]
+        The location of this expression in the source code.
+
+    Returns
+    -------
+    PrimExpr
+        The index of element in the buffer that is no less then given value.
+    """
+    return call_intrin(length.dtype, "tir.lower_bound", arr, val, length, span=span)  # type: ignore
+
+
 def isnan(x, span=None):
     """Check if input value is Nan.
 
@@ -1322,31 +1347,6 @@ def floormod(a, b, span=None):
         The result expression.
     """
     return _ffi_api._OpFloorMod(a, b, span)  # type: ignore
-
-
-def lower_bound(arr, val, length, span=None):
-    """LowerBound node for binary search.
-    
-    Parameters
-    ----------
-    arr : Var
-        Pointer to the 1D buffer to apply binary search on.
-
-    val : PrimExpr
-        Value of the lower bound to search for in the buffer.
-    
-    length : PrimExpr
-        Length of the 1D array.
-
-    span : Optional[Span]
-        The location of this expression in the source code.
-
-    Returns
-    -------
-    PrimExpr
-        The index of element in the buffer that is no less then given value.
-    """
-    return _ffi_api.lower_bound(arr, val, length, span)  # type: ignore
 
 
 def thread_axis(dom=None, tag="", name=""):
