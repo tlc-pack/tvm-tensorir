@@ -1007,14 +1007,14 @@ inline PrimExpr foldl(FReduce freduce, PrimExpr init_value, const Array<PrimExpr
 
 /*!
  * \brief Lower bound.
- * \param buf The 1D buffer to apply binary search on.
+ * \param arr The 1D buffer to apply binary search on.
  * \param val Value of the lower bound to search for in the buffer.
+ * \param length Length of the array.
  * \return The index of element in the buffer that is no less then given value.
  */
-inline PrimExpr lower_bound(Buffer buf, PrimExpr val, Span span = Span()) {
-  CHECK(buf->shape.size() == 1) << "We only support binary search on 1D buffers.";
+inline PrimExpr lower_bound(Var arr, PrimExpr val, PrimExpr length, Span span = Span()) {
   static const Op& op = Op::Get("tir.lower_bound");
-  return tir::Call({kDLInt, 32, 1}, op, {buf->data, val, buf->shape[0]});
+  return tir::Call(length->dtype, op, {arr, val, length});
 }
 
 /*!
