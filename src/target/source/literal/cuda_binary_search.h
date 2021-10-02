@@ -25,33 +25,39 @@
 #define TVM_TARGET_SOURCE_LITERAL_CUDA_BINARY_SEARCH_H_
 
 static constexpr const char* _cuda_binary_search_def = R"(
-template <typename DType>
-int32_t TVM_XINLINE __lower_bound(const DType* __restrict__ arr, int32_t length, DType val) {
+template <typename DType, typename IdType>
+__forceinline__ __device__ IdType __lower_bound(
+    const DType* __restrict__ arr,
+    IdType length,
+    DType val) {
   int32_t low = -1, high = length;
   /* loop invariant: high - low > 1, arr[low] < val, arr[high] >= val */
   while (low + 1 < high) {
-    IdType mid = (low + high) >> 1;
+    int32_t mid = (low + high) >> 1;
     if (arr[mid] < val) {
       low = mid;
     } else {
       high = mid;
     }
-  };
+  }
   return high;
 }
 
-template <typename DType>
-int32_t TVM_XINLINE __upper_bound(const DType* __restrict__ arr, int32_t length, DType val) {
+template <typename DType, typename IdType>
+__forceinline__ __device__ IdType __upper_bound(
+    const DType* __restrict__ arr,
+    IdType length,
+    DType val) {
   int32_t low = -1, high = length;
   /* loop invariant: high - low > 1, arr[low] <= val, arr[high] > val */
   while (low + 1 < high) {
-    IdType mid = (low + high) >> 1;
+    int32_t mid = (low + high) >> 1;
     if (arr[mid] > val) {
       high = mid;
     } else {
-      lower = mid;
+      low = mid;
     }
-  };
+  }
   return high;
 }
 )";

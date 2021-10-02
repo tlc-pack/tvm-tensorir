@@ -799,7 +799,10 @@ PrimExpr lower_bound(Var arr, PrimExpr val, PrimExpr length, Span span) {
   return tir::Call(length.dtype(), builtin::tvm_lower_bound(), {arr, val, length}, span);
 }
 
-TVM_REGISTER_OP("tir.lower_bound").set_num_inputs(3).set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kPure));
+// upper_bound
+PrimExpr upper_bound(Var arr, PrimExpr val, PrimExpr length, Span span) {
+  return tir::Call(length.dtype(), builtin::tvm_upper_bound(), {arr, val, length}, span);
+}
 
 // trunc
 PrimExpr trunc(PrimExpr x, Span span) {
@@ -916,6 +919,8 @@ TVM_REGISTER_GLOBAL("tir.trunc").set_body_typed(tvm::trunc);
 TVM_REGISTER_GLOBAL("tir._cast").set_body_typed(tvm::cast);
 
 TVM_REGISTER_GLOBAL("tir.lower_bound").set_body_typed(tvm::lower_bound);
+
+TVM_REGISTER_GLOBAL("tir.upper_bound").set_body_typed(tvm::upper_bound);
 
 // operator overloading, smarter than make
 #define REGISTER_MAKE_BINARY_OP(Node, Func)                                                \

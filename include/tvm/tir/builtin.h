@@ -500,6 +500,11 @@ TVM_DLL const Op& tvm_warp_activemask();
 TVM_DLL const Op& tvm_lower_bound();
 
 /*!
+ * \brief Upper bound function for binary search.
+ */
+TVM_DLL const Op& tvm_upper_bound();
+
+/*!
  * \brief Initialize the global barrier.
  *  Call this at beginning of kernel that need global barrier.
  */

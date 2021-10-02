@@ -206,7 +206,7 @@ TVM_REGISTER_OP("tir.tvm_warp_activemask")
 
 TVM_REGISTER_OP("tir.fmod")
     .set_attr<FLowerIntrinsic>("cuda.FLowerIntrinsic", DispatchPureExtern<CUDAMath>);
-  
+
 // Register low-level builtin ops.
 // TODO(tvm-team): consider make CUDA its own subfolder and create a file for low-level builtins.
 TVM_REGISTER_OP("tir.cuda.__shfl_sync")

@@ -225,6 +225,9 @@ TIR_DEFINE_BUILTIN_FUNC(tvm_load_matrix_sync)
 TIR_DEFINE_BUILTIN_FUNC(tvm_lower_bound)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 
+TIR_DEFINE_BUILTIN_FUNC(tvm_upper_bound)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
+
 TIR_DEFINE_BUILTIN_FUNC(tvm_mma_sync)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 

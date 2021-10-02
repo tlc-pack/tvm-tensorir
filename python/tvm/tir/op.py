@@ -973,8 +973,8 @@ def ldexp(x1, x2):
 
 
 def lower_bound(arr, val, length, span=None):
-    """LowerBound node for binary search.
-    
+    """Return the position to the first element in the arr that is no less than val.
+
     Parameters
     ----------
     arr : Var
@@ -982,7 +982,7 @@ def lower_bound(arr, val, length, span=None):
 
     val : PrimExpr
         Value of the lower bound to search for in the buffer.
-    
+
     length : PrimExpr
         Length of the 1D array.
 
@@ -994,8 +994,32 @@ def lower_bound(arr, val, length, span=None):
     PrimExpr
         The index of element in the buffer that is no less then given value.
     """
-    print('fuck')
     return _ffi_api.lower_bound(arr, val, length, span)  # type: ignore
+
+
+def upper_bound(arr, val, length, span=None):
+    """Return the position the first element in the arr that is greater than val.
+
+    Parameters
+    ----------
+    arr : Var
+        Pointer to the 1D buffer to apply binary search on.
+
+    val : PrimExpr
+        Value of the upper bound to search for in the buffer.
+
+    length : PrimExpr
+        Length of the 1D array.
+
+    span : Optional[Span]
+        The location of this expression in the source code.
+
+    Returns
+    -------
+    PrimExpr
+        The index of element in the buffer that is greater then given value.
+    """
+    return _ffi_api.upper_bound(arr, val, length, span)  # type: ignore
 
 
 def isnan(x, span=None):
