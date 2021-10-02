@@ -96,6 +96,10 @@ std::string CodeGenCUDA::Finish() {
     decl_stream << "#include <cuda/pipeline>\n";
   }
 
+  if (need_binary_search_) {
+    decl_stream << _cuda_binary_search_def;
+  }
+
   decl_stream << "\n#ifdef _WIN32\n";
   decl_stream << "  using uint = unsigned int;\n";
   decl_stream << "  using uchar = unsigned char;\n";
@@ -109,9 +113,6 @@ std::string CodeGenCUDA::Finish() {
   decl_stream << "  #define int64_t long long\n";
   decl_stream << "  #define uint64_t unsigned long long\n";
   decl_stream << "#endif\n";
-
-  // binary search intrinsic.
-  decl_stream << _cuda_binary_search_def;
 
   return CodeGenC::Finish();
 }
@@ -717,6 +718,16 @@ void CodeGenCUDA::VisitExpr_(const CallNode* op, std::ostream& os) {
     ICHECK_EQ(op->args.size(), 1U);
     this->PrintExpr(op->args[0], os);
     os << ".consumer_release()";
+  } else if (op->op.same_as(builtin::tvm_lower_bound())) {
+    need_binary_search_ = true;
+    os << "__lower_bound(";
+    ICHECK_EQ(op->args.size(), 3U);
+    this->PrintExpr(op->args[0], os);
+    os << ", ";
+    this->PrintExpr(op->args[1], os);
+    os << ", ";
+    this->PrintExpr(op->args[2], os);
+    os << ")";
   } else {
     CodeGenC::VisitExpr_(op, os);
   }
