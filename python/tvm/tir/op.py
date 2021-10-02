@@ -994,7 +994,8 @@ def lower_bound(arr, val, length, span=None):
     PrimExpr
         The index of element in the buffer that is no less then given value.
     """
-    return call_intrin(length.dtype, "tir.tvm_lower_bound", arr, val, length, span=span)  # type: ignore
+    print('fuck')
+    return _ffi_api.lower_bound(arr, val, length, span)  # type: ignore
 
 
 def isnan(x, span=None):
