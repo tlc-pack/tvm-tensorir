@@ -112,13 +112,13 @@ def max_value(dtype, span):
 
 
 @register
-def lower_bound(arr, val, length, span):
-    return tvm.tir.lower_bound(arr, val, length, span)
+def lower_bound(arr, val, l, r, span):
+    return tvm.tir.lower_bound(arr, val, l, r, span)
 
 
 @register
-def upper_bound(arr, val, length, span):
-    return tvm.tir.upper_bound(arr, val, length, span)
+def upper_bound(arr, val, l, r, span):
+    return tvm.tir.upper_bound(arr, val, l, r, span)
 
 
 @register

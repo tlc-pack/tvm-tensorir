@@ -257,8 +257,8 @@ def binary_search(a: ty.handle, b: ty.handle, c: ty.handle, d: ty.handle) -> Non
     with tir.block([m], 'search') as [vi]:
         tir.reads([A[0:n], B[vi]])
         tir.writes([C[vi], D[vi]])
-        C[vi] = tir.lower_bound(A.data, B[vi], n)
-        D[vi] = tir.upper_bound(A.data, B[vi], n)
+        C[vi] = tir.lower_bound(A.data, B[vi], 0, n)
+        D[vi] = tir.upper_bound(A.data, B[vi], 0, n)
 
 
 def test_binary_search():

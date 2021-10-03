@@ -29,8 +29,9 @@ template <typename DType>
 __forceinline__ __device__ int32_t __lower_bound(
     const DType* __restrict__ arr,
     DType val,
-    int32_t length) {
-  int32_t low = -1, high = length;
+    int32_t l,
+    int32_t r) {
+  int32_t low = l - 1, high = r;
   /* loop invariant: low < mid < high, arr[low] < val, arr[high] >= val */
   while (low + 1 < high) {
     int32_t mid = (low + high) >> 1;
@@ -48,8 +49,9 @@ template <typename DType>
 __forceinline__ __device__ int32_t __upper_bound(
     const DType* __restrict__ arr,
     DType val,
-    int32_t length) {
-  int32_t low = -1, high = length;
+    int32_t l,
+    int32_t r) {
+  int32_t low = l - 1, high = r;
   /* loop invariant: low < mid < high, arr[low] < val, arr[high] > val */
   while (low + 1 < high) {
     int32_t mid = (low + high) >> 1;

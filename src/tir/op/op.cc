@@ -795,13 +795,13 @@ PrimExpr nearbyint(PrimExpr x, Span span) {
 TIR_REGISTER_PURE_UNARY_OP("tir.nearbyint");
 
 // lower_bound
-PrimExpr lower_bound(Var arr, PrimExpr val, PrimExpr length, Span span) {
-  return tir::Call({kDLInt, 32, 1}, builtin::tvm_lower_bound(), {arr, val, length}, span);
+PrimExpr lower_bound(Var arr, PrimExpr val, PrimExpr l, PrimExpr r, Span span) {
+  return tir::Call({kDLInt, 32, 1}, builtin::tvm_lower_bound(), {arr, val, l, r}, span);
 }
 
 // upper_bound
-PrimExpr upper_bound(Var arr, PrimExpr val, PrimExpr length, Span span) {
-  return tir::Call({kDLInt, 32, 1}, builtin::tvm_upper_bound(), {arr, val, length}, span);
+PrimExpr upper_bound(Var arr, PrimExpr val, PrimExpr l, PrimExpr r, Span span) {
+  return tir::Call({kDLInt, 32, 1}, builtin::tvm_upper_bound(), {arr, val, l, r}, span);
 }
 
 // trunc
