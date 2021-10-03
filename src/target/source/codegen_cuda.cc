@@ -732,7 +732,6 @@ void CodeGenCUDA::VisitExpr_(const CallNode* op, std::ostream& os) {
     need_binary_search_ = true;
     os << "__upper_bound(";
     ICHECK_EQ(op->args.size(), 3U);
-    os << ", ";
     this->PrintExpr(op->args[0], os);
     os << ", ";
     this->PrintExpr(op->args[1], os);

@@ -117,6 +117,11 @@ def lower_bound(arr, val, length, span):
 
 
 @register
+def upper_bound(arr, val, length, span):
+    return tvm.tir.upper_bound(arr, val, length, span)
+
+
+@register
 def floordiv(x, y, span):
     return tvm.tir.floordiv(x, y, span)
 
