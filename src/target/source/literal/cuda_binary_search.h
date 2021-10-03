@@ -25,42 +25,42 @@
 #define TVM_TARGET_SOURCE_LITERAL_CUDA_BINARY_SEARCH_H_
 
 static constexpr const char* _cuda_binary_search_def = R"(
-template <typename DType, typename IdType>
-__forceinline__ __device__ IdType __lower_bound(
+template <typename DType>
+__forceinline__ __device__ int32_t __lower_bound(
     const DType* __restrict__ arr,
     DType val,
-    IdType length) {
-  DType low = 0, high = length + 1;
-  /* loop invariant: low < mid < high, arr[low - 1] < val, arr[high - 1] >= val */
+    int32_t length) {
+  int32_t low = -1, high = length;
+  /* loop invariant: low < mid < high, arr[low] < val, arr[high] >= val */
   while (low + 1 < high) {
-    DType mid = (low + high) >> 1;
-    if (arr[mid - 1] < val) {
+    int32_t mid = (low + high) >> 1;
+    if (arr[mid] < val) {
       low = mid;
     } else {
       high = mid;
     }
   }
-  // high = low + 1, arr[low - 1] < val, arr[high - 1] >= val
-  return high - 1;
+  // high = low + 1, arr[low] < val, arr[high] >= val
+  return high;
 }
 
-template <typename DType, typename IdType>
-__forceinline__ __device__ IdType __upper_bound(
+template <typename DType>
+__forceinline__ __device__ int32_t __upper_bound(
     const DType* __restrict__ arr,
     DType val,
-    IdType length) {
-  DType low = 0, high = length + 1;
-  /* loop invariant: low < mid < high, arr[low - 1] < val, arr[high - 1] > val */
+    int32_t length) {
+  int32_t low = -1, high = length;
+  /* loop invariant: low < mid < high, arr[low] < val, arr[high] > val */
   while (low + 1 < high) {
-    DType mid = (low + high) >> 1;
-    if (arr[mid - 1] > val) {
+    int32_t mid = (low + high) >> 1;
+    if (arr[mid] > val) {
       high = mid;
     } else {
       low = mid;
     }
   }
-  // high = low + 1, arr[low - 1] <= val, arr[high - 1] > val
-  return high - 1;
+  // high = low + 1, arr[low] <= val, arr[high] > val
+  return high;
 }
 )";
 

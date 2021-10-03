@@ -271,14 +271,14 @@ def test_binary_search():
     f = tvm.build(sch.mod['main'], target='cuda')
     # print(f.imported_modules[0].get_source())
 
-    x = np.linspace(-128, 128).astype('int32')
-    y = np.random.randint(-200, 200, size=1024).astype('int32') 
-    a = np.zeros((1024,), dtype=np.int32)
-    b = np.zeros((1024,), dtype=np.int32)
+    x = np.arange(-128, 128).astype(np.int32)
+    y = np.random.randint(-200, 200, size=1024).astype(np.int32) 
+    a = np.zeros((1024,)).astype(np.int32)
+    b = np.zeros((1024,)).astype(np.int32)
 
     # numpy results
-    np_a = np.searchsorted(x, y, side='left')
-    np_b = np.searchsorted(x, y, side='right')
+    np_a = np.searchsorted(x, y, side='left').astype(np.int32)
+    np_b = np.searchsorted(x, y, side='right').astype(np.int32)
 
     # tvm results
     dev = tvm.cuda(0)
@@ -290,6 +290,7 @@ def test_binary_search():
     tvm_a = a_array.numpy()
     tvm_b = b_array.numpy()
 
+    # verify result
     tvm.testing.assert_allclose(np_a, tvm_a)
     tvm.testing.assert_allclose(np_b, tvm_b)
 
