@@ -30,17 +30,18 @@ __forceinline__ __device__ IdType __lower_bound(
     const DType* __restrict__ arr,
     DType val,
     IdType length) {
-  int32_t low = -1, high = length;
-  /* loop invariant: high - low > 1, arr[low] < val, arr[high] >= val */
+  DType low = 0, high = length + 1;
+  /* loop invariant: low < mid < high, arr[low - 1] < val, arr[high - 1] >= val */
   while (low + 1 < high) {
-    int32_t mid = (low + high) >> 1;
-    if (arr[mid] < val) {
+    DType mid = (low + high) >> 1;
+    if (arr[mid - 1] < val) {
       low = mid;
     } else {
       high = mid;
     }
   }
-  return high;
+  // high = low + 1, arr[low - 1] < val, arr[high - 1] >= val
+  return high - 1;
 }
 
 template <typename DType, typename IdType>
@@ -48,17 +49,18 @@ __forceinline__ __device__ IdType __upper_bound(
     const DType* __restrict__ arr,
     DType val,
     IdType length) {
-  int32_t low = -1, high = length;
-  /* loop invariant: high - low > 1, arr[low] <= val, arr[high] > val */
+  DType low = 0, high = length + 1;
+  /* loop invariant: low < mid < high, arr[low - 1] < val, arr[high - 1] > val */
   while (low + 1 < high) {
-    int32_t mid = (low + high) >> 1;
-    if (arr[mid] > val) {
+    DType mid = (low + high) >> 1;
+    if (arr[mid - 1] > val) {
       high = mid;
     } else {
       low = mid;
     }
   }
-  return high;
+  // high = low + 1, arr[low - 1] <= val, arr[high - 1] > val
+  return high - 1;
 }
 )";
 
