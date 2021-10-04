@@ -30,7 +30,6 @@
 #include "./ir_utils.h"
 /*!
  * \brief Automatically generate thread binding for auto copy blocks
- *        Currently only support 2D memory movement
  * \file lower_auto_copy.cc
  */
 
@@ -42,6 +41,11 @@ class AutoCopyMutator : public StmtExprMutator {
   Stmt RewritePaddingBody(Stmt stmt) { return RewriteBufferAccess(stmt, padded_buffer_map_); }
 
  private:
+  /**
+   * \brief fuse consecutive loops
+   * \param stmt the outer-most loop
+   * \return the fused loop
+   */
   Stmt FuseNestLoops(Stmt stmt) {
     if (!stmt->IsInstance<ForNode>()) {
       return stmt;
@@ -76,7 +80,13 @@ class AutoCopyMutator : public StmtExprMutator {
     new_stmt = For(fused_var, 0, fused_extent, ForKind::kSerial, new_stmt);
     return new_stmt;
   }
-
+  /**
+   * \brief a combination of split, bind, vectorize,
+   *        a helper function to perform coalesced load/store
+   * \param body the stmt to do transformation
+   * \param vector_bytes the annotated vectorization bytes
+   * \return the stmt after transformation
+   */
   Stmt SplitBindVectorize(Stmt body, int vector_bytes) {
     const ForNode* loop = body.as<ForNode>();
     int tot_threads = threadIdx_x_ * threadIdx_y_ * threadIdx_z_;
@@ -134,24 +144,13 @@ class AutoCopyMutator : public StmtExprMutator {
     new_loop = For(new_loop_vars[0], 0, outer_loop_extent, ForKind::kSerial, new_loop);
     return std::move(new_loop);
   }
+  
 
-  //  void NormalizeBuffer(Stmt stmt, Buffer buffer){
-  //    if (!buffer->strides.empty()) {
-  //      return;
-  //    }
-  //    Array<PrimExpr> new_shape;
-  //    for (int i = 0; i < static_cast<int>(buffer->shape.size()); i++) {
-  //      if (!is_one(buffer->shape[i]) ) {
-  //        new_shape.push_back(buffer->shape[i]);
-  //      }
-  //    }
-  //    if (new_shape.size() == buffer->shape.size()) {
-  //      return;
-  //    }
-  //    ObjectPtr<BufferNode> n = make_object<BufferNode>(*buffer.get());
-  //
-  //  }
-
+  /**
+   * \brief get the index mapping of a specific block
+   * \param block the specific block
+   * \return the mapping
+   */
   std::pair<Array<PrimExpr>, Array<Var>> GetMapping(Block block) {
     Stmt body = block->body;
     Array<Var> loop_vars;
@@ -177,6 +176,13 @@ class AutoCopyMutator : public StmtExprMutator {
     return std::make_pair(result, loop_vars);
   }
 
+  /**
+   * \brief relax the threads whose rank is higher than both the storage rank of target buffer and
+   * source buffer
+   * @param block the specific block
+   * @param mapping the index mapping
+   * @return the block after relaxation
+   */
   Block RelaxThreads(Block block, const std::pair<Array<PrimExpr>, Array<Var>>& mapping) {
     Stmt body = block.as<BlockNode>()->body;
     Map<Var, Range> var_range;
@@ -274,6 +280,12 @@ class AutoCopyMutator : public StmtExprMutator {
     return Block(new_block);
   }
 
+  /**
+   * \brief transform from A[f(i,j)] = B[i,j] to A[i,j] = B[f^{-1}(i,j)]
+   * @param block the specific block
+   * @param mapping the index mapping
+   * @return the result stmt
+   */
   Stmt InverseMappingTransform(Block block, const std::pair<Array<PrimExpr>, Array<Var>>& mapping) {
     Stmt body = block->body;
     Map<Var, Range> var_range;
@@ -323,6 +335,12 @@ class AutoCopyMutator : public StmtExprMutator {
     return ret;
   }
 
+  /**
+   * \brief rewrite wmma load
+   * @param block the specific block
+   * @param match_buffers the match_buffer to be appended to the new block
+   * @return the result stmt
+   */
   Stmt RewriteWmmaLoad(Block block, Array<MatchBufferRegion>* match_buffers) {
     Stmt body = block->body;
     std::vector<int> index;
@@ -378,6 +396,12 @@ class AutoCopyMutator : public StmtExprMutator {
          new_src_buffer->strides[new_src_buffer->strides.size() - 2], StringImm("row_major")}));
   }
 
+  /**
+   * \brief rewrite wmma store
+   * @param block the specific block
+   * @param match_buffers the match_buffer to be appended to the new block
+   * @return the result stmt
+   */
   Stmt RewriteWmmaStore(Block block, Array<MatchBufferRegion>* match_buffers) {
     Stmt body = block->body;
     std::vector<int> index;
@@ -427,6 +451,14 @@ class AutoCopyMutator : public StmtExprMutator {
                           new_tgt_buffer->strides[0], StringImm("row_major")}));
   }
 
+  /**
+   * \brief do coalesce load/store
+   * @param block the specific block
+   * @param mapping the index mapping
+   * @param vector_bytes the annotated vectorization bytes
+   * @param need_inverse whether need to inverse mapping transform
+   * @return the result stmt
+   */
   Stmt CoalesceGlobalLoad(Block block, const std::pair<Array<PrimExpr>, Array<Var>>& mapping,
                           int vector_bytes, bool need_inverse = false) {
     Stmt ret = block->body;
@@ -438,7 +470,12 @@ class AutoCopyMutator : public StmtExprMutator {
     ret = SplitBindVectorize(std::move(ret), vector_bytes);
     return ret;
   }
-
+  /**
+   * \brief do padding to the given buffers whose storage scope is "shared"
+   * @param buffers the given buffers
+   * @param buffer_map the mapping from old buffer to the new padded buffer
+   * @return the list of new padded buffers
+   */
   Array<Buffer> PadSharedMemory(const Array<Buffer>& buffers, Map<Buffer, Buffer>* buffer_map) {
     Array<Buffer> result;
 
@@ -450,6 +487,7 @@ class AutoCopyMutator : public StmtExprMutator {
         base_2_bank.resize(base_2_bank_size);
         auto patterns = patterns_[buffer.get()];
         int n = buffer->shape.size();
+        //Step 1. initialize `base_2_bank` with the access pattern of the last dim
         for (int i = 0; i < static_cast<int>(patterns.size()); i++) {
           auto dim_patterns = patterns[i][n - 1];
           for (const Pattern& pattern : dim_patterns) {
@@ -465,6 +503,7 @@ class AutoCopyMutator : public StmtExprMutator {
         if (padding_constraint.count(buffer.get())) {
           constraint = padding_constraint[buffer.get()];
         }
+        //Step 2. try out each padding choice to see which has the minimal conflict
         for (int k = n - 2; k >= 0; k--) {
           int min_conflict = INT32_MAX;
           int min_conflict_m = -1;
@@ -503,6 +542,7 @@ class AutoCopyMutator : public StmtExprMutator {
           }
           padding[k + 1] = min_pad_size;
         }
+        // Step 3. create the new padded buffer
         ObjectPtr<BufferNode> b = make_object<BufferNode>(*buffer.get());
         Array<PrimExpr> strides;
         strides.resize(b->shape.size());
@@ -522,7 +562,13 @@ class AutoCopyMutator : public StmtExprMutator {
     }
     return result;
   }
-
+  
+  /**
+   * \brief replace all occurrence of the old buffer with the new buffer in the stmt
+   * @param stmt the stmt to do replacement
+   * @param buffer_map the mapping from old buffer to the new buffer
+   * @return the stmt after replacement
+   */
   Stmt RewriteBufferAccess(Stmt stmt, const Map<Buffer, Buffer>& buffer_map) {
     class Rewriter : public StmtExprMutator {
      public:
@@ -607,11 +653,17 @@ class AutoCopyMutator : public StmtExprMutator {
     return rewriter(stmt);
   }
 
+  /**
+   * \brief an equivalent of pow(2, scale) * loop_var with loop_var: {min=0, extent=pow(2, extent)}
+   */
   struct Pattern {
     int extent;
     int scale;
   };
 
+  /**
+   * \brief collect pattern from indices
+   */
   class PatternCollector : public StmtExprVisitor {
     void VisitExpr_(const VarNode* op) final {
       int extent = var_range_[GetRef<Var>(op)]->extent.as<IntImmNode>()->value;
@@ -722,7 +774,7 @@ class AutoCopyMutator : public StmtExprMutator {
     std::stack<std::vector<Pattern>> stack_;
     const Map<Var, Range>& var_range_;
   };
-
+  
   Array<PrimExpr> getWarpAccess(const Array<PrimExpr>& indices,
                                 const std::vector<const ForNode*>& warp_access_loops,
                                 Map<Var, PrimExpr> substitute_map, Map<Var, Range>* var_range) {
@@ -765,7 +817,20 @@ class AutoCopyMutator : public StmtExprMutator {
     return ret;
   }
 
-  void getConflictForAllPaddingSize(Block block) {
+  /**
+   * \brief analyze the warp access pattern for a given block
+   *      An index would be transformed into an array of Pattern
+   *      For example, if the block has stmt:
+   *      A_shared[ty, tx] = A[ty, tx]
+   *      suppose tx is bound to threadIdx.x and ty is bound to threadIdx.y
+   *      tx is [0,16), ty is [0,4)
+   *      then the pattern would be {{2,0}}, {{4,0}}
+   *
+   *      if the stmt is A_shared[ty*8+tx%4, tx/4] = A[ty, tx]
+   *      then pattern would be {{2,3},{2,0}}, {{2,0}}
+   * @param block the given block
+   */
+  void AnalyzePatternForPadding(Block block) {
     Stmt body = block->body;
     Map<Var, PrimExpr> substitute_map;
     std::vector<const ForNode*> warp_access_loops;
@@ -868,7 +933,7 @@ class AutoCopyMutator : public StmtExprMutator {
         n->match_buffers = match_buffers;
       }
       LOG(INFO) << "calc conflict";
-      getConflictForAllPaddingSize(block);
+      AnalyzePatternForPadding(block);
       LOG(INFO) << "end calc conflict";
       n->alloc_buffers = PadSharedMemory(n->alloc_buffers, &padded_buffer_map_);
     } else {
