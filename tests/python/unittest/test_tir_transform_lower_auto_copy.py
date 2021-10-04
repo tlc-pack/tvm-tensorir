@@ -429,7 +429,7 @@ def matmul_fp16_packed(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> 
 
 # print(tvm.lower(A3_func, None))
 # _check(A3_func)
-_check(realworld_transpose)
-# _check_packed_matmul_tensorcore(A3_func, matmul_fp16_packed)
+# _check(realworld_transpose)
+_check_packed_matmul_tensorcore(A3_func, matmul_fp16_packed)
 # _measure_transpose(realworld_transpose)
 # _measure(realworld_transpose)

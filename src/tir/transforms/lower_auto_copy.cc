@@ -509,8 +509,9 @@ class AutoCopyMutator : public StmtExprMutator {
           int min_conflict_m = -1;
           int min_pad_size = INT32_MAX;
           for (int m = (k == n - 2) ? constraint : 0; m < base_2_bank_size; m++) {
-            int conflict = 1;
+            int tot_conflict = 0;
             for (int i = 0; i < static_cast<int>(patterns.size()); i++) {
+              int conflict = 0;
               auto dim_patterns = patterns[i][k];
               for (const Pattern& pattern : dim_patterns) {
                 for (int j = pattern.scale + m; j < pattern.scale + pattern.extent + m; j++) {
@@ -521,12 +522,13 @@ class AutoCopyMutator : public StmtExprMutator {
                   }
                 }
               }
+              tot_conflict+=std::pow(2,conflict);
             }
             int pad_size =
                 (32 + int(std::pow(2, m)) - buffer->shape[k+1].as<IntImmNode>()->value) % 32;
-            if (conflict < min_conflict || (min_conflict == conflict && pad_size < min_pad_size)) {
+            if (tot_conflict < min_conflict || (min_conflict == tot_conflict && pad_size < min_pad_size)) {
               min_conflict_m = m;
-              min_conflict = conflict;
+              min_conflict = tot_conflict;
               min_pad_size = pad_size;
             }
           }
