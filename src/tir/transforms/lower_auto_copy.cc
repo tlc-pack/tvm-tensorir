@@ -525,7 +525,7 @@ class AutoCopyMutator : public StmtExprMutator {
               tot_conflict+=std::pow(2,conflict);
             }
             int pad_size =
-                (32 + int(std::pow(2, m)) - buffer->shape[k+1].as<IntImmNode>()->value) % 32;
+                (32 + int(std::pow(2, m)) - buffer->shape[k+1].as<IntImmNode>()->value%32) % 32;
             if (tot_conflict < min_conflict || (min_conflict == tot_conflict && pad_size < min_pad_size)) {
               min_conflict_m = m;
               min_conflict = tot_conflict;
