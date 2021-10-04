@@ -428,7 +428,7 @@ class AutoCopyMutator : public StmtExprMutator {
     }
     Buffer src_buffer = block->reads[0]->buffer;
     Buffer tgt_buffer = block->writes[0]->buffer;
-    padding_constraint[tgt_buffer.get()] == 3;
+    padding_constraint[tgt_buffer.get()] = 3;
     TensorIntrin wmma_store = tir::TensorIntrin::Get("wmma_store");
 
     auto param = wmma_store->implementation->params[0];
@@ -482,10 +482,10 @@ class AutoCopyMutator : public StmtExprMutator {
     for (const Buffer& buffer : buffers) {
       if (buffer.scope() == "shared") {
         int type_factor = 32 / buffer->dtype.bits();
-        std::vector<int> base_2_bank;
-        int base_2_bank_size = std::log2(32 * type_factor);
-        base_2_bank.resize(base_2_bank_size);
         auto patterns = patterns_[buffer.get()];
+        int base_2_bank_size = std::log2(32 * type_factor);
+        std::vector<std::vector<int>> base_2_bank(patterns.size(),std::vector<int>(base_2_bank_size));
+        
         int n = buffer->shape.size();
         //Step 1. initialize `base_2_bank` with the access pattern of the last dim
         for (int i = 0; i < static_cast<int>(patterns.size()); i++) {
@@ -493,7 +493,7 @@ class AutoCopyMutator : public StmtExprMutator {
           for (const Pattern& pattern : dim_patterns) {
             for (int j = pattern.scale; j < pattern.scale + pattern.extent && j < base_2_bank_size;
                  j++) {
-              base_2_bank[j]++;
+              base_2_bank[i][j]++;
             }
           }
         }
@@ -517,13 +517,13 @@ class AutoCopyMutator : public StmtExprMutator {
                   if (j >= base_2_bank_size) {
                     conflict++;
                   } else {
-                    conflict += base_2_bank[j];
+                    conflict += base_2_bank[i][j];
                   }
                 }
               }
             }
             int pad_size =
-                (32 + int(std::pow(2, m)) - buffer->shape[k].as<IntImmNode>()->value) % 32;
+                (32 + int(std::pow(2, m)) - buffer->shape[k+1].as<IntImmNode>()->value) % 32;
             if (conflict < min_conflict || (min_conflict == conflict && pad_size < min_pad_size)) {
               min_conflict_m = m;
               min_conflict = conflict;
@@ -536,7 +536,7 @@ class AutoCopyMutator : public StmtExprMutator {
               for (int j = pattern.scale + min_conflict_m;
                    j < pattern.scale + pattern.extent + min_conflict_m && j < base_2_bank_size;
                    j++) {
-                base_2_bank[j]++;
+                base_2_bank[i][j]++;
               }
             }
           }

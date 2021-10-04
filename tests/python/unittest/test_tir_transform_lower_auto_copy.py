@@ -195,13 +195,13 @@ def realworld_transpose(a: ty.handle, b: ty.handle)->None:
                     with tir.block([64, 128],"A_shared") as [v0, v1]:
                         tir.bind(v0, bx)
                         tir.bind(v1, by)
-                        tir.block_attr({"auto_copy":1,"vector_bytes":16})
+                        tir.block_attr({"auto_copy":1,"vector_bytes":4})
                         for ax0, ax1 in tir.grid(32, 16):
                             A_shared[v1*16+ax1, v0*32+ax0] = A[v0*32+ax0, v1*16+ax1]
                     with tir.block([64, 128],"B") as [v0, v1]:
                         tir.bind(v0, bx)
                         tir.bind(v1, by)
-                        tir.block_attr({"auto_copy":1,"vector_bytes":16})
+                        tir.block_attr({"auto_copy":1,"vector_bytes":4})
                         for ax0, ax1 in tir.grid(16, 32):
                             B[v1*16+ax0, v0*32+ax1] = A_shared[v1*16+ax0, v0*32+ax1]
 
@@ -429,7 +429,7 @@ def matmul_fp16_packed(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> 
 
 # print(tvm.lower(A3_func, None))
 # _check(A3_func)
-# _check(realworld_transpose)
-_check_packed_matmul_tensorcore(A3_func, matmul_fp16_packed)
+_check(realworld_transpose)
+# _check_packed_matmul_tensorcore(A3_func, matmul_fp16_packed)
 # _measure_transpose(realworld_transpose)
 # _measure(realworld_transpose)
