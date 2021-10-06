@@ -1358,6 +1358,24 @@ constexpr const char* script_parsing_detect_access = "tir.script_parsing_detect_
 constexpr const char* pragma_loop_partition_hint = "pragma_loop_partition_hint";
 
 /*!
+ * \brief Mark the scope of the software pipeline
+ */
+constexpr const char* pipeline_scope = "pipeline_scope";
+
+/*!
+ * \brief TODO
+ */
+constexpr const char* pipeline_stage = "pipeline_stage";
+
+constexpr const char* pipeline_order = "pipeline_order";
+
+constexpr const char* pipeline_prologue_scope = "pipeline_prologue_scope";
+
+constexpr const char* pipeline_epilogue_scope = "pipeline_epilogue_scope";
+
+constexpr const char* pipeline_body_scope = "pipeline_body_scope";
+
+/*!
  * \brief Mark that the loop should be further skip and bound to environment threads to enable
  * cooperative fetching.
  */

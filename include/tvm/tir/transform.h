@@ -471,6 +471,13 @@ TVM_DLL Pass UnifyThreadBinding();
 TVM_DLL Pass MergeDynamicSharedMemoryAllocations();
 
 /*!
+ * \brief Transform annotated loops into pipelined one that parallelize producers and consumers.
+ * \return The IR transform pass.
+ */
+TVM_DLL Pass InjectSoftwarePipeline();
+
+
+/*!
  * \brief This pass is post-scheduling pass to convert all
  *        Parallel For loops to Serial ones. This is run
  *        to attain lesser memory and/or executor/backend
