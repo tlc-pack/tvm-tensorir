@@ -407,14 +407,17 @@ class AutoCopyMutator : public StmtExprMutator {
     Stmt body = stmt;
     Map<Var, Range> var_range;
     std::unordered_set<const VarNode*> thread_binding_vars;
-    std::vector<const ForNode*> loops;
+    std::vector<const ForNode*> normal_loops;
+    std::vector<const ForNode*> thread_loops;
     while (const ForNode* loop = body.as<ForNode>()) {
       var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
       if(loop->kind==ForKind::kThreadBinding){
         String thread_tag = loop->thread_binding.value()->thread_tag;
         thread_binding_vars.insert(loop->loop_var.get());
+        thread_loops.push_back(loop);
+      } else {
+        normal_loops.push_back(loop);
       }
-      loops.push_back(loop);
       body = loop->body;
     }
     for (const ForNode* loop : outer_loops_) {
@@ -452,8 +455,8 @@ class AutoCopyMutator : public StmtExprMutator {
                                                   buf_store->indices);
     
     Map<Var, PrimExpr> loop_map[2];
-    for (int i = static_cast<int>(loops.size()) - 1; i >= 0; i--) {
-      const ForNode* loop = loops[i];
+    for (int i = static_cast<int>(normal_loops.size()) - 1; i >= 0; i--) {
+      const ForNode* loop = normal_loops[i];
       for (int j = 0; j < 2; j++) {
         Var new_loop_var = loop->loop_var.copy_with_suffix("_"+ std::to_string(j));
         loop_map[j].Set(loop->loop_var, new_loop_var);
@@ -464,8 +467,16 @@ class AutoCopyMutator : public StmtExprMutator {
     for (int i = 0; i < 2; i++) {
       new_body[i]= Substitute(new_body[i], loop_map[i]);
     }
-    SeqStmt seq({new_body[0],new_body[1]});
-    return seq;
+    Stmt ret= SeqStmt({new_body[0],new_body[1]});
+    Map<Var, PrimExpr> thread_loop_map;
+    for (int i = static_cast<int>(thread_loops.size()) - 1; i >= 0; i--) {
+      const ForNode* loop = thread_loops[i];
+      Var new_loop_var = loop->loop_var.copy_with_suffix("_"+ std::to_string(i));
+      thread_loop_map.Set(loop->loop_var, new_loop_var);
+      ret = For(new_loop_var, loop->min, loop->extent, loop->kind, ret,
+                loop->thread_binding, loop->annotations);
+    }
+    return Substitute(ret, thread_loop_map);
   }
   
   /**
