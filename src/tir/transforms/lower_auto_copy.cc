@@ -334,7 +334,140 @@ class AutoCopyMutator : public StmtExprMutator {
     }
     return ret;
   }
+  
+  class IterSumExprCompactor{
+   public:
+    IterSumExprCompactor(const std::unordered_set<const VarNode*>& compact_vars)
+        : compact_vars_(compact_vars) {}
+    
+    static Array<PrimExpr> CompactIndices(const Array<PrimExpr>& indices,
+                                                    const Map<Var, Range>& iter_range,
+                                          const std::unordered_set<const VarNode*>& compact_vars) {
+      arith::Analyzer analyzer;
+      Array<arith::IterSumExpr> iter_map =
+          arith::DetectIterMap(indices, iter_range, Bool(true), false, &analyzer);
+      Array<PrimExpr> ret;
+      IterSumExprCompactor compactor(compact_vars);
+      for (const arith::IterSumExpr& expr : iter_map) {
+        ret.push_back(arith::NormalizeIterMapToExpr(compactor.MutateIterSumExpr(expr)));
+      }
+      return ret;
+    }
 
+   private:
+    Optional<arith::IterSplitExpr> MutateIterSplitExpr(const arith::IterSplitExpr& expr){
+      if (const VarNode* var = expr->source->source.as<VarNode>() ) {
+        if (compact_vars_.count(var)) {
+          return NullOpt;
+        } else {
+          return expr;
+        }
+      } else if (const auto* op = expr->source->source.as<arith::IterSumExprNode>()) {
+        arith::IterSumExpr new_sum_expr = MutateIterSumExpr(runtime::GetRef<arith::IterSumExpr>
+(op));
+        PrimExpr new_extent = new_sum_expr->args[0]->extent* new_sum_expr->args[0]->scale;
+        return arith::IterSplitExpr(arith::IterMark(new_sum_expr, new_extent),
+                                    expr->lower_factor, expr->extent, expr->scale);
+      } else {
+        LOG(FATAL);
+        throw;
+      }
+    }
+    
+    arith::IterSumExpr MutateIterSumExpr(const arith::IterSumExpr& expr) {
+      Array<arith::IterSplitExpr> reverse_new_args;
+      PrimExpr base = expr->base;
+      PrimExpr prev_extent = 1;
+      PrimExpr prev_scale = 1;
+      for (int i=static_cast<int>(expr->args.size())-1;i>=0;i--) {
+        Optional<arith::IterSplitExpr> op = MutateIterSplitExpr(expr->args[i]);
+        if (op.defined()) {
+          arith::IterSplitExpr split_expr = op.value();
+          PrimExpr new_scale = prev_scale*prev_extent;
+          reverse_new_args.push_back(arith::IterSplitExpr(split_expr->source,
+                                                           split_expr->lower_factor,
+                                                          split_expr->extent,new_scale));
+          prev_scale = new_scale;
+          prev_extent = split_expr->extent;
+        }
+      }
+      Array<arith::IterSplitExpr> new_args;
+      for (auto riter = reverse_new_args.rbegin(); riter != reverse_new_args.rend();
+           ++riter) {
+        new_args.push_back(*riter);
+      }
+
+      return arith::IterSumExpr(new_args,base);
+    }
+    
+    const std::unordered_set<const VarNode*>& compact_vars_;
+  };
+  
+  Stmt CreateLocalStage(Stmt stmt){
+    Stmt body = stmt;
+    Map<Var, Range> var_range;
+    std::unordered_set<const VarNode*> thread_binding_vars;
+    std::vector<const ForNode*> loops;
+    while (const ForNode* loop = body.as<ForNode>()) {
+      var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      if(loop->kind==ForKind::kThreadBinding){
+        String thread_tag = loop->thread_binding.value()->thread_tag;
+        thread_binding_vars.insert(loop->loop_var.get());
+      }
+      loops.push_back(loop);
+      body = loop->body;
+    }
+    for (const ForNode* loop : outer_loops_) {
+      var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      if(loop->kind==ForKind::kThreadBinding){
+        String thread_tag = loop->thread_binding.value()->thread_tag;
+        thread_binding_vars.insert(loop->loop_var.get());
+      }
+    }
+    Array<PrimExpr> indices;
+    const auto* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
+    if (buf_store->buffer.scope() == "global") {
+      indices = buf_store->indices;
+    } else {
+      const auto* buf_load = TVM_TYPE_AS(buf_load, buf_store->value, BufferLoadNode);
+      ICHECK(buf_load->buffer.scope()=="global");
+      indices = buf_load->indices;
+    }
+    Array<PrimExpr> compacted_indices = IterSumExprCompactor::CompactIndices(indices, var_range,
+                                                            thread_binding_vars);
+    Array<PrimExpr> local_buffer_shape;
+    Map<Var, arith::IntSet> var_dom = AsIntSet(var_range);
+    for (const PrimExpr& expr : compacted_indices) {
+      arith::IntSet region = arith::EvalSet(expr, var_dom);
+      local_buffer_shape.push_back(region.max()-region.min()+1);
+    }
+    Buffer local_buffer = buf_store->buffer->WithScope("local");
+    local_buffers_.push_back(local_buffer);
+    BufferNode* local_buffer_ptr = local_buffer.CopyOnWrite();
+    local_buffer_ptr->shape = local_buffer_shape;
+    Stmt new_body[2];
+    new_body[0] = BufferStore(local_buffer, buf_store->value, compacted_indices);
+    new_body[1] = BufferStore(buf_store->buffer, BufferLoad(local_buffer,
+                                                                                compacted_indices),
+                                                  buf_store->indices);
+    
+    Map<Var, PrimExpr> loop_map[2];
+    for (int i = static_cast<int>(loops.size()) - 1; i >= 0; i--) {
+      const ForNode* loop = loops[i];
+      for (int j = 0; j < 2; j++) {
+        Var new_loop_var = loop->loop_var.copy_with_suffix("_"+ std::to_string(j));
+        loop_map[j].Set(loop->loop_var, new_loop_var);
+        new_body[j] = For(new_loop_var, loop->min, loop->extent, loop->kind, new_body[j],
+                          loop->thread_binding, loop->annotations);
+      }
+    }
+    for (int i = 0; i < 2; i++) {
+      new_body[i]= Substitute(new_body[i], loop_map[i]);
+    }
+    SeqStmt seq({new_body[0],new_body[1]});
+    return seq;
+  }
+  
   /**
    * \brief rewrite wmma load
    * @param block the specific block
@@ -833,79 +966,85 @@ class AutoCopyMutator : public StmtExprMutator {
    * @param block the given block
    */
   void AnalyzePatternForPadding(Block block) {
-    Stmt body = block->body;
-    Map<Var, PrimExpr> substitute_map;
-    std::vector<const ForNode*> warp_access_loops;
-    PrimExpr outer_loop_ct = 1;
-    while (const ForNode* loop = body.as<ForNode>()) {
-      substitute_map.Set(loop->loop_var, loop->min);
-      if (loop->kind == ForKind::kThreadBinding) {
-        warp_access_loops.push_back(loop);
-      } else if (loop->kind == ForKind::kVectorized) {
-        warp_access_loops.push_back(loop);
+    Array<Stmt> bodies;
+    if (const SeqStmtNode* seq = block->body.as<SeqStmtNode>()) {
+      bodies = seq->seq;
+    } else {
+      bodies.push_back(block->body);
+    }
+    for(Stmt body:bodies) {
+      Map<Var, PrimExpr> substitute_map;
+      std::vector<const ForNode*> warp_access_loops;
+      PrimExpr outer_loop_ct = 1;
+      while (const ForNode* loop = body.as<ForNode>()) {
+        substitute_map.Set(loop->loop_var, loop->min);
+        if (loop->kind == ForKind::kThreadBinding) {
+          warp_access_loops.push_back(loop);
+        } else if (loop->kind == ForKind::kVectorized) {
+          warp_access_loops.push_back(loop);
+        }
+        outer_loop_ct *= loop->extent;
+        body = loop->body;
       }
-      outer_loop_ct *= loop->extent;
-      body = loop->body;
-    }
-    for (const ForNode* loop : outer_loops_) {
-      substitute_map.Set(loop->loop_var, loop->min);
-      outer_loop_ct *= loop->extent;
-    }
+      for (const ForNode* loop : outer_loops_) {
+        substitute_map.Set(loop->loop_var, loop->min);
+        outer_loop_ct *= loop->extent;
+      }
 
-    Buffer buffer;
-    Map<Var, Range> var_range;
-    Array<PrimExpr> indices;
-    Array<Range> region;
-    if (const BufferStoreNode* node = body.as<BufferStoreNode>()) {
-      if (node->buffer.scope() == "shared") {
-        buffer = node->buffer;
-        indices = node->indices;
-      } else {
-        const BufferLoadNode* buf_load = node->value.as<BufferLoadNode>();
-        if (buf_load->buffer.scope() == "shared") {
-          buffer = buf_load->buffer;
-          indices = buf_load->indices;
+      Buffer buffer;
+      Map<Var, Range> var_range;
+      Array<PrimExpr> indices;
+      Array<Range> region;
+      if (const BufferStoreNode* node = body.as<BufferStoreNode>()) {
+        if (node->buffer.scope() == "shared") {
+          buffer = node->buffer;
+          indices = node->indices;
         } else {
-          return;
+          const BufferLoadNode* buf_load = node->value.as<BufferLoadNode>();
+          if (buf_load->buffer.scope() == "shared") {
+            buffer = buf_load->buffer;
+            indices = buf_load->indices;
+          } else {
+            continue;
+          }
+        }
+      } else {
+        if (block->reads[0]->buffer.scope() == "shared") {
+          buffer = block->reads[0]->buffer;
+          region = block->reads[0]->region;
+        } else if (block->writes[0]->buffer.scope() == "shared") {
+          buffer = block->writes[0]->buffer;
+          region = block->writes[0]->region;
+        } else {
+          continue;
+        }
+        for (int i = 0; i < static_cast<int>(region.size()); i++) {
+          Var var("region" + i);
+          indices.push_back(region[i]->min + var);
+          var_range.Set(var, Range::FromMinExtent(0, region[i]->extent));
         }
       }
-    } else {
-      if (block->reads[0]->buffer.scope() == "shared") {
-        buffer = block->reads[0]->buffer;
-        region = block->reads[0]->region;
-      } else if (block->writes[0]->buffer.scope() == "shared") {
-        buffer = block->writes[0]->buffer;
-        region = block->writes[0]->region;
-      } else {
-        return;
+      arith::Analyzer analyzer;
+      Array<PrimExpr> substitued_indices =
+          getWarpAccess(indices, warp_access_loops, substitute_map, &var_range);
+      std::vector<std::vector<Pattern>> patterns =
+          PatternCollector::CollectPattern(substitued_indices, var_range);
+      patterns_[buffer.get()].push_back(patterns);
+      for (const auto& pattern_single_dim : patterns) {
+        std::cerr << "{";
+        for (const auto& pattern : pattern_single_dim) {
+          std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
+        }
+        std::cerr << "}, ";
       }
-      for (int i = 0; i < static_cast<int>(region.size()); i++) {
-        Var var("region" + i);
-        indices.push_back(region[i]->min + var);
-        var_range.Set(var, Range::FromMinExtent(0, region[i]->extent));
-      }
+      std::cerr << std::endl;
     }
-    arith::Analyzer analyzer;
-    Array<PrimExpr> substitued_indices =
-        getWarpAccess(indices, warp_access_loops, substitute_map, &var_range);
-    std::vector<std::vector<Pattern>> patterns =
-        PatternCollector::CollectPattern(substitued_indices, var_range);
-    patterns_[buffer.get()].push_back(patterns);
-    for (const auto& pattern_single_dim : patterns) {
-      std::cerr << "{";
-      for (const auto& pattern : pattern_single_dim) {
-        std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
-      }
-      std::cerr << "}, ";
-    }
-    std::cerr << std::endl;
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
     Block block;
     if (op->annotations.count("auto_copy") &&
         is_one(Downcast<PrimExpr>(op->annotations["auto_copy"]))) {
-      LOG(INFO) << op->name_hint;
       in_auto_copy_ = true;
       block = runtime::Downcast<Block>(StmtMutator::VisitStmt_(op));
       std::pair<Array<PrimExpr>, Array<Var>> mapping = GetMapping(block);
@@ -924,6 +1063,10 @@ class AutoCopyMutator : public StmtExprMutator {
            tgt_scope_.rank == runtime::StorageRank::kGlobal)) {
         bool need_inverse = src_scope_.rank == runtime::StorageRank::kShared;
         n->body = CoalesceGlobalLoad(block, mapping, vector_bytes, need_inverse);
+        if (block->annotations.count("local_stage") && is_one(Downcast<PrimExpr>
+            (op->annotations["local_stage"]))) {
+          n->body = CreateLocalStage(n->body);
+        }
       } else if ((tgt_scope_.rank == runtime::StorageRank::kWMMAMatrixA ||
                   tgt_scope_.rank == runtime::StorageRank::kWMMAMatrixB)) {
         Array<MatchBufferRegion> match_buffers;
@@ -934,15 +1077,20 @@ class AutoCopyMutator : public StmtExprMutator {
         n->body = RewriteWmmaStore(block, &match_buffers);
         n->match_buffers = match_buffers;
       }
-      LOG(INFO) << "calc conflict";
       AnalyzePatternForPadding(block);
-      LOG(INFO) << "end calc conflict";
+      for (const Buffer& buffer : local_buffers_) {
+        n->alloc_buffers.push_back(buffer);
+      }
       n->alloc_buffers = PadSharedMemory(n->alloc_buffers, &padded_buffer_map_);
     } else {
       block = runtime::Downcast<Block>(StmtMutator::VisitStmt_(op));
       BlockNode* n = block.CopyOnWrite();
+      for (const Buffer& buffer : local_buffers_) {
+        n->alloc_buffers.push_back(buffer);
+      }
       n->alloc_buffers = PadSharedMemory(n->alloc_buffers, &padded_buffer_map_);
     }
+    local_buffers_.clear();
     return std::move(block);
   }
 
@@ -986,6 +1134,7 @@ class AutoCopyMutator : public StmtExprMutator {
   int data_bits_ = -1;
   std::vector<const ForNode*> outer_loops_;
   Map<Buffer, Buffer> padded_buffer_map_;
+  Array<Buffer> local_buffers_;
   std::unordered_map<const BufferNode*, std::vector<std::vector<std::vector<Pattern>>>> patterns_;
   std::unordered_map<const BufferNode*, int> padding_constraint;
 };

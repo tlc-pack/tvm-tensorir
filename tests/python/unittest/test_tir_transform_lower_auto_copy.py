@@ -390,7 +390,7 @@ def nonpacked_matmul(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> No
                                         tir.bind(v0, ((i2_0_0*2) + i2_0_1))
                                         tir.bind(v1, (((i0_0_1_i1_0_1_fused*8) + (tir.floormod(i0_0_2_i1_0_2_fused,
                                                                                                4)*2)) + ax1_0))
-                                        tir.block_attr({"auto_copy":1,"vector_bytes":16})
+                                        tir.block_attr({"auto_copy":1,"vector_bytes":16,"local_stage":1})
                                         for ax0, ax1 in tir.grid(16, 16):
                                             B_shared_wmma_matrix_b[v0*16+ax0, v1*16+ax1] = B_shared[v0*16+ax0, v1*16+ax1]
                                 for ax0_0_1, ax1_0_1 in tir.grid(4, 1):
