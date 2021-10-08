@@ -377,18 +377,16 @@ class AutoCopyMutator : public StmtExprMutator {
     arith::IterSumExpr MutateIterSumExpr(const arith::IterSumExpr& expr) {
       Array<arith::IterSplitExpr> reverse_new_args;
       PrimExpr base = expr->base;
-      PrimExpr prev_extent = 1;
-      PrimExpr prev_scale = 1;
+      PrimExpr next_scale = 1;
       for (int i=static_cast<int>(expr->args.size())-1;i>=0;i--) {
         Optional<arith::IterSplitExpr> op = MutateIterSplitExpr(expr->args[i]);
         if (op.defined()) {
           arith::IterSplitExpr split_expr = op.value();
-          PrimExpr new_scale = prev_scale*prev_extent;
           reverse_new_args.push_back(arith::IterSplitExpr(split_expr->source,
                                                            split_expr->lower_factor,
-                                                          split_expr->extent,new_scale));
-          prev_scale = new_scale;
-          prev_extent = split_expr->extent;
+                                                          split_expr->extent,next_scale));
+          next_scale = floormod(floordiv(split_expr->source->extent, split_expr->lower_factor),
+split_expr->extent)*next_scale;
         }
       }
       Array<arith::IterSplitExpr> new_args;
