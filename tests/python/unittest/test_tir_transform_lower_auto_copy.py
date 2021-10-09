@@ -375,13 +375,13 @@ def nonpacked_matmul(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> No
                             with tir.block([32, 8], "B_shared") as[v0,v1]:
                                 tir.bind(v0, i2_0_0)
                                 tir.bind(v1, i0_0_1_i1_0_1_fused)
-                                tir.block_attr({"auto_copy":1,"vector_bytes":16})
+                                tir.block_attr({"auto_copy":1,"vector_bytes":16,"local_stage":1})
                                 for ax0, ax1 in tir.grid(32, 128):
                                     B_shared[v0*32+ax0, v1*128+ax1] = B[v0*32+ax0, v1*128+ax1]
                             with tir.block([8, 32],"A_shared") as[v0,v1]:
                                 tir.bind(v0, i0_0_0_i1_0_0_fused)
                                 tir.bind(v1, i2_0_0)
-                                tir.block_attr({"auto_copy":1,"vector_bytes":16})
+                                tir.block_attr({"auto_copy":1,"vector_bytes":16,"local_stage":1})
                                 for ax0, ax1 in tir.grid(128, 32):
                                     A_shared[v0*128+ax0, v1*32+ax1] = A[v0*128+ax0, v1*32+ax1]
                             for i2_0_1 in tir.serial(0, 2):
@@ -390,7 +390,7 @@ def nonpacked_matmul(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> No
                                         tir.bind(v0, ((i2_0_0*2) + i2_0_1))
                                         tir.bind(v1, (((i0_0_1_i1_0_1_fused*8) + (tir.floormod(i0_0_2_i1_0_2_fused,
                                                                                                4)*2)) + ax1_0))
-                                        tir.block_attr({"auto_copy":1,"vector_bytes":16,"local_stage":1})
+                                        tir.block_attr({"auto_copy":1,"vector_bytes":16})
                                         for ax0, ax1 in tir.grid(16, 16):
                                             B_shared_wmma_matrix_b[v0*16+ax0, v1*16+ax1] = B_shared[v0*16+ax0, v1*16+ax1]
                                 for ax0_0_1, ax1_0_1 in tir.grid(4, 1):

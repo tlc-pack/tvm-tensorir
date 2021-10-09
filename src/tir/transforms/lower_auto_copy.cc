@@ -344,12 +344,18 @@ class AutoCopyMutator : public StmtExprMutator {
                                                     const Map<Var, Range>& iter_range,
                                           const std::unordered_set<const VarNode*>& compact_vars) {
       arith::Analyzer analyzer;
+      analyzer.Bind(iter_range);
+      Array<PrimExpr> simplified_indices;
+      for (const PrimExpr& index : indices) {
+        simplified_indices.push_back(analyzer.Simplify(index));
+      }
       Array<arith::IterSumExpr> iter_map =
-          arith::DetectIterMap(indices, iter_range, Bool(true), false, &analyzer);
+          arith::DetectIterMap(simplified_indices, iter_range, Bool(true), false, &analyzer);
       Array<PrimExpr> ret;
       IterSumExprCompactor compactor(compact_vars);
       for (const arith::IterSumExpr& expr : iter_map) {
-        ret.push_back(arith::NormalizeIterMapToExpr(compactor.MutateIterSumExpr(expr)));
+        ret.push_back(analyzer.Simplify(arith::NormalizeIterMapToExpr(compactor.MutateIterSumExpr
+                                                                      (expr))));
       }
       return ret;
     }
@@ -357,7 +363,7 @@ class AutoCopyMutator : public StmtExprMutator {
    private:
     Optional<arith::IterSplitExpr> MutateIterSplitExpr(const arith::IterSplitExpr& expr){
       if (const VarNode* var = expr->source->source.as<VarNode>() ) {
-        if (compact_vars_.count(var)) {
+        if (!compact_vars_.count(var)) {
           return NullOpt;
         } else {
           return expr;
@@ -365,7 +371,9 @@ class AutoCopyMutator : public StmtExprMutator {
       } else if (const auto* op = expr->source->source.as<arith::IterSumExprNode>()) {
         arith::IterSumExpr new_sum_expr = MutateIterSumExpr(runtime::GetRef<arith::IterSumExpr>
 (op));
-        PrimExpr new_extent = new_sum_expr->args[0]->extent* new_sum_expr->args[0]->scale;
+        arith::IterSplitExpr split_expr = new_sum_expr->args[0];
+        PrimExpr new_extent = min(floordiv(split_expr->source->extent, split_expr->lower_factor),
+                                  split_expr->extent)*split_expr->scale;
         return arith::IterSplitExpr(arith::IterMark(new_sum_expr, new_extent),
                                     expr->lower_factor, expr->extent, expr->scale);
       } else {
@@ -385,8 +393,8 @@ class AutoCopyMutator : public StmtExprMutator {
           reverse_new_args.push_back(arith::IterSplitExpr(split_expr->source,
                                                            split_expr->lower_factor,
                                                           split_expr->extent,next_scale));
-          next_scale = floormod(floordiv(split_expr->source->extent, split_expr->lower_factor),
-split_expr->extent)*next_scale;
+          next_scale = max(1, min(floordiv(split_expr->source->extent, split_expr->lower_factor),
+split_expr->extent)*next_scale);
         }
       }
       Array<arith::IterSplitExpr> new_args;
@@ -404,17 +412,17 @@ split_expr->extent)*next_scale;
   Stmt CreateLocalStage(Stmt stmt){
     Stmt body = stmt;
     Map<Var, Range> var_range;
-    std::unordered_set<const VarNode*> thread_binding_vars;
+    std::unordered_set<const VarNode*> keep_vars;
     std::vector<const ForNode*> normal_loops;
     std::vector<const ForNode*> thread_loops;
     while (const ForNode* loop = body.as<ForNode>()) {
       var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
       if(loop->kind==ForKind::kThreadBinding){
         String thread_tag = loop->thread_binding.value()->thread_tag;
-        thread_binding_vars.insert(loop->loop_var.get());
         thread_loops.push_back(loop);
       } else {
         normal_loops.push_back(loop);
+        keep_vars.insert(loop->loop_var.get());
       }
       body = loop->body;
     }
@@ -422,7 +430,6 @@ split_expr->extent)*next_scale;
       var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
       if(loop->kind==ForKind::kThreadBinding){
         String thread_tag = loop->thread_binding.value()->thread_tag;
-        thread_binding_vars.insert(loop->loop_var.get());
       }
     }
     Array<PrimExpr> indices;
@@ -435,7 +442,7 @@ split_expr->extent)*next_scale;
       indices = buf_load->indices;
     }
     Array<PrimExpr> compacted_indices = IterSumExprCompactor::CompactIndices(indices, var_range,
-                                                            thread_binding_vars);
+                                                            keep_vars);
     Array<PrimExpr> local_buffer_shape;
     Map<Var, arith::IntSet> var_dom = AsIntSet(var_range);
     for (const PrimExpr& expr : compacted_indices) {
@@ -443,9 +450,9 @@ split_expr->extent)*next_scale;
       local_buffer_shape.push_back(region.max()-region.min()+1);
     }
     Buffer local_buffer = buf_store->buffer->WithScope("local");
-    local_buffers_.push_back(local_buffer);
     BufferNode* local_buffer_ptr = local_buffer.CopyOnWrite();
     local_buffer_ptr->shape = local_buffer_shape;
+    local_buffers_.push_back(local_buffer);
     Stmt new_body[2];
     new_body[0] = BufferStore(local_buffer, buf_store->value, compacted_indices);
     new_body[1] = BufferStore(buf_store->buffer, BufferLoad(local_buffer,
