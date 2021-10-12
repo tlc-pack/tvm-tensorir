@@ -65,7 +65,7 @@ class Mutator(Object):
     """Mutator is designed to mutate the trace to explore the design space."""
 
     def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
-        """Initialize the rule with a tune context.
+        """Initialize the mutator with a tune context.
 
         Parameters
         ----------
@@ -90,6 +90,9 @@ class Mutator(Object):
             None if mutator failed, otherwise return the mutated trace.
         """
         return _ffi_api.MutatorApply(self, trace)
+
+    def __str__(self) -> str:
+        return "Mutator()"
 
 
 @register_object("meta_schedule.PyMutator")
@@ -116,6 +119,9 @@ class PyMutator(Mutator):
 
     def apply(self, trace: Trace) -> Optional[Trace]:
         raise NotImplementedError
+
+    def __str__(self) -> str:
+        return "PyMutator()"
 
 
 @register_object("meta_schedule.SearchStrategy")
