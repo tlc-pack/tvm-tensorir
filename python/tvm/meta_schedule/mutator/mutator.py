@@ -18,6 +18,7 @@
 from typing import Optional, TYPE_CHECKING
 
 from tvm._ffi import register_object
+from tvm._ffi.registry import register_func
 from tvm.runtime import Object
 from tvm.tir.schedule import Trace
 
