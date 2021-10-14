@@ -54,7 +54,7 @@ class BlockCollector : public tir::StmtVisitor {
 };
 
 /*!
- * \brief Design Space Generator  that generates design spaces by applying schedule rules to blocks
+ * \brief Design Space Generator that generates design spaces by applying schedule rules to blocks
  *  in post-DFS order.
  * */
 class PostOrderApplyNode : public SpaceGeneratorNode {
