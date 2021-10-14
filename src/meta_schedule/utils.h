@@ -23,7 +23,10 @@
 #include <tvm/meta_schedule/arg_info.h>
 #include <tvm/meta_schedule/builder.h>
 #include <tvm/meta_schedule/database.h>
+#include <tvm/meta_schedule/mutator.h>
+#include <tvm/meta_schedule/postproc.h>
 #include <tvm/meta_schedule/runner.h>
+#include <tvm/meta_schedule/schedule_rule.h>
 #include <tvm/meta_schedule/search_strategy.h>
 #include <tvm/meta_schedule/space_generator.h>
 #include <tvm/meta_schedule/task_scheduler.h>

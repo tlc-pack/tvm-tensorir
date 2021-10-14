@@ -14,13 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Search Strategy"""
-
+"""
+Meta Schedule search strategy that generates the measure
+candidates for measurement.
+"""
 from typing import List, Optional, TYPE_CHECKING
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
-from tvm.tir.schedule import Schedule
+from tvm.tir.schedule import Schedule, Trace
 
 from .. import _ffi_api
 from ..arg_info import ArgInfo
@@ -69,10 +71,7 @@ class SearchStrategy(Object):
     before usage and post-tuned after usage.
     """
 
-    def initialize_with_tune_context(
-        self,
-        tune_context: "TuneContext",
-    ) -> None:
+    def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
         """Initialize the search strategy with tuning context.
 
         Parameters
