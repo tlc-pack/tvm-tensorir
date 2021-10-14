@@ -212,6 +212,23 @@ inline std::vector<support::LinearCongruentialEngine::TRandState> ForkSeed(
   return results;
 }
 
+/*!
+ * \brief Get the only PrimFunc (entry function) in the IRModule.
+ * \param mod The IRModule to find the entry function.
+ * \return The entry function.
+ */
+inline tir::PrimFunc GetOnlyFunc(const IRModule& mod) {
+  const Map<GlobalVar, BaseFunc>& funcs = mod->functions;
+  CHECK_EQ(funcs.size(), 1);
+  for (const auto& kv : funcs) {
+    const BaseFunc& base_func = kv.second;
+    if (const auto* prim_func = base_func.as<tir::PrimFuncNode>()) {
+      return GetRef<tir::PrimFunc>(prim_func);
+    }
+  }
+  throw;
+}
+
 }  // namespace meta_schedule
 }  // namespace tvm
 
