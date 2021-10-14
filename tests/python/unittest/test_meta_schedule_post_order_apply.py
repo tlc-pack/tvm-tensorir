@@ -55,8 +55,8 @@ def _check_correct(schedule: Schedule):
         assert math.prod(trace.decisions[inst]) == 1024
 
 
-class TestScheduleRule(PyScheduleRule):
-    def initialize_with_tune_context(self, tune_context: TuneContext) -> None:
+class WowSoFancyScheduleRule(PyScheduleRule):
+    def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
         pass
 
     def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
@@ -68,14 +68,11 @@ class TestScheduleRule(PyScheduleRule):
         new_sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
         return [new_sch]
 
-    def __str__(self) -> str:
-        return f"TestScheduleRule({_get_hex_address(self.handle)})"
-
 
 def test_meta_schedule_post_order_apply():
     mod = Matmul
     context = TuneContext(
-        mod=mod, target=Target("llvm"), task_name="Test Task", sch_rules=[TestScheduleRule()]
+        mod=mod, target=Target("llvm"), task_name="Test Task", sch_rules=[WowSoFancyScheduleRule()]
     )
     post_order_apply = PostOrderApply()
     post_order_apply.initialize_with_tune_context(context)
@@ -83,7 +80,7 @@ def test_meta_schedule_post_order_apply():
     assert len(schs) == 1
     try:
         tvm.ir.assert_structural_equal(mod, schs[0].mod)
-        raise ValueError("The schedule rule did not change the schedule.")
+        raise Exception("The schedule rule did not change the schedule.")
     except (ValueError):
         _check_correct(schs[0])
 
