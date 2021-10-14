@@ -173,7 +173,7 @@ inline Optional<tir::StmtSRef> FindBlockSRef(const tir::ScheduleState& sch, FPre
   for (const auto& kv : sch->mod->functions) {
     const BaseFunc& base_func = kv.second;
     if (const auto* func = base_func.as<tir::PrimFuncNode>()) {
-      tir::PreOrderVisit(func->body, f_visit);
+      tir::PreOrderVisit(func->body, f_visit, false);
     }
   }
   return result;

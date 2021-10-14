@@ -208,10 +208,7 @@ def multi_level_tiling_with_tensor_core(
     cache_write_scope: str,
     consumer_inline_strict: bool,
     fusion_levels: List[int],
-    compute_intrin : TensorIntrin,
-    load_intrin_A : TensorIntrin,
-    load_intrin_B : TensorIntrin,
-    store_intrin : TensorIntrin,
+    compute_intrin: str,
     max_innermost_factor: int = 64,
     vector_load_max_len: Optional[int] = None,
     tile_binds: Optional[List[str]] = None,
@@ -234,14 +231,8 @@ def multi_level_tiling_with_tensor_core(
         Must add cache_write after the multi-level tiling
     fusion_levels : List[int]
         The possible tile levels that a single elementwise consumer is fused at
-    compute_intrin : TensorIntrin
+    compute_intrin: str
         The tensor intrinsinc for doing computation
-    load_intrin_A : TensorIntrin
-        The corresponding data load intrinsic for compute_intrin
-    load_intrin_B : TensorIntrin
-        The corresponding data load intrinsic for compute_intrin
-    store_intrin : TensorIntrin
-        The corresponing data store instrinsic for compute_intrin
     vector_load_max_len : Optional[int]
         For cache_read, if vectorized load is used, the max length of the vectorized load
     tile_binds : Optional[List[str]]
@@ -263,9 +254,6 @@ def multi_level_tiling_with_tensor_core(
         consumer_inline_strict,
         fusion_levels,
         compute_intrin,
-        load_intrin_A,
-        load_intrin_B,
-        store_intrin,
         vector_load_max_len,
         tile_binds,
     )

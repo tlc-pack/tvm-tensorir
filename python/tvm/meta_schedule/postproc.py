@@ -66,6 +66,38 @@ def rewrite_tensorize(tensor_intrins: List[TensorIntrin]) -> Postproc:
     return _ffi_api_postproc.RewriteTensorize(tensor_intrins)  # pylint: disable=no-member
 
 
+def rewrite_tensorize_tensor_core(
+    compute_intrin: str,
+    load_intrin_A: str,
+    load_intrin_B: str,
+    store_intrin: str,
+    init_intrin: str,
+) -> Postproc:
+    """Creates a postprocessor that matches the region that is marked as auto tensorized
+
+    Parameters
+    ----------
+    compute_intrin: str
+        The tensor intrinsinc for doing computation
+    load_intrin_A: str
+        The corresponding data load intrinsic for compute_intrin
+    load_intrin_B: str
+        The corresponding data load intrinsic for compute_intrin
+    store_intrin: str
+        The corresponing data store instrinsic for compute_intrin
+    init_intrin: str
+        The intrinsic for tensor core computation
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteTensorizeTensorCore(
+        compute_intrin, load_intrin_A, load_intrin_B, store_intrin, init_intrin
+    )  # pylint: disable=no-member
+
+
 def rewrite_cooperative_fetch() -> Postproc:
     """Creates a postprocessor rewrites "lazy_cooperative_fetch" with the actual threadIdx
 
@@ -77,7 +109,7 @@ def rewrite_cooperative_fetch() -> Postproc:
     return _ffi_api_postproc.RewriteCooperativeFetch()  # pylint: disable=no-member
 
 
-def rewrite_cooperative_fetch_tensorcore() -> Postproc:
+def rewrite_cooperative_fetch_tensor_core() -> Postproc:
     """Creates a postprocessor rewrites "lazy_cooperative_fetch" with the threadIdx==32
 
     Returns
@@ -143,6 +175,17 @@ def rewrite_reduction_block() -> Postproc:
         The postprocessor created
     """
     return _ffi_api_postproc.RewriteReductionBlock()  # pylint: disable=no-member
+
+
+def rewrite_reduction_block_tensor_core() -> Postproc:
+    """Creates a postprocessor that decomposes ReduceStep
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteReductionBlockTensorCore()  # pylint: disable=no-member
 
 
 def rewrite_layout() -> Postproc:

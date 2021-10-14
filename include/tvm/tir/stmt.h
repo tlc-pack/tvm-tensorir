@@ -1344,6 +1344,9 @@ constexpr const char* auto_unroll_implicit = "auto_unroll_implicit";
 /*! \brief Mark auto-tensorize setting on the block. */
 constexpr const char* auto_tensorize = "auto_tensorize";
 
+/*! \brief Mark auto-tensor-core setting on the block. */
+constexpr const char* auto_tensor_core = "auto_tensor_core";
+
 /*!
  * \brief Mark that the kernel is hand threaded and doesn't need syncs inserted
  */

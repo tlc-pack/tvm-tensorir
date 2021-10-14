@@ -130,9 +130,6 @@ TVM_DLL SearchRule MultiLevelTiling(String structure, int max_innermost_factor,
  * \param must_cache_write Must add cache_write after the multi-level tiling
  * \param fusion_levels The possible tile levels that a single elementwise consumer is fused at
  * \param compute_intrin The tensor intrinsinc for doing computation
- * \param load_intrin_A The corresponding data load intrinsic for compute_intrin
- * \param load_intrin_B The corresponding data load intrinsic for compute_intrin
- * \param store_intrin The corresponing data store instrinsic for compute_intrin
  * \param vector_load_max_len For cache_read, if vectorized load is used, the max length of the
  * vectorized load
  * \param tile_binds The marks to be used on each tile
@@ -141,8 +138,7 @@ TVM_DLL SearchRule MultiLevelTiling(String structure, int max_innermost_factor,
 TVM_DLL SearchRule MultiLevelTilingWithTensorCore(
     String structure, int max_innermost_factor, bool must_cache_read, String cache_read_scope,
     bool can_cache_write, bool must_cache_write, String cache_write_scope,
-    bool consumer_inline_strict, Array<Integer> fusion_levels, tir::TensorIntrin compute_intrin,
-    tir::TensorIntrin load_intrin_A, tir::TensorIntrin load_intrin_B, tir::TensorIntrin store_intrin,
+    bool consumer_inline_strict, Array<Integer> fusion_levels, String compute_intrin,
     Optional<Integer> vector_load_max_len, Optional<Array<String>> tile_binds);
 
 /*!

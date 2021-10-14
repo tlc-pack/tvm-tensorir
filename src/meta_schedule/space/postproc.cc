@@ -123,6 +123,94 @@ Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins) {
   return Postproc("rewrite_tensorize", f_proc);
 }
 
+/********** RewriteTensorizeTensorCore **********/
+
+class PostprocRewriteTensorizeTensorCore {
+ public:
+  /*! \brief The names of intrinsic relatede to tensor core */
+  std::vector<String> intrin_names;
+
+  explicit PostprocRewriteTensorizeTensorCore(const String& compute_intrin,
+                                              const String& load_intrin_A,
+                                              const String& load_intrin_B,
+                                              const String& store_intrin,
+                                              const String& init_intrin) {
+    intrin_names.push_back(compute_intrin);
+    intrin_names.push_back(load_intrin_A);
+    intrin_names.push_back(load_intrin_B);
+    intrin_names.push_back(store_intrin);
+    intrin_names.push_back(init_intrin);
+  }
+
+  Optional<tir::StmtSRef> FindTensorized(const Schedule& sch, const String& number) {
+    Optional<tir::StmtSRef> result = NullOpt;
+    tir::PrimFunc func = GetOnlyFunc(sch->mod());
+    tir::PreOrderVisit(
+        func->body,
+        [&result, &sch, &number](const ObjectRef& obj) -> bool {
+          if (const auto* block = obj.as<tir::BlockNode>()) {
+            tir::StmtSRef block_sref = sch->GetSRef(block);
+            if (HasAnn(block_sref, tir::attr::auto_tensor_core, number)) {
+              result = block_sref;
+              return false;
+            }
+          }
+          return true;
+        },
+        /*visit_init_block=*/false);
+    return result;
+  }
+
+  int CanTensorize(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                   const tir::TensorIntrin& intrin) {
+    Optional<TensorizeInfo> opt_tensorize_info =
+        GetTensorizeLoopMapping(sch->state(), block_sref, intrin->description);
+    if (!opt_tensorize_info.defined()) {
+      return 0;
+    }
+    const auto* info = opt_tensorize_info.value().get();
+    arith::Analyzer analyzer;
+    for (const auto& kv : info->loop_map) {
+      const tir::StmtSRef& block_loop_sref = kv.first;
+      const auto* block_loop = block_loop_sref->StmtAs<tir::ForNode>();
+      const tir::For& desc_loop = kv.second;
+      if (!analyzer.CanProve(block_loop->extent == desc_loop->extent)) {
+        return 0;
+      }
+    }
+    return info->loop_map.size();
+  }
+
+  bool Proc(const Schedule& sch) {
+    for (int intrin = 0; intrin < 5; ++intrin) {
+      if (Optional<tir::StmtSRef> opt_block_sref = FindTensorized(sch, std::to_string(intrin))) {
+        tir::StmtSRef block_sref = opt_block_sref.value();
+        // Remove the annotation
+        DelAnn(sch->state(), block_sref, tir::attr::auto_tensor_core);
+        // Get the surrounding loops
+        auto loops = sch->GetLoops(sch->GetBlock(block_sref->StmtAs<tir::BlockNode>()->name_hint));
+        // Tensorize
+        if (int number_of_loops =
+                CanTensorize(sch, block_sref, tir::TensorIntrin::Get(intrin_names.at(intrin)))) {
+          sch->Tensorize(loops[loops.size() - number_of_loops], intrin_names.at(intrin));
+        }
+      }
+    }
+    return true;
+  }
+};
+
+Postproc RewriteTensorizeTensorCore(const String& compute_intrin, const String& load_intrin_A,
+                                    const String& load_intrin_B, const String& store_intrin,
+                                    const String& init_intrin) {
+  auto f_proc = [=](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocRewriteTensorizeTensorCore(compute_intrin, load_intrin_A, load_intrin_B,
+                                              store_intrin, init_intrin)
+        .Proc(sch);
+  };
+  return Postproc("rewrite_tensorize_tensor_core", f_proc);
+}
+
 /********** RewriteCooperativeFetch **********/
 
 class PostprocRewriteCooperativeFetch {
@@ -213,7 +301,7 @@ class PostprocRewriteCooperativeFetchTensorCore {
   bool Proc(const Schedule& sch) const {
     int idx = 0;
     while (Optional<tir::StmtSRef> opt_block_sref =
-        FindBlockSRef(sch->state(), MakeBlockFinder(sch, &idx))) {
+               FindBlockSRef(sch->state(), MakeBlockFinder(sch, &idx))) {
       // Extract block info
       tir::StmtSRef block_sref = opt_block_sref.value();
       const auto* block = block_sref->StmtAs<tir::BlockNode>();
@@ -253,7 +341,7 @@ Postproc RewriteCooperativeFetchTensorCore() {
   auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
     return PostprocRewriteCooperativeFetchTensorCore().Proc(sch);
   };
-  return Postproc("rewrite_cooperative_fetch", f_proc);
+  return Postproc("rewrite_cooperative_fetch_tensor_core", f_proc);
 }
 
 /********** RewriteParallelizeVectorizeUnroll **********/
@@ -721,8 +809,6 @@ class PostprocRewriteReductionBlock {
       Finder finder;
       finder.CollectBoundLoops(stmt);
       finder.VisitStmt(stmt);
-      ICHECK(finder.result_ == nullptr || (finder.result_->init.defined() &&
-                                           finder.AllReductionIterVarAreUnbound(finder.result_)));
       return finder.result_;
     }
 
@@ -770,6 +856,8 @@ class PostprocRewriteReductionBlock {
             tir::ExprUseVar(
                 binding, [&](const tir::VarNode* node) { return bound_loop_vars_.count(node); })) {
           return false;
+        } else {
+          has_reduction_var = true;
         }
       }
       return has_reduction_var;
@@ -837,6 +925,147 @@ Postproc RewriteReductionBlock() {
     return PostprocRewriteReductionBlock().Proc(sch);
   };
   return Postproc("rewrite_reduction_block", f_proc);
+}
+
+/********** RewriteReductionBlockTensorCore **********/
+
+class PostprocRewriteReductionBlockTensorCore {
+ public:
+  /*!
+   * \brief An auxiliary class to help find reduction blocks whose init block is going to be
+   *        decomposed.
+   */
+  class Finder : public tir::StmtVisitor {
+   public:
+    static const tir::BlockNode* Find(const tir::Stmt& stmt) {
+      Finder finder;
+      finder.CollectBoundLoops(stmt);
+      finder.VisitStmt(stmt);
+      return finder.result_;
+    }
+
+   private:
+    Finder() : bound_loop_vars_(), stack_(), result_(nullptr) {}
+
+    /*!
+     * \brief Collect all the loops inside `stmt` that are bound to threadIdx or blockIdx.
+     * \param stmt The stmt to be inspected.
+     */
+    void CollectBoundLoops(const tir::Stmt& stmt) {
+      tir::PreOrderVisit(stmt, [this](const ObjectRef& node) {
+        if (const auto* loop = node.as<tir::ForNode>()) {
+          std::string thread_tag =
+              loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";
+          if (thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 8) == "blockIdx") {
+            ICHECK(thread_tag == "threadIdx.x" || thread_tag == "threadIdx.y" ||
+                   thread_tag == "threadIdx.z" || thread_tag == "blockIdx.x" ||
+                   thread_tag == "blockIdx.y" || thread_tag == "blockIdx.z");
+            bound_loop_vars_.insert(loop->loop_var.get());
+          }
+        }
+        return false;
+      });
+    }
+
+    /*!
+     * \brief Check whether the two following conditions are both satisfied:
+     *   1. the block has at least one reduction block var, and
+     *   2. none of its reduction block var bindings is bound to threadIdx.
+     * \param block_sref The block to be checked
+     * \return A boolean indicating if it has at least one reduction block var
+     */
+    bool AllReductionIterVarAreUnbound(const tir::BlockNode* block) {
+      bool has_reduction_var = false;
+      CHECK(!stack_.empty() && stack_.back()->block.get() == block)
+          << "ValueError: the block has outer BlockRealize or the outer BlockRealize doesn't match "
+             "the block.";
+      const tir::BlockRealize& block_realize = GetRef<tir::BlockRealize>(stack_.back());
+      ICHECK_EQ(block_realize->iter_values.size(), block->iter_vars.size());
+      for (int i = 0; i < static_cast<int>(block->iter_vars.size()); ++i) {
+        const tir::IterVar& var = block->iter_vars[i];
+        const PrimExpr& binding = block_realize->iter_values[i];
+        if (var->iter_type == tir::kCommReduce &&
+            tir::ExprUseVar(
+                binding, [&](const tir::VarNode* node) { return bound_loop_vars_.count(node); })) {
+          return false;
+        } else {
+          has_reduction_var = true;
+        }
+      }
+      return has_reduction_var;
+    }
+
+    void VisitStmt_(const tir::BlockNode* block) override {
+      if (result_ != nullptr) {
+        return;
+      }
+      /* 1. If a block doesn't have any bound reduction block var, there is no need to
+       *    decompose reduction.
+       * 2. If some of its reduction block var bindings are bound to threadIdx, this indicates
+       *    that cross-thread-reduction is needed, and hence we should not decompose the init block.
+       */
+      if (block->init.defined() && AllReductionIterVarAreUnbound(block)) {
+        result_ = block;
+      } else {
+        tir::StmtVisitor::VisitStmt_(block);
+      }
+    }
+
+    void VisitStmt_(const tir::BlockRealizeNode* block_realize) override {
+      if (result_ != nullptr) {
+        return;
+      }
+      stack_.push_back(block_realize);
+      tir::StmtVisitor::VisitStmt_(block_realize);
+      ICHECK(!stack_.empty());
+      stack_.pop_back();
+    }
+
+    /*! \brief A set recording all the bound loop vars. */
+    std::unordered_set<const tir::VarNode*> bound_loop_vars_;
+    /*! \brief A stack recording all the BlockRealizes along the visiting path. */
+    std::vector<const tir::BlockRealizeNode*> stack_;
+    /*!
+     * \brief The result block which has at least one reduction block var and none of the block var
+     *        bindings is bound to threadIdx (i.e., cross-thread-reduction is not needed).
+     */
+    const tir::BlockNode* result_;
+  };
+
+  bool Proc(const Schedule& sch) const {
+    while (const tir::BlockNode* block = Finder::Find(GetOnlyFunc(sch->mod())->body)) {
+      BlockRV block_rv = sch->GetBlock(block->name_hint);
+      tir::StmtSRef block_sref = sch->GetSRef(block_rv);
+      Array<LoopRV> loop_rvs = sch->GetLoops(block_rv);
+      int n_loops = loop_rvs.size();
+      for (int i = 0; i < n_loops; ++i) {
+        const LoopRV& loop_rv = loop_rvs[i];
+        tir::StmtSRef loop_sref = sch->GetSRef(loop_rv);
+        tir::IterVarType type = GetLoopIterType(sch->state(), loop_sref);
+        if (type == tir::kCommReduce || type == tir::kOpaque) {
+          // Insert the initializing block above the first loop which is not data parallel.
+          BlockRV init_block_rv = sch->DecomposeReduction(block_rv, loop_rvs[i]);
+          // If the block is the isolation block of tensor core,
+          // we mark the init block for later postprocessor to handle the tensorization step
+          if (HasAnn(block_sref, tir::attr::auto_tensor_core, "4")) {
+            DelAnn(sch->state(), block_sref, tir::attr::auto_tensor_core);
+            Array<BlockRV> init_inner_block_rv = sch->GetChildBlocks(init_block_rv);
+            ICHECK_EQ(init_inner_block_rv.size(), 1);
+            sch->MarkBlock(init_inner_block_rv[0], tir::attr::auto_tensor_core, String("4"));
+          }
+          break;
+        }
+      }
+    }
+    return true;
+  }
+};
+
+Postproc RewriteReductionBlockTensorCore() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocRewriteReductionBlockTensorCore().Proc(sch);
+  };
+  return Postproc("rewrite_reduction_block_tensor_core", f_proc);
 }
 
 /********** VerifyGPUCode **********/
@@ -1198,6 +1427,8 @@ struct Internal {
 TVM_REGISTER_NODE_TYPE(PostprocNode);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.Apply").set_body_typed(Internal::Apply);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteTensorize").set_body_typed(RewriteTensorize);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteTensorizeTensorCore")
+    .set_body_typed(RewriteTensorizeTensorCore);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteCooperativeFetch")
     .set_body_typed(RewriteCooperativeFetch);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteCooperativeFetchTensorCore")
@@ -1211,6 +1442,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.postproc.DisallowDynamicLoops")
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.VerifyGPUCode").set_body_typed(VerifyGPUCode);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteReductionBlock")
     .set_body_typed(RewriteReductionBlock);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteReductionBlockTensorCore")
+    .set_body_typed(RewriteReductionBlockTensorCore);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteLayout").set_body_typed(RewriteLayout);
 
 }  // namespace meta_schedule

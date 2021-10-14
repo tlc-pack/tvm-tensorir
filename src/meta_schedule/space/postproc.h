@@ -87,10 +87,30 @@ TVM_DLL Postproc RewriteParallelizeVectorizeUnroll();
 TVM_DLL Postproc RewriteReductionBlock();
 
 /*!
+ * \brief Creates a postprocessor that decomposes reduction blocks
+ * \return The postprocessor created
+ */
+TVM_DLL Postproc RewriteReductionBlockTensorCore();
+
+/*!
  * \brief Creates a postprocessor that matches the region that is marked as auto tensorized
  * \return The postprocessor created
  */
 TVM_DLL Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins);
+
+/*!
+ * \brief Creates a postprocessor that matches the region that is marked as auto tensorized
+ * \param compute_intrin The tensor intrinsinc for doing computation
+ * \param load_intrin_A The corresponding data load intrinsic for compute_intrin
+ * \param load_intrin_B The corresponding data load intrinsic for compute_intrin
+ * \param store_intrin The corresponing data store instrinsic for compute_intrin
+ * \param init_intrin The intrinsic for tensor core computation
+ * \return The postprocessor created
+ */
+TVM_DLL Postproc RewriteTensorizeTensorCore(const String& compute_intrin,
+                                            const String& load_intrin_A,
+                                            const String& load_intrin_B, const String& store_intrin,
+                                            const String& init_intrin);
 
 /*!
  * \brief Creates a postprocessor that rewrites "lazy_cooperative_fetch" with the actual threadIdx

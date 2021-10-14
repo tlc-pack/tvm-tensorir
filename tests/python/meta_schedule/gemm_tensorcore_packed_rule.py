@@ -16,7 +16,6 @@
 # under the License.
 """Integration test for CUDA with Tensor Core"""
 # pylint: disable=missing-function-docstring
-import logging
 import os
 
 import te_workload
@@ -28,8 +27,6 @@ from tvm import tir
 from tvm.contrib import nvcc
 import numpy as np
 
-from tvm.meta_schedule import postproc
-from tvm.te import tensor_intrin
 
 RPC_KEY = "rtx-3080"
 TARGET = tvm.target.Target("nvidia/geforce-rtx-3080")
@@ -41,7 +38,7 @@ def test_integration_matmul():
     os.environ["TVM_TRACKER_HOST"] = "172.16.2.241"
     os.environ["TVM_TRACKER_PORT"] = "4445"
 
-    block_num = 16
+    block_num = 64
 
     task = ms.SearchTask(
         workload=te_workload.matmul_fp16_packed.specialize(
@@ -56,8 +53,17 @@ def test_integration_matmul():
         target_host=TARGET_HOST,
     )
     postprocs = [
-        ms.postproc.rewrite_cooperative_fetch_tensorcore(),
+        ms.postproc.rewrite_cooperative_fetch_tensor_core(),
         ms.postproc.rewrite_parallel_vectorize_unroll(),
+        ms.postproc.rewrite_reduction_block_tensor_core(),
+        ms.postproc.rewrite_tensorize_tensor_core(
+            compute_intrin="wmma_sync",
+            load_intrin_A="wmma_load_a",
+            load_intrin_B="wmma_load_b",
+            store_intrin="wmma_store",
+            init_intrin="wmma_fill",
+        ),
+        ms.postproc.disallow_dynamic_loops(),
         ms.postproc.verify_gpu_code(),
     ]
     space = ms.space.PostOrderApply(
@@ -65,16 +71,13 @@ def test_integration_matmul():
             ms.rule.multi_level_tiling_with_tensor_core(
                 structure="SSSRRSRS",
                 must_cache_read=True,
-                cache_read_scope="shared",
-                can_cache_write=True,
+                cache_read_scope="shared", 
+                can_cache_write=False,
                 must_cache_write=False,
                 cache_write_scope="local",
                 consumer_inline_strict=False,
                 fusion_levels=[3],
-                compute_intrin=tir_tensor_intrin.WMMA_SYNC,
-                load_intrin_A=tir_tensor_intrin.WMMA_LOAD_A,
-                load_intrin_B=tir_tensor_intrin.WMMA_LOAD_B,
-                store_intrin=tir_tensor_intrin.WMMA_STORE,
+                compute_intrin="wmma_sync",
                 vector_load_max_len=4,
                 tile_binds=["blockIdx.x", "blockIdx.y", "threadIdx.y"],
             ),
@@ -86,13 +89,12 @@ def test_integration_matmul():
                 unroll_explicit=True,
             ),
         ],
-        # postprocs=postprocs,
-        # postprocs=[]
+        postprocs=postprocs,
     )
     schs = space.get_support(task=task)
     for sch in schs:
-        # for postproc in postprocs:
-        #     postproc.apply(task, sch)
+        for postproc in postprocs:
+            postproc.apply(task, sch)
         print(tvm.script.asscript(sch.mod))
 
     # ctx = tvm.gpu(0)

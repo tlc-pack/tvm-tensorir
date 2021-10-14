@@ -580,13 +580,7 @@ class RuleMultiLevelTilingWithTensorCore {
   /*! \brief Which levels of tiles the consumer is fused into */
   std::vector<int> fusion_levels;
   /*! \brief The tensor intrinsinc for doing computation */
-  tir::TensorIntrin compute_intrin;
-  /*! \brief The corresponding data load intrinsic for compute_intrin */
-  tir::TensorIntrin load_intrin_A;
-  /*! \brief The corresponding data load intrinsic for compute_intrin */
-  tir::TensorIntrin load_intrin_B;
-  /*! \brief The corresponding data store intrinsic for compute_intrin */
-  tir::TensorIntrin store_intrin;
+  String compute_intrin;
   /*! \brief The length of vectorized cooperative fetching */
   Optional<Integer> vector_load_max_len;
   /*! \brief Which thread axis each level of tile should be bound to */
@@ -676,13 +670,13 @@ class RuleMultiLevelTilingWithTensorCore {
     return sch->Fuse(to_fuse);
   }
 
-  explicit RuleMultiLevelTilingWithTensorCore(
-      String structure, int max_innermost_factor, bool must_cache_read, String cache_read_scope,
-      bool can_cache_write, bool must_cache_write, String cache_write_scope,
-      bool consumer_inline_strict, Array<Integer> fusion_levels_, tir::TensorIntrin compute_intrin,
-      tir::TensorIntrin load_intrin_A, tir::TensorIntrin load_intrin_B,
-      tir::TensorIntrin store_intrin, Optional<Integer> vector_load_max_len,
-      Optional<Array<String>> tile_binds)
+  explicit RuleMultiLevelTilingWithTensorCore(String structure, int max_innermost_factor,
+                                              bool must_cache_read, String cache_read_scope,
+                                              bool can_cache_write, bool must_cache_write,
+                                              String cache_write_scope, bool consumer_inline_strict,
+                                              Array<Integer> fusion_levels_, String compute_intrin,
+                                              Optional<Integer> vector_load_max_len,
+                                              Optional<Array<String>> tile_binds)
       : structure(structure),
         max_innermost_factor(max_innermost_factor),
         must_cache_read(must_cache_read),
@@ -693,9 +687,6 @@ class RuleMultiLevelTilingWithTensorCore {
         consumer_inline_strict(consumer_inline_strict),
         fusion_levels(AsVector<Integer, int>(fusion_levels_)),
         compute_intrin(compute_intrin),
-        load_intrin_A(load_intrin_A),
-        load_intrin_B(load_intrin_B),
-        store_intrin(store_intrin),
         vector_load_max_len(vector_load_max_len),
         tile_binds(tile_binds.value_or(Array<String>{})),
         s_idx(),
@@ -748,10 +739,11 @@ class RuleMultiLevelTilingWithTensorCore {
 
   std::vector<State> DetectTensorCore(State state) const {
     std::vector<State> result;
-    result.push_back(state);
+    // result.push_back(state);
     state.sch = Downcast<Schedule>(state.sch->Copy(state.sch->ForkSeed()));
-    Optional<TensorizeInfo> opt_tensorize_info = GetTensorizeLoopMapping(
-        state.sch->state(), state.sch->GetSRef(state.block_rv), compute_intrin->description);
+    Optional<TensorizeInfo> opt_tensorize_info =
+        GetTensorizeLoopMapping(state.sch->state(), state.sch->GetSRef(state.block_rv),
+                                tir::TensorIntrin::Get(compute_intrin)->description);
     if (!opt_tensorize_info) {
       return result;
     }
@@ -814,7 +806,8 @@ class RuleMultiLevelTilingWithTensorCore {
       state.block_rv = state.sch->Blockize(reorder_suffix[0]);
     }
     // Annotate the block
-    state.sch->MarkBlock(state.block_rv, tir::attr::auto_tensorize, Integer(1));
+    state.sch->MarkBlock(block_rv, tir::attr::auto_tensor_core, String("0"));
+    state.sch->MarkBlock(state.block_rv, tir::attr::auto_tensor_core, String("4"));
     state.tensor_core_is_used = true;
     result.push_back(state);
     return result;
@@ -829,6 +822,11 @@ class RuleMultiLevelTilingWithTensorCore {
     ICHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
     state.sch->ComputeAt(state.tensor_core_load_A.value(), r_tiles.back(), true);
     state.sch->ComputeAt(state.tensor_core_load_B.value(), r_tiles.back(), true);
+    // Annotate the block
+    state.sch->MarkBlock(state.tensor_core_load_A.value(), tir::attr::auto_tensor_core,
+                         String("1"));
+    state.sch->MarkBlock(state.tensor_core_load_B.value(), tir::attr::auto_tensor_core,
+                         String("2"));
     return state;
   }
 
@@ -839,11 +837,13 @@ class RuleMultiLevelTilingWithTensorCore {
     BlockRV tmp = state.tensor_core_store.value();
     state.tensor_core_store = state.block_rv;
     state.block_rv = tmp;
+    // Annotate the block
+    state.sch->MarkBlock(state.tensor_core_store.value(), tir::attr::auto_tensor_core, String("3"));
     return state;
   }
 
   State TensorCoreWriteCacheFusion(State state, int level) const {
-    const LoopRV& loop = state.tiles[level - 1].back();
+    const LoopRV& loop = state.tiles[level].back();
     state.sch->ReverseComputeAt(state.tensor_core_store.value(), loop, true);
     return state;
   }
@@ -992,6 +992,7 @@ class RuleMultiLevelTilingWithTensorCore {
       // Add cooperative fetching
       sch->MarkLoop(fused, tir::attr::loop_type, String("lazy_cooperative_fetch"));
     }
+    if (state.tensor_core_is_used) state = TensorCoreCacheRead(state);
     return {state};
   }
 
@@ -1112,21 +1113,21 @@ class RuleMultiLevelTilingWithTensorCore {
 #undef TVM_SEARCH_RULE_APPLY_SUBRULE
 };
 
-SearchRule MultiLevelTilingWithTensorCore(
-    String structure, int max_innermost_factor, bool must_cache_read, String cache_read_scope,
-    bool can_cache_write, bool must_cache_write, String cache_write_scope,
-    bool consumer_inline_strict, Array<Integer> fusion_levels, tir::TensorIntrin compute_intrin,
-    tir::TensorIntrin load_intrin_A, tir::TensorIntrin load_intrin_B,
-    tir::TensorIntrin store_intrin, Optional<Integer> vector_load_max_len,
-    Optional<Array<String>> tile_binds) {
+SearchRule MultiLevelTilingWithTensorCore(String structure, int max_innermost_factor,
+                                          bool must_cache_read, String cache_read_scope,
+                                          bool can_cache_write, bool must_cache_write,
+                                          String cache_write_scope, bool consumer_inline_strict,
+                                          Array<Integer> fusion_levels, String compute_intrin,
+                                          Optional<Integer> vector_load_max_len,
+                                          Optional<Array<String>> tile_binds) {
   if (!can_cache_write && must_cache_write) {
     LOG(FATAL) << "ValueError: Conflict options, cannot have can_cache_write = false, and "
                   "must_cache_write = true at the same time";
   }
-  RuleMultiLevelTilingWithTensorCore rule(
-      structure, max_innermost_factor, must_cache_read, cache_read_scope, can_cache_write,
-      must_cache_write, cache_write_scope, consumer_inline_strict, fusion_levels, compute_intrin,
-      load_intrin_A, load_intrin_B, store_intrin, vector_load_max_len, tile_binds);
+  RuleMultiLevelTilingWithTensorCore rule(structure, max_innermost_factor, must_cache_read,
+                                          cache_read_scope, can_cache_write, must_cache_write,
+                                          cache_write_scope, consumer_inline_strict, fusion_levels,
+                                          compute_intrin, vector_load_max_len, tile_binds);
   auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch,
                                          BlockRV block) -> Array<Schedule> {
     return rule.Apply(task, sch, block);
