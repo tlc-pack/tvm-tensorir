@@ -80,7 +80,7 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
     this->sch_rules_ = tune_context->sch_rules;
   }
 
-  Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod) final {
+  Array<tir::Schedule> GenerateDesignSpace() final {
     using ScheduleAndUnvisitedBlocks = std::pair<tir::Schedule, Array<tir::StmtSRef>>;
 
     tir::Schedule sch = tir::Schedule::Traced(        //

@@ -76,7 +76,7 @@ def test_meta_schedule_post_order_apply():
     )
     post_order_apply = PostOrderApply()
     post_order_apply.initialize_with_tune_context(context)
-    schs = post_order_apply.generate_design_space(mod)
+    schs = post_order_apply.generate_design_space()
     assert len(schs) == 1
     try:
         tvm.ir.assert_structural_equal(mod, schs[0].mod)
