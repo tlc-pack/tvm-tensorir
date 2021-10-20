@@ -29,6 +29,16 @@ class TaskScheduler(Object):
         """Auto-tuning."""
         _ffi_api.TaskSchedulerTune(self)  # pylint: disable=no-member
 
+    def _initialize_task(self, task_id: int) -> None:
+        """Initialize modules of the given task.
+
+        Parameters
+        ----------
+        task_id : int
+            The task id to be initialized.
+        """
+        _ffi_api.TaskSchedulerInitializeTask(self, task_id)  # pylint: disable=no-member
+
     def _set_task_stopped(self, task_id: int) -> None:
         """Set specific task to be stopped.
 
@@ -85,6 +95,9 @@ class PyTaskScheduler(TaskScheduler):
         def f_tune() -> None:
             self.tune()
 
+        def f_initialize_task(task_id: int) -> None:
+            self._initialize_task(task_id)
+
         def f_set_task_stopped(task_id: int) -> None:
             self._set_task_stopped(task_id)
 
@@ -100,6 +113,7 @@ class PyTaskScheduler(TaskScheduler):
         self.__init_handle_by_constructor__(
             _ffi_api.TaskSchedulerPyTaskScheduler,  # pylint: disable=no-member
             f_tune,
+            f_initialize_task,
             f_set_task_stopped,
             f_is_task_running,
             f_join_running_task,
@@ -108,6 +122,9 @@ class PyTaskScheduler(TaskScheduler):
 
     def tune(self) -> None:
         raise NotImplementedError()
+
+    def _initialize_task(self, task_id: int) -> None:
+        raise _ffi_api.TaskSchedulerInitializeTask(self, task_id)
 
     def _set_task_stopped(self, task_id: int) -> None:
         _ffi_api.TaskSchedulerSetTaskStopped(self, task_id)  # pylint: disable=no-member

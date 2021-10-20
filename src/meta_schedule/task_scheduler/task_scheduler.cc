@@ -92,19 +92,37 @@ Array<RunnerFuture> SendToRunner(const Runner& runner,  //
   return results;
 }
 
+void TaskSchedulerNode::InitializeTask(int task_id) {
+  TuneContext task = this->tasks[task_id];
+  // Check Optional value validity.
+  CHECK(task->mod.defined()) << "ValueError: Require `context.mod`, but it is not defined";
+  CHECK(task->space_generator.defined())
+      << "ValueError: Require `context.space_generator`, but it is not defined";
+  CHECK(task->search_strategy.defined())
+      << "ValueError: Require `context.search_strategy`, but it is not defined";
+  // Derive the values.
+  IRModule mod = task->mod.value();
+  SpaceGenerator space = task->space_generator.value();
+  SearchStrategy strategy = task->search_strategy.value();
+  // Initialize Modules.
+  space->InitializeWithTuneContext(task);
+  strategy->InitializeWithTuneContext(task);
+  strategy->PreTuning(space->GenerateDesignSpace(mod));
+  // Initialize the rules.
+  for (const ScheduleRule& sch_rule : task->sch_rules) {
+    sch_rule->InitializeWithTuneContext(task);
+  }
+  for (const Mutator& mutator : task->mutators) {
+    mutator->InitializeWithTuneContext(task);
+  }
+  for (const Postproc& postproc : task->postprocs) {
+    postproc->InitializeWithTuneContext(task);
+  }
+}
+
 void TaskSchedulerNode::Tune() {
-  for (const TuneContext& task : this->tasks) {
-    CHECK(task->mod.defined()) << "ValueError: Require `context.mod`, but it is not defined";
-    CHECK(task->space_generator.defined())
-        << "ValueError: Require `context.space_generator`, but it is not defined";
-    CHECK(task->search_strategy.defined())
-        << "ValueError: Require `context.search_strategy`, but it is not defined";
-    IRModule mod = task->mod.value();
-    SpaceGenerator space = task->space_generator.value();
-    SearchStrategy strategy = task->search_strategy.value();
-    space->InitializeWithTuneContext(task);
-    strategy->InitializeWithTuneContext(task);
-    strategy->PreTuning(space->GenerateDesignSpace(mod));
+  for (int i = 0; i < (int)(this->tasks.size()); i++) {
+    InitializeTask(i);
   }
 
   int running_tasks = tasks.size();
@@ -187,12 +205,14 @@ void TaskSchedulerNode::JoinRunningTask(int task_id) {
 
 TaskScheduler TaskScheduler::PyTaskScheduler(
     PyTaskSchedulerNode::FTune f_tune,                          //
+    PyTaskSchedulerNode::FInitializeTask f_initialize_task,     //
     PyTaskSchedulerNode::FSetTaskStopped f_set_task_stopped,    //
     PyTaskSchedulerNode::FIsTaskRunning f_is_task_running,      //
     PyTaskSchedulerNode::FJoinRunningTask f_join_running_task,  //
     PyTaskSchedulerNode::FNextTaskId f_next_task_id) {
   ObjectPtr<PyTaskSchedulerNode> n = make_object<PyTaskSchedulerNode>();
   n->f_tune = f_tune;
+  n->f_initialize_task = f_initialize_task;
   n->f_set_task_stopped = f_set_task_stopped;
   n->f_is_task_running = f_is_task_running;
   n->f_join_running_task = f_join_running_task;
@@ -202,14 +222,16 @@ TaskScheduler TaskScheduler::PyTaskScheduler(
 
 TVM_REGISTER_OBJECT_TYPE(TaskSchedulerNode);
 TVM_REGISTER_NODE_TYPE(PyTaskSchedulerNode);
-TVM_REGISTER_GLOBAL("tvm.task.TaskSchedulerPyTaskScheduler")
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerPyTaskScheduler")
     .set_body_typed(TaskScheduler::PyTaskScheduler);
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerTune")
+    .set_body_method<TaskScheduler>(&TaskSchedulerNode::Tune);
+TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerInitializeTask")
+    .set_body_method<TaskScheduler>(&TaskSchedulerNode::InitializeTask);
 TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerSetTaskStopped")
     .set_body_method<TaskScheduler>(&TaskSchedulerNode::SetTaskStopped);
 TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerIsTaskRunning")
     .set_body_method<TaskScheduler>(&TaskSchedulerNode::IsTaskRunning);
-TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerTune")
-    .set_body_method<TaskScheduler>(&TaskSchedulerNode::Tune);
 TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerJoinRunningTask")
     .set_body_method<TaskScheduler>(&TaskSchedulerNode::JoinRunningTask);
 TVM_REGISTER_GLOBAL("meta_schedule.TaskSchedulerNextTaskId")

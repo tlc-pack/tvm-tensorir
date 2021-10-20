@@ -78,9 +78,6 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
     this->mod_ = tune_context->mod.value();
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
     this->sch_rules_ = tune_context->sch_rules;
-    for (const ScheduleRule& sch_rule : sch_rules_) {
-      sch_rule->InitializeWithTuneContext(tune_context);
-    }
   }
 
   Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod) final {
