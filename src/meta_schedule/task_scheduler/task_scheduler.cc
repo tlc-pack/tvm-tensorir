@@ -114,7 +114,7 @@ void TaskSchedulerNode::Tune() {
       ICHECK(!task->is_stopped);
       ICHECK(!task->runner_futures.defined());
       SearchStrategy strategy = task->search_strategy.value();
-      if (task->measure_candidates = strategy->GenerateMeasureCandidates()) {
+      if ((task->measure_candidates = strategy->GenerateMeasureCandidates())) {
         Array<BuilderResult> builder_results =
             SendToBuilder(this->builder, task, task->measure_candidates.value());
         task->runner_futures =
