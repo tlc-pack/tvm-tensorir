@@ -36,11 +36,11 @@ class SpaceGeneratorUnionNode : public SpaceGeneratorNode {
     }
   }
 
-  Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod) final {
+  Array<tir::Schedule> GenerateDesignSpace() final {
     Array<tir::Schedule> design_spaces;
     for (const SpaceGenerator& space_generator : space_generators) {
       // Generate partial design spaces from each design space generator.
-      Array<tir::Schedule> partial = space_generator->GenerateDesignSpace(mod);
+      Array<tir::Schedule> partial = space_generator->GenerateDesignSpace();
       // Merge the partial design spaces.
       design_spaces.insert(design_spaces.end(), partial.begin(), partial.end());
     }
