@@ -59,8 +59,9 @@ class ScheduleFn(PySpaceGenerator):
         tune_context : TuneContext
             The tuning context for initializing the design space generator.
         """
+        self.mod = tune_context.mod
 
-    def generate_design_space(self, mod: IRModule) -> List[Schedule]:
+    def generate_design_space(self) -> List[Schedule]:
         """Generate design spaces given a module.
 
         Parameters
@@ -73,7 +74,7 @@ class ScheduleFn(PySpaceGenerator):
         design_spaces : List[Schedule]
             The generated design spaces, i.e., schedules.
         """
-        sch = Schedule(mod)  # Make sure the schedule is traced
+        sch = Schedule(self.mod)  # Make sure the schedule is traced
         result = self.sch_fn(sch)  # Call the schedule function
         if result is None:  # Case 1. No output
             return [sch]

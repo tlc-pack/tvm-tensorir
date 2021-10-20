@@ -78,10 +78,9 @@ class SpaceGeneratorNode : public Object {
 
   /*!
    * \brief Generate design spaces given a module.
-   * \param mod The module used for design space generation.
    * \return The generated design spaces, i.e., schedules.
    */
-  virtual Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod) = 0;
+  virtual Array<tir::Schedule> GenerateDesignSpace() = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SpaceGenerator";
   TVM_DECLARE_BASE_OBJECT_INFO(SpaceGeneratorNode, Object);
@@ -97,10 +96,9 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
   using FInitializeWithTuneContext = runtime::TypedPackedFunc<void(const TuneContext&)>;
   /*!
    * \brief The function type of `GenerateDesignSpace` method.
-   * \param mod The module used for design space generation.
    * \return The generated design spaces, i.e., schedules.
    */
-  using FGenerateDesignSpace = runtime::TypedPackedFunc<Array<tir::Schedule>(const IRModule&)>;
+  using FGenerateDesignSpace = runtime::TypedPackedFunc<Array<tir::Schedule>()>;
 
   /*! \brief The packed function to the `InitializeWithTuneContext` funcion. */
   FInitializeWithTuneContext f_initialize_with_tune_context;
@@ -112,12 +110,12 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
     // `f_generate_design_space` is not visited
   }
 
-  void InitializeWithTuneContext(const TuneContext& tune_context) final {
+  void InitializeWithTuneContext(const TuneContext& tune_context) final {  //
     f_initialize_with_tune_context(tune_context);
   }
 
-  Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod) final {
-    return f_generate_design_space(mod);
+  Array<tir::Schedule> GenerateDesignSpace() final {  //
+    return f_generate_design_space();
   }
 
   static constexpr const char* _type_key = "meta_schedule.PySpaceGenerator";

@@ -74,7 +74,9 @@ def test_meta_schedule_replay_trace():
     num_trials_per_iter = 7
     num_trials_total = 20
 
-    (example_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(Matmul)
+    space_generator = ScheduleFn(sch_fn=_schedule_matmul)
+    space_generator.initialize_with_tune_context(TuneContext(mod=Matmul))
+    (example_sch,) = space_generator.generate_design_space()
     replay = ReplayTrace(num_trials_per_iter=num_trials_per_iter, num_trials_total=num_trials_total)
     tune_context = TuneContext(mod=Matmul)
     replay.initialize_with_tune_context(tune_context)
