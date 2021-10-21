@@ -94,12 +94,6 @@ Array<RunnerFuture> SendToRunner(const Runner& runner,  //
 
 void TaskSchedulerNode::InitializeTask(int task_id) {
   TuneContext task = this->tasks[task_id];
-  // Check Optional value validity.
-  CHECK(task->mod.defined()) << "ValueError: Require `context.mod`, but it is not defined";
-  CHECK(task->space_generator.defined())
-      << "ValueError: Require `context.space_generator`, but it is not defined";
-  CHECK(task->search_strategy.defined())
-      << "ValueError: Require `context.search_strategy`, but it is not defined";
   // Derive the values.
   IRModule mod = task->mod.value();
   SpaceGenerator space = task->space_generator.value();
@@ -107,7 +101,6 @@ void TaskSchedulerNode::InitializeTask(int task_id) {
   // Initialize Modules.
   space->InitializeWithTuneContext(task);
   strategy->InitializeWithTuneContext(task);
-  strategy->PreTuning(space->GenerateDesignSpace(mod));
   // Initialize the rules.
   for (const ScheduleRule& sch_rule : task->sch_rules) {
     sch_rule->InitializeWithTuneContext(task);
@@ -122,7 +115,17 @@ void TaskSchedulerNode::InitializeTask(int task_id) {
 
 void TaskSchedulerNode::Tune() {
   for (int i = 0; i < (int)(this->tasks.size()); i++) {
+    // Check Optional value validity.
+    CHECK(tasks[i]->mod.defined()) << "ValueError: Require `context.mod`, but it is not defined";
+    CHECK(tasks[i]->space_generator.defined())
+        << "ValueError: Require `context.space_generator`, but it is not defined";
+    CHECK(tasks[i]->search_strategy.defined())
+        << "ValueError: Require `context.search_strategy`, but it is not defined";
+
     InitializeTask(i);
+
+    tasks[i]->search_strategy.value()->PreTuning(
+        tasks[i]->space_generator.value()->GenerateDesignSpace(tasks[i]->mod.value()));
   }
 
   int running_tasks = tasks.size();
