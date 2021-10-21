@@ -25,32 +25,49 @@ namespace meta_schedule {
 class BlockCollector : public tir::StmtVisitor {
  public:
   /*! \brief Constructor */
-  explicit BlockCollector(const tir::Schedule& sch) : sch_(sch) {
-    const auto* realize = GetOnlyFunc(sch->mod())->body.as<tir::BlockRealizeNode>();
-    root_block_ = realize->block.get();
-  }
+  explicit BlockCollector(const tir::Schedule& sch) : sch_(sch) {}
 
   /*! \brief Entry point */
-  Array<tir::StmtSRef> Run() {
-    VisitStmt(GetOnlyFunc(sch_->mod())->body);
-    Array<tir::StmtSRef> result = std::move(result_);
+  std::pair<Array<tir::BlockRV>, Map<String, String>> Run() {
+    for (const auto& kv : sch_->mod()->functions) {
+      const GlobalVar& gv = kv.first;         // `gv->name_hint` is the name of the function
+      const BaseFunc& base_func = kv.second;  // this can be PrimFunc or relay::Function
+      func_name_ = gv->name_hint;
+      if (const auto* func = base_func.as<tir::PrimFuncNode>()) {
+        root_block_ = func->body.as<tir::BlockRealizeNode>()->block.get();
+        VisitStmt(func->body);
+      }
+    }
+
+    std::pair<Array<tir::BlockRV>, Map<String, String>> result = std::make_pair(  //
+        std::move(blocks_),                                                       //
+        std::move(block2func_)                                                    //
+    );
     return result;
   }
 
  private:
   void VisitStmt_(const tir::BlockNode* block) override {
     if (block != root_block_) {
-      result_.push_back(sch_->GetSRef(block));
+      CHECK(!block2func_.count(block->name_hint))
+          << "Duplicated block name " << block->name_hint << " in function " << func_name_
+          << " not supported!";
+      block2func_.Set(block->name_hint, func_name_);
+      blocks_.push_back(sch_->GetBlock(block->name_hint, func_name_));
     }
     this->VisitStmt(block->body);
   }
 
   /*! \brief The schedule to be collected */
   const tir::Schedule& sch_;
+  /*! \brief The mapping from block name to func name */
+  Map<String, String> block2func_;
   /*! \brief Result of collection */
-  Array<tir::StmtSRef> result_;
-  /*! \brief The */
+  Array<tir::BlockRV> blocks_;
+  /*! \brief The root block of the PrimFunc */
   const tir::BlockNode* root_block_;
+  /*! \brief Name of the current PrimFunc */
+  String func_name_;
 };
 
 /*!
@@ -81,21 +98,23 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
   }
 
   Array<tir::Schedule> GenerateDesignSpace() final {
-    using ScheduleAndUnvisitedBlocks = std::pair<tir::Schedule, Array<tir::StmtSRef>>;
-
+    using ScheduleAndUnvisitedBlocks = std::pair<tir::Schedule, Array<tir::BlockRV>>;
+    Array<tir::BlockRV> blocks;
+    Map<String, String> block2func;
     tir::Schedule sch = tir::Schedule::Traced(        //
         this->mod_,                                   //
         /*rand_state=*/ForkSeed(&this->rand_state_),  //
         /*debug_mode=*/0,                             //
         /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
-    std::vector<ScheduleAndUnvisitedBlocks> stack{
-        ScheduleAndUnvisitedBlocks(sch, BlockCollector(sch).Run())};
+
+    std::tie(blocks, block2func) = BlockCollector(sch).Run();
+    std::vector<ScheduleAndUnvisitedBlocks> stack{ScheduleAndUnvisitedBlocks(sch, blocks)};
     Array<tir::Schedule> result;
 
     while (!stack.empty()) {
       // get the stack.top()
       tir::Schedule sch = stack.back().first;
-      Array<tir::StmtSRef> unvisited = stack.back().second;
+      Array<tir::BlockRV> unvisited = stack.back().second;
       stack.pop_back();
       // if all blocks are visited
       if (unvisited.empty()) {
@@ -103,20 +122,17 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
         continue;
       }
       // otherwise, get the last block that is not visited
-      tir::StmtSRef block_sref = unvisited.back();
+      tir::BlockRV rv = unvisited.back();
       unvisited.pop_back();
-      if (block_sref->stmt != nullptr) {
-        const auto* block = block_sref->StmtAs<tir::BlockNode>();
-        ICHECK(block) << "TypeError: Expects BlockNode, but gets: "
-                      << block_sref->stmt->GetTypeKey();
-
+      tir::Block block = sch->Get(rv);
+      if (block.defined()) {
         Array<tir::Schedule> current{sch};
         for (ScheduleRule sch_rule : sch_rules_) {
           // apply the rule to the block
           Array<tir::Schedule> applied;
           for (const tir::Schedule& sch : current) {
-            // TODO(@zxybazh, @junrushao1994): Check the condition
-            if (!tir::GetBlocks(sch->state(), block->name_hint, "main").empty()) {
+            if (!tir::GetBlocks(sch->state(), block->name_hint, block2func[block->name_hint])
+                     .empty()) {
               Array<tir::Schedule> tmp =
                   sch_rule->Apply(sch, /*block=*/sch->GetBlock(block->name_hint));
               applied.insert(applied.end(), tmp.begin(), tmp.end());
