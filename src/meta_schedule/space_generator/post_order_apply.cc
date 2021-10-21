@@ -66,8 +66,7 @@ class BlockCollector : public tir::StmtVisitor {
   /*! \brief Function name & blocks of collection */
   Array<tir::BlockRV> results_;
   /*! \brief The root block of the PrimFunc */
-  const tir::BlockNode* root_block_;
-  /*! \brief Name of the current PrimFunc */
+  const tir::BlockNode* root_block_; /*! \brief Name of the current PrimFunc */
   String func_name_;
 };
 
