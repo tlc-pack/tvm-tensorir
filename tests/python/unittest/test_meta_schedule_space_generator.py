@@ -23,7 +23,6 @@ import math
 import pytest
 
 import tvm
-from tvm.meta_schedule.tune_context import TuneContext
 from tvm.script import tir as T
 
 from tvm.tir.schedule import Schedule
@@ -67,19 +66,19 @@ def _check_correct(schedule: Schedule):
 
 
 def test_meta_schedule_space_generator_schedule_fn():
+    mod = Matmul
     space_generator = ScheduleFn(sch_fn=schedule_matmul)
-    space_generator.initialize_with_tune_context(TuneContext(mod=Matmul))
-    design_spaces = space_generator.generate_design_space()
+    design_spaces = space_generator.generate_design_space(mod)
     assert len(design_spaces) == 1
     (schedule,) = design_spaces
     _check_correct(schedule)
 
 
 def test_meta_schedule_design_space_generator_union():
+    mod = Matmul
     space_generator = ScheduleFn(sch_fn=schedule_matmul)
-    space_generator.initialize_with_tune_context(TuneContext(mod=Matmul))
     space_generator_union = SpaceGeneratorUnion([space_generator, space_generator])
-    design_spaces = space_generator_union.generate_design_space()
+    design_spaces = space_generator_union.generate_design_space(mod)
     assert len(design_spaces) == 2
     for design_space in design_spaces:
         _check_correct(design_space)
