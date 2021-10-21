@@ -107,49 +107,50 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
         /*debug_mode=*/0,                             //
         /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
 
-    std::vector<ScheduleAndUnvisitedBlocks> stack{
-        std::make_pair(sch, BlockCollector::Collect(sch))};
-    Array<tir::Schedule> result;
-
-    while (!stack.empty()) {
-      // get the stack.top()
-      tir::Schedule sch = stack.back().first;
-      Array<String> func_names;
-      Array<tir::StmtSRef> block_srefs;
-      ICHECK(func_names.size() == block_srefs.size())
-          << "Function names' number is not equal to blocks' number.";
-      std::tie(func_names, block_srefs) = stack.back().second;
-      stack.pop_back();
-      // if all blocks are visited
-      if (block_srefs.empty()) {
-        result.push_back(sch);
-        continue;
+    std::vector<ScheduleAndUnvisitedBlocks> stack;
+    Array<tir::Schedule> result{sch};
+    // Enumerate the schedule rules first because you can
+    // always concat multiple schedule rules as one
+    for (ScheduleRule sch_rule : sch_rules_) {
+      for (const tir::Schedule sch : result) {
+        stack.emplace_back(sch, BlockCollector::Collect(sch));
       }
-      // otherwise, get the last block that is not visited
-      String func_name = func_names.back();
-      tir::StmtSRef block_sref = block_srefs.back();
-      func_names.pop_back();
-      block_srefs.pop_back();
-      if (block_sref->stmt != nullptr) {
-        const auto* block = block_sref->StmtAs<tir::BlockNode>();
-        ICHECK(block) << "TypeError: Expects BlockNode, but gets: "
-                      << block_sref->stmt->GetTypeKey();
+      result.clear();
 
-        Array<tir::Schedule> current{sch};
-        for (ScheduleRule sch_rule : sch_rules_) {
-          // apply the rule to the block
-          Array<tir::Schedule> applied;
-          for (const tir::Schedule& sch : current) {
-            if (!tir::GetBlocks(sch->state(), block->name_hint, func_name).empty()) {
-              Array<tir::Schedule> tmp =
-                  sch_rule->Apply(sch, /*block=*/sch->GetBlock(block->name_hint));
-              applied.insert(applied.end(), tmp.begin(), tmp.end());
-            }
-          }
-          current = std::move(applied);
+      while (!stack.empty()) {
+        // get the stack.top()
+        tir::Schedule sch = stack.back().first;
+        Array<String> func_names;
+        Array<tir::StmtSRef> block_srefs;
+        ICHECK(func_names.size() == block_srefs.size())
+            << "Function names' number is not equal to blocks' number.";
+        std::tie(func_names, block_srefs) = stack.back().second;
+        stack.pop_back();
+        // if all blocks are visited
+        if (block_srefs.empty()) {
+          result.push_back(sch);
+          continue;
         }
-        for (const tir::Schedule& sch : current) {
-          stack.emplace_back(sch, std::make_pair(func_names, block_srefs));
+        // otherwise, get the last block that is not visited
+        String func_name = func_names.back();
+        tir::StmtSRef block_sref = block_srefs.back();
+        func_names.pop_back();
+        block_srefs.pop_back();
+        if (block_sref->stmt != nullptr) {
+          const auto* block = block_sref->StmtAs<tir::BlockNode>();
+          ICHECK(block) << "TypeError: Expects BlockNode, but gets: "
+                        << block_sref->stmt->GetTypeKey();
+
+          Array<tir::Schedule> applied;
+          if (!tir::GetBlocks(sch->state(), block->name_hint, func_name).empty()) {
+            Array<tir::Schedule> tmp =
+                sch_rule->Apply(sch, /*block=*/sch->GetBlock(block->name_hint));
+            applied.insert(applied.end(), tmp.begin(), tmp.end());
+          }
+
+          for (const tir::Schedule& sch : applied) {
+            stack.emplace_back(sch, std::make_pair(func_names, block_srefs));
+          }
         }
       }
     }
