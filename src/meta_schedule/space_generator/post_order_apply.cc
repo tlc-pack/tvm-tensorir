@@ -77,30 +77,26 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
  public:
   using TRandState = support::LinearCongruentialEngine::TRandState;
 
-  /*! \brief The module to be tuned. */
-  IRModule mod_{nullptr};
   /*! \brief The random state. -1 means using random number. */
   TRandState rand_state_ = -1;
   /*! \brief The schedule rules to be applied in order. */
   Array<ScheduleRule> sch_rules_{nullptr};
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    // `mod_` is not visited
     // `rand_state_` is not visited
     // `sch_rules_` is not visited
   }
 
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
-    this->mod_ = tune_context->mod.value();
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
     this->sch_rules_ = tune_context->sch_rules;
   }
 
-  Array<tir::Schedule> GenerateDesignSpace() final {
+  Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod_) final {
     using ScheduleAndUnvisitedBlocks =
         std::pair<tir::Schedule, std::vector<std::pair<String, tir::BlockRV>>>;
     tir::Schedule sch = tir::Schedule::Traced(        //
-        this->mod_,                                   //
+        mod_,                                         //
         /*rand_state=*/ForkSeed(&this->rand_state_),  //
         /*debug_mode=*/0,                             //
         /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);

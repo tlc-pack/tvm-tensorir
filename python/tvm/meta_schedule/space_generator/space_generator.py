@@ -47,15 +47,20 @@ class SpaceGenerator(Object):
             self, tune_context
         )
 
-    def generate_design_space(self) -> List[Schedule]:
+    def generate_design_space(self, mod: IRModule) -> List[Schedule]:
         """Generate design spaces given a module.
+
+        Parameters
+        ----------
+        mod : IRModule
+            The module used for design space generation.
 
         Returns
         -------
         design_spaces : List[Schedule]
             The generated design spaces, i.e., schedules.
         """
-        return _ffi_api.SpaceGeneratorGenerateDesignSpace(self)  # type: ignore # pylint: disable=no-member
+        return _ffi_api.SpaceGeneratorGenerateDesignSpace(self, mod)  # type: ignore # pylint: disable=no-member
 
 
 @register_object("meta_schedule.PySpaceGenerator")
@@ -68,8 +73,8 @@ class PySpaceGenerator(SpaceGenerator):
         def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
             self.initialize_with_tune_context(tune_context)
 
-        def f_generate_design_space() -> List[Schedule]:
-            return self.generate_design_space()
+        def f_generate_design_space(mod: IRModule) -> List[Schedule]:
+            return self.generate_design_space(mod)
 
         self.__init_handle_by_constructor__(
             _ffi_api.SpaceGeneratorPySpaceGenerator,  # type: ignore # pylint: disable=no-member
@@ -80,5 +85,5 @@ class PySpaceGenerator(SpaceGenerator):
     def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
         raise NotImplementedError
 
-    def generate_design_space(self) -> List[Schedule]:
+    def generate_design_space(self, mod) -> List[Schedule]:
         raise NotImplementedError

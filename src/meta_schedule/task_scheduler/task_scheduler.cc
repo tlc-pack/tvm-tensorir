@@ -107,7 +107,7 @@ void TaskSchedulerNode::InitializeTask(int task_id) {
   // Initialize Modules.
   space->InitializeWithTuneContext(task);
   strategy->InitializeWithTuneContext(task);
-  strategy->PreTuning(space->GenerateDesignSpace());
+  strategy->PreTuning(space->GenerateDesignSpace(mod));
   // Initialize the rules.
   for (const ScheduleRule& sch_rule : task->sch_rules) {
     sch_rule->InitializeWithTuneContext(task);
