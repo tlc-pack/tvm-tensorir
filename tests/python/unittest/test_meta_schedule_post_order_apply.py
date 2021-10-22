@@ -19,6 +19,7 @@
 from typing import List
 import pytest
 import math
+import sys
 
 import tvm
 from tvm._ffi.base import TVMError, py2cerror
@@ -82,7 +83,7 @@ class TrinityMatmul:
             D[vi, vj] = C[vi, vj] * 5.0
 
 @tvm.script.ir_module
-class TrinityMatmulProcessed:
+class TrinityMatmulProcessedForReference:
     @T.prim_func
     def main(a: T.handle, d: T.handle) -> None:
         # function attr dict
@@ -235,7 +236,11 @@ def test_meta_schedule_post_order_apply_duplicate_matmul():
     )
     post_order_apply = PostOrderApply()
     post_order_apply.initialize_with_tune_context(context)
-    with pytest.raises(TVMError):
+    with pytest.raises(
+        TVMError,
+        match=r".*TVMError: Check failed: \(block_names.count\(block->name_hint\) == 0\)"
+        r" is false: Duplicated block name matmul in function main not supported!",
+    ):
         post_order_apply.generate_design_space(mod)
 
 
@@ -280,11 +285,13 @@ def test_meta_schedule_post_order_apply_remove_block():
     post_order_apply.initialize_with_tune_context(context)
     schs = post_order_apply.generate_design_space(mod)
     assert len(schs) == 4
+    for sch in schs:
+        with pytest.raises(
+            tvm.tir.schedule.schedule.ScheduleError,
+            match="ScheduleError: An error occurred in the schedule primitive 'get-block'.",
+        ):
+            sch.get_block("B", "main")
 
 
 if __name__ == "__main__":
-    test_meta_schedule_post_order_apply()
-    test_meta_schedule_post_order_apply_double()
-    test_meta_schedule_post_order_apply_multiple()
-    test_meta_schedule_post_order_apply_duplicate_matmul()
-    test_meta_schedule_post_order_apply_remove_block()
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))
