@@ -132,9 +132,7 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
         tir::BlockRV block_rv = blocks.back();
         blocks.pop_back();
         if (sch->HasBlock(block_rv)) {
-          const tir::Block block = sch->Get(block_rv);
-          Array<tir::Schedule> applied =
-              sch_rule->Apply(sch, /*block=*/sch->GetBlock(block->name_hint));
+          Array<tir::Schedule> applied = sch_rule->Apply(sch, /*block=*/block_rv);
           for (const tir::Schedule& sch : applied) {
             stack.emplace_back(sch, blocks);
           }
