@@ -22,3 +22,4 @@ space for generation of measure candidates.
 from .space_generator import SpaceGenerator, PySpaceGenerator
 from .space_generator_union import SpaceGeneratorUnion
 from .schedule_fn import ScheduleFn
+from .post_order_apply import PostOrderApply

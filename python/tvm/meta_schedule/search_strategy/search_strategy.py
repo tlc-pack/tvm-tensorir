@@ -47,7 +47,11 @@ class MeasureCandidate(Object):
     sch: Schedule
     args_info: List[ArgInfo]
 
-    def __init__(self, sch: Schedule, args_info: List[ArgInfo]) -> None:
+    def __init__(
+        self,
+        sch: Schedule,
+        args_info: List[ArgInfo],
+    ) -> None:
         """Constructor.
 
         Parameters

@@ -14,34 +14,23 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Replay Trace Search Strategy"""
+"""Post Order Apply Space Generator."""
+
 
 from tvm._ffi import register_object
-from .search_strategy import SearchStrategy
+from .space_generator import SpaceGenerator
 from .. import _ffi_api
 
 
-@register_object("meta_schedule.ReplayTrace")
-class ReplayTrace(SearchStrategy):
+@register_object("meta_schedule.PostOrderApply")
+class PostOrderApply(SpaceGenerator):
     """
-    Replay Trace Search Strategy is a search strategy that always replays the trace by removing its
-    decisions so that the decisions would be randomly re-generated.
-
-    Parameters
-    ----------
-    num_trials_per_iter : int
-        Number of trials per iteration.
-    num_trials_total : int
-        Total number of trials.
+    PostOrderApply is the design space generator that generates design spaces by applying schedule
+    rules to blocks in post-DFS order.
     """
 
-    num_trials_per_iter: int
-    num_trials_total: int
-
-    def __init__(self, num_trials_per_iter: int, num_trials_total: int):
+    def __init__(self):
         """Constructor"""
         self.__init_handle_by_constructor__(
-            _ffi_api.SearchStrategyReplayTrace,  # pylint: disable=no-member
-            num_trials_per_iter,
-            num_trials_total,
+            _ffi_api.SpaceGeneratorPostOrderApply,  # pylint: disable=no-member
         )

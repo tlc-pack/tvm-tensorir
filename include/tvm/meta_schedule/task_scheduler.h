@@ -88,6 +88,12 @@ class TaskSchedulerNode : public runtime::Object {
   virtual void Tune();
 
   /*!
+   * \brief Initialize modules of the given task.
+   * \param task_id The task id to be initialized.
+   */
+  virtual void InitializeTask(int task_id);
+
+  /*!
    * \brief Set specific task to be stopped.
    * \param task_id The task id to be stopped.
    */
@@ -122,6 +128,9 @@ class PyTaskSchedulerNode : public TaskSchedulerNode {
   /*! \brief The function type of `Tune` method. */
   using FTune = runtime::TypedPackedFunc<void()>;
 
+  /*! \brief The function type of `InitializeTask` method. */
+  using FInitializeTask = runtime::TypedPackedFunc<void(int)>;
+
   /*!
    * \brief The function type of `SetTaskStopped` method.
    * \param task_id The task id to be stopped.
@@ -149,6 +158,8 @@ class PyTaskSchedulerNode : public TaskSchedulerNode {
 
   /*! \brief The packed function to the `Tune` funcion. */
   FTune f_tune;
+  /*! \brief The packed function to the `InitializeTask` funcion. */
+  FInitializeTask f_initialize_task;
   /*! \brief The packed function to the `SetTaskStopped` function. */
   FSetTaskStopped f_set_task_stopped;
   /*! \brief The packed function to the `IsTaskRunning` function. */
@@ -160,6 +171,7 @@ class PyTaskSchedulerNode : public TaskSchedulerNode {
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     // `f_tune` is not visited
+    // `f_initialize_task` is not visited
     // `f_set_task_stopped` is not visited
     // `f_is_task_running` is not visited
     // `f_join_running_task` is not visited
@@ -168,6 +180,10 @@ class PyTaskSchedulerNode : public TaskSchedulerNode {
 
   void Tune() final {  //
     f_tune();
+  }
+
+  void InitializeTask(int task_id) final {  //
+    f_initialize_task(task_id);
   }
 
   void SetTaskStopped(int task_id) final {  //
@@ -203,10 +219,13 @@ class TaskScheduler : public runtime::ObjectRef {
    * \param runner The runner of the scheduler.
    * \param database The database of the scheduler.
    */
-  TVM_DLL static TaskScheduler RoundRobin(Array<TuneContext> tasks, Builder builder, Runner runner,
+  TVM_DLL static TaskScheduler RoundRobin(Array<TuneContext> tasks,  //
+                                          Builder builder,           //
+                                          Runner runner,             //
                                           Database database);
   TVM_DLL static TaskScheduler PyTaskScheduler(
       PyTaskSchedulerNode::FTune f_tune,                          //
+      PyTaskSchedulerNode::FInitializeTask f_initialize_task,     //
       PyTaskSchedulerNode::FSetTaskStopped f_set_task_stopped,    //
       PyTaskSchedulerNode::FIsTaskRunning f_is_task_running,      //
       PyTaskSchedulerNode::FJoinRunningTask f_join_running_task,  //
