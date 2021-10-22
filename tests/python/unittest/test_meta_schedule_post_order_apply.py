@@ -238,7 +238,7 @@ def test_meta_schedule_post_order_apply_duplicate_matmul():
     post_order_apply.initialize_with_tune_context(context)
     with pytest.raises(
         TVMError,
-        match=r".*TVMError: Check failed: \(block_names.count\(block->name_hint\) == 0\)"
+        match=r".*TVMError: Check failed: \(block_names_.count\(block->name_hint\) == 0\)"
         r" is false: Duplicated block name matmul in function main not supported!",
     ):
         post_order_apply.generate_design_space(mod)
