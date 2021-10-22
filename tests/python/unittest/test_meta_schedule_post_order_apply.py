@@ -22,14 +22,16 @@ import math
 
 import tvm
 from tvm._ffi.base import TVMError, py2cerror
+from tvm.ir.base import assert_structural_equal
 from tvm.script import tir as T
-from tvm.tir.schedule import Schedule, BlockRV
+from tvm.tir.schedule import Schedule, BlockRV, block_scope
 from tvm.target import Target
 
 from tvm.meta_schedule import TuneContext
 from tvm.meta_schedule.space_generator import PostOrderApply
 from tvm.meta_schedule.schedule_rule import PyScheduleRule
 from tvm.meta_schedule.utils import _get_hex_address
+from tvm.tir.schedule.trace import Trace
 
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument,
@@ -62,6 +64,48 @@ class DuplicateMatmul:
             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
         with T.block([1024, 1024, T.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+
+@tvm.script.ir_module
+class TrinityMatmul:
+    @T.prim_func
+    def main(a: T.handle, d: T.handle) -> None:
+        T.func_attr({"global_symbol": "main"})
+        A = T.match_buffer(a, (1024, 1024), "float32")
+        B = T.alloc_buffer((1024, 1024), "float32")
+        C = T.alloc_buffer((1024, 1024), "float32")
+        D = T.match_buffer(d, (1024, 1024), "float32")
+        with T.block([1024, 1024], "A") as [vi, vj]:
+            B[vi, vj] = A[vi, vj] * 2.0
+        with T.block([1024, 1024], "B") as [vi, vj]:
+            C[vi, vj] = B[vi, vj] + 3.0
+        with T.block([1024, 1024], "C") as [vi, vj]:
+            D[vi, vj] = C[vi, vj] * 5.0
+
+@tvm.script.ir_module
+class TrinityMatmulProcessed:
+    @T.prim_func
+    def main(a: T.handle, d: T.handle) -> None:
+        # function attr dict
+        T.func_attr({"global_symbol": "main"})
+        A = T.match_buffer(a, [1024, 1024], dtype="float32")
+        D = T.match_buffer(d, [1024, 1024], dtype="float32")
+        # body
+        # with tir.block("root")
+        B = T.alloc_buffer([1024, 1024], dtype="float32")
+        for i0_0, i1_0, i0_1, i1_1 in T.grid(16, 64, 64, 16):
+            with T.block([1024, 1024], "A") as [vi, vj]:
+                T.bind(vi, i0_0 * 64 + i0_1)
+                T.bind(vj, i1_0 * 16 + i1_1)
+                T.reads([A[vi, vj]])
+                T.writes([B[vi, vj]])
+                B[vi, vj] = A[vi, vj] * T.float32(2)
+        for i0_0, i1_0, i0_1, i1_1 in T.grid(16, 64, 64, 16):
+            with T.block([1024, 1024], "C") as [vi, vj]:
+                T.bind(vi, i0_0 * 64 + i0_1)
+                T.bind(vj, i1_0 * 16 + i1_1)
+                T.reads([B[vi, vj]])
+                T.writes([D[vi, vj]])
+                D[vi, vj] = (B[vi, vj] + T.float32(3)) * T.float32(5)
 
 # fmt: on
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
@@ -195,8 +239,52 @@ def test_meta_schedule_post_order_apply_duplicate_matmul():
         post_order_apply.generate_design_space(mod)
 
 
+def test_meta_schedule_post_order_apply_remove_block():
+    class TrinityDouble(PyScheduleRule):
+        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+            pass
+
+        def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
+            new_sch = sch.copy()
+            i, j = new_sch.get_loops(block=block)
+            i_0, i_1 = new_sch.split(loop=i, factors=[16, 64])
+            j_0, j_1 = new_sch.split(loop=j, factors=[64, 16])
+            new_sch.reorder(i_0, j_0, i_1, j_1)
+            result = [new_sch]
+            new_sch = sch.copy()
+            i, j = new_sch.get_loops(block=block)
+            i_0, i_1 = new_sch.split(loop=i, factors=[2, 512])
+            j_0, j_1 = new_sch.split(loop=j, factors=[2, 512])
+            new_sch.reorder(i_0, j_0, i_1, j_1)
+            result.append(new_sch)
+            return result
+
+    class RemoveBlock(PyScheduleRule):
+        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+            pass
+
+        def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
+            sch = sch.copy()
+            if sch.get(block).name_hint == "B":
+                sch.compute_inline(block)
+            return [sch]
+
+    mod = TrinityMatmul
+    context = TuneContext(
+        mod=mod,
+        target=Target("llvm"),
+        task_name="Remove Block Task",
+        sch_rules=[RemoveBlock(), TrinityDouble()],
+    )
+    post_order_apply = PostOrderApply()
+    post_order_apply.initialize_with_tune_context(context)
+    schs = post_order_apply.generate_design_space(mod)
+    assert len(schs) == 4
+
+
 if __name__ == "__main__":
     test_meta_schedule_post_order_apply()
     test_meta_schedule_post_order_apply_double()
     test_meta_schedule_post_order_apply_multiple()
     test_meta_schedule_post_order_apply_duplicate_matmul()
+    test_meta_schedule_post_order_apply_remove_block()
