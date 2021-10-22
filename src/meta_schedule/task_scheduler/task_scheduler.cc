@@ -114,7 +114,7 @@ void TaskSchedulerNode::InitializeTask(int task_id) {
 }
 
 void TaskSchedulerNode::Tune() {
-  for (int i = 0; i < (int)(this->tasks.size()); i++) {
+  for (int i = 0; i < static_cast<int>(this->tasks.size()); i++) {
     // Check Optional value validity.
     CHECK(tasks[i]->mod.defined()) << "ValueError: Require `context.mod`, but it is not defined";
     CHECK(tasks[i]->space_generator.defined())
@@ -135,7 +135,7 @@ void TaskSchedulerNode::Tune() {
       ICHECK(!task->is_stopped);
       ICHECK(!task->runner_futures.defined());
       SearchStrategy strategy = task->search_strategy.value();
-      if ((task->measure_candidates = strategy->GenerateMeasureCandidates())) {
+      if ((task->measure_candidates = strategy->GenerateMeasureCandidates()).defined()) {
         Array<BuilderResult> builder_results =
             SendToBuilder(this->builder, task, task->measure_candidates.value());
         task->runner_futures =

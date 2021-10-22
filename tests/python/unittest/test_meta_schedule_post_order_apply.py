@@ -21,7 +21,7 @@ import pytest
 import math
 
 import tvm
-from tvm._ffi.base import py2cerror
+from tvm._ffi.base import TVMError, py2cerror
 from tvm.script import tir as T
 from tvm.tir.schedule import Schedule, BlockRV
 from tvm.target import Target
@@ -60,15 +60,7 @@ class DuplicateMatmul:
             with T.init():
                 C[vi, vj] = 0.0
             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
-    @T.prim_func
-    def test(a: T.handle, b: T.handle, c: T.handle) -> None:
-        T.func_attr({"global_symbol": "test"})
-        A = T.match_buffer(a, (1024, 1024), "float32")
-        B = T.match_buffer(b, (1024, 1024), "float32")
-        C = T.match_buffer(c, (1024, 1024), "float32")
         with T.block([1024, 1024, T.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
-            with T.init():
-                C[vi, vj] = 0.0
             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 # fmt: on
@@ -189,7 +181,6 @@ def test_meta_schedule_post_order_apply_multiple():
             _check_correct(sch)
 
 
-@pytest.mark.xfail
 def test_meta_schedule_post_order_apply_duplicate_matmul():
     mod = DuplicateMatmul
     context = TuneContext(
@@ -200,9 +191,12 @@ def test_meta_schedule_post_order_apply_duplicate_matmul():
     )
     post_order_apply = PostOrderApply()
     post_order_apply.initialize_with_tune_context(context)
-    schs = post_order_apply.generate_design_space(mod)
+    with pytest.raises(TVMError):
+        post_order_apply.generate_design_space(mod)
 
 
 if __name__ == "__main__":
     test_meta_schedule_post_order_apply()
+    test_meta_schedule_post_order_apply_double()
+    test_meta_schedule_post_order_apply_multiple()
     test_meta_schedule_post_order_apply_duplicate_matmul()

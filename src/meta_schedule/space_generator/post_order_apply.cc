@@ -24,20 +24,24 @@ namespace meta_schedule {
 /*! \brief Collecting all the non-root blocks */
 class BlockCollector : public tir::StmtVisitor {
  public:
-  static std::vector<std::pair<String, tir::BlockRV>> Collect(const tir::Schedule& sch) {
+  static Array<tir::BlockRV> Collect(const tir::Schedule& sch) {  //
     return BlockCollector(sch).Run();
   }
 
  private:
   /*! \brief Entry point */
-  std::vector<std::pair<String, tir::BlockRV>> Run() {
+  Array<tir::BlockRV> Run() {
     for (const auto& kv : sch_->mod()->functions) {
       const GlobalVar& gv = kv.first;         // `gv->name_hint` is the name of the function
       const BaseFunc& base_func = kv.second;  // this can be PrimFunc or relay::Function
-      func_name_ = gv->name_hint;
       if (const auto* func = base_func.as<tir::PrimFuncNode>()) {
+        func_name_ = gv->name_hint;
+        block_names.clear();
         root_block_ = func->body.as<tir::BlockRealizeNode>()->block.get();
         VisitStmt(func->body);
+        for (const String& block_name : block_names) {
+          results_.push_back(sch_->GetBlock(block_name, func_name_));
+        }
       }
     }
     return results_;
@@ -47,22 +51,20 @@ class BlockCollector : public tir::StmtVisitor {
   /*! \brief Override the Stmt visiting behaviour */
   void VisitStmt_(const tir::BlockNode* block) override {
     if (block != root_block_) {
-      CHECK(func_block_name.find(std::make_pair(func_name_, block->name_hint)) ==
-            func_block_name.end())
+      CHECK(block_names.count(block->name_hint) == 0)
           << "Duplicated block name " << block->name_hint << " in function " << func_name_
           << " not supported!";
-      func_block_name.insert(std::make_pair(func_name_, block->name_hint));
-      results_.emplace_back(func_name_, sch_->GetBlock(block->name_hint, func_name_));
+      block_names.insert(block->name_hint);
     }
-    this->VisitStmt(block->body);
+    tir::StmtVisitor::VisitStmt_(block);
   }
 
   /*! \brief The schedule to be collected */
   const tir::Schedule& sch_;
   /*! \brief The set of func name and block name pair */
-  std::set<std::pair<String, String>> func_block_name;
+  std::unordered_set<String> block_names;
   /*! \brief Function name & blocks of collection */
-  std::vector<std::pair<String, tir::BlockRV>> results_;
+  Array<tir::BlockRV> results_;
   /*! \brief The root block of the PrimFunc */
   const tir::BlockNode* root_block_;
   /*! \brief Name of the current PrimFunc */
@@ -93,29 +95,29 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
   }
 
   Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod_) final {
-    using ScheduleAndUnvisitedBlocks =
-        std::pair<tir::Schedule, std::vector<std::pair<String, tir::BlockRV>>>;
-    tir::Schedule sch = tir::Schedule::Traced(        //
-        mod_,                                         //
-        /*rand_state=*/ForkSeed(&this->rand_state_),  //
-        /*debug_mode=*/0,                             //
-        /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
+    using ScheduleAndUnvisitedBlocks = std::pair<tir::Schedule, Array<tir::BlockRV>>;
+    tir::Schedule sch = tir::Schedule::Traced(                          //
+        /*mod=*/mod_,                                                   //
+        /*rand_state=*/ForkSeed(&this->rand_state_),                    //
+        /*debug_mode=*/tir::kVerifySRefTree | tir::kVerifyCachedFlags,  //
+        /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail   //
+    );
 
     std::vector<ScheduleAndUnvisitedBlocks> stack;
     Array<tir::Schedule> result{sch};
     // Enumerate the schedule rules first because you can
     // always concat multiple schedule rules as one
     for (ScheduleRule sch_rule : sch_rules_) {
-      for (const tir::Schedule sch : result) {
+      for (const tir::Schedule& sch : result) {
         stack.emplace_back(sch, BlockCollector::Collect(sch));
       }
       result.clear();
 
       while (!stack.empty()) {
         // get the stack.top()
-        tir::Schedule sch = stack.back().first;
-        std::vector<std::pair<String, tir::BlockRV>> blocks;
-        blocks = stack.back().second;
+        tir::Schedule sch;
+        Array<tir::BlockRV> blocks;
+        std::tie(sch, blocks) = stack.back();
         stack.pop_back();
         // if all blocks are visited
         if (blocks.empty()) {
@@ -123,18 +125,12 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
           continue;
         }
         // otherwise, get the last block that is not visited
-        String func_name;
-        tir::BlockRV block_rv;
-        std::tie(func_name, block_rv) = blocks.back();
+        tir::BlockRV block_rv = blocks.back();
         blocks.pop_back();
-        const tir::Block block = sch->Get(block_rv);
-        if (block.defined()) {
-          Array<tir::Schedule> applied;
-          if (!tir::GetBlocks(sch->state(), block->name_hint, func_name).empty()) {
-            Array<tir::Schedule> tmp =
-                sch_rule->Apply(sch, /*block=*/sch->GetBlock(block->name_hint));
-            applied.insert(applied.end(), tmp.begin(), tmp.end());
-          }
+        if (sch->HasBlock(block_rv)) {
+          const tir::Block block = sch->Get(block_rv);
+          Array<tir::Schedule> applied =
+              sch_rule->Apply(sch, /*block=*/sch->GetBlock(block->name_hint));
           for (const tir::Schedule& sch : applied) {
             stack.emplace_back(sch, blocks);
           }
