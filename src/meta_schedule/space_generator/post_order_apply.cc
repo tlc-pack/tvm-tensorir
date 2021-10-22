@@ -36,10 +36,11 @@ class BlockCollector : public tir::StmtVisitor {
       const BaseFunc& base_func = kv.second;  // this can be PrimFunc or relay::Function
       if (const auto* func = base_func.as<tir::PrimFuncNode>()) {
         func_name_ = gv->name_hint;
-        block_names.clear();
+        block_names_.clear();
+        blocks_to_collect_.clear();
         root_block_ = func->body.as<tir::BlockRealizeNode>()->block.get();
         VisitStmt(func->body);
-        for (const String& block_name : block_names) {
+        for (const String& block_name : blocks_to_collect_) {
           results_.push_back(sch_->GetBlock(block_name, func_name_));
         }
       }
@@ -50,19 +51,22 @@ class BlockCollector : public tir::StmtVisitor {
   explicit BlockCollector(const tir::Schedule& sch) : sch_(sch) {}
   /*! \brief Override the Stmt visiting behaviour */
   void VisitStmt_(const tir::BlockNode* block) override {
+    tir::StmtVisitor::VisitStmt_(block);
     if (block != root_block_) {
-      CHECK(block_names.count(block->name_hint) == 0)
+      CHECK(block_names_.count(block->name_hint) == 0)
           << "Duplicated block name " << block->name_hint << " in function " << func_name_
           << " not supported!";
-      block_names.insert(block->name_hint);
+      block_names_.insert(block->name_hint);
+      blocks_to_collect_.push_back(block->name_hint);
     }
-    tir::StmtVisitor::VisitStmt_(block);
   }
 
   /*! \brief The schedule to be collected */
   const tir::Schedule& sch_;
   /*! \brief The set of func name and block name pair */
-  std::unordered_set<String> block_names;
+  std::unordered_set<String> block_names_;
+  /* \brief The list of blocks to collect in order */
+  Array<String> blocks_to_collect_;
   /*! \brief Function name & blocks of collection */
   Array<tir::BlockRV> results_;
   /*! \brief The root block of the PrimFunc */
