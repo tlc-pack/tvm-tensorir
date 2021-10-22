@@ -92,4 +92,3 @@ def test_meta_schedule_schedule_rule_as_string():
 if __name__ == "__main__":
     test_meta_schedule_schedule_rule()
     test_meta_schedule_schedule_rule_as_string()
-

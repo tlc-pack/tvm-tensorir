@@ -47,7 +47,11 @@ class MeasureCandidate(Object):
     sch: Schedule
     args_info: List[ArgInfo]
 
-    def __init__(self, sch: Schedule, args_info: List[ArgInfo]) -> None:
+    def __init__(
+        self,
+        sch: Schedule,
+        args_info: List[ArgInfo],
+    ) -> None:
         """Constructor.
 
         Parameters
@@ -58,7 +62,9 @@ class MeasureCandidate(Object):
             The argument information.
         """
         self.__init_handle_by_constructor__(
-            _ffi_api.MeasureCandidate, sch, args_info,  # pylint: disable=no-member
+            _ffi_api.MeasureCandidate,
+            sch,
+            args_info,  # pylint: disable=no-member
         )
 
 
