@@ -480,3 +480,21 @@ def create_prim_func(ops: List[_tensor.Tensor]) -> tvm.tir.PrimFunc:
     if not isinstance(ops, (list, tuple, Array)):
         ops = [ops]
     return _ffi_api.CreatePrimFunc(ops)
+
+
+def create_prim_func_from_outputs(outputs: List[_tensor.Tensor]) -> tvm.tir.PrimFunc:
+    """Create a TensorIR PrimFunc from output tensors in TE
+
+    Parameters
+    ----------
+    outputs : List[Tensor]
+        The source expression.
+
+    Returns
+    -------
+    func : tir.PrimFunc
+        The created function.
+    """
+    if not isinstance(outputs, (list, tuple, Array)):
+        outputs = [outputs]
+    return _ffi_api.CreatePrimFuncFromOutputs(outputs)
