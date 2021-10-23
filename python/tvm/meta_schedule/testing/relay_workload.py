@@ -17,9 +17,9 @@
 """Workloads in Relay IR"""
 from typing import Dict, Tuple
 
-import tvm.relay.testing  # pylint: disable=unused-import
 from tvm import relay
 from tvm.ir import IRModule
+import tvm.relay.testing
 from tvm.runtime import NDArray
 
 
