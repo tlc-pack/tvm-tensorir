@@ -76,8 +76,7 @@ class ReplayTraceNode : public SearchStrategyNode {
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
     CHECK(tune_context->num_threads > 0) << "Number of threads has to be larger than 0.";
     this->num_threads_ = tune_context->num_threads;
-    Array<IRModule> tmp(this->num_threads_, tune_context->mod.value());
-    this->mod_ = std::move(tmp);
+    this->mod_ = Array<IRModule>(this->num_threads_, DeepCopyIRModule(tune_context->mod.value()));
     this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(this->mod_[0]));
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
     this->state_.reset();

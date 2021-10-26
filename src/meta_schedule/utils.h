@@ -212,6 +212,10 @@ inline std::vector<support::LinearCongruentialEngine::TRandState> ForkSeed(
   return results;
 }
 
+inline IRModule DeepCopyIRModule(IRModule mod) {
+  return Downcast<IRModule>(LoadJSON(SaveJSON(mod)));
+}
+
 }  // namespace meta_schedule
 }  // namespace tvm
 
