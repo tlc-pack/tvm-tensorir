@@ -26,7 +26,7 @@ from tvm.meta_schedule import space_generator
 @register_object("meta_schedule.ReplayFunc")
 class ReplayFunc(SearchStrategy):
     """
-    Replay Trace Search Strategy is a search strategy that generates measure candidates by
+    Replay Func Search Strategy is a search strategy that generates measure candidates by
     calling a design space generator and transform the design space.
 
     Parameters
