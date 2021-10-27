@@ -23,12 +23,18 @@ import sys
 import pytest
 
 import tvm
+from tvm.ir.base import assert_structural_equal
+from tvm.ir.module import IRModule
 from tvm.meta_schedule import TuneContext
+from tvm.meta_schedule import space_generator
 from tvm.meta_schedule.runner import RunnerResult
+from tvm.meta_schedule.search_strategy.replay_func import ReplayFunc
 from tvm.meta_schedule.space_generator import ScheduleFn
 from tvm.meta_schedule.search_strategy import ReplayTrace
+from tvm.meta_schedule.space_generator.space_generator import PySpaceGenerator
 
 from tvm.script import tir as T
+from tvm.tir import schedule
 from tvm.tir.schedule import Schedule, Trace
 
 
@@ -71,18 +77,22 @@ def _schedule_matmul(sch: Schedule):
 
 
 def test_meta_schedule_replay_trace():
+
     num_trials_per_iter = 7
     num_trials_total = 20
 
     (example_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(Matmul)
-    replay = ReplayTrace(num_trials_per_iter=num_trials_per_iter, num_trials_total=num_trials_total)
+    replay_trace = ReplayTrace(
+        num_trials_per_iter=num_trials_per_iter,
+        num_trials_total=num_trials_total,
+    )
     tune_context = TuneContext(mod=Matmul)
-    replay.initialize_with_tune_context(tune_context)
+    replay_trace.initialize_with_tune_context(tune_context)
 
     num_trials_each_round: List[int] = []
-    replay.pre_tuning([example_sch])
+    replay_trace.pre_tuning([example_sch])
     while True:
-        candidates = replay.generate_measure_candidates()
+        candidates = replay_trace.generate_measure_candidates()
         if candidates is None:
             break
         num_trials_each_round.append(len(candidates))
@@ -90,8 +100,38 @@ def test_meta_schedule_replay_trace():
         for candidate in candidates:
             assert _is_trace_equal(candidate.sch, example_sch)
             runner_results.append(RunnerResult(run_secs=[0.5, 0.4, 0.3], error_msg=None))
-        replay.notify_runner_results(runner_results)
-    replay.post_tuning()
+        replay_trace.notify_runner_results(runner_results)
+    replay_trace.post_tuning()
+    assert num_trials_each_round == [7, 7, 6]
+
+
+def test_meta_schedule_replay_func():
+    num_trials_per_iter = 7
+    num_trials_total = 20
+    (example_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(Matmul)
+
+    spaces = [Schedule(Matmul)]
+    replay_func = ReplayFunc(
+        num_trials_per_iter=num_trials_per_iter,
+        num_trials_total=num_trials_total,
+        space_generator=ScheduleFn(sch_fn=_schedule_matmul),
+    )
+    tune_context = TuneContext(mod=Matmul)
+    replay_func.initialize_with_tune_context(tune_context)
+
+    num_trials_each_round: List[int] = []
+    replay_func.pre_tuning(spaces)
+    while True:
+        candidates = replay_func.generate_measure_candidates()
+        if candidates is None:
+            break
+        num_trials_each_round.append(len(candidates))
+        runner_results: List[RunnerResult] = []
+        for candidate in candidates:
+            assert_structural_equal(candidate.sch.mod, example_sch.mod)
+            runner_results.append(RunnerResult(run_secs=[0.5, 0.4, 0.3], error_msg=None))
+        replay_func.notify_runner_results(runner_results)
+    replay_func.post_tuning()
     assert num_trials_each_round == [7, 7, 6]
 
 
