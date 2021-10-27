@@ -110,7 +110,6 @@ def test_meta_schedule_replay_func():
     num_trials_total = 20
     (example_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(Matmul)
 
-    spaces = [Schedule(Matmul)]
     replay_func = ReplayFunc(
         num_trials_per_iter=num_trials_per_iter,
         num_trials_total=num_trials_total,
@@ -120,7 +119,7 @@ def test_meta_schedule_replay_func():
     replay_func.initialize_with_tune_context(tune_context)
 
     num_trials_each_round: List[int] = []
-    replay_func.pre_tuning(spaces)
+    replay_func.pre_tuning([Schedule(Matmul)])
     while True:
         candidates = replay_func.generate_measure_candidates()
         if candidates is None:

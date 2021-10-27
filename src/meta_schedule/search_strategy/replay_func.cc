@@ -79,19 +79,19 @@ class ReplayFuncNode : public SearchStrategyNode {
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
     CHECK(tune_context->num_threads > 0) << "Number of threads has to be larger than 0.";
     this->num_threads_ = tune_context->num_threads;
-
     this->mod_.reserve(this->num_threads_);
-    for (int i = 0; i < this->num_threads_; i++) {
-      this->mod_.push_back(DeepCopyIRModule(tune_context->mod.value()));
-    }
-
-    this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(this->mod_[0]));
+    this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(tune_context->mod.value()));
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
     this->space_generator->InitializeWithTuneContext(tune_context);
     this->state_.reset();
   }
 
   void PreTuning(const Array<tir::Schedule>& design_spaces) final {
+    this->mod_.clear();
+    for (int i = 0; i < this->num_threads_; i++) {
+      this->mod_.push_back(DeepCopyIRModule(
+          design_spaces[tir::SampleInt(&this->rand_state_, 0, design_spaces.size())]->mod()));
+    }
     ICHECK(!design_spaces.empty());
     ICHECK(this->state_ == nullptr);
     this->state_ = std::make_unique<State>(this, design_spaces);

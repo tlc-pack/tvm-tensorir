@@ -82,7 +82,7 @@ class ReplayTraceNode : public SearchStrategyNode {
       this->mod_.push_back(DeepCopyIRModule(tune_context->mod.value()));
     }
 
-    this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(this->mod_[0]));
+    this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(tune_context->mod.value()));
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
     this->state_.reset();
   }
