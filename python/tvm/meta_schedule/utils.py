@@ -23,6 +23,7 @@ from typing import Any, Callable, List, Optional, Union
 
 import psutil
 import tvm
+from tvm import meta_schedule
 from tvm._ffi import get_global_func, register_func
 from tvm.error import TVMError
 from tvm.ir import Array, Map, IRModule
@@ -224,9 +225,12 @@ def _get_hex_address(handle: ctypes.c_void_p) -> str:
     return hex(ctypes.cast(handle, ctypes.c_void_p).value)
 
 
-def check_implemented(self, base_class: Any) -> Callable:
+def check_implemented(self, base_class: Any, method_name: str = None) -> Callable:
     def inner(func: Callable):
-        method = func.__name__[2:]
+        if method_name is None:
+            method = func.__name__[2:]
+        else:
+            method = method_name
         if getattr(self, method).__code__ is getattr(base_class, method).__code__:
             raise NotImplementedError
         return func
