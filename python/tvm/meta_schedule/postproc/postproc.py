@@ -24,6 +24,7 @@ from tvm.tir.schedule import Schedule
 from tvm.meta_schedule.utils import _get_hex_address
 
 from .. import _ffi_api
+from ..utils import check_implemented
 
 if TYPE_CHECKING:
     from ..tune_context import TuneContext
@@ -75,9 +76,11 @@ class PyPostproc(Postproc):
     def __init__(self):
         """Constructor."""
 
+        @check_implemented(self, Postproc)
         def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
             self.initialize_with_tune_context(tune_context)
 
+        @check_implemented(self, Postproc)
         def f_apply(sch: Schedule) -> bool:
             return self.apply(sch)
 

@@ -23,6 +23,9 @@ import math
 import pytest
 
 import tvm
+from tvm._ffi.base import TVMError
+from tvm.ir.module import IRModule
+from tvm.meta_schedule.space_generator.space_generator import PySpaceGenerator
 from tvm.script import tir as T
 
 from tvm.tir.schedule import Schedule
@@ -84,5 +87,12 @@ def test_meta_schedule_design_space_generator_union():
         _check_correct(design_space)
 
 
+def test_meta_schedule_design_space_generator_NIE():
+    with pytest.raises(NotImplementedError):
+        mod = Matmul
+        PySpaceGenerator().generate_design_space(mod)
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    test_meta_schedule_design_space_generator_NIE()

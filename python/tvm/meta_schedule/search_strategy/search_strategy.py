@@ -27,6 +27,7 @@ from tvm.tir.schedule import Schedule, Trace
 from .. import _ffi_api
 from ..arg_info import ArgInfo
 from ..runner import RunnerResult
+from ..utils import check_implemented
 
 if TYPE_CHECKING:
     from ..tune_context import TuneContext
@@ -129,18 +130,23 @@ class PySearchStrategy(SearchStrategy):
     def __init__(self):
         """Constructor."""
 
+        @check_implemented(self, SearchStrategy)
         def f_initialize_with_tune_context(context: "TuneContext") -> None:
             self.initialize_with_tune_context(context)
 
+        @check_implemented(self, SearchStrategy)
         def f_pre_tuning(design_spaces: List[Schedule]) -> None:
             self.pre_tuning(design_spaces)
 
+        @check_implemented(self, SearchStrategy)
         def f_post_tuning() -> None:
             self.post_tuning()
 
+        @check_implemented(self, SearchStrategy)
         def f_generate_measure_candidates() -> List[MeasureCandidate]:
             return self.generate_measure_candidates()
 
+        @check_implemented(self, SearchStrategy)
         def f_notify_runner_results(results: List["RunnerResult"]) -> None:
             self.notify_runner_results(results)
 

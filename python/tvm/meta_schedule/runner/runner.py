@@ -22,6 +22,7 @@ from tvm.runtime import Object
 
 from .. import _ffi_api
 from ..arg_info import ArgInfo
+from ..utils import check_implemented
 
 
 @register_object("meta_schedule.RunnerInput")
@@ -158,6 +159,7 @@ class PyRunner(Runner):
     def __init__(self) -> None:
         """Constructor"""
 
+        @check_implemented(self, Runner)
         def f_run(runner_inputs: List[RunnerInput]) -> List[RunnerFuture]:
             return self.run(runner_inputs)
 

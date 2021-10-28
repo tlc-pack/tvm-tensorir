@@ -25,7 +25,7 @@ from tvm.tir.schedule import Trace
 
 from .. import _ffi_api
 from ..arg_info import ArgInfo
-from ..utils import _json_de_tvm
+from ..utils import _json_de_tvm, check_implemented
 
 
 @register_object("meta_schedule.Workload")
@@ -207,12 +207,15 @@ class PyDatabase(Database):
     def __init__(self):
         """Constructor."""
 
+        @check_implemented(self, Database)
         def f_commit_workload(mod: IRModule) -> Workload:
             return self.commit_workload(mod)
 
+        @check_implemented(self, Database)
         def f_commit_tuning_record(record: TuningRecord) -> None:
             self.commit_tuning_record(record)
 
+        @check_implemented(self, Database)
         def f_get_top_k(workload: Workload, top_k: int) -> List[TuningRecord]:
             return self.get_top_k(workload, top_k)
 

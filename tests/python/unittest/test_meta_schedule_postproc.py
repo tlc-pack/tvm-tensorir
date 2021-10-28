@@ -64,6 +64,9 @@ def schedule_matmul(sch: Schedule):
 
 def test_meta_schedule_postproc():
     class FancyPostproc(PyPostproc):
+        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+            pass
+
         def apply(self, sch: Schedule) -> bool:
             schedule_matmul(sch)
             return True
@@ -81,6 +84,9 @@ def test_meta_schedule_postproc():
 
 def test_meta_schedule_postproc_fail():
     class FailingPostproc(PyPostproc):
+        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+            pass
+
         def apply(self, sch: Schedule) -> bool:
             return False
 
