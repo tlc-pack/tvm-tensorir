@@ -165,6 +165,3 @@ class PyRunner(Runner):
             _ffi_api.RunnerPyRunner,  # type: ignore # pylint: disable=no-member
             f_run,
         )
-
-    def run(self, runner_inputs: List[RunnerInput]) -> List[RunnerFuture]:
-        raise NotImplementedError

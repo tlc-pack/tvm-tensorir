@@ -152,18 +152,3 @@ class PySearchStrategy(SearchStrategy):
             f_generate_measure_candidates,
             f_notify_runner_results,
         )
-
-    def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
-        raise NotImplementedError
-
-    def pre_tuning(self, design_spaces: List[Schedule]) -> None:
-        raise NotImplementedError
-
-    def post_tuning(self) -> None:
-        raise NotImplementedError
-
-    def generate_measure_candidates(self) -> List[MeasureCandidate]:
-        raise NotImplementedError
-
-    def notify_runner_results(self, results: List["RunnerResult"]) -> None:
-        raise NotImplementedError

@@ -21,24 +21,21 @@
 namespace tvm {
 namespace meta_schedule {
 
-/*! \brief A search strategy that generates measure candidates using trace and random decisions. */
-class ReplayTraceNode : public SearchStrategyNode {
+/*! \brief A search strategy that generates measure candidates using space generator. */
+class ReplayFuncNode : public SearchStrategyNode {
  public:
   using TRandState = support::LinearCongruentialEngine::TRandState;
 
   /*! \brief The state of the search strategy. */
   struct State {
     /*! \brief The search strategy itself */
-    ReplayTraceNode* self;
-    /*! \brief The design spaces. */
-    Array<tir::Schedule> design_spaces;
+    ReplayFuncNode* self;
     /*! \brief `[st, ed)` are the indices of the next batch of candidates. */
     int st;
     /*! \brief `[st, ed)` are the indices of the next batch of candidates. */
     int ed;
 
-    explicit State(ReplayTraceNode* self, Array<tir::Schedule> design_spaces)
-        : self(self), design_spaces(design_spaces), st(0), ed(self->num_trials_per_iter) {}
+    explicit State(ReplayFuncNode* self) : self(self), st(0), ed(self->num_trials_per_iter) {}
 
     inline Optional<Array<MeasureCandidate>> GenerateMeasureCandidates();
     inline void NotifyRunnerResults(const Array<RunnerResult>& results);
@@ -50,11 +47,11 @@ class ReplayTraceNode : public SearchStrategyNode {
   int num_trials_total;
 
   /*! \brief The module to be tuned. */
-  Array<IRModule> mod_{nullptr};
+  IRModule mod_{nullptr};
   /*! \brief The metadata of the function arguments. */
   Array<ArgInfo> args_info_{nullptr};
-  /*! \brief The number of threads to use. -1 means using logical cpu number. */
-  int num_threads_ = -1;
+  /*! \brief The space generator for measure candidates generation. */
+  SpaceGenerator space_generator_{nullptr};
   /*! \brief The random state. -1 means using random number. */
   TRandState rand_state_ = -1;
   /*! \brief The state of the search strategy. */
@@ -63,6 +60,7 @@ class ReplayTraceNode : public SearchStrategyNode {
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("num_trials_per_iter", &num_trials_per_iter);
     v->Visit("num_trials_total", &num_trials_total);
+    // `space_generator_` is not visited
     // `mod_` is not visited
     // `args_info_` is not visited
     // `num_threads_` is not visited
@@ -70,27 +68,20 @@ class ReplayTraceNode : public SearchStrategyNode {
     // `state_` is not visited
   }
 
-  static constexpr const char* _type_key = "meta_schedule.ReplayTrace";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ReplayTraceNode, SearchStrategyNode);
+  static constexpr const char* _type_key = "meta_schedule.ReplayFunc";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ReplayFuncNode, SearchStrategyNode);
 
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
-    CHECK(tune_context->num_threads > 0) << "Number of threads has to be larger than 0.";
-    this->num_threads_ = tune_context->num_threads;
-
-    this->mod_.reserve(this->num_threads_);
-    for (int i = 0; i < this->num_threads_; i++) {
-      this->mod_.push_back(DeepCopyIRModule(tune_context->mod.value()));
-    }
-
+    this->space_generator_ = tune_context->space_generator.value();
+    this->mod_ = tune_context->mod.value();
     this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(tune_context->mod.value()));
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
     this->state_.reset();
   }
 
   void PreTuning(const Array<tir::Schedule>& design_spaces) final {
-    ICHECK(!design_spaces.empty());
     ICHECK(this->state_ == nullptr);
-    this->state_ = std::make_unique<State>(this, design_spaces);
+    this->state_ = std::make_unique<State>(this);
   }
 
   void PostTuning() final {
@@ -109,47 +100,35 @@ class ReplayTraceNode : public SearchStrategyNode {
   }
 };
 
-inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasureCandidates() {
+inline Optional<Array<MeasureCandidate>> ReplayFuncNode::State::GenerateMeasureCandidates() {
   if (st >= self->num_trials_total) {
     return NullOpt;
   }
   ed = std::min(ed, self->num_trials_total);
-  ICHECK_LT(st, ed);
-  std::vector<TRandState> per_thread_rand_state = ForkSeed(&self->rand_state_, self->num_threads_);
-  Array<MeasureCandidate> per_task_result(ed - st, MeasureCandidate{nullptr});
-  auto f_worker = [this, &per_thread_rand_state, &per_task_result](int thread_id,
-                                                                   int task_id) -> void {
-    TRandState& rand_state = per_thread_rand_state[thread_id];
-    int design_space_index = tir::SampleInt(&rand_state, 0, design_spaces.size());
-    tir::Trace trace = design_spaces[design_space_index]->trace().value();
-    tir::Trace new_trace = tir::Trace(trace->insts, {});
-    tir::Schedule sch = tir::Schedule::Traced(  //
-        self->mod_[thread_id],                  //
-        /*rand_state=*/ForkSeed(&rand_state),   //
-        /*debug_mode=*/0,                       //
-        /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
-    new_trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
-    per_task_result.Set(task_id, MeasureCandidate(sch, self->args_info_));
-  };
-  support::parallel_for_dynamic(0, ed - st, self->num_threads_, f_worker);
-  return per_task_result;
+  Array<MeasureCandidate> result;
+  for (int i = st; i < ed; i++) {
+    Array<tir::Schedule> schs = self->space_generator_->GenerateDesignSpace(self->mod_);
+    result.push_back(MeasureCandidate(schs[tir::SampleInt(&self->rand_state_, 0, schs.size())],
+                                      self->args_info_));
+  }
+  return result;
 }
 
-inline void ReplayTraceNode::State::NotifyRunnerResults(const Array<RunnerResult>& results) {
+inline void ReplayFuncNode::State::NotifyRunnerResults(const Array<RunnerResult>& results) {
   st += self->num_trials_per_iter;
   ed += self->num_trials_per_iter;
 }
 
-SearchStrategy SearchStrategy::ReplayTrace(int num_trials_per_iter, int num_trials_total) {
-  ObjectPtr<ReplayTraceNode> n = make_object<ReplayTraceNode>();
+SearchStrategy SearchStrategy::ReplayFunc(int num_trials_per_iter, int num_trials_total) {
+  ObjectPtr<ReplayFuncNode> n = make_object<ReplayFuncNode>();
   n->num_trials_per_iter = num_trials_per_iter;
   n->num_trials_total = num_trials_total;
   return SearchStrategy(n);
 }
 
-TVM_REGISTER_NODE_TYPE(ReplayTraceNode);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyReplayTrace")
-    .set_body_typed(SearchStrategy::ReplayTrace);
+TVM_REGISTER_NODE_TYPE(ReplayFuncNode);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyReplayFunc")
+    .set_body_typed(SearchStrategy::ReplayFunc);
 
 }  // namespace meta_schedule
 }  // namespace tvm
