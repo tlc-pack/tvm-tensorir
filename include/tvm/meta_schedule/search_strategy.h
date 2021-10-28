@@ -242,11 +242,8 @@ class SearchStrategy : public runtime::ObjectRef {
    * \brief Constructor of replay func search strategy.
    * \param num_trials_per_iter The number of trials per iteration, i.e., the batch size.
    * \param num_trials_total The total number of trials for func replaying.
-   * \param space_generator The space generator for measure candidates generation.
    */
-  TVM_DLL static SearchStrategy ReplayFunc(int num_trials_per_iter,  //
-                                           int num_trials_total,     //
-                                           SpaceGenerator space_generator);
+  TVM_DLL static SearchStrategy ReplayFunc(int num_trials_per_iter, int num_trials_total);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
 };

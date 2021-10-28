@@ -18,9 +18,7 @@
 
 from tvm._ffi import register_object
 from .search_strategy import SearchStrategy
-from ..space_generator import SpaceGenerator
 from .. import _ffi_api
-from tvm.meta_schedule import space_generator
 
 
 @register_object("meta_schedule.ReplayFunc")
@@ -35,8 +33,6 @@ class ReplayFunc(SearchStrategy):
         Number of trials per iteration.
     num_trials_total : int
         Total number of trials.
-    space_generator : SpaceGenerator
-        The space generator for measure candidate generation.
     """
 
     num_trials_per_iter: int
@@ -46,12 +42,10 @@ class ReplayFunc(SearchStrategy):
         self,
         num_trials_per_iter: int,
         num_trials_total: int,
-        space_generator: SpaceGenerator,
     ):
         """Constructor"""
         self.__init_handle_by_constructor__(
             _ffi_api.SearchStrategyReplayFunc,  # pylint: disable=no-member
             num_trials_per_iter,
             num_trials_total,
-            space_generator,
         )

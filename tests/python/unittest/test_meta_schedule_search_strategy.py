@@ -105,32 +105,16 @@ def test_meta_schedule_replay_trace():
 
 
 def test_meta_schedule_replay_func():
-    def _schedule_matmul_part_0(sch: Schedule):
-        block = sch.get_block("matmul")
-        i, j, k = sch.get_loops(block=block)
-        i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=[2, 4, 64, 2])
-        j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=[4, 64, 2, 2])
-        k_0, k_1 = sch.split(loop=k, factors=[32, 32])
-
-    def _schedule_matmul_part_1(sch: Schedule):
-        block = sch.get_block("matmul")
-        i_0, i_1, i_2, i_3, j_0, j_1, j_2, j_3, k_0, k_1 = sch.get_loops(block=block)
-        sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
-
     num_trials_per_iter = 7
     num_trials_total = 20
 
     replay_func = ReplayFunc(
-        num_trials_per_iter=num_trials_per_iter,
-        num_trials_total=num_trials_total,
-        space_generator=ScheduleFn(sch_fn=_schedule_matmul_part_1),
+        num_trials_per_iter=num_trials_per_iter, num_trials_total=num_trials_total
     )
-    tune_context = TuneContext(mod=Matmul)
+    tune_context = TuneContext(mod=Matmul, space_generator=ScheduleFn(sch_fn=_schedule_matmul))
     replay_func.initialize_with_tune_context(tune_context)
-    design_spaces = ScheduleFn(sch_fn=_schedule_matmul_part_0).generate_design_space(Matmul)
-
     num_trials_each_iter: List[int] = []
-    replay_func.pre_tuning(design_spaces=design_spaces)
+    replay_func.pre_tuning(design_spaces=None)
     (correct_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(Matmul)
     while True:
         candidates = replay_func.generate_measure_candidates()
