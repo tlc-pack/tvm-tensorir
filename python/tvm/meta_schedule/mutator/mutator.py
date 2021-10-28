@@ -82,11 +82,5 @@ class PyMutator(Mutator):
             f_as_string,
         )
 
-    def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
-        raise NotImplementedError
-
-    def apply(self, trace: Trace) -> Optional[Trace]:
-        raise NotImplementedError
-
     def __str__(self) -> str:
         return f"PyMutator({_get_hex_address(self.handle)})"

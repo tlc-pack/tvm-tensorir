@@ -81,9 +81,3 @@ class PySpaceGenerator(SpaceGenerator):
             f_initialize_with_tune_context,
             f_generate_design_space,
         )
-
-    def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
-        raise NotImplementedError
-
-    def generate_design_space(self, mod: IRModule) -> List[Schedule]:
-        raise NotImplementedError

@@ -79,11 +79,10 @@ def test_meta_schedule_replay_func(TestClass: SearchStrategy):
     num_trials_per_iter = 7
     num_trials_total = 20
 
-    space_generator = ScheduleFn(sch_fn=_schedule_matmul)
     strategy = TestClass(num_trials_per_iter=num_trials_per_iter, num_trials_total=num_trials_total)
-    tune_context = TuneContext(mod=Matmul, space_generator=space_generator)
-    space_generator.initialize_with_tune_context(tune_context)
-    spaces = space_generator.generate_design_space(tune_context.mod)
+    tune_context = TuneContext(mod=Matmul, space_generator=ScheduleFn(sch_fn=_schedule_matmul))
+    tune_context.space_generator.initialize_with_tune_context(tune_context)
+    spaces = tune_context.space_generator.generate_design_space(tune_context.mod)
 
     strategy.initialize_with_tune_context(tune_context)
     strategy.pre_tuning(spaces)

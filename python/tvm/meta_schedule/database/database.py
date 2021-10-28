@@ -226,15 +226,3 @@ class PyDatabase(Database):
             f_get_top_k,
             f_size,
         )
-
-    def commit_workload(self, mod: IRModule) -> Workload:
-        raise NotImplementedError
-
-    def commit_tuning_record(self, record: TuningRecord) -> None:
-        raise NotImplementedError
-
-    def get_top_k(self, workload: Workload, top_k: int) -> List[TuningRecord]:
-        raise NotImplementedError
-
-    def __len__(self) -> int:
-        raise NotImplementedError

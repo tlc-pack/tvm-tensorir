@@ -88,11 +88,5 @@ class PyScheduleRule(ScheduleRule):
             f_as_string,
         )
 
-    def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
-        raise NotImplementedError
-
-    def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
-        raise NotImplementedError
-
     def __str__(self) -> str:
         return f"PyScheduleRule({_get_hex_address(self.handle)})"
