@@ -52,8 +52,6 @@ class ReplayFuncNode : public SearchStrategyNode {
   Array<ArgInfo> args_info_{nullptr};
   /*! \brief The space generator for measure candidates generation. */
   SpaceGenerator space_generator_{nullptr};
-  /*! \brief The number of threads to use. -1 means using logical cpu number. */
-  int num_threads_ = -1;
   /*! \brief The random state. -1 means using random number. */
   TRandState rand_state_ = -1;
   /*! \brief The state of the search strategy. */
