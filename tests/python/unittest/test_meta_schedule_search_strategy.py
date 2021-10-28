@@ -23,17 +23,12 @@ import sys
 import pytest
 
 import tvm
-from tvm.ir.base import assert_structural_equal
-from tvm.ir.module import IRModule
 from tvm.meta_schedule import TuneContext
-from tvm.meta_schedule import space_generator
 from tvm.meta_schedule.runner import RunnerResult
-from tvm.meta_schedule.search_strategy.replay_func import ReplayFunc
 from tvm.meta_schedule.space_generator import ScheduleFn
 from tvm.meta_schedule.search_strategy import SearchStrategy, ReplayTrace, ReplayFunc
 
 from tvm.script import tir as T
-from tvm.tir import schedule
 from tvm.tir.schedule import Schedule, Trace
 
 
