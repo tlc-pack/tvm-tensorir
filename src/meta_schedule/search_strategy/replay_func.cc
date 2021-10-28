@@ -139,7 +139,7 @@ inline void ReplayFuncNode::State::NotifyRunnerResults(const Array<RunnerResult>
 
 SearchStrategy SearchStrategy::ReplayFunc(int num_trials_per_iter,  //
                                           int num_trials_total,     //
-                                          const SpaceGenerator& space_generator) {
+                                          SpaceGenerator space_generator) {
   ObjectPtr<ReplayFuncNode> n = make_object<ReplayFuncNode>();
   n->num_trials_per_iter = num_trials_per_iter;
   n->num_trials_total = num_trials_total;
