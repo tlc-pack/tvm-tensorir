@@ -91,11 +91,5 @@ class PyPostproc(Postproc):
             f_as_string,
         )
 
-    def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
-        raise NotImplementedError
-
-    def apply(self, sch: Schedule) -> bool:
-        raise NotImplementedError
-
     def __str__(self) -> str:
         return f"PyPostproc({_get_hex_address(self.handle)})"

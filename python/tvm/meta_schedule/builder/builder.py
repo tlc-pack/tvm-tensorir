@@ -126,6 +126,3 @@ class PyBuilder(Builder):
             _ffi_api.BuilderPyBuilder,  # type: ignore # pylint: disable=no-member
             f_build,
         )
-
-    def build(self, build_inputs: List[BuilderInput]) -> List[BuilderResult]:
-        raise NotImplementedError

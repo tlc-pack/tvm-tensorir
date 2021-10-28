@@ -77,8 +77,8 @@ class TuneContext(Object):
 
     mod: Optional[IRModule]
     target: Optional[Target]
-    space_generator: "SpaceGenerator"
-    search_strategy: "SearchStrategy"
+    space_generator: Optional["SpaceGenerator"]
+    search_strategy: Optional["SearchStrategy"]
     sch_rules: List["ScheduleRule"]
     postproc: List["Postproc"]
     mutator: List["Mutator"]

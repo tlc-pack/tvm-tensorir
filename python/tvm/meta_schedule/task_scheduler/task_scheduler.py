@@ -119,21 +119,3 @@ class PyTaskScheduler(TaskScheduler):
             f_join_running_task,
             f_next_task_id,
         )
-
-    def tune(self) -> None:
-        raise NotImplementedError()
-
-    def _initialize_task(self, task_id: int) -> None:
-        raise _ffi_api.TaskSchedulerInitializeTask(self, task_id)
-
-    def _set_task_stopped(self, task_id: int) -> None:
-        _ffi_api.TaskSchedulerSetTaskStopped(self, task_id)  # pylint: disable=no-member
-
-    def _is_task_running(self, task_id: int) -> bool:
-        return _ffi_api.TaskSchedulerIsTaskRunning(self, task_id)  # pylint: disable=no-member
-
-    def _join_running_task(self, task_id: int) -> None:
-        _ffi_api.TaskSchedulerJoinRunningTask(self, task_id)  # pylint: disable=no-member
-
-    def _next_task_id(self) -> int:
-        return _ffi_api.TaskSchedulerNextTaskId(self)  # pylint: disable=no-member
