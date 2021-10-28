@@ -94,5 +94,4 @@ def test_meta_schedule_design_space_generator_NIE():
 
 
 if __name__ == "__main__":
-    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
-    test_meta_schedule_design_space_generator_NIE()
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))
