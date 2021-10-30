@@ -41,7 +41,7 @@ class ScheduleRule(Object):
         Parameters
         ----------
         tune_context : TuneContext
-            The tuning context for initializing the design space generator.
+            The tuning context for initializing the schedule rule.
         """
         _ffi_api.ScheduleRuleInitializeWithTuneContext(  # type: ignore # pylint: disable=no-member
             self, tune_context
