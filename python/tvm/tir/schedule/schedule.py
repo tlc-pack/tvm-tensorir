@@ -380,9 +380,7 @@ class Schedule(Object):
         blocks : List[LoopRV]
             A list of leaf blocks inside a specific block/loop
         """
-        return _ffi_api.ScheduleGetChildBlocks(  # pylint: disable=no-member
-            self, block_or_loop
-        )
+        return _ffi_api.ScheduleGetChildBlocks(self, block_or_loop)  # pylint: disable=no-member
 
     ########## Schedule: Transform loops ##########
     def fuse(self, *loops: List[LoopRV]) -> LoopRV:
