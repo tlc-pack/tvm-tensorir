@@ -1734,3 +1734,8 @@ class Schedule(Object):
     def enter_postproc(self) -> None:
         """A no-op that marks the start of postprocessing phase of scheduling"""
         _ffi_api.ScheduleEnterPostproc(self)  # type: ignore # pylint: disable=no-member
+
+    def promote_rank(self, block: BlockRV, i: int) -> BlockRV:
+        _ffi_api.SchedulePromoteRank(  # pylint: disable=no-member
+            self, block, i
+        )

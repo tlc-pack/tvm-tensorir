@@ -138,6 +138,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   void Unannotate(const BlockRV& loop_rv, const String& ann_key) override;
   /******** Schedule: Misc ********/
   void EnterPostproc() override {}
+  void PromoteRank(const BlockRV& block_rv, int i) override;
 
  protected:
   /******** Utility functions ********/

@@ -671,6 +671,12 @@ void ConcreteScheduleNode::Unannotate(const BlockRV& loop_rv, const String& ann_
 }
 
 /******** Schedule: Misc ********/
+void ConcreteScheduleNode::PromoteRank(const BlockRV& block_rv, int i) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::PromoteRank(state_, this->GetSRef(block_rv), i);
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("cache-write", this->error_render_level_);
+}
 
 }  // namespace tir
 }  // namespace tvm

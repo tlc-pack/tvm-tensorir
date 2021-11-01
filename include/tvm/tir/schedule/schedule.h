@@ -518,8 +518,9 @@ class ScheduleNode : public runtime::Object {
   /******** Schedule: Misc ********/
   /*! \brief A no-op that marks the start of postprocessing phase of scheduling */
   virtual void EnterPostproc() = 0;
+  virtual void PromoteRank(const BlockRV& block_rv, int i) =0;
+  
 };
-
 /*!
  * \brief Managed reference to ScheduleNode
  *

@@ -381,7 +381,8 @@ TVM_DLL void Annotate(ScheduleState self, const StmtSRef& sref, const String& an
  */
 TVM_DLL void Unannotate(ScheduleState self, const StmtSRef& sref, const String& ann_key);
 /******** Schedule: Misc ********/
-
+TVM_DLL void PromoteRank(ScheduleState self, const StmtSRef& block_sref, int
+                                                                             write_buffer_index);
 }  // namespace tir
 }  // namespace tvm
 

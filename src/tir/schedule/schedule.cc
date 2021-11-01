@@ -230,6 +230,7 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnannotate")
 /******** (FFI) Misc ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostproc")
     .set_body_method<Schedule>(&ScheduleNode::EnterPostproc);
-
+TVM_REGISTER_GLOBAL("tir.schedule.SchedulePromoteRank")
+    .set_body_method<Schedule>(&ScheduleNode::PromoteRank);
 }  // namespace tir
 }  // namespace tvm
