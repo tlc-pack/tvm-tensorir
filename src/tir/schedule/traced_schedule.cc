@@ -86,9 +86,9 @@ Array<BlockRV> TracedScheduleNode::GetChildBlocks(const BlockRV& block_rv) {
 
   static const InstructionKind& kind = InstructionKind::Get("GetChildBlocks");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,  //
-                               /*inputs=*/{block_rv},
-                               /*attrs=*/{},
-                               /*outputs=*/{results.begin(), results.end()}));
+                                      /*inputs=*/{block_rv},
+                                      /*attrs=*/{},
+                                      /*outputs=*/{results.begin(), results.end()}));
   return results;
 }
 
@@ -97,9 +97,9 @@ Array<BlockRV> TracedScheduleNode::GetChildBlocks(const LoopRV& loop_rv) {
 
   static const InstructionKind& kind = InstructionKind::Get("GetChildBlocks");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,  //
-                               /*inputs=*/{loop_rv},
-                               /*attrs=*/{},
-                               /*outputs=*/{results.begin(), results.end()}));
+                                      /*inputs=*/{loop_rv},
+                                      /*attrs=*/{},
+                                      /*outputs=*/{results.begin(), results.end()}));
   return results;
 }
 
