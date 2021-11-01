@@ -674,6 +674,75 @@ BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sr
   }
 }
 
+IterVarType GetLoopIterType(const ScheduleState& self, const StmtSRef& loop_sref) {
+  int n_spatial = 0;
+  int n_reduce = 0;
+  int n_other = 0;
+  const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  const Var& loop_var = loop->loop_var;
+  auto f_visit = [&loop_var, &n_spatial, &n_reduce, &n_other](const ObjectRef& obj) -> bool {
+    if (const auto* realize = obj.as<BlockRealizeNode>()) {
+      const BlockNode* block = realize->block.get();
+      // Number of block vars and their bindings
+      ICHECK_EQ(realize->iter_values.size(), block->iter_vars.size());
+      int n = realize->iter_values.size();
+      for (int i = 0; i < n; ++i) {
+        const IterVar& iter_var = block->iter_vars[i];
+        const PrimExpr& binding = realize->iter_values[i];
+        // Categorize the current block var
+        int* ref = nullptr;
+        if (iter_var->iter_type == IterVarType::kDataPar) {
+          ref = &n_spatial;
+        } else if (iter_var->iter_type == IterVarType::kCommReduce) {
+          ref = &n_reduce;
+        } else {
+          ref = &n_other;
+        }
+        // Visit the binding to see if `loop_var` appears
+        PostOrderVisit(binding, [&ref, &loop_var](const ObjectRef& obj) -> void {
+          if (obj.same_as(loop_var)) {
+            (*ref) += 1;
+          }
+        });
+      }
+      return false;
+    }
+    return true;
+  };
+  PreOrderVisit(loop->body, f_visit);
+  if (n_other) {
+    return IterVarType::kOpaque;
+  } else if (n_spatial && n_reduce) {
+    return IterVarType::kOpaque;
+  } else if (n_reduce) {
+    return IterVarType::kCommReduce;
+  } else if (loop->kind == ForKind::kUnrolled) {
+    return IterVarType::kUnrolled;
+  } else if (loop->kind == ForKind::kVectorized) {
+    return IterVarType::kVectorized;
+  } else if (loop->kind == ForKind::kParallel) {
+    return IterVarType::kParallelized;
+  }
+  return IterVarType::kDataPar;
+}
+
+bool HasSingleChild(const StmtSRef& loop_or_block_sref) {
+  const StmtNode* body = nullptr;
+  if (const auto* loop = loop_or_block_sref->StmtAs<ForNode>()) {
+    body = loop->body.get();
+  } else if (const auto* block = loop_or_block_sref->StmtAs<BlockNode>()) {
+    body = block->body.get();
+  } else {
+    LOG(FATAL) << "TypeError: Unable to recognize the type of `loop_or_block_sref`: "
+               << loop_or_block_sref->stmt->GetTypeKey();
+  }
+  if (body->IsInstance<SeqStmtNode>()) {
+    const auto* seq_stmt = static_cast<const SeqStmtNode*>(body);
+    return seq_stmt->seq.size() == 1;
+  }
+  return true;
+}
+
 /******** Producer-consumer relation ********/
 
 Array<StmtSRef> GetProducers(const StmtSRef& block_sref, const BlockScope& scope) {

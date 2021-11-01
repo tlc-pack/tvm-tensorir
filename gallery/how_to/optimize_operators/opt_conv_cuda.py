@@ -136,7 +136,7 @@ tile = 8
 num_thread = 8
 block_factor = tile * num_thread
 step = 8
-vthread = 2
+vthread = 1
 
 # Get the GPU thread indices
 block_x = te.thread_axis("blockIdx.x")

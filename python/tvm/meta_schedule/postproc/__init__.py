@@ -20,4 +20,4 @@ Meta Schedule post processings that deal with the problem of
 undertermined schedule validity after applying some schedule
 primitves at runtime.
 """
-from .postproc import Postproc, PyPostproc
+from .postproc import Postproc, PyPostproc, VerifyGPUCode, DisallowDynamicLoops

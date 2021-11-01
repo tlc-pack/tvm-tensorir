@@ -95,3 +95,17 @@ class PyPostproc(Postproc):
 
     def __str__(self) -> str:
         return f"PyPostproc({_get_hex_address(self.handle)})"
+
+
+@register_object("meta_schedule.VerifyGPUCode")
+class VerifyGPUCode(Postproc):
+
+    def __init__(self) -> None:
+        self.__init_handle_by_constructor__(_ffi_api.PostprocVerifyGPUCode)
+
+
+@register_object("meta_schedule.DisallowDynamicLoops")
+class DisallowDynamicLoops(Postproc):
+
+    def __init__(self) -> None:
+        self.__init_handle_by_constructor__(_ffi_api.PostprocDisallowDynamicLoops)

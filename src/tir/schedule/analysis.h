@@ -261,6 +261,21 @@ BlockRealize CheckGetSingleChildBlockRealizeOnSRefTree(const ScheduleState& self
  */
 BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sref);
 
+/*!
+ * \brief Get the IterVarTyoe of the input loop
+ * \param self The schedule state
+ * \param block_sref The StmtSRef of the queried loop
+ * \return The IterVarTyoe of the input loop
+ */
+IterVarType GetLoopIterType(const ScheduleState& self, const StmtSRef& loop_sref);
+
+/*!
+ * \brief Whether the input loop/block has only one child
+ * \param loop_or_block_sref The StmtSRef of the queried loop/block
+ * \return Whether the input loop/block has only one child
+ */
+bool HasSingleChild(const StmtSRef& loop_or_block_sref);
+
 /******** Producer-consumer relation ********/
 
 /*!

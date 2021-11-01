@@ -37,6 +37,10 @@
 #include <tvm/support/parallel_for.h>
 #include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/stmt.h>
+#include <tvm/tir/transform.h>
+#include <tvm/tir/analysis.h>
+#include <tvm/arith/analyzer.h>
+#include <tvm/driver/driver_api.h>
 
 #include <string>
 #include <vector>
@@ -45,6 +49,9 @@
 #include "../support/array.h"
 #include "../support/base64.h"
 #include "../tir/schedule/primitive.h"
+#include "../runtime/thread_storage_scope.h"
+#include "../tir/schedule/analysis.h"
+#include "../tir/schedule/utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -220,6 +227,21 @@ inline std::vector<support::LinearCongruentialEngine::TRandState> ForkSeed(
  */
 inline IRModule DeepCopyIRModule(IRModule mod) {
   return Downcast<IRModule>(LoadJSON(SaveJSON(mod)));
+}
+
+/*!
+ * \brief Check whether the block/loop has any annotation
+ * \param sref The sref of block/loop
+ * \return Whether the block/loop has any annotation
+ */
+inline bool HasAnyAnn(const tir::StmtSRef& sref) {
+  if (const auto* loop = sref->StmtAs<tir::ForNode>()) {
+    return !loop->annotations.empty();
+  } else if (const auto* block = sref->StmtAs<tir::BlockNode>()) {
+    return !block->annotations.empty();
+  }
+  LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+  throw;
 }
 
 }  // namespace meta_schedule

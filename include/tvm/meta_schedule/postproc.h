@@ -121,6 +121,26 @@ class Postproc : public runtime::ObjectRef {
       PyPostprocNode::FInitializeWithTuneContext f_initialize_with_tune_context,  //
       PyPostprocNode::FApply f_apply,                                             //
       PyPostprocNode::FAsString f_as_string);
+
+  /*!
+   * \brief Creates a postprocessor that verifies if the GPU code is correct
+   * \return The postprocessor created
+   */
+  TVM_DLL static Postproc VerifyGPUCode();
+
+  /*!
+   * \brief Create a postprocessor that checks if all loops are static
+   * \return The postprocessor created
+   */
+  TVM_DLL static Postproc DisallowDynamicLoops();
+
+  /*!
+   * \brief Creates a postprocessor that applies parallelization, vectorization and auto unrolling
+   * according to the annotation of each block
+   * \return The postprocessor created
+   */
+  TVM_DLL static Postproc RewriteParallelizeVectorizeUnroll();
+
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Postproc, ObjectRef, PostprocNode);
 };
 

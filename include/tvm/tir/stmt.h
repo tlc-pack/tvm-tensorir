@@ -1336,6 +1336,18 @@ constexpr const char* fragment_shape = "fragment_shape";
  */
 constexpr const char* fragment_layout = "fragment_layout";
 
+/*! \brief Mark auto-parallel setting on the block. */
+constexpr const char* auto_parallel_extent = "auto_parallel_extent";
+
+/*! \brief Mark auto-vectorize setting on the block. */
+constexpr const char* auto_vectorize_extent = "auto_vectorize_extent";
+
+/*! \brief Mark auto-unroll setting on the block. */
+constexpr const char* auto_unroll_explicit = "auto_unroll_explicit";
+
+/*! \brief Mark auto-unroll setting on the block. */
+constexpr const char* auto_unroll_implicit = "auto_unroll_implicit";
+
 /*!
  * \brief Mark that the kernel is hand threaded and doesn't need syncs inserted
  */
