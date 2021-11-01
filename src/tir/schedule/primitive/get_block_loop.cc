@@ -55,6 +55,31 @@ Array<StmtSRef> GetLoops(const StmtSRef& block_sref) {
   return {result.rbegin(), result.rend()};
 }
 
+Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
+                               bool inclusive) {
+  struct Collector : public StmtVisitor {
+   private:
+    void VisitStmt_(const BlockNode* block) final { result.push_back(self->stmt2ref.at(block)); }
+
+   public:
+    explicit Collector(const ScheduleState& self) : self(self) {}
+
+    const ScheduleState& self;
+    Array<StmtSRef> result;
+  };
+  Collector collector(self);
+  if (inclusive) {
+    collector(GetRef<Stmt>(parent_sref->stmt));
+  } else if (parent_sref->stmt->IsInstance<ForNode>()) {
+    const auto* loop = static_cast<const ForNode*>(parent_sref->stmt);
+    collector(loop->body);
+  } else if (parent_sref->stmt->IsInstance<BlockNode>()) {
+    const auto* block = static_cast<const BlockNode*>(parent_sref->stmt);
+    collector(block->body);
+  }
+  return std::move(collector.result);
+}
+
 /******** InstructionKind Registration ********/
 
 struct GetBlockTraits : public UnpackedInstTraits<GetBlockTraits> {
