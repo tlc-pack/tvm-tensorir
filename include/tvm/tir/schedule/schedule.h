@@ -520,6 +520,12 @@ class ScheduleNode : public runtime::Object {
   virtual void EnterPostproc() = 0;
   virtual void PromoteRank(const BlockRV& block_rv, int i) =0;
   
+  /******** Schedule: Data movement ********/
+  virtual BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
+                         const String& storage_scope) = 0;
+  virtual BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
+                          const String& storage_scope) = 0;
+  
 };
 /*!
  * \brief Managed reference to ScheduleNode

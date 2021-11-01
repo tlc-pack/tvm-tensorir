@@ -139,7 +139,12 @@ class ConcreteScheduleNode : public ScheduleNode {
   /******** Schedule: Misc ********/
   void EnterPostproc() override {}
   void PromoteRank(const BlockRV& block_rv, int i) override;
-
+  /******** Schedule: Data movement ********/
+  BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
+                 const String& storage_scope) override;
+  BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
+                  const String& storage_scope) override;
+  
  protected:
   /******** Utility functions ********/
   /*!

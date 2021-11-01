@@ -232,5 +232,9 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostproc")
     .set_body_method<Schedule>(&ScheduleNode::EnterPostproc);
 TVM_REGISTER_GLOBAL("tir.schedule.SchedulePromoteRank")
     .set_body_method<Schedule>(&ScheduleNode::PromoteRank);
+/******** (FFI) Data movement ********/
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReadAt").set_body_method<Schedule>(&ScheduleNode::ReadAt);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleWriteAt")
+    .set_body_method<Schedule>(&ScheduleNode::WriteAt);
 }  // namespace tir
 }  // namespace tvm

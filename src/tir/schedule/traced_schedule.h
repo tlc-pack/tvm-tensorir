@@ -98,6 +98,12 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   void Unannotate(const BlockRV& loop_rv, const String& ann_key) override;
   /******** Schedule: Misc ********/
   void EnterPostproc() final;
+  /******** Schedule: Data movement ********/
+  BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
+                 const String& storage_scope) final;
+  BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
+                  const String& storage_scope) final;
+  
 };
 
 }  // namespace tir
