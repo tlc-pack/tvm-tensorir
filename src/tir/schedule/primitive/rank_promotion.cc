@@ -380,7 +380,7 @@ void PromoteRank(ScheduleState self, const StmtSRef& block_sref, int write_buffe
       var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
     }
     Array<PrimExpr> indices = buf_store->indices;
-    const tir::BlockRealize& realize = tir::GetBlockRealize(block_sref);
+    const tir::BlockRealize& realize = tir::GetBlockRealize(self, block_sref);
     Map<Var, PrimExpr> binding;
     for (int i = 0; i < static_cast<int>(realize->iter_values.size()); i++) {
        binding.Set(block->iter_vars[i]->var,realize->iter_values[i]);

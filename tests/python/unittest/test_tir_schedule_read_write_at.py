@@ -22,6 +22,7 @@ import tvm
 from tvm import tir
 from tvm.script import tir as T
 from tvm.tir.schedule.testing import verify_trace_roundtrip
+import numpy as np
 
 
 # fmt: off
@@ -149,7 +150,7 @@ def cuda_matmul_write_at_c(a: T.handle, b: T.handle, c: T.handle) -> None:
                                     T.block_attr({"auto_copy":1})
                                     for ax0, ax1 in T.grid(8, 64):
                                         B_shared[k0 * 8 + ax0, bx * 64 + ax1] = B[k0 * 8 + ax0, bx * 64 + ax1]
-                                for k1 in T.unroll(0, 8):
+                                for k1 in T.serial(0, 8):
                                     for v_, i, j in T.grid(1, 4, 4):
                                         with T.block([2048, 2048, T.reduce_axis(0, 2048)], "C") as [vi, vj, vk]:
                                             T.bind(vi, by * 64 + vy * 32 + ty * 4 + i)
@@ -201,8 +202,22 @@ def test_read_at_local_to_shared_c():
     _by, _bx, _vy, _vx, _ty, tx, _k0, _k1, _, _i, _j = sch.get_loops(block)
     # pylint: enable=invalid-name
     sch.write_at(tx, block, 0, "shared")
-    tvm.ir.assert_structural_equal(sch.mod["main"], cuda_matmul_write_at_c)
-    verify_trace_roundtrip(sch, cuda_matmul_read_at_ab)
+    mod = sch.mod["main"]
+    print(tvm.lower(mod, None, simple_mode=True))
+
+    dev = tvm.device("cuda", 0)
+    a_np = np.random.uniform(size=(2048, 2048)).astype("float32")
+    b_np = np.random.uniform(size=(2048, 2048)).astype("float32")
+    c_np = np.dot(a_np.astype("float32"), b_np.astype("float32"))
+    a = tvm.nd.array(a_np, dev)
+    b = tvm.nd.array(b_np, dev)
+    c = tvm.nd.array(np.zeros((2048, 2048), dtype="float32"), dev)
+    f = tvm.build(mod, target="cuda", name="dense")
+    # print(f.imported_modules[0].get_source())
+    f(a, b, c)
+    tvm.testing.assert_allclose(c.numpy(), c_np, rtol=1e-3)
+    # tvm.ir.assert_structural_equal(sch.mod["main"], cuda_matmul_write_at_c)
+    # verify_trace_roundtrip(sch, cuda_matmul_read_at_ab)
 
 
 if __name__ == "__main__":
