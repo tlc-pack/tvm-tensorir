@@ -67,7 +67,7 @@ Array<StmtSRef> GetLoops(const StmtSRef& block_sref);
  * \brief Get the leaf blocks of a specific block/loop
  * \param self The schedule state
  * \param parent_sref The query block/loop
- * \param inclusive Whether countering parent_sref
+ * \param inclusive Whether to include parent_sref
  * \return A list of leaf blocks inside a specific block/loop
  */
 Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
