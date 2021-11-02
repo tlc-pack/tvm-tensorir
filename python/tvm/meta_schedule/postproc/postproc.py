@@ -18,13 +18,12 @@
 
 from typing import TYPE_CHECKING
 
-from tvm._ffi import register_object, register_func
+from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.tir.schedule import Schedule
-from tvm.meta_schedule.utils import _get_hex_address
 
 from .. import _ffi_api
-from ..utils import check_implemented
+from ..utils import _get_hex_address, check_override
 
 if TYPE_CHECKING:
     from ..tune_context import TuneContext
@@ -76,11 +75,9 @@ class PyPostproc(Postproc):
     def __init__(self):
         """Constructor."""
 
-        @check_implemented(self, Postproc)
         def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
             self.initialize_with_tune_context(tune_context)
 
-        @check_implemented(self, Postproc)
         def f_apply(sch: Schedule) -> bool:
             return self.apply(sch)
 
@@ -89,9 +86,9 @@ class PyPostproc(Postproc):
 
         self.__init_handle_by_constructor__(
             _ffi_api.PostprocPyPostproc,  # type: ignore # pylint: disable=no-member
-            f_initialize_with_tune_context,
-            f_apply,
-            f_as_string,
+            check_override(self, Postproc, f_initialize_with_tune_context),
+            check_override(self, Postproc, f_apply),
+            check_override(self, Postproc, f_as_string, "__str__"),
         )
 
     def __str__(self) -> str:

@@ -37,7 +37,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       const auto* self = n.as<PyMutatorNode>();
       ICHECK(self);
       PyMutatorNode::FAsString f_as_string = (*self).f_as_string;
-      ICHECK(f_as_string != nullptr);
+      ICHECK(f_as_string != nullptr) << "PyMutator's AsString method not implemented!";
       p->stream << f_as_string();
     });
 

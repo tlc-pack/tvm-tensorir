@@ -88,7 +88,9 @@ def test_meta_schedule_design_space_generator_union():
 
 
 def test_meta_schedule_design_space_generator_NIE():
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(
+        TVMError, match="PySpaceGenerator's GenerateDesignSpace method not implemented!"
+    ):
         mod = Matmul
         PySpaceGenerator().generate_design_space(mod)
 

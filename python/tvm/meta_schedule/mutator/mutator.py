@@ -21,7 +21,7 @@ from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.tir.schedule import Trace
 
-from ..utils import _get_hex_address, check_implemented
+from ..utils import _get_hex_address, check_override
 from .. import _ffi_api
 
 if TYPE_CHECKING:
@@ -66,11 +66,9 @@ class PyMutator(Mutator):
     def __init__(self):
         """Constructor."""
 
-        @check_implemented(self, Mutator)
         def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
             self.initialize_with_tune_context(tune_context)
 
-        @check_implemented(self, Mutator)
         def f_apply(trace: Trace) -> Optional[Trace]:
             return self.apply(trace)
 
@@ -79,9 +77,9 @@ class PyMutator(Mutator):
 
         self.__init_handle_by_constructor__(
             _ffi_api.MutatorPyMutator,  # type: ignore # pylint: disable=no-member
-            f_initialize_with_tune_context,
-            f_apply,
-            f_as_string,
+            check_override(self, Mutator, f_initialize_with_tune_context),
+            check_override(self, Mutator, f_apply),
+            check_override(self, Mutator, f_as_string, "__str__"),
         )
 
     def __str__(self) -> str:

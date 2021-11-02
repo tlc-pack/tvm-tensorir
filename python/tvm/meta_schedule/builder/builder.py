@@ -23,7 +23,7 @@ from tvm.runtime import Object
 from tvm.target import Target
 
 from .. import _ffi_api
-from ..utils import check_implemented
+from ..utils import check_override
 
 
 @register_object("meta_schedule.BuilderInput")
@@ -120,11 +120,10 @@ class PyBuilder(Builder):
     def __init__(self):
         """Constructor."""
 
-        @check_implemented(self, Builder)
         def f_build(build_inputs: List[BuilderInput]) -> List[BuilderResult]:
             return self.build(build_inputs)
 
         self.__init_handle_by_constructor__(
             _ffi_api.BuilderPyBuilder,  # type: ignore # pylint: disable=no-member
-            f_build,
+            check_override(self, Builder, f_build),
         )

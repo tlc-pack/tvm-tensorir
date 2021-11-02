@@ -225,14 +225,10 @@ def _get_hex_address(handle: ctypes.c_void_p) -> str:
     return hex(ctypes.cast(handle, ctypes.c_void_p).value)
 
 
-def check_implemented(self, base_class: Any, method_name: str = None) -> Callable:
-    def inner(func: Callable):
-        if method_name is None:
-            method = func.__name__[2:]
-        else:
-            method = method_name
-        if getattr(self, method).__code__ is getattr(base_class, method).__code__:
-            raise NotImplementedError
+def check_override(self, base_class: Any, func: Callable, method: str = None) -> Callable:
+    if method is None:
+        method = func.__name__[2:]
+    if getattr(self, method).__code__ is getattr(base_class, method).__code__:
+        return None
+    else:
         return func
-
-    return inner

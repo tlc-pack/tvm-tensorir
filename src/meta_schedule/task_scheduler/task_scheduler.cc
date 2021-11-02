@@ -217,7 +217,11 @@ TaskScheduler TaskScheduler::PyTaskScheduler(
     PyTaskSchedulerNode::FSetTaskStopped f_set_task_stopped,    //
     PyTaskSchedulerNode::FIsTaskRunning f_is_task_running,      //
     PyTaskSchedulerNode::FJoinRunningTask f_join_running_task,  //
-    PyTaskSchedulerNode::FNextTaskId f_next_task_id) {
+    PyTaskSchedulerNode::FNextTaskId f_next_task_id,            //
+    Array<TuneContext> tasks,                                   //
+    Builder builder,                                            //
+    Runner runner,                                              //
+    Database database) {
   ObjectPtr<PyTaskSchedulerNode> n = make_object<PyTaskSchedulerNode>();
   n->tasks = tasks;
   n->builder = builder;
@@ -230,6 +234,10 @@ TaskScheduler TaskScheduler::PyTaskScheduler(
   n->f_is_task_running = f_is_task_running;
   n->f_join_running_task = f_join_running_task;
   n->f_next_task_id = f_next_task_id;
+  n->tasks = tasks;
+  n->builder = builder;
+  n->runner = runner;
+  n->database = database;
   return TaskScheduler(n);
 }
 

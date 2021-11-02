@@ -27,7 +27,7 @@ from ..builder import Builder
 from ..database import Database
 from ..tune_context import TuneContext
 from .. import _ffi_api
-from ..utils import check_implemented
+from ..utils import check_override
 
 
 @register_object("meta_schedule.TaskScheduler")
@@ -142,27 +142,21 @@ class PyTaskScheduler(TaskScheduler):
             The list of measure callbacks of the scheduler.
         """
 
-        @check_implemented(self, TaskScheduler)
         def f_tune() -> None:
             self.tune()
 
-        @check_implemented(self, TaskScheduler, "_initialize_task")
         def f_initialize_task(task_id: int) -> None:
             self._initialize_task(task_id)
 
-        @check_implemented(self, TaskScheduler, "_set_task_stopped")
         def f_set_task_stopped(task_id: int) -> None:
             self._set_task_stopped(task_id)
 
-        @check_implemented(self, TaskScheduler, "_is_task_running")
         def f_is_task_running(task_id: int) -> bool:
             return self._is_task_running(task_id)
 
-        @check_implemented(self, TaskScheduler, "_join_running_task")
         def f_join_running_task(task_id: int) -> None:
             self._join_running_task(task_id)
 
-        @check_implemented(self, TaskScheduler, "_next_task_id")
         def f_next_task_id() -> int:
             return self._next_task_id()
 

@@ -86,10 +86,15 @@ class PyMutatorNode : public MutatorNode {
   }
 
   void InitializeWithTuneContext(const TuneContext& context) final {
+    CHECK(f_initialize_with_tune_context != nullptr)
+        << "PyMutator's InitializeWithTuneContext method not implemented!";
     this->f_initialize_with_tune_context(context);
   }
 
-  Optional<tir::Trace> Apply(const tir::Trace& trace) final { return this->f_apply(trace); }
+  Optional<tir::Trace> Apply(const tir::Trace& trace) final {
+    CHECK(f_apply != nullptr) << "PyMutator's Apply method not implemented!";
+    return this->f_apply(trace);
+  }
 
   static constexpr const char* _type_key = "meta_schedule.PyMutator";
   TVM_DECLARE_FINAL_OBJECT_INFO(PyMutatorNode, MutatorNode);
