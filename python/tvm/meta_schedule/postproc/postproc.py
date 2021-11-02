@@ -88,7 +88,7 @@ class PyPostproc(Postproc):
             _ffi_api.PostprocPyPostproc,  # type: ignore # pylint: disable=no-member
             check_override(self, Postproc, f_initialize_with_tune_context),
             check_override(self, Postproc, f_apply),
-            check_override(self, Postproc, f_as_string, "__str__"),
+            f_as_string,
         )
 
     def __str__(self) -> str:

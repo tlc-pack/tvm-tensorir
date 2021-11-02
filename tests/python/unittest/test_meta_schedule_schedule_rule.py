@@ -59,9 +59,6 @@ def _check_correct(schedule: Schedule):
 
 def test_meta_schedule_schedule_rule():
     class FancyScheduleRule(PyScheduleRule):
-        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
-            pass
-
         def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
             i, j, k = sch.get_loops(block=block)
             i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=[2, 4, 64, 2])
@@ -84,12 +81,6 @@ def test_meta_schedule_schedule_rule():
 
 def test_meta_schedule_schedule_rule_as_string():
     class YetStillSomeFancyScheduleRule(PyScheduleRule):
-        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
-            pass
-
-        def apply(self, schedule: Schedule, block: BlockRV) -> List[Schedule]:
-            pass
-
         def __str__(self) -> str:
             return f"YetStillSomeFancyScheduleRule({_get_hex_address(self.handle)})"
 

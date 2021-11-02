@@ -216,7 +216,7 @@ def test_meta_schedule_task_scheduler_multiple():
         assert len(database.get_top_k(database.commit_workload(task.mod), 1e9)) == num_trials_total
 
 
-def test_meta_schedule_task_scheduler_nie():
+def test_meta_schedule_task_scheduler_NIE():
     class MyTaskScheduler(PyTaskScheduler):
         pass
 
@@ -290,5 +290,4 @@ def test_meta_schedule_task_scheduler_override_next_task_id_only():
 
 
 if __name__ == "__main__":
-    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
-    test_meta_schedule_task_scheduler_override_next_task_id_only()
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))

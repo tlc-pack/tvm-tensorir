@@ -85,7 +85,7 @@ class PyScheduleRule(ScheduleRule):
             _ffi_api.ScheduleRulePyScheduleRule,  # type: ignore # pylint: disable=no-member
             check_override(self, ScheduleRule, f_initialize_with_tune_context),
             check_override(self, ScheduleRule, f_apply),
-            check_override(self, ScheduleRule, f_as_string, "__str__"),
+            f_as_string,
         )
 
     def __str__(self) -> str:

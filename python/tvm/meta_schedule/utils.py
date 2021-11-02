@@ -228,6 +228,10 @@ def _get_hex_address(handle: ctypes.c_void_p) -> str:
 def check_override(self, base_class: Any, func: Callable, method: str = None) -> Callable:
     if method is None:
         method = func.__name__[2:]
+
+    if method in ["__len__", "__str__"]:
+        return func if func is not getattr(base_class, method) else None
+
     if getattr(self, method).__code__ is getattr(base_class, method).__code__:
         return None
     else:

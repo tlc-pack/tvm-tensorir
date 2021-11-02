@@ -79,7 +79,7 @@ class PyMutator(Mutator):
             _ffi_api.MutatorPyMutator,  # type: ignore # pylint: disable=no-member
             check_override(self, Mutator, f_initialize_with_tune_context),
             check_override(self, Mutator, f_apply),
-            check_override(self, Mutator, f_as_string, "__str__"),
+            f_as_string,
         )
 
     def __str__(self) -> str:
