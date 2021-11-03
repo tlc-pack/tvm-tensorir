@@ -207,6 +207,11 @@ void TaskSchedulerNode::JoinRunningTask(int task_id) {
 }
 
 TaskScheduler TaskScheduler::PyTaskScheduler(
+    Array<TuneContext> tasks,                                   //
+    Builder builder,                                            //
+    Runner runner,                                              //
+    Database database,                                          //
+    Array<MeasureCallback> measure_callbacks,                   //
     PyTaskSchedulerNode::FTune f_tune,                          //
     PyTaskSchedulerNode::FInitializeTask f_initialize_task,     //
     PyTaskSchedulerNode::FSetTaskStopped f_set_task_stopped,    //
@@ -214,6 +219,11 @@ TaskScheduler TaskScheduler::PyTaskScheduler(
     PyTaskSchedulerNode::FJoinRunningTask f_join_running_task,  //
     PyTaskSchedulerNode::FNextTaskId f_next_task_id) {
   ObjectPtr<PyTaskSchedulerNode> n = make_object<PyTaskSchedulerNode>();
+  n->tasks = tasks;
+  n->builder = builder;
+  n->runner = runner;
+  n->database = database;
+  n->measure_callbacks = measure_callbacks;
   n->f_tune = f_tune;
   n->f_initialize_task = f_initialize_task;
   n->f_set_task_stopped = f_set_task_stopped;

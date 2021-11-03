@@ -19,6 +19,7 @@
 from typing import List, TYPE_CHECKING
 
 from tvm._ffi import register_object
+from tvm.meta_schedule.measure_callback.measure_callback import MeasureCallback
 
 from ..builder import Builder
 from ..runner import Runner
@@ -41,6 +42,7 @@ class RoundRobin(TaskScheduler):
         builder: Builder,
         runner: Runner,
         database: Database,
+        measure_callbacks: List[MeasureCallback] = [],
     ) -> None:
         """Constructor.
 
@@ -54,6 +56,8 @@ class RoundRobin(TaskScheduler):
             The runner.
         database : Database
             The database.
+        measure_callbacks: List[MeasureCallback]
+            The list of measure callbacks of the scheduler.
         """
         self.__init_handle_by_constructor__(
             _ffi_api.TaskSchedulerRoundRobin,  # type: ignore # pylint: disable=no-member
@@ -61,4 +65,5 @@ class RoundRobin(TaskScheduler):
             builder,
             runner,
             database,
+            measure_callbacks,
         )

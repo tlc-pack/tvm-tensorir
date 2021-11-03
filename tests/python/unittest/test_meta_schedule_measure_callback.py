@@ -21,6 +21,8 @@ from typing import List
 import tvm
 from tvm.ir.base import assert_structural_equal
 from tvm.meta_schedule.runner.runner import Runner
+from tvm.meta_schedule.task_scheduler.task_scheduler import TaskScheduler
+from tvm.meta_schedule.tune_context import TuneContext
 from tvm.script import tir as T
 
 from tvm.meta_schedule.measure_callback import PyMeasureCallback
@@ -55,6 +57,8 @@ def test_meta_schedule_measure_callback():
     class FancyMeasureCallback(PyMeasureCallback):
         def apply(
             self,
+            task_scheduler: TaskScheduler,
+            tasks: List[TuneContext],
             measure_candidates: List[MeasureCandidate],
             builds: List[BuilderResult],
             results: List[RunnerResult],
@@ -73,6 +77,8 @@ def test_meta_schedule_measure_callback():
 
     measure_callback = FancyMeasureCallback()
     assert measure_callback.apply(
+        TaskScheduler(),
+        [],
         [MeasureCandidate(Schedule(Matmul), None)],
         [BuilderResult("test_build", None)],
         [RunnerResult([1.0, 2.1], None)],
@@ -83,6 +89,8 @@ def test_meta_schedule_measure_callback_fail():
     class FailingMeasureCallback(PyMeasureCallback):
         def apply(
             self,
+            task_scheduler: TaskScheduler,
+            tasks: List[TuneContext],
             measure_candidates: List[MeasureCandidate],
             builds: List[BuilderResult],
             results: List[RunnerResult],
@@ -91,7 +99,11 @@ def test_meta_schedule_measure_callback_fail():
 
     measure_callback = FailingMeasureCallback()
     assert not measure_callback.apply(
-        [MeasureCandidate(None, None)], [BuilderResult(None, None)], [RunnerResult(None, None)]
+        TaskScheduler(),
+        [],
+        [MeasureCandidate(None, None)],
+        [BuilderResult(None, None)],
+        [RunnerResult(None, None)],
     )
 
 

@@ -23,12 +23,12 @@
 #include <tvm/meta_schedule/builder.h>
 #include <tvm/meta_schedule/runner.h>
 #include <tvm/meta_schedule/search_strategy.h>
-#include <tvm/tir/schedule/schedule.h>
+#include <tvm/meta_schedule/tune_context.h>
 
 namespace tvm {
 namespace meta_schedule {
 
-class TuneContext;
+class TaskScheduler;
 
 /*! \brief Rules to apply after measure results is available. */
 class MeasureCallbackNode : public runtime::Object {
@@ -39,19 +39,17 @@ class MeasureCallbackNode : public runtime::Object {
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
-   * \brief The function type of `InitializeWithTuneContext` method.
-   * \param tune_context The tuning context for initialization.
-   */
-  virtual void InitializeWithTuneContext(const TuneContext& context) = 0;
-
-  /*!
    * \brief Apply a measure callback rule with given arguments.
+   * \param task_scheduler The task scheduler.
+   * \param tasks The list of tune context to process.
    * \param measure_candidates The measure candidates.
    * \param builds The builder results by building the measure candidates.
    * \param results The runner results by running the built measure candidates.
    * \return Whether the measure callback was successfully applied.
    */
-  virtual bool Apply(const Array<MeasureCandidate>& measure_candidates,  //
+  virtual bool Apply(const TaskScheduler& task_scheduler,                //
+                     const Array<TuneContext> tasks,                     //
+                     const Array<MeasureCandidate>& measure_candidates,  //
                      const Array<BuilderResult>& builds,                 //
                      const Array<RunnerResult>& results) = 0;
 
@@ -63,19 +61,18 @@ class MeasureCallbackNode : public runtime::Object {
 class PyMeasureCallbackNode : public MeasureCallbackNode {
  public:
   /*!
-   * \brief The function type of `InitializeWithTuneContext` method.
-   * \param tune_context The tuning context for initialization.
-   */
-  using FInitializeWithTuneContext = runtime::TypedPackedFunc<void(const TuneContext&)>;
-  /*!
    * \brief Apply a measure callback to the given schedule.
+   * \param task_scheduler The task scheduler.
+   * \param tasks The list of tune context to process.
    * \param measure_candidates The measure candidates.
    * \param builds The builder results by building the measure candidates.
    * \param results The runner results by running the built measure candidates.
    * \return Whether the measure callback was successfully applied.
    */
   using FApply =
-      runtime::TypedPackedFunc<bool(const Array<MeasureCandidate>& measure_candidates,  //
+      runtime::TypedPackedFunc<bool(const TaskScheduler& task_scheduler,                //
+                                    const Array<TuneContext> tasks,                     //
+                                    const Array<MeasureCandidate>& measure_candidates,  //
                                     const Array<BuilderResult>& builds,                 //
                                     const Array<RunnerResult>& results)>;
   /*!
@@ -84,27 +81,22 @@ class PyMeasureCallbackNode : public MeasureCallbackNode {
    */
   using FAsString = runtime::TypedPackedFunc<String()>;
 
-  /*! \brief The packed function to the `InitializeWithTuneContext` funcion. */
-  FInitializeWithTuneContext f_initialize_with_tune_context;
   /*! \brief The packed function to the `Apply` funcion. */
   FApply f_apply;
   /*! \brief The packed function to the `AsString` funcion. */
   FAsString f_as_string;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    // `f_initialize_with_tune_context` is not visited
     // `f_apply` is not visited
     // `f_as_string` is not visited
   }
 
-  void InitializeWithTuneContext(const TuneContext& context) final {
-    this->f_initialize_with_tune_context(context);
-  }
-
-  bool Apply(const Array<MeasureCandidate>& measure_candidates,  //
+  bool Apply(const TaskScheduler& task_scheduler,                //
+             const Array<TuneContext> tasks,                     //
+             const Array<MeasureCandidate>& measure_candidates,  //
              const Array<BuilderResult>& builds,                 //
              const Array<RunnerResult>& results) final {
-    return this->f_apply(measure_candidates, builds, results);
+    return this->f_apply(task_scheduler, tasks, measure_candidates, builds, results);
   }
 
   static constexpr const char* _type_key = "meta_schedule.PyMeasureCallback";
@@ -119,14 +111,11 @@ class MeasureCallback : public runtime::ObjectRef {
  public:
   /*!
    * \brief Create a measure callback with customized methods on the python-side.
-   * \param f_initialize_with_tune_context The packed function of `InitializeWithTuneContext`.
    * \param f_apply The packed function of `Apply`.
    * \return The measure callback created.
    */
-  TVM_DLL static MeasureCallback PyMeasureCallback(
-      PyMeasureCallbackNode::FInitializeWithTuneContext f_initialize_with_tune_context,  //
-      PyMeasureCallbackNode::FApply f_apply,                                             //
-      PyMeasureCallbackNode::FAsString f_as_string);
+  TVM_DLL static MeasureCallback PyMeasureCallback(PyMeasureCallbackNode::FApply f_apply,  //
+                                                   PyMeasureCallbackNode::FAsString f_as_string);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(MeasureCallback, ObjectRef, MeasureCallbackNode);
 };
 

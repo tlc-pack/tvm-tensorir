@@ -21,12 +21,9 @@
 namespace tvm {
 namespace meta_schedule {
 
-MeasureCallback MeasureCallback::PyMeasureCallback(
-    PyMeasureCallbackNode::FInitializeWithTuneContext f_initialize_with_tune_context,  //
-    PyMeasureCallbackNode::FApply f_apply,                                             //
-    PyMeasureCallbackNode::FAsString f_as_string) {
+MeasureCallback MeasureCallback::PyMeasureCallback(PyMeasureCallbackNode::FApply f_apply,  //
+                                                   PyMeasureCallbackNode::FAsString f_as_string) {
   ObjectPtr<PyMeasureCallbackNode> n = make_object<PyMeasureCallbackNode>();
-  n->f_initialize_with_tune_context = std::move(f_initialize_with_tune_context);
   n->f_apply = std::move(f_apply);
   n->f_as_string = std::move(f_as_string);
   return MeasureCallback(n);
@@ -44,8 +41,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 TVM_REGISTER_OBJECT_TYPE(MeasureCallbackNode);
 TVM_REGISTER_NODE_TYPE(PyMeasureCallbackNode);
 
-TVM_REGISTER_GLOBAL("meta_schedule.MeasureCallbackInitializeWithTuneContext")
-    .set_body_method<MeasureCallback>(&MeasureCallbackNode::InitializeWithTuneContext);
 TVM_REGISTER_GLOBAL("meta_schedule.MeasureCallbackApply")
     .set_body_method<MeasureCallback>(&MeasureCallbackNode::Apply);
 TVM_REGISTER_GLOBAL("meta_schedule.MeasureCallbackPyMeasureCallback")

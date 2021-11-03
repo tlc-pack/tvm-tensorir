@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, List
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
-from tvm.tir.schedule import Schedule
+from tvm.meta_schedule import TuneContext
 from tvm.meta_schedule.search_strategy import MeasureCandidate
 from tvm.meta_schedule.builder import BuilderResult
 from tvm.meta_schedule.runner import RunnerResult
@@ -30,26 +30,17 @@ from .. import _ffi_api
 
 if TYPE_CHECKING:
     from ..tune_context import TuneContext
+    from ..task_scheduler import TaskScheduler
 
 
 @register_object("meta_schedule.MeasureCallback")
 class MeasureCallback(Object):
     """Rules to apply after measure results is available."""
 
-    def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
-        """Initialize the measure callback with a tune context.
-
-        Parameters
-        ----------
-        tune_context : TuneContext
-            The tuning context for initializing the measure callback.
-        """
-        _ffi_api.MeasureCallbackInitializeWithTuneContext(  # type: ignore # pylint: disable=no-member
-            self, tune_context
-        )
-
     def apply(
         self,
+        task_scheduler: "TaskScheduler",
+        tasks: List["TuneContext"],
         measure_candidates: List[MeasureCandidate],
         builds: List[BuilderResult],
         results: List[RunnerResult],
@@ -58,6 +49,10 @@ class MeasureCallback(Object):
 
         Parameters
         ----------
+        task_scheduler: TaskScheduler
+            The task scheduler.
+        tasks: List[TuneContext]
+            The list of tune context to process.
         measure_candidats: List[MeasureCandidate]
             The measure candidates.
         builds: List[BuilderResult]
@@ -70,7 +65,9 @@ class MeasureCallback(Object):
         result : bool
             Whether the measure callback was successfully applied.
         """
-        return _ffi_api.MeasureCallbackApply(self, measure_candidates, builds, results)
+        return _ffi_api.MeasureCallbackApply(
+            self, task_scheduler, tasks, measure_candidates, builds, results
+        )
 
 
 @register_object("meta_schedule.PyMeasureCallback")
@@ -80,22 +77,20 @@ class PyMeasureCallback(MeasureCallback):
     def __init__(self):
         """Constructor."""
 
-        def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
-            self.initialize_with_tune_context(tune_context)
-
         def f_apply(
+            task_scheduler: "TaskScheduler",
+            tasks: List[TuneContext],
             measure_candidates: List[MeasureCandidate],
             builds: List[BuilderResult],
             results: List[RunnerResult],
         ) -> bool:
-            return self.apply(measure_candidates, builds, results)
+            return self.apply(task_scheduler, tasks, measure_candidates, builds, results)
 
         def f_as_string() -> str:
             return str(self)
 
         self.__init_handle_by_constructor__(
             _ffi_api.MeasureCallbackPyMeasureCallback,  # type: ignore # pylint: disable=no-member
-            f_initialize_with_tune_context,
             f_apply,
             f_as_string,
         )
