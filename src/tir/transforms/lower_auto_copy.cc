@@ -38,6 +38,18 @@ namespace tir {
 
 class AutoCopyMutator : public StmtExprMutator {
  public:
+  AutoCopyMutator(std::unordered_map<std::string, int> thread_extent){
+    if (thread_extent.count("threadIdx.x")) {
+      threadIdx_x_=thread_extent["threadIdx.x"];
+    }
+    if (thread_extent.count("threadIdx.y")) {
+      threadIdx_y_=thread_extent["threadIdx.y"];
+    }
+    if (thread_extent.count("threadIdx.z")) {
+      threadIdx_z_=thread_extent["threadIdx.z"];
+    }
+  }
+  
   Stmt RewritePaddingBody(Stmt stmt) { return RewriteBufferAccess(stmt, padded_buffer_map_); }
 
  private:
@@ -1125,18 +1137,6 @@ split_expr->extent)*next_scale);
   }
 
   Stmt VisitStmt_(const ForNode* op) final {
-    if (op->thread_binding.defined()) {
-      IterVar binding = op->thread_binding.value();
-      if (binding->iter_type == kThreadIndex) {
-        if (binding->thread_tag == "threadIdx.x") {
-          threadIdx_x_ = Downcast<IntImm>(op->extent)->value;
-        } else if (binding->thread_tag == "threadIdx.y") {
-          threadIdx_y_ = Downcast<IntImm>(op->extent)->value;
-        } else if (binding->thread_tag == "threadIdx.z") {
-          threadIdx_z_ = Downcast<IntImm>(op->extent)->value;
-        }
-      }
-    }
     outer_loops_.push_back(op);
     Stmt stmt = StmtMutator::VisitStmt_(op);
     outer_loops_.pop_back();
@@ -1157,14 +1157,32 @@ split_expr->extent)*next_scale);
   std::unordered_map<const BufferNode*, int> padding_constraint;
 };
 
+class ThreadExtentCollector:public StmtVisitor{
+ public:
+  static std::unordered_map<std::string, int> CollectThreadExtent(const Stmt& stmt){
+    ThreadExtentCollector collector;
+    collector(stmt);
+    return collector.thread_extent_;
+  }
+  
+ private:
+  void VisitStmt_(const ForNode* op) final{
+    if (op->thread_binding.defined() && op->thread_binding.value()->iter_type==kThreadIndex) {
+      thread_extent_[op->thread_binding.value()->thread_tag] = op->extent.as<IntImmNode>()->value;
+    }
+    StmtVisitor::VisitStmt_(op);
+  }
+  
+  std::unordered_map<std::string, int> thread_extent_;
+};
+
 namespace transform {
 Pass LowerAutoCopy() {
   auto pass_func = [](PrimFunc f, IRModule m, PassContext ctx) {
     auto* n = f.CopyOnWrite();
-    AutoCopyMutator mutator;
-    n->body = mutator(std::move(f->body));
+    AutoCopyMutator mutator(ThreadExtentCollector::CollectThreadExtent(n->body));
+    n->body = mutator(std::move(n->body));
     n->body = mutator.RewritePaddingBody(n->body);
-    LOG(INFO)<<f;
     return f;
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.LowerAutoCopy", {});
