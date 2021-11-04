@@ -34,7 +34,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       const auto* self = n.as<PyMeasureCallbackNode>();
       ICHECK(self);
       PyMeasureCallbackNode::FAsString f_as_string = (*self).f_as_string;
-      ICHECK(f_as_string != nullptr);
+      ICHECK(f_as_string != nullptr) << "PyMeasureCallback's AsString method not implemented!";
       p->stream << f_as_string();
     });
 

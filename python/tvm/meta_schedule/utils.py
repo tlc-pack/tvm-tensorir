@@ -23,6 +23,7 @@ from typing import Any, Callable, List, Optional, Union
 
 import psutil
 import tvm
+from tvm import meta_schedule
 from tvm._ffi import get_global_func, register_func
 from tvm.error import TVMError
 from tvm.ir import Array, Map, IRModule
@@ -61,7 +62,8 @@ def cpu_count(logical: bool = True) -> int:
 
 
 def get_global_func_with_default_on_worker(
-    name: Union[None, str, Callable], default: Callable,
+    name: Union[None, str, Callable],
+    default: Callable,
 ) -> Callable:
     """Get the registered global function on the worker process.
 
@@ -97,7 +99,9 @@ def get_global_func_with_default_on_worker(
 
 
 def get_global_func_on_rpc_session(
-    session: RPCSession, name: str, extra_error_msg: Optional[str] = None,
+    session: RPCSession,
+    name: str,
+    extra_error_msg: Optional[str] = None,
 ) -> PackedFunc:
     """Get a PackedFunc from the global registry from an RPCSession.
 
@@ -212,10 +216,51 @@ def _get_hex_address(handle: ctypes.c_void_p) -> str:
     ----------
     handle : ctypes.c_void_p
         The handle to be converted.
-    
+
     Returns
     -------
     result : str
         The hexadecimal address of the handle.
     """
     return hex(ctypes.cast(handle, ctypes.c_void_p).value)
+
+
+def check_override(
+    derived_class: Any, base_class: Any, required: bool = True, func_name: str = None
+) -> Callable:
+    """Check if the derived class has overrided the base class's method.
+
+    Parameters
+    ----------
+    derived_class : Any
+        The derived class.
+    base_class : Any
+        The base class of derived class.
+    required : bool
+        If the method override is required.
+    func_name : str
+        Name of the method. Default value None, which would be set to substring of the given
+        function, e.g. `f_generate`->`generate`.
+
+    Returns
+    -------
+    func : Callable
+        Raise NotImplementedError if the function is required and not overrided. If the
+        function is not overrided return None, other return the overrided function.
+    """
+
+    def inner(func: Callable):
+
+        if func_name is None:
+            method = func.__name__[2:]
+        else:
+            method = func_name
+
+        if getattr(derived_class, method) is getattr(base_class, method):
+            if required:
+                raise NotImplementedError(f"{derived_class}'s {method} method is not implemented!")
+            else:
+                return None
+        return func
+
+    return inner

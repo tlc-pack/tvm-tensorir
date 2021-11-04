@@ -109,6 +109,16 @@ def test_meta_schedule_measure_callback_fail():
 
 def test_meta_schedule_measure_callback_as_string():
     class NotSoFancyMeasureCallback(PyMeasureCallback):
+        def apply(
+            self,
+            task_scheduler: "TaskScheduler",
+            tasks: List["TuneContext"],
+            measure_candidates: List[MeasureCandidate],
+            builds: List[BuilderResult],
+            results: List[RunnerResult],
+        ) -> bool:
+            pass
+
         def __str__(self) -> str:
             return f"NotSoFancyMeasureCallback({_get_hex_address(self.handle)})"
 

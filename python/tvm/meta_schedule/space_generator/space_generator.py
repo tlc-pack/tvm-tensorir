@@ -26,6 +26,7 @@ from tvm.runtime import Object
 from tvm.tir.schedule import Schedule
 
 from .. import _ffi_api
+from ..utils import check_override
 
 if TYPE_CHECKING:
     from ..tune_context import TuneContext
@@ -70,9 +71,11 @@ class PySpaceGenerator(SpaceGenerator):
     def __init__(self):
         """Constructor."""
 
+        @check_override(self.__class__, SpaceGenerator)
         def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
             self.initialize_with_tune_context(tune_context)
 
+        @check_override(self.__class__, SpaceGenerator)
         def f_generate_design_space(mod: IRModule) -> List[Schedule]:
             return self.generate_design_space(mod)
 
