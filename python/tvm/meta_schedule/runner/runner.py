@@ -159,10 +159,11 @@ class PyRunner(Runner):
     def __init__(self) -> None:
         """Constructor"""
 
+        @check_override(self.__class__, Runner)
         def f_run(runner_inputs: List[RunnerInput]) -> List[RunnerFuture]:
             return self.run(runner_inputs)
 
         self.__init_handle_by_constructor__(
             _ffi_api.RunnerPyRunner,  # type: ignore # pylint: disable=no-member
-            check_override(self, Runner, f_run),
+            f_run,
         )

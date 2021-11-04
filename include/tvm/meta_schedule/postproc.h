@@ -91,13 +91,13 @@ class PyPostprocNode : public PostprocNode {
   }
 
   void InitializeWithTuneContext(const TuneContext& context) final {
-    CHECK(f_initialize_with_tune_context != nullptr)
+    ICHECK(f_initialize_with_tune_context != nullptr)
         << "PyPostproc's InitializeWithTuneContext method not implemented!";
     this->f_initialize_with_tune_context(context);
   }
 
   bool Apply(const tir::Schedule& sch) final {
-    CHECK(f_apply != nullptr) << "PyPostproc's Apply method not implemented!";
+    ICHECK(f_apply != nullptr) << "PyPostproc's Apply method not implemented!";
     return this->f_apply(sch);
   }
 

@@ -35,6 +35,7 @@ from tvm.meta_schedule.builder import PyBuilder, BuilderInput, BuilderResult
 from tvm.meta_schedule.runner import PyRunner, RunnerInput, RunnerFuture, RunnerResult
 from tvm.meta_schedule.database import PyDatabase, TuningRecord, Workload
 from tvm.meta_schedule.task_scheduler import RoundRobin, PyTaskScheduler
+from tvm.tir.expr import Not
 
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring
@@ -220,16 +221,15 @@ def test_meta_schedule_task_scheduler_NIE():
     class MyTaskScheduler(PyTaskScheduler):
         pass
 
-    scheduler = MyTaskScheduler([], DummyBuilder(), DummyRunner(), DummyDatabase())
-    with pytest.raises(TVMError, match="PyTaskScheduler's NextTaskId method not implemented!"):
-        scheduler._next_task_id()
+    with pytest.raises(NotImplementedError):
+        MyTaskScheduler([], DummyBuilder(), DummyRunner(), DummyDatabase())
 
 
 def test_meta_schedule_task_scheduler_override_next_task_id_only():
     class MyTaskScheduler(PyTaskScheduler):
         done = set()
 
-        def _next_task_id(self) -> int:
+        def next_task_id(self) -> int:
             while len(self.done) != len(tasks):
                 x = random.randint(0, len(tasks) - 1)
                 task = tasks[x]

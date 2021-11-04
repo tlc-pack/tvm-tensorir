@@ -51,6 +51,9 @@ class Matmul:
 
 def test_meta_schedule_mutator():
     class FancyMutator(PyMutator):
+        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+            pass
+
         def apply(self, trace: Trace) -> Optional[Trace]:
             return Trace(trace.insts, {})
 
@@ -65,6 +68,12 @@ def test_meta_schedule_mutator():
 
 def test_meta_schedule_mutator_as_string():
     class YetAnotherFancyMutator(PyMutator):
+        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+            pass
+
+        def apply(self, trace: Trace) -> Optional[Trace]:
+            pass
+
         def __str__(self) -> str:
             return f"YetAnotherFancyMutator({_get_hex_address(self.handle)})"
 

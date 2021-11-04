@@ -113,13 +113,13 @@ class PySpaceGeneratorNode : public SpaceGeneratorNode {
   }
 
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
-    CHECK(f_initialize_with_tune_context != nullptr)
-        << "PySpaceGenerator's InitializeWithTuneContext method not implemented!";
+    ICHECK(f_initialize_with_tune_context != nullptr)
+        << "PySpaceGenerator's InitializeWithTuneContext !";
     f_initialize_with_tune_context(tune_context);
   }
 
   Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod) final {
-    CHECK(f_generate_design_space != nullptr)
+    ICHECK(f_generate_design_space != nullptr)
         << "PySpaceGenerator's GenerateDesignSpace method not implemented!";
     return f_generate_design_space(mod);
   }

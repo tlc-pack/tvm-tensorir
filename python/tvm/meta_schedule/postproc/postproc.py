@@ -75,9 +75,11 @@ class PyPostproc(Postproc):
     def __init__(self):
         """Constructor."""
 
+        @check_override(self.__class__, Postproc)
         def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
             self.initialize_with_tune_context(tune_context)
 
+        @check_override(self.__class__, Postproc)
         def f_apply(sch: Schedule) -> bool:
             return self.apply(sch)
 
@@ -86,8 +88,8 @@ class PyPostproc(Postproc):
 
         self.__init_handle_by_constructor__(
             _ffi_api.PostprocPyPostproc,  # type: ignore # pylint: disable=no-member
-            check_override(self, Postproc, f_initialize_with_tune_context),
-            check_override(self, Postproc, f_apply),
+            f_initialize_with_tune_context,
+            f_apply,
             f_as_string,
         )
 

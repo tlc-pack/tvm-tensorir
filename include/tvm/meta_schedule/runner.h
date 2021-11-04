@@ -208,7 +208,7 @@ class PyRunnerNode : public RunnerNode {
   }
 
   Array<RunnerFuture> Run(Array<RunnerInput> runner_inputs) final {
-    CHECK(f_run != nullptr) << "PyRunner's Run method not implemented!";
+    ICHECK(f_run != nullptr) << "PyRunner's Run method not implemented!";
     return f_run(runner_inputs);
   }
 

@@ -225,7 +225,7 @@ class PyTaskSchedulerNode : public TaskSchedulerNode {
   }
 
   int NextTaskId() final {  //
-    CHECK(f_next_task_id != nullptr) << "PyTaskScheduler's NextTaskId method not implemented!";
+    ICHECK(f_next_task_id != nullptr) << "PyTaskScheduler's NextTaskId method not implemented!";
     return f_next_task_id();
   }
 

@@ -207,22 +207,26 @@ class PyDatabase(Database):
     def __init__(self):
         """Constructor."""
 
+        @check_override(self.__class__, Database)
         def f_commit_workload(mod: IRModule) -> Workload:
             return self.commit_workload(mod)
 
+        @check_override(self.__class__, Database)
         def f_commit_tuning_record(record: TuningRecord) -> None:
             self.commit_tuning_record(record)
 
+        @check_override(self.__class__, Database)
         def f_get_top_k(workload: Workload, top_k: int) -> List[TuningRecord]:
             return self.get_top_k(workload, top_k)
 
+        @check_override(self.__class__, Database, func_name="__len__")
         def f_size() -> int:
             return len(self)
 
         self.__init_handle_by_constructor__(
             _ffi_api.DatabasePyDatabase,  # type: ignore  # pylint: disable=no-member
-            check_override(self, Database, f_commit_workload),
-            check_override(self, Database, f_commit_tuning_record),
-            check_override(self, Database, f_get_top_k),
-            check_override(self, Database, f_size, "__len__"),
+            f_commit_workload,
+            f_commit_tuning_record,
+            f_get_top_k,
+            f_size,
         )

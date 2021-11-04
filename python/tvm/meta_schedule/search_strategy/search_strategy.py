@@ -130,26 +130,31 @@ class PySearchStrategy(SearchStrategy):
     def __init__(self):
         """Constructor."""
 
+        @check_override(self.__class__, SearchStrategy)
         def f_initialize_with_tune_context(context: "TuneContext") -> None:
             self.initialize_with_tune_context(context)
 
+        @check_override(self.__class__, SearchStrategy)
         def f_pre_tuning(design_spaces: List[Schedule]) -> None:
             self.pre_tuning(design_spaces)
 
+        @check_override(self.__class__, SearchStrategy)
         def f_post_tuning() -> None:
             self.post_tuning()
 
+        @check_override(self.__class__, SearchStrategy)
         def f_generate_measure_candidates() -> List[MeasureCandidate]:
             return self.generate_measure_candidates()
 
+        @check_override(self.__class__, SearchStrategy)
         def f_notify_runner_results(results: List["RunnerResult"]) -> None:
             self.notify_runner_results(results)
 
         self.__init_handle_by_constructor__(
             _ffi_api.SearchStrategyPySearchStrategy,  # pylint: disable=no-member
-            check_override(self, SearchStrategy, f_initialize_with_tune_context),
-            check_override(self, SearchStrategy, f_pre_tuning),
-            check_override(self, SearchStrategy, f_post_tuning),
-            check_override(self, SearchStrategy, f_generate_measure_candidates),
-            check_override(self, SearchStrategy, f_notify_runner_results),
+            f_initialize_with_tune_context,
+            f_pre_tuning,
+            f_post_tuning,
+            f_generate_measure_candidates,
+            f_notify_runner_results,
         )

@@ -66,9 +66,11 @@ class PyMutator(Mutator):
     def __init__(self):
         """Constructor."""
 
+        @check_override(self.__class__, Mutator)
         def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
             self.initialize_with_tune_context(tune_context)
 
+        @check_override(self.__class__, Mutator)
         def f_apply(trace: Trace) -> Optional[Trace]:
             return self.apply(trace)
 
@@ -77,8 +79,8 @@ class PyMutator(Mutator):
 
         self.__init_handle_by_constructor__(
             _ffi_api.MutatorPyMutator,  # type: ignore # pylint: disable=no-member
-            check_override(self, Mutator, f_initialize_with_tune_context),
-            check_override(self, Mutator, f_apply),
+            f_initialize_with_tune_context,
+            f_apply,
             f_as_string,
         )
 

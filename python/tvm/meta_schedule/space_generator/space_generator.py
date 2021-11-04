@@ -71,14 +71,16 @@ class PySpaceGenerator(SpaceGenerator):
     def __init__(self):
         """Constructor."""
 
+        @check_override(self.__class__, SpaceGenerator)
         def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
             self.initialize_with_tune_context(tune_context)
 
+        @check_override(self.__class__, SpaceGenerator)
         def f_generate_design_space(mod: IRModule) -> List[Schedule]:
             return self.generate_design_space(mod)
 
         self.__init_handle_by_constructor__(
             _ffi_api.SpaceGeneratorPySpaceGenerator,  # type: ignore # pylint: disable=no-member
-            check_override(self, SpaceGenerator, f_initialize_with_tune_context),
-            check_override(self, SpaceGenerator, f_generate_design_space),
+            f_initialize_with_tune_context,
+            f_generate_design_space,
         )

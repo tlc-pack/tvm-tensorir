@@ -120,10 +120,11 @@ class PyBuilder(Builder):
     def __init__(self):
         """Constructor."""
 
+        @check_override(self.__class__, Builder)
         def f_build(build_inputs: List[BuilderInput]) -> List[BuilderResult]:
             return self.build(build_inputs)
 
         self.__init_handle_by_constructor__(
             _ffi_api.BuilderPyBuilder,  # type: ignore # pylint: disable=no-member
-            check_override(self, Builder, f_build),
+            f_build,
         )
