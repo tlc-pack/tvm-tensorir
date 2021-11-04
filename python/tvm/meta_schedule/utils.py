@@ -228,6 +228,27 @@ def _get_hex_address(handle: ctypes.c_void_p) -> str:
 def check_override(
     derived_class: Any, base_class: Any, required: bool = True, func_name: str = None
 ) -> Callable:
+    """Check if the derived class has overrided the base class's method.
+
+    Parameters
+    ----------
+    derived_class : Any
+        The derived class.
+    base_class : Any
+        The base class of derived class.
+    required : bool
+        If the method override is required.
+    func_name : str
+        Name of the method. Default value None, which would be set to substring of the given
+        function, e.g. `f_generate`->`generate`.
+
+    Returns
+    -------
+    func : Callable
+        Raise NotImplementedError if the function is required and not overrided. If the
+        function is not overrided return None, other return the overrided function.
+    """
+
     def inner(func: Callable):
 
         if func_name is None:
