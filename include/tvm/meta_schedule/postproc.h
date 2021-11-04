@@ -91,10 +91,15 @@ class PyPostprocNode : public PostprocNode {
   }
 
   void InitializeWithTuneContext(const TuneContext& context) final {
+    ICHECK(f_initialize_with_tune_context != nullptr)
+        << "PyPostproc's InitializeWithTuneContext method not implemented!";
     this->f_initialize_with_tune_context(context);
   }
 
-  bool Apply(const tir::Schedule& sch) final { return this->f_apply(sch); }
+  bool Apply(const tir::Schedule& sch) final {
+    ICHECK(f_apply != nullptr) << "PyPostproc's Apply method not implemented!";
+    return this->f_apply(sch);
+  }
 
   static constexpr const char* _type_key = "meta_schedule.PyPostproc";
   TVM_DECLARE_FINAL_OBJECT_INFO(PyPostprocNode, PostprocNode);

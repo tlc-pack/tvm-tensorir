@@ -24,7 +24,7 @@ from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.tir.schedule import Schedule, BlockRV
 
-from ..utils import _get_hex_address
+from ..utils import _get_hex_address, check_override
 from .. import _ffi_api
 
 if TYPE_CHECKING:
@@ -72,9 +72,11 @@ class PyScheduleRule(ScheduleRule):
     def __init__(self):
         """Constructor."""
 
+        @check_override(self.__class__, ScheduleRule)
         def f_initialize_with_tune_context(tune_context: "TuneContext") -> None:
             self.initialize_with_tune_context(tune_context)
 
+        @check_override(self.__class__, ScheduleRule)
         def f_apply(sch: Schedule, block: BlockRV) -> List[Schedule]:
             return self.apply(sch, block)
 

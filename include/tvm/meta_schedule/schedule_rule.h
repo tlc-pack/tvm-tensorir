@@ -90,10 +90,13 @@ class PyScheduleRuleNode : public ScheduleRuleNode {
   }
 
   void InitializeWithTuneContext(const TuneContext& context) final {
+    ICHECK(f_initialize_with_tune_context != nullptr)
+        << "PyScheduleRule's InitializeWithTuneContext method not implemented!";
     this->f_initialize_with_tune_context(context);
   }
 
   Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block) final {
+    ICHECK(f_apply != nullptr) << "PyScheduleRule's Apply method not implemented!";
     return this->f_apply(sch, block);
   }
 

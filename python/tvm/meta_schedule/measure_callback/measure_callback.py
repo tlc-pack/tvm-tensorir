@@ -20,16 +20,16 @@ from typing import TYPE_CHECKING, List
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
-from tvm.meta_schedule import TuneContext
-from tvm.meta_schedule.search_strategy import MeasureCandidate
-from tvm.meta_schedule.builder import BuilderResult
-from tvm.meta_schedule.runner import RunnerResult
-from tvm.meta_schedule.utils import _get_hex_address
+
+from ..tune_context import TuneContext
+from ..search_strategy import MeasureCandidate
+from ..builder import BuilderResult
+from ..runner import RunnerResult
+from ..utils import _get_hex_address, check_override
 
 from .. import _ffi_api
 
 if TYPE_CHECKING:
-    from ..tune_context import TuneContext
     from ..task_scheduler import TaskScheduler
 
 
@@ -77,6 +77,7 @@ class PyMeasureCallback(MeasureCallback):
     def __init__(self):
         """Constructor."""
 
+        @check_override(self.__class__, MeasureCallback)
         def f_apply(
             task_scheduler: "TaskScheduler",
             tasks: List[TuneContext],

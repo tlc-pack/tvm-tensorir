@@ -27,6 +27,7 @@ from ..builder import Builder
 from ..database import Database
 from ..tune_context import TuneContext
 from .. import _ffi_api
+from ..utils import check_override
 
 
 @register_object("meta_schedule.TaskScheduler")
@@ -56,6 +57,16 @@ class TaskScheduler(Object):
     def tune(self) -> None:
         """Auto-tuning."""
         _ffi_api.TaskSchedulerTune(self)  # type: ignore # pylint: disable=no-member
+
+    def next_task_id(self) -> int:
+        """Fetch the next task id.
+
+        Returns
+        -------
+        int
+            The next task id.
+        """
+        return _ffi_api.TaskSchedulerNextTaskId(self)  # pylint: disable=no-member
 
     def _initialize_task(self, task_id: int) -> None:
         """Initialize modules of the given task.
@@ -141,23 +152,37 @@ class PyTaskScheduler(TaskScheduler):
             The list of measure callbacks of the scheduler.
         """
 
+        @check_override(self.__class__, TaskScheduler, required=False)
         def f_tune() -> None:
             self.tune()
 
+        @check_override(self.__class__, TaskScheduler)
+        def f_next_task_id() -> int:
+            return self.next_task_id()
+
+        @check_override(
+            PyTaskScheduler, TaskScheduler, required=False, func_name="_initialize_task"
+        )
         def f_initialize_task(task_id: int) -> None:
             self._initialize_task(task_id)
 
+        @check_override(
+            PyTaskScheduler, TaskScheduler, required=False, func_name="_set_task_stopped"
+        )
         def f_set_task_stopped(task_id: int) -> None:
             self._set_task_stopped(task_id)
 
+        @check_override(
+            PyTaskScheduler, TaskScheduler, required=False, func_name="_is_task_running"
+        )
         def f_is_task_running(task_id: int) -> bool:
             return self._is_task_running(task_id)
 
+        @check_override(
+            PyTaskScheduler, TaskScheduler, required=False, func_name="_join_running_task"
+        )
         def f_join_running_task(task_id: int) -> None:
             self._join_running_task(task_id)
-
-        def f_next_task_id() -> int:
-            return self._next_task_id()
 
         self.__init_handle_by_constructor__(
             _ffi_api.TaskSchedulerPyTaskScheduler,  # type: ignore # pylint: disable=no-member

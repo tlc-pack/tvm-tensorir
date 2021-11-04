@@ -96,6 +96,7 @@ class PyMeasureCallbackNode : public MeasureCallbackNode {
              const Array<MeasureCandidate>& measure_candidates,  //
              const Array<BuilderResult>& builds,                 //
              const Array<RunnerResult>& results) final {
+    ICHECK(f_apply != nullptr) << "PyMeasureCallback's Apply method not implemented!";
     return this->f_apply(task_scheduler, tasks, measure_candidates, builds, results);
   }
 

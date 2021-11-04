@@ -23,6 +23,7 @@ from tvm.runtime import Object
 from tvm.target import Target
 
 from .. import _ffi_api
+from ..utils import check_override
 
 
 @register_object("meta_schedule.BuilderInput")
@@ -119,6 +120,7 @@ class PyBuilder(Builder):
     def __init__(self):
         """Constructor."""
 
+        @check_override(self.__class__, Builder)
         def f_build(build_inputs: List[BuilderInput]) -> List[BuilderResult]:
             return self.build(build_inputs)
 
