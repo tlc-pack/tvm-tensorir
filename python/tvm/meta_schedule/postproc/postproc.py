@@ -46,7 +46,7 @@ class Postproc(Object):
         Parameters
         ----------
         tune_context : TuneContext
-            The tuning context for initializing the design space generator.
+            The tuning context for initializing the post processing.
         """
         _ffi_api.PostprocInitializeWithTuneContext(  # type: ignore # pylint: disable=no-member
             self, tune_context

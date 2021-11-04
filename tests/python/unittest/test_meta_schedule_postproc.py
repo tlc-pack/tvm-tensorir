@@ -90,12 +90,12 @@ def test_meta_schedule_postproc_fail():
 
 
 def test_meta_schedule_postproc_as_string():
-    class NotSoFancyPostProc(PyPostproc):
+    class NotSoFancyPostproc(PyPostproc):
         def __str__(self) -> str:
-            return f"NotSoFancyPostProc({_get_hex_address(self.handle)})"
+            return f"NotSoFancyPostproc({_get_hex_address(self.handle)})"
 
-    postproc = NotSoFancyPostProc()
-    pattern = re.compile(r"NotSoFancyPostProc\(0x[a-f|0-9]*\)")
+    postproc = NotSoFancyPostproc()
+    pattern = re.compile(r"NotSoFancyPostproc\(0x[a-f|0-9]*\)")
     assert pattern.match(str(postproc))
 
 
