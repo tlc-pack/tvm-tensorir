@@ -20,6 +20,10 @@
 #include <string>
 
 #include "../utils.h"
+#include "tvm/runtime/memory.h"
+#include "tvm/runtime/object.h"
+#include "tvm/tir/schedule/block_scope.h"
+#include "tvm/tir/stmt_functor.h"
 
 namespace tvm {
 namespace tir {
@@ -138,6 +142,15 @@ struct ReadWriteAtImpl {
   }
 
  private:
+  static Map<Var, Range> GetLoopDomain(const StmtSRefNode* loop_sref) {
+    Map<Var, Range> result;
+    for (const ForNode* loop; (loop = loop_sref->StmtAs<ForNode>()) != nullptr;
+         loop_sref = loop_sref->parent) {
+      result.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+    }
+    return result;
+  }
+
   StmtSRef ReplaceScopeBlock(const ForNode* new_loop, const BlockNode* new_block) {
     StmtSRef scope_root_sref = GetScopeRoot(self_, loop_sref_,
                                             /*require_stage_pipeline=*/true,
@@ -151,7 +164,7 @@ struct ReadWriteAtImpl {
 
   void UpdateBlockInfo(const StmtSRef& new_block_sref) {
     BlockInfo& block_info = self_->block_info[new_block_sref];
-    block_info.affine_binding = false;
+    block_info.affine_binding = true;
     block_info.region_cover = true;
     block_info.scope->stage_pipeline = true;
   }
@@ -242,24 +255,51 @@ struct ReadWriteAtImpl {
       subtrees.Set(i, Stmt(nullptr));
       subtrees.Set(i, replacer(std::move(stmt)));
     }
-    BlockRealize realize = is_read ? MakeBlock(src_, dst_, domain, new_block_name_hint)
-                                   : MakeBlock(dst_, src_, domain, new_block_name_hint);
+    BlockRealize realize =
+        is_read
+            ? MakeBlock(src_, dst_, new_block_name_hint, GetLoopDomain(loop_sref_.get()), domain)
+            : MakeBlock(dst_, src_, new_block_name_hint, GetLoopDomain(loop_sref_.get()), domain);
     subtrees.insert(subtrees.begin() + insert_pos, realize);
     ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop_);
     new_loop->body = SeqStmt(std::move(subtrees));
     return {For(new_loop), realize};
   }
 
-  BlockRealize MakeBlock(const Buffer& copy_from, const Buffer& copy_to, const Array<Range>& domain,
-                         const String& name_hint) const {
+  BlockRealize MakeBlock(const Buffer& copy_from, const Buffer& copy_to, const String& name_hint,
+                         const Map<Var, Range>& loop_domain, Array<Range> domain) const {
     int n = domain.size();
     std::vector<Var> loop_vars;
     loop_vars.reserve(n);
     for (int i = 0; i < n; ++i) {
       loop_vars.push_back(Var("ax" + std::to_string(i)));
     }
+    Map<Var, PrimExpr> bindings;
+    Array<IterVar> iter_vars;
+    Array<PrimExpr> iter_values;
     Array<PrimExpr> indices;
+    iter_vars.reserve(n);
+    iter_values.reserve(n);
     indices.reserve(n);
+    for (int i = 0; i < n; ++i) {
+      auto f_substitute = [&loop_domain, &bindings, &iter_vars,
+                           &iter_values](const Var& var) -> Optional<PrimExpr> {
+        auto it = bindings.find(var);
+        if (it != bindings.end()) {
+          return (*it).second;
+        }
+        Range range = loop_domain.at(var);
+        ObjectPtr<VarNode> v = make_object<VarNode>(*var.get());
+        v->name_hint = "v" + std::to_string(iter_vars.size());
+        bindings.Set(var, Var(v));
+        iter_values.push_back(var);
+        iter_vars.push_back(IterVar(range, Var(v), IterVarType::kDataPar));
+        return Var(v);
+      };
+      ObjectPtr<RangeNode> dom = make_object<RangeNode>(*domain[i].get());
+      dom->min = Substitute(std::move(dom->min), f_substitute);
+      dom->extent = Substitute(std::move(dom->extent), f_substitute);
+      domain.Set(i, Range(dom));
+    }
     for (int i = 0; i < n; ++i) {
       indices.push_back(domain[i]->min + loop_vars[i]);
     }
@@ -268,9 +308,9 @@ struct ReadWriteAtImpl {
       stmt = For(loop_vars[i], Integer(0), domain[i]->extent, ForKind::kSerial, stmt);
     }
     return BlockRealize(
-        /*values=*/{},
+        /*values=*/iter_values,
         /*predicate=*/const_true(),
-        Block(/*iter_vars*/ {},
+        Block(/*iter_vars=*/iter_vars,
               /*reads=*/{BufferRegion(copy_from, domain)},
               /*writes=*/{BufferRegion(copy_to, domain)},
               /*name_hint=*/name_hint,  //

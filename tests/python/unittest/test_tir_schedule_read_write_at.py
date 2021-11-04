@@ -65,12 +65,14 @@ def cuda_matmul_read_at_a(a: T.handle, b: T.handle, c: T.handle) -> None:
                     for ty in T.thread_binding(0, 8, thread="threadIdx.y"):
                         for tx in T.thread_binding(0, 8, thread="threadIdx.x"):
                             for k0 in T.serial(0, 256):
-                                with T.block([], "A_shared"):
-                                    T.reads([A[by * 64 : by * 64 + 64, k0 * 8 : k0 * 8 + 8]])
-                                    T.writes([A_shared[by * 64 : by * 64 + 64, k0 * 8 : k0 * 8 + 8]])
+                                with T.block([32, 256], "A_shared") as [v0, v1]:
+                                    T.bind(v0, by)
+                                    T.bind(v1, k0)
+                                    T.reads([A[v0 * 64 : v0 * 64 + 64, v1 * 8 : v1 * 8 + 8]])
+                                    T.writes([A_shared[v0 * 64 : v0 * 64 + 64, v1 * 8 : v1 * 8 + 8]])
                                     T.block_attr({"auto_copy":1})
                                     for ax0, ax1 in T.grid(64, 8):
-                                        A_shared[by * 64 + ax0, k0 * 8 + ax1] = A[by * 64 + ax0, k0 * 8 + ax1]
+                                        A_shared[v0 * 64 + ax0, v1 * 8 + ax1] = A[v0 * 64 + ax0, v1 * 8 + ax1]
                                 for k1 in T.unroll(0, 8):
                                     for v_, i, j in T.grid(1, 4, 4):
                                         with T.block([2048, 2048, T.reduce_axis(0, 2048)], "C") as [vi, vj, vk]:
@@ -98,18 +100,22 @@ def cuda_matmul_read_at_ab(a: T.handle, b: T.handle, c: T.handle) -> None:
                     for ty in T.thread_binding(0, 8, thread="threadIdx.y"):
                         for tx in T.thread_binding(0, 8, thread="threadIdx.x"):
                             for k0 in T.serial(0, 256):
-                                with T.block([], "A_shared"):
-                                    T.reads([A[by * 64 : by * 64 + 64, k0 * 8 : k0 * 8 + 8]])
-                                    T.writes([A_shared[by * 64 : by * 64 + 64, k0 * 8 : k0 * 8 + 8]])
+                                with T.block([32, 256], "A_shared") as [v0, v1]:
+                                    T.bind(v0, by)
+                                    T.bind(v1, k0)
+                                    T.reads([A[v0 * 64 : v0 * 64 + 64, v1 * 8 : v1 * 8 + 8]])
+                                    T.writes([A_shared[v0 * 64 : v0 * 64 + 64, v1 * 8 : v1 * 8 + 8]])
                                     T.block_attr({"auto_copy":1})
                                     for ax0, ax1 in T.grid(64, 8):
-                                        A_shared[by * 64 + ax0, k0 * 8 + ax1] = A[by * 64 + ax0, k0 * 8 + ax1]
-                                with T.block([], "B_shared"):
-                                    T.reads([B[k0 * 8 : k0 * 8 + 8, bx * 64 : bx * 64 + 64]])
-                                    T.writes([B_shared[k0 * 8 : k0 * 8 + 8, bx * 64 : bx * 64 + 64]])
+                                        A_shared[v0 * 64 + ax0, v1 * 8 + ax1] = A[v0 * 64 + ax0, v1 * 8 + ax1]
+                                with T.block([256, 32], "B_shared") as [v0, v1]:
+                                    T.bind(v0, k0)
+                                    T.bind(v1, bx)
+                                    T.reads([B[v0 * 8 : v0 * 8 + 8, v1 * 64 : v1 * 64 + 64]])
+                                    T.writes([B_shared[v0 * 8 : v0 * 8 + 8, v1 * 64 : v1 * 64 + 64]])
                                     T.block_attr({"auto_copy":1})
                                     for ax0, ax1 in T.grid(8, 64):
-                                        B_shared[k0 * 8 + ax0, bx * 64 + ax1] = B[k0 * 8 + ax0, bx * 64 + ax1]
+                                        B_shared[v0 * 8 + ax0, v1 * 64 + ax1] = B[v0 * 8 + ax0, v1 * 64 + ax1]
                                 for k1 in T.unroll(0, 8):
                                     for v_, i, j in T.grid(1, 4, 4):
                                         with T.block([2048, 2048, T.reduce_axis(0, 2048)], "C") as [vi, vj, vk]:
@@ -137,18 +143,22 @@ def cuda_matmul_write_at_c(a: T.handle, b: T.handle, c: T.handle) -> None:
                     for ty in T.thread_binding(0, 8, thread="threadIdx.y"):
                         for tx in T.thread_binding(0, 8, thread="threadIdx.x"):
                             for k0 in T.serial(0, 256):
-                                with T.block([], "A_shared"):
-                                    T.reads([A[by * 64 : by * 64 + 64, k0 * 8 : k0 * 8 + 8]])
-                                    T.writes([A_shared[by * 64 : by * 64 + 64, k0 * 8 : k0 * 8 + 8]])
+                                with T.block([32, 256], "A_shared") as [v0, v1]:
+                                    T.bind(v0, by)
+                                    T.bind(v1, k0)
+                                    T.reads([A[v0 * 64 : v0 * 64 + 64, v1 * 8 : v1 * 8 + 8]])
+                                    T.writes([A_shared[v0 * 64 : v0 * 64 + 64, v1 * 8 : v1 * 8 + 8]])
                                     T.block_attr({"auto_copy":1})
                                     for ax0, ax1 in T.grid(64, 8):
-                                        A_shared[by * 64 + ax0, k0 * 8 + ax1] = A[by * 64 + ax0, k0 * 8 + ax1]
-                                with T.block([], "B_shared"):
-                                    T.reads([B[k0 * 8 : k0 * 8 + 8, bx * 64 : bx * 64 + 64]])
-                                    T.writes([B_shared[k0 * 8 : k0 * 8 + 8, bx * 64 : bx * 64 + 64]])
+                                        A_shared[v0 * 64 + ax0, v1 * 8 + ax1] = A[v0 * 64 + ax0, v1 * 8 + ax1]
+                                with T.block([256, 32], "B_shared") as [v0, v1]:
+                                    T.bind(v0, k0)
+                                    T.bind(v1, bx)
+                                    T.reads([B[v0 * 8 : v0 * 8 + 8, v1 * 64 : v1 * 64 + 64]])
+                                    T.writes([B_shared[v0 * 8 : v0 * 8 + 8, v1 * 64 : v1 * 64 + 64]])
                                     T.block_attr({"auto_copy":1})
                                     for ax0, ax1 in T.grid(8, 64):
-                                        B_shared[k0 * 8 + ax0, bx * 64 + ax1] = B[k0 * 8 + ax0, bx * 64 + ax1]
+                                        B_shared[v0 * 8 + ax0, v1 * 64 + ax1] = B[v0 * 8 + ax0, v1 * 64 + ax1]
                                 for k1 in T.unroll(0, 8):
                                     for v_, i, j in T.grid(1, 4, 4):
                                         with T.block([2048, 2048, T.reduce_axis(0, 2048)], "C") as [vi, vj, vk]:
@@ -160,12 +170,14 @@ def cuda_matmul_write_at_c(a: T.handle, b: T.handle, c: T.handle) -> None:
                                             with T.init():
                                                 C_shared[vi, vj] = T.float32(0)
                                             C_shared[vi, vj] = C_shared[vi, vj] + A_shared[vi, vk] * B_shared[vk, vj]
-                            with T.block([], "C_shared"):
-                                T.reads([C_shared[by * 64 : by * 64 + 64, bx * 64 : bx * 64 + 64]])
-                                T.writes([C[by * 64 : by * 64 + 64, bx * 64 : bx * 64 + 64]])
+                            with T.block([32, 32], "C_shared") as [v0, v1]:
+                                T.bind(v0, by)
+                                T.bind(v1, bx)
+                                T.reads([C_shared[v0 * 64 : v0 * 64 + 64, v1 * 64 : v1 * 64 + 64]])
+                                T.writes([C[v0 * 64 : v0 * 64 + 64, v1 * 64 : v1 * 64 + 64]])
                                 T.block_attr({"auto_copy":1})
                                 for ax0, ax1 in T.grid(64, 64):
-                                    C[by * 64 + ax0, bx * 64 + ax1] = C_shared[by * 64 + ax0, bx * 64 + ax1]
+                                    C[v0 * 64 + ax0, v1 * 64 + ax1] = C_shared[v0 * 64 + ax0, v1 * 64 + ax1]
 
 
 # pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name,unexpected-keyword-arg,too-many-nested-blocks,not-callable
@@ -206,6 +218,4 @@ def test_read_at_local_to_shared_c():
 
 
 if __name__ == "__main__":
-    test_read_at_global_to_shared_a()
-    test_read_at_global_to_shared_ab()
-    test_read_at_local_to_shared_c()
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))
