@@ -15,15 +15,43 @@
 # specific language governing permissions and limitations
 # under the License.
 """Auto-tuning Task Scheduler"""
+
+from typing import List
+
 from tvm._ffi import register_object
+from tvm.meta_schedule.measure_callback.measure_callback import MeasureCallback
 from tvm.runtime import Object
 
+from ..runner import Runner
+from ..builder import Builder
+from ..database import Database
+from ..tune_context import TuneContext
 from .. import _ffi_api
 
 
 @register_object("meta_schedule.TaskScheduler")
 class TaskScheduler(Object):
-    """The abstract task scheduler interface."""
+    """The abstract task scheduler interface.
+
+    Parameters
+    ----------
+    tasks: List[TuneContext]
+        The list of tune context to process.
+    builder: Builder
+        The builder of the scheduler.
+    runner: Runner
+        The runner of the scheduler.
+    database: Database
+        The database of the scheduler.
+    measure_callbacks: List[MeasureCallback]
+        The list of measure callbacks of the scheduler.
+    """
+
+    tasks: List[TuneContext]
+    builder: Builder
+    runner: Runner
+    database: Database
+    measure_callbacks: List[MeasureCallback]
 
     def tune(self) -> None:
         """Auto-tuning."""
@@ -89,8 +117,29 @@ class TaskScheduler(Object):
 class PyTaskScheduler(TaskScheduler):
     """An abstract task scheduler with customized methods on the python-side."""
 
-    def __init__(self):
-        """Constructor."""
+    def __init__(
+        self,
+        tasks: List[TuneContext],
+        builder: Builder,
+        runner: Runner,
+        database: Database,
+        measure_callbacks: List[MeasureCallback] = [],
+    ):
+        """Constructor.
+
+        Parameters
+        ----------
+        tasks: List[TuneContext]
+            The list of tune context to process.
+        builder: Builder
+            The builder of the scheduler.
+        runner: Runner
+            The runner of the scheduler.
+        database: Database
+            The database of the scheduler.
+        measure_callbacks: List[MeasureCallback]
+            The list of measure callbacks of the scheduler.
+        """
 
         def f_tune() -> None:
             self.tune()
@@ -112,6 +161,11 @@ class PyTaskScheduler(TaskScheduler):
 
         self.__init_handle_by_constructor__(
             _ffi_api.TaskSchedulerPyTaskScheduler,  # type: ignore # pylint: disable=no-member
+            tasks,
+            builder,
+            runner,
+            database,
+            measure_callbacks,
             f_tune,
             f_initialize_task,
             f_set_task_stopped,

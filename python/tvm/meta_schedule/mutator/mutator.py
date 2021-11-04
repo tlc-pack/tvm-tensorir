@@ -37,7 +37,7 @@ class Mutator(Object):
         Parameters
         ----------
         tune_context : TuneContext
-            The tuning context for initializing the design space generator.
+            The tuning context for initializing the mutator.
         """
         _ffi_api.MutatorInitializeWithTuneContext(  # type: ignore # pylint: disable=no-member
             self, tune_context
