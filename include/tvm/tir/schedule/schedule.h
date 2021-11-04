@@ -323,6 +323,11 @@ class ScheduleNode : public runtime::Object {
    */
   virtual BlockRV CacheWrite(const BlockRV& block_rv, int write_buffer_index,
                              const String& storage_scope) = 0;
+  /******** Schedule: Data movement ********/
+  virtual BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
+                         const String& storage_scope) = 0;
+  virtual BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
+                          const String& storage_scope) = 0;
   /******** Schedule: Compute location ********/
   /*!
    * \brief Move a producer block under the specific loop, and regenerate the
