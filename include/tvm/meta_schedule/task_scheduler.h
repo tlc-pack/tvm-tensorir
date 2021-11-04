@@ -262,11 +262,7 @@ class TaskScheduler : public runtime::ObjectRef {
       PyTaskSchedulerNode::FSetTaskStopped f_set_task_stopped,    //
       PyTaskSchedulerNode::FIsTaskRunning f_is_task_running,      //
       PyTaskSchedulerNode::FJoinRunningTask f_join_running_task,  //
-      PyTaskSchedulerNode::FNextTaskId f_next_task_id,            //
-      Array<TuneContext> tasks,                                   //
-      Builder builder,                                            //
-      Runner runner,                                              //
-      Database database);
+      PyTaskSchedulerNode::FNextTaskId f_next_task_id);
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TaskScheduler, ObjectRef, TaskSchedulerNode);
 };
 

@@ -97,6 +97,12 @@ def test_meta_schedule_postproc_fail():
 
 def test_meta_schedule_postproc_as_string():
     class NotSoFancyPostproc(PyPostproc):
+        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+            pass
+
+        def apply(self, sch: Schedule) -> bool:
+            pass
+
         def __str__(self) -> str:
             return f"NotSoFancyPostproc({_get_hex_address(self.handle)})"
 
