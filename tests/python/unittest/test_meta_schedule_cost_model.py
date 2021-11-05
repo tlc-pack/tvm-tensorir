@@ -16,17 +16,22 @@
 # under the License.
 from typing import List
 
+import tempfile
+import os
 import re
+import sys
+import shutil
+import pytest
 import numpy as np
 
 import tvm
 from tvm.script import tir as T
-from tvm.meta_schedule import TuneContext
+from tvm.tir.schedule.schedule import Schedule
 from tvm.meta_schedule.search_strategy import MeasureCandidate
 from tvm.meta_schedule.runner import RunnerResult
-from tvm.tir.schedule.schedule import Schedule
-from tvm.meta_schedule.cost_model import PyCostModel
-
+from tvm.meta_schedule.feature_extractor import RandomFeatureExtractor
+from tvm.meta_schedule.cost_model import PyCostModel, RandomModel, XGBModel
+from tvm.meta_schedule.tune_context import TuneContext
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring
 @tvm.script.ir_module
@@ -50,11 +55,11 @@ class Matmul:
 
 def test_meta_schedule_cost_model():
     class FancyCostModel(PyCostModel):
-        def load(self, file_location: str) -> bool:
-            return True
+        def load(self, path: str) -> None:
+            pass
 
-        def save(self, file_location: str) -> bool:
-            return True
+        def save(self, path: str) -> None:
+            pass
 
         def update(
             self,
@@ -70,8 +75,8 @@ def test_meta_schedule_cost_model():
             return np.random.rand(10)
 
     model = FancyCostModel()
-    assert model.save("fancy_test_location")
-    assert model.load("fancy_test_location")
+    model.save("fancy_test_location")
+    model.load("fancy_test_location")
     model.update(TuneContext(), [], [])
     results = model.predict(TuneContext, [MeasureCandidate(Schedule(mod=Matmul), [])])
     assert results.shape == (10,)
@@ -79,11 +84,11 @@ def test_meta_schedule_cost_model():
 
 def test_meta_schedule_cost_model_as_string():
     class NotSoFancyCostModel(PyCostModel):
-        def load(self, file_location: str) -> bool:
-            return True
+        def load(self, path: str) -> None:
+            pass
 
-        def save(self, file_location: str) -> bool:
-            return True
+        def save(self, path: str) -> None:
+            pass
 
         def update(
             self,
@@ -103,6 +108,103 @@ def test_meta_schedule_cost_model_as_string():
     assert pattern.match(str(cost_model))
 
 
+def test_meta_schedule_random_model():
+    model = RandomModel()
+    model.update(TuneContext(), [], [])
+    res = model.predict(TuneContext(), [MeasureCandidate(Schedule(Matmul), []) for i in range(10)])
+    assert len(res) == 10
+    assert min(res) >= 0 and max(res) <= model.max_range
+
+
+def test_meta_schedule_random_model_reseed():
+    model = RandomModel(seed=100)
+    res = model.predict(TuneContext(), [MeasureCandidate(Schedule(Matmul), []) for i in range(20)])
+    new_model = RandomModel(seed=100)
+    new_res = new_model.predict(
+        TuneContext(), [MeasureCandidate(Schedule(Matmul), []) for i in range(20)]
+    )
+    assert (res == new_res).all()
+
+
+def test_meta_schedule_random_model_reload():
+    model = RandomModel(seed=25973)
+    model.predict(
+        TuneContext(), [MeasureCandidate(Schedule(Matmul), []) for i in range(30)]
+    )  # change state
+    path = os.path.join(tempfile.mkdtemp(), "test_output_meta_schedule_random_model.npy")
+    model.save(path)
+    res1 = model.predict(TuneContext(), [MeasureCandidate(Schedule(Matmul), []) for i in range(70)])
+    model.load(path)
+    res2 = model.predict(TuneContext(), [MeasureCandidate(Schedule(Matmul), []) for i in range(70)])
+    shutil.rmtree(os.path.dirname(path))
+    assert (res1 == res2).all()
+
+
+def _dummy_candidate():
+    return MeasureCandidate(Schedule(Matmul), [])
+
+
+def _dummy_result(num_samples: int = 4, max_run_sec: int = 10):
+    return RunnerResult(list(np.random.rand(num_samples) * max_run_sec + 1e-6), None)
+
+
+def test_meta_schedule_xgb_model():
+    extractor = RandomFeatureExtractor()
+    model = XGBModel(extractor=extractor, num_warmup_samples=2)
+    update_sample_count = 10
+    predict_sample_count = 100
+    model.update(
+        TuneContext(),
+        [_dummy_candidate() for i in range(update_sample_count)],
+        [_dummy_result() for i in range(update_sample_count)],
+    )
+    model.predict(TuneContext(), [_dummy_candidate() for i in range(predict_sample_count)])
+
+
+def test_meta_schedule_xgb_model_reload():
+    extractor = RandomFeatureExtractor()
+    model = XGBModel(extractor=extractor, num_warmup_samples=10)
+    update_sample_count = 20
+    predict_sample_count = 30
+    model.update(
+        TuneContext(),
+        [_dummy_candidate() for i in range(update_sample_count)],
+        [_dummy_result() for i in range(update_sample_count)],
+    )
+    model.predict(TuneContext(), [_dummy_candidate() for i in range(predict_sample_count)])
+    random_state = model.extractor.random_state  # save feature extractor's random state
+    path = os.path.join(tempfile.mkdtemp(), "test_output_meta_schedule_xgb_model.bin")
+    model.save(path)
+    res1 = model.predict(TuneContext(), [_dummy_candidate() for i in range(predict_sample_count)])
+    model.extractor.random_state = random_state  # load feature extractor's random state
+    model.load(path)
+    res2 = model.predict(TuneContext(), [_dummy_candidate() for i in range(predict_sample_count)])
+    shutil.rmtree(os.path.dirname(path))
+    assert (res1 == res2).all()
+
+
+def test_meta_schedule_xgb_model_reupdate():
+    extractor = RandomFeatureExtractor()
+    model = XGBModel(extractor=extractor, num_warmup_samples=2)
+    update_sample_count = 60
+    predict_sample_count = 100
+    model.update(
+        TuneContext(),
+        [_dummy_candidate() for i in range(update_sample_count)],
+        [_dummy_result() for i in range(update_sample_count)],
+    )
+    model.update(
+        TuneContext(),
+        [_dummy_candidate() for i in range(update_sample_count)],
+        [_dummy_result() for i in range(update_sample_count)],
+    )
+    model.update(
+        TuneContext(),
+        [_dummy_candidate() for i in range(update_sample_count)],
+        [_dummy_result() for i in range(update_sample_count)],
+    )
+    model.predict(TuneContext(), [_dummy_candidate() for i in range(predict_sample_count)])
+
+
 if __name__ == "__main__":
-    test_meta_schedule_cost_model()
-    test_meta_schedule_cost_model_as_string()
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))

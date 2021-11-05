@@ -15,13 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 """Utilities for meta schedule"""
+from typing import Any, Callable, List, Optional, Union
+
 import ctypes
 import json
 import os
 import shutil
-from typing import Any, Callable, List, Optional, Union
+import psutil
 
-import psutil  # type: ignore
 import tvm
 from tvm._ffi import get_global_func, register_func
 from tvm.error import TVMError

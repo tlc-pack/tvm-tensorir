@@ -104,17 +104,17 @@ bool ParseAnnotation(const Block& block, ParsedAnnotation* parsed) {
     } else if (ann.first == attr::meta_schedule_vectorize) {
       found = true;
       if (const auto* imm = ann.second.as<tir::IntImmNode>()) {
-        parsed->max_vectorize_extent = imm->value;;
+        parsed->max_vectorize_extent = imm->value;
       }
     } else if (ann.first == attr::meta_schedule_unroll_explicit) {
       found = true;
       if (const auto* imm = ann.second.as<tir::IntImmNode>()) {
-        parsed->unroll_explicit = imm->value;;
+        parsed->unroll_explicit = imm->value;
       }
     } else if (ann.first == attr::meta_schedule_unroll_implicit) {
       found = true;
       if (const auto* imm = ann.second.as<tir::IntImmNode>()) {
-        parsed->unroll_implicit = imm->value;;
+        parsed->unroll_implicit = imm->value;
       }
     }
   }
