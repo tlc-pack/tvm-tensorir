@@ -47,10 +47,13 @@ class Matmul:
         A = T.match_buffer(a, (1024, 1024), "float32")
         B = T.match_buffer(b, (1024, 1024), "float32")
         C = T.match_buffer(c, (1024, 1024), "float32")
-        with T.block([1024, 1024, T.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
-            with T.init():
-                C[vi, vj] = 0.0
-            C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+        for i, j, k in T.grid(1024, 1024, 1024):
+            with T.block("matmul"):
+                vi, vj, vk = T.axis.remap("SSR", [i, j, k])
+                with T.init():
+                    C[vi, vj] = 0.0
+                C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+
 
 @tvm.script.ir_module
 class DuplicateMatmul:
@@ -60,12 +63,17 @@ class DuplicateMatmul:
         A = T.match_buffer(a, (1024, 1024), "float32")
         B = T.match_buffer(b, (1024, 1024), "float32")
         C = T.match_buffer(c, (1024, 1024), "float32")
-        with T.block([1024, 1024, T.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
-            with T.init():
-                C[vi, vj] = 0.0
-            C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
-        with T.block([1024, 1024, T.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
-            C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+        for i, j, k in T.grid(1024, 1024, 1024):
+            with T.block("matmul"):
+                vi, vj, vk = T.axis.remap("SSR", [i, j, k])
+                with T.init():
+                    C[vi, vj] = 0.0
+                C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+        for i, j, k in T.grid(1024, 1024, 1024):
+            with T.block("matmul"):
+                vi, vj, vk = T.axis.remap("SSR", [i, j, k])
+                C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+
 
 @tvm.script.ir_module
 class TrinityMatmul:
@@ -76,12 +84,19 @@ class TrinityMatmul:
         B = T.alloc_buffer((1024, 1024), "float32")
         C = T.alloc_buffer((1024, 1024), "float32")
         D = T.match_buffer(d, (1024, 1024), "float32")
-        with T.block([1024, 1024], "A") as [vi, vj]:
-            B[vi, vj] = A[vi, vj] * 2.0
-        with T.block([1024, 1024], "B") as [vi, vj]:
-            C[vi, vj] = B[vi, vj] + 3.0
-        with T.block([1024, 1024], "C") as [vi, vj]:
-            D[vi, vj] = C[vi, vj] * 5.0
+        for i, j in T.grid(1024, 1024):
+            with T.block("A"):
+                vi, vj = T.axis.remap("SS", [i, j])
+                B[vi, vj] = A[vi, vj] * 2.0
+        for i, j in T.grid(1024, 1024):
+            with T.block("B"):
+                vi, vj = T.axis.remap("SS", [i, j])
+                C[vi, vj] = B[vi, vj] + 3.0
+        for i, j in T.grid(1024, 1024):
+            with T.block("C"):
+                vi, vj = T.axis.remap("SS", [i, j])
+                D[vi, vj] = C[vi, vj] * 5.0
+
 
 @tvm.script.ir_module
 class TrinityMatmulProcessedForReference:
@@ -95,19 +110,20 @@ class TrinityMatmulProcessedForReference:
         # with tir.block("root")
         B = T.alloc_buffer([1024, 1024], dtype="float32")
         for i0_0, i1_0, i0_1, i1_1 in T.grid(16, 64, 64, 16):
-            with T.block([1024, 1024], "A") as [vi, vj]:
-                T.bind(vi, i0_0 * 64 + i0_1)
-                T.bind(vj, i1_0 * 16 + i1_1)
+            with T.block("A"):
+                vi = T.axis.S(1024, i0_0 * 64 + i0_1)
+                vj = T.axis.S(1024, i1_0 * 16 + i1_1)
                 T.reads([A[vi, vj]])
                 T.writes([B[vi, vj]])
                 B[vi, vj] = A[vi, vj] * T.float32(2)
         for i0_0, i1_0, i0_1, i1_1 in T.grid(16, 64, 64, 16):
-            with T.block([1024, 1024], "C") as [vi, vj]:
-                T.bind(vi, i0_0 * 64 + i0_1)
-                T.bind(vj, i1_0 * 16 + i1_1)
+            with T.block("C"):
+                vi = T.axis.S(1024, i0_0 * 64 + i0_1)
+                vj = T.axis.S(1024, i1_0 * 16 + i1_1)
                 T.reads([B[vi, vj]])
                 T.writes([D[vi, vj]])
                 D[vi, vj] = (B[vi, vj] + T.float32(3)) * T.float32(5)
+
 
 # fmt: on
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument

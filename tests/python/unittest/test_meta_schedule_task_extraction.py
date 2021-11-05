@@ -10,6 +10,7 @@ from tvm.meta_schedule.testing import get_torch_model, MODEL_TYPE, MODEL_TYPES
 from tvm.runtime import NDArray
 
 
+@pytest.mark.skip("Skip because it runs too slowly as a unittest")
 @pytest.mark.parametrize(
     "model_name",
     [

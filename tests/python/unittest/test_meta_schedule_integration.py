@@ -27,7 +27,7 @@ from tvm.meta_schedule.integration import (
     MetaScheduleContext,
     TaskExtraction,
 )
-from tvm.meta_schedule.testing import get_network
+from tvm.meta_schedule.testing.relay_workload import get_network
 from tvm.script import tir as T
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring,unbalanced-tuple-unpacking
