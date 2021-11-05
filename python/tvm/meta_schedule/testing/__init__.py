@@ -17,3 +17,4 @@
 """Testing utilities in meta schedule"""
 from .local_rpc import LocalRPC
 from .relay_workload import get_torch_model, MODEL_TYPE, MODEL_TYPES
+from .te_workload import create_te_workload
