@@ -403,6 +403,9 @@ extern "C" __global__ void __launch_bounds__(256) main_kernel0(half* __restrict_
       (void)nvcuda::wmma::mma_sync(C_wmma_accumulator[((i0_0_43 * 2) + i1_0_43)], A_shared_wmma_matrix_a[(i0_0_43 + 4)], B_shared_wmma_matrix_b[(i1_0_43 + 2)], C_wmma_accumulator[((i0_0_43 * 2) + i1_0_43)]);
     }
   }
+  const int padding = 8; // 4 * float32
+  const int shared_mem_stride = 8 * 16 + padding;
+
   for (int ax0_04 = 0; ax0_04 < 4; ++ax0_04) {
     for (int ax1_04 = 0; ax1_04 < 2; ++ax1_04) {
 
@@ -410,14 +413,11 @@ extern "C" __global__ void __launch_bounds__(256) main_kernel0(half* __restrict_
       // continue;
 
       // step 1: warp -> shared
-      const int padding = 4; // 4 * float32
-      nvcuda::wmma::store_matrix_sync(C_shared + threadIdx.y * (16 + padding), C_wmma_accumulator[((ax0_04 * 2) + ax1_04)], 8/*num_warps*/ * (16 + padding), nvcuda::wmma::mem_row_major);
+      nvcuda::wmma::store_matrix_sync(C_shared + threadIdx.y * 16, C_wmma_accumulator[((ax0_04 * 2) + ax1_04)], shared_mem_stride, nvcuda::wmma::mem_row_major);
       // step 2: shared -> global
-      for (int tile_i = 0; tile_i < 16; tile_i++) {
-        for (int tile_j = 0; tile_j < 16; tile_j += 4) {
-          *((float4*)(((float *)C + (((((((((int)blockIdx.x) * 131072) + ((((int)threadIdx.y) >> 2) * 65536)) + (ax0_04 * 16384)) + (((int)blockIdx.y) * 128)) + ((((int)threadIdx.y) & 3) * 32)) + (ax1_04 * 16)))) + tile_i * 1024 + tile_j)) =
-          *((float4*)(C_shared + threadIdx.y * (16 + padding) + tile_i * 8 * (16 + padding) + tile_j));
-        }
+      for (int tile = 0; tile < 2; tile++) {
+        *((float4*)(((float *)C + (((((((((int)blockIdx.x) * 131072) + ((((int)threadIdx.y) >> 2) * 65536)) + (ax0_04 * 16384)) + (((int)blockIdx.y) * 128)) + ((((int)threadIdx.y) & 3) * 32)) + (ax1_04 * 16)))) + (tile * 8 + threadIdx.x / 4) * 1024 + threadIdx.x % 4 * 4)) =
+        *((float4*)(C_shared + threadIdx.y * 16 + (tile * 8 + threadIdx.x / 4) * shared_mem_stride + threadIdx.x % 4 * 4));
       }
     }
   }
