@@ -21,6 +21,7 @@
 
 #include <tvm/meta_schedule/arg_info.h>
 #include <tvm/meta_schedule/runner.h>
+#include <tvm/meta_schedule/space_generator.h>
 #include <tvm/tir/schedule/schedule.h>
 
 namespace tvm {
@@ -246,6 +247,13 @@ class SearchStrategy : public runtime::ObjectRef {
    * \param num_trials_total The total number of trials for trace replaying.
    */
   TVM_DLL static SearchStrategy ReplayTrace(int num_trials_per_iter, int num_trials_total);
+
+  /*!
+   * \brief Constructor of replay func search strategy.
+   * \param num_trials_per_iter The number of trials per iteration, i.e., the batch size.
+   * \param num_trials_total The total number of trials for func replaying.
+   */
+  TVM_DLL static SearchStrategy ReplayFunc(int num_trials_per_iter, int num_trials_total);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
 };

@@ -23,7 +23,11 @@
 #include <tvm/meta_schedule/arg_info.h>
 #include <tvm/meta_schedule/builder.h>
 #include <tvm/meta_schedule/database.h>
+#include <tvm/meta_schedule/measure_callback.h>
+#include <tvm/meta_schedule/mutator.h>
+#include <tvm/meta_schedule/postproc.h>
 #include <tvm/meta_schedule/runner.h>
+#include <tvm/meta_schedule/schedule_rule.h>
 #include <tvm/meta_schedule/search_strategy.h>
 #include <tvm/meta_schedule/space_generator.h>
 #include <tvm/meta_schedule/task_scheduler.h>
@@ -32,6 +36,7 @@
 #include <tvm/node/serialization.h>
 #include <tvm/support/parallel_for.h>
 #include <tvm/tir/schedule/schedule.h>
+#include <tvm/tir/stmt.h>
 
 #include <string>
 #include <vector>
@@ -193,7 +198,7 @@ inline support::LinearCongruentialEngine::TRandState ForkSeed(
 
 /*!
  * \brief Fork a random state into another ones, i.e. PRNG splitting.
- * The given random state is also mutated.
+ *  The given random state is also mutated.
  * \param rand_state The random state to be forked
  * \param n The number of forks
  * \return The forked random states
@@ -206,6 +211,15 @@ inline std::vector<support::LinearCongruentialEngine::TRandState> ForkSeed(
     results.push_back(support::LinearCongruentialEngine(rand_state).ForkSeed());
   }
   return results;
+}
+
+/*!
+ * \brief Get deep copy of an IRModule.
+ * \param mod The IRModule to make a deep copy.
+ * \return The deep copy of the IRModule.
+ */
+inline IRModule DeepCopyIRModule(IRModule mod) {
+  return Downcast<IRModule>(LoadJSON(SaveJSON(mod)));
 }
 
 }  // namespace meta_schedule

@@ -55,12 +55,14 @@ class RoundRobinNode final : public TaskSchedulerNode {
 TaskScheduler TaskScheduler::RoundRobin(Array<TuneContext> tasks,  //
                                         Builder builder,           //
                                         Runner runner,             //
-                                        Database database) {
+                                        Database database,         //
+                                        Array<MeasureCallback> measure_callbacks) {
   ObjectPtr<RoundRobinNode> n = make_object<RoundRobinNode>();
   n->tasks = tasks;
   n->builder = builder;
   n->runner = runner;
   n->database = database;
+  n->measure_callbacks = measure_callbacks;
   n->task_id = -1;
   return TaskScheduler(n);
 }

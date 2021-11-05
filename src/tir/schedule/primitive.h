@@ -98,6 +98,15 @@ Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name, const S
  * \return A list of loops above the given block in its scope, from outer to inner
  */
 Array<StmtSRef> GetLoops(const StmtSRef& block_sref);
+/*!
+ * \brief Get the leaf blocks of a specific block/loop
+ * \param self The schedule state
+ * \param parent_sref The query block/loop
+ * \param inclusive Whether to include parent_sref
+ * \return A list of leaf blocks inside a specific block/loop
+ */
+Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
+                               bool inclusive = false);
 /******** Schedule: Transform loops ********/
 /*!
  * Split a loop into a list of consecutive loops. It requires:
@@ -203,6 +212,15 @@ TVM_DLL StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int r
  */
 TVM_DLL StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_buffer_index,
                             const String& storage_scope);
+
+/******** Schedule: Data movement ********/
+
+TVM_DLL StmtSRef ReadAt(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
+                        int read_buffer_index, const String& storage_scope);
+
+TVM_DLL StmtSRef WriteAt(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
+                         int write_buffer_index, const String& storage_scope);
+
 /******** Schedule: Compute location ********/
 /*!
  * \brief Move a producer block under the specific loop, and regenerate the

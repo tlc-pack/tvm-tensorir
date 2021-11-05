@@ -50,7 +50,7 @@ class ReplayTraceNode : public SearchStrategyNode {
   int num_trials_total;
 
   /*! \brief The module to be tuned. */
-  IRModule mod_{nullptr};
+  Array<IRModule> mod_{nullptr};
   /*! \brief The metadata of the function arguments. */
   Array<ArgInfo> args_info_{nullptr};
   /*! \brief The number of threads to use. -1 means using logical cpu number. */
@@ -74,9 +74,15 @@ class ReplayTraceNode : public SearchStrategyNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(ReplayTraceNode, SearchStrategyNode);
 
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
-    this->mod_ = tune_context->mod.value();
-    this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(this->mod_));
+    CHECK(tune_context->num_threads > 0) << "Number of threads has to be larger than 0.";
     this->num_threads_ = tune_context->num_threads;
+
+    this->mod_.reserve(this->num_threads_);
+    for (int i = 0; i < this->num_threads_; i++) {
+      this->mod_.push_back(DeepCopyIRModule(tune_context->mod.value()));
+    }
+
+    this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(tune_context->mod.value()));
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
     this->state_.reset();
   }
@@ -118,7 +124,7 @@ inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasure
     tir::Trace trace = design_spaces[design_space_index]->trace().value();
     tir::Trace new_trace = tir::Trace(trace->insts, {});
     tir::Schedule sch = tir::Schedule::Traced(  //
-        self->mod_,                             //
+        self->mod_[thread_id],                  //
         /*rand_state=*/ForkSeed(&rand_state),   //
         /*debug_mode=*/0,                       //
         /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
@@ -142,7 +148,8 @@ SearchStrategy SearchStrategy::ReplayTrace(int num_trials_per_iter, int num_tria
 }
 
 TVM_REGISTER_NODE_TYPE(ReplayTraceNode);
-TVM_REGISTER_GLOBAL("meta_schedule.ReplayTrace").set_body_typed(SearchStrategy::ReplayTrace);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategyReplayTrace")
+    .set_body_typed(SearchStrategy::ReplayTrace);
 
 }  // namespace meta_schedule
 }  // namespace tvm

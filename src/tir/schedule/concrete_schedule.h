@@ -72,6 +72,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   inline PrimExpr Get(const ExprRV& expr_rv) const final;
   inline StmtSRef GetSRef(const BlockRV& block_rv) const final;
   inline StmtSRef GetSRef(const LoopRV& loop_rv) const final;
+  inline bool HasBlock(const BlockRV& block_rv) const final;
   inline Array<StmtSRef> GetSRefs(const Array<BlockRV>& rvs) const;
   inline Array<StmtSRef> GetSRefs(const Array<LoopRV>& rvs) const;
   void RemoveRV(const BlockRV& block_rv) final { RemoveFromSymbolTable(block_rv); }
@@ -88,6 +89,8 @@ class ConcreteScheduleNode : public ScheduleNode {
   /******** Schedule: Get blocks & loops ********/
   BlockRV GetBlock(const String& name, const String& func_name = "main") override;
   Array<LoopRV> GetLoops(const BlockRV& block_rv) override;
+  Array<BlockRV> GetChildBlocks(const BlockRV& block_rv) override;
+  Array<BlockRV> GetChildBlocks(const LoopRV& loop_rv) override;
   /******** Schedule: Transform loops ********/
   LoopRV Fuse(const Array<LoopRV>& loop_rvs) override;
   Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) override;
@@ -102,6 +105,11 @@ class ConcreteScheduleNode : public ScheduleNode {
                     const String& storage_scope) override;
   BlockRV CacheWrite(const BlockRV& block_rv, int write_buffer_index,
                      const String& storage_scope) override;
+  /******** Schedule: Data movement ********/
+  BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
+                 const String& storage_scope) override;
+  BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
+                  const String& storage_scope) override;
   /******** Schedule: Compute location ********/
   void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv, bool preserve_unit_loops) override;
   void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
@@ -186,6 +194,19 @@ inline PrimExpr ConcreteScheduleNode::Get(const ExprRV& expr_rv) const {
     return Integer(int_imm->value);
   });
   return this->analyzer_->Simplify(transformed);
+}
+
+inline bool ConcreteScheduleNode::HasBlock(const BlockRV& block_rv) const {
+  auto it = this->symbol_table_.find(block_rv);
+  if (it == this->symbol_table_.end()) {
+    return false;
+  }
+  const ObjectRef& obj = (*it).second;
+  const auto* sref = obj.as<StmtSRefNode>();
+  if (sref == nullptr || sref->stmt == nullptr) {
+    return false;
+  }
+  return true;
 }
 
 inline StmtSRef ConcreteScheduleNode::GetSRef(const BlockRV& block_rv) const {

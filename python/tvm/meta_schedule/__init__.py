@@ -19,6 +19,9 @@ from . import arg_info
 from . import database
 from . import builder
 from . import runner
+from . import mutator
+from . import postproc
+from . import schedule_rule
 from . import space_generator
 from . import search_strategy
 from . import integration
