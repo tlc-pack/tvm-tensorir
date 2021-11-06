@@ -1,0 +1,105 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+#include "../utils.h"
+
+namespace tvm {
+namespace tir {
+
+void Annotate(ScheduleState self, const StmtSRef& sref, const String& ann_key,
+              const ObjectRef& ann_val) {
+  // Extract annotation
+  const Map<String, ObjectRef>* annotations = nullptr;
+  if (const auto* loop = sref->StmtAs<ForNode>()) {
+    annotations = &loop->annotations;
+  } else if (const auto* block = sref->StmtAs<BlockNode>()) {
+    annotations = &block->annotations;
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+  }
+  // Check if the annotation already exists
+  if (annotations->find(ann_key) != annotations->end()) {
+    return;
+  }
+  // Add the new annotation
+  Map<String, ObjectRef> new_ann(*annotations);
+  new_ann.Set(ann_key, ann_val);
+  // Create the new stmt
+  if (const auto* loop = sref->StmtAs<ForNode>()) {
+    ObjectPtr<ForNode> n = make_object<ForNode>(*loop);
+    n->annotations = std::move(new_ann);
+    self->Replace(sref, For(n), {});
+  } else if (const auto* block = sref->StmtAs<BlockNode>()) {
+    ObjectPtr<BlockNode> n = make_object<BlockNode>(*block);
+    n->annotations = std::move(new_ann);
+    Block p(n);
+    self->Replace(sref, p, {{GetRef<Block>(block), p}});
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+    throw;
+  }
+}
+
+struct AnnotateTraits : public UnpackedInstTraits<AnnotateTraits> {
+  static constexpr const char* kName = "Annotate";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 2;
+  static constexpr size_t kNumAttrs = 1;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, ObjectRef block_or_loop_rv, ObjectRef ann_val,
+                                      String ann_key) {
+    if (const auto* block = block_or_loop_rv.as<BlockRVNode>()) {
+      return sch->Annotate(GetRef<BlockRV>(block), ann_key, ann_val);
+    }
+    if (const auto* loop = block_or_loop_rv.as<LoopRVNode>()) {
+      return sch->Annotate(GetRef<LoopRV>(loop), ann_key, ann_val);
+    }
+    LOG(FATAL) << "TypeError: Expected Block or Loop, but gets: " << block_or_loop_rv->GetTypeKey();
+    throw;
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, ObjectRef block_or_loop_rv, ObjectRef ann_val,
+                                 String ann_key) {
+    PythonAPICall py("annotate");
+    py.Input("loop", block_or_loop_rv);
+    py.Input("ann_key", ann_key);
+    if (const auto* int_imm = ann_val.as<IntImmNode>()) {
+      py.Input("ann_val", std::to_string(int_imm->value));
+    } else if (const auto* str_imm = ann_val.as<StringObj>()) {
+      py.Input("ann_val", GetRef<String>(str_imm));
+    } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
+      std::ostringstream os;
+      os << GetRef<PrimExpr>(expr);
+      py.Input("ann_val", os.str());
+    } else {
+      LOG(FATAL) << "TypeError: Cannot handle type: " << ann_val->GetTypeKey();
+      throw;
+    }
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
+TVM_REGISTER_INST_KIND_TRAITS(AnnotateTraits);
+
+}  // namespace tir
+}  // namespace tvm
