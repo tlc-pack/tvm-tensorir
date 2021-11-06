@@ -107,8 +107,8 @@ struct AnnotateTraits : public UnpackedInstTraits<AnnotateTraits> {
     throw;
   }
 
-  static String UnpackedAsPython(Array<String> outputs, ObjectRef block_or_loop_rv, ObjectRef ann_val,
-                                 String ann_key) {
+  static String UnpackedAsPython(Array<String> outputs, ObjectRef block_or_loop_rv,
+                                 ObjectRef ann_val, String ann_key) {
     PythonAPICall py("annotate");
     py.Input("block_or_loop", block_or_loop_rv);
     py.Input("ann_key", ann_key);
@@ -150,7 +150,8 @@ struct UnannotateTraits : public UnpackedInstTraits<UnannotateTraits> {
     throw;
   }
 
-  static String UnpackedAsPython(Array<String> outputs, ObjectRef block_or_loop_rv, String ann_key) {
+  static String UnpackedAsPython(Array<String> outputs, ObjectRef block_or_loop_rv,
+                                 String ann_key) {
     PythonAPICall py("unannotate");
     py.Input("block_or_loop", block_or_loop_rv);
     py.Input("ann_key", ann_key);

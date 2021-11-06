@@ -480,7 +480,8 @@ class ScheduleNode : public runtime::Object {
    * \param ann_key The annotation key
    * \param ann_val The annotation value, a string or a ExprRV
    */
-  virtual void Annotate(const BlockRV& block_rv, const String& ann_key, const ObjectRef& ann_val) = 0;
+  virtual void Annotate(const BlockRV& block_rv, const String& ann_key,
+                        const ObjectRef& ann_val) = 0;
   /*!
    * \brief Unannotate a block's annotation with key ann_key
    * \param loop The block to be unannotated

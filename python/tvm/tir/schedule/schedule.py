@@ -1680,12 +1680,8 @@ class Schedule(Object):
         _ffi_api.ScheduleMarkLoop(  # pylint: disable=no-member
             self, block_or_loop, ann_key, ann_val
         )
-    
-    def unannotate(
-        self,
-        block_or_loop: Union[BlockRV, LoopRV],
-        ann_key: str
-    ) -> None:
+
+    def unannotate(self, block_or_loop: Union[BlockRV, LoopRV], ann_key: str) -> None:
         """Unannotate a block/loop's annotation with key ann_key
 
         Parameters
@@ -1693,11 +1689,9 @@ class Schedule(Object):
         block_or_loop: Union[BlockRV, LoopRV]
             The block/loop to be unannotated
         ann_key : str
-            The annotation key        
+            The annotation key
         """
-        _ffi_api.ScheduleUnmarkLoop(  # pylint: disable=no-member
-            self, block_or_loop, ann_key
-        )
+        _ffi_api.ScheduleUnmarkLoop(self, block_or_loop, ann_key)  # pylint: disable=no-member
 
     ########## Schedule: Misc ##########
 

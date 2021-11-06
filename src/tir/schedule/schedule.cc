@@ -187,7 +187,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStorageAlign")
 /******** (FFI) Blockize & Tensorize ********/
 /******** (FFI) Annotation ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleAnnotate")
-    .set_body_typed([](Schedule self, ObjectRef rv, const String& ann_key, const ObjectRef& ann_val) {
+    .set_body_typed([](Schedule self, ObjectRef rv, const String& ann_key,
+                       const ObjectRef& ann_val) {
       if (const auto* block_rv = rv.as<BlockRVNode>()) {
         return self->Annotate(GetRef<BlockRV>(block_rv), ann_key, ann_val);
       }
