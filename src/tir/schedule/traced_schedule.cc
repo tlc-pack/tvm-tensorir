@@ -380,7 +380,7 @@ void TracedScheduleNode::Annotate(const BlockRV& block_rv, const String& ann_key
 
 void TracedScheduleNode::Unannotate(const LoopRV& loop_rv, const String& ann_key) {
   ConcreteScheduleNode::Unannotate(loop_rv, ann_key);
-  static const InstructionKind& kind = InstructionKind::Get("Unnnotate");
+  static const InstructionKind& kind = InstructionKind::Get("Unannotate");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                       /*inputs=*/{loop_rv},
                                       /*attrs=*/{ann_key},
@@ -389,7 +389,7 @@ void TracedScheduleNode::Unannotate(const LoopRV& loop_rv, const String& ann_key
 
 void TracedScheduleNode::Unannotate(const BlockRV& block_rv, const String& ann_key) {
   ConcreteScheduleNode::Unannotate(block_rv, ann_key);
-  static const InstructionKind& kind = InstructionKind::Get("Unnnotate");
+  static const InstructionKind& kind = InstructionKind::Get("Unannotate");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                       /*inputs=*/{block_rv},
                                       /*attrs=*/{ann_key},

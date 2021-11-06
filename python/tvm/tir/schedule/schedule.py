@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Union
 from tvm._ffi import register_object as _register_object
 from tvm.error import TVMError, register_error
 from tvm.ir import IRModule, PrimExpr
-from tvm.runtime import Object
+from tvm.runtime import Object, String
 from tvm.tir import Block, For, IntImm, PrimFunc
 
 from . import _ffi_api
@@ -1677,7 +1677,7 @@ class Schedule(Object):
             ann_val = String(ann_val)
         elif isinstance(ann_val, int):
             ann_val = IntImm("int64", ann_val)
-        _ffi_api.ScheduleMarkLoop(  # pylint: disable=no-member
+        _ffi_api.ScheduleAnnotate(  # pylint: disable=no-member
             self, block_or_loop, ann_key, ann_val
         )
 
@@ -1691,7 +1691,7 @@ class Schedule(Object):
         ann_key : str
             The annotation key
         """
-        _ffi_api.ScheduleUnmarkLoop(self, block_or_loop, ann_key)  # pylint: disable=no-member
+        _ffi_api.ScheduleUnannotate(self, block_or_loop, ann_key)  # pylint: disable=no-member
 
     ########## Schedule: Misc ##########
 
