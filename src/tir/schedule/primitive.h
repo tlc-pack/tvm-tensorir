@@ -352,14 +352,21 @@ TVM_DLL void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int bu
 /******** Schedule: Blockize & Tensorize ********/
 /******** Schedule: Annotation ********/
 /*!
- * \brief 
- * \param parameter-name description
- * \param parameter-name description
- * \param parameter-name description
- * \param parameter-name description
+ * \brief Annotate a block/loop with a key value pair
+ * \param self The state of the schedule
+ * \param sref The block/loop sref to be annotated
+ * \param ann_key The annotation key
+ * \param ann_val The annotation value
  */
 TVM_DLL void Annotate(ScheduleState self, const StmtSRef& sref, const String& ann_key,
                       const ObjectRef& ann_val);
+/*!
+ * \brief Unannotate a block/loop's annotation with key ann_key
+ * \param self The state of the schedule
+ * \param sref The block/loop to be unannotated
+ * \param ann_key The annotation key
+ */
+TVM_DLL void Unannotate(ScheduleState self, const StmtSRef& sref, const String& ann_key);
 /******** Schedule: Misc ********/
 
 }  // namespace tir

@@ -92,7 +92,9 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   /******** Schedule: Blockize & Tensorize ********/
   /******** Schedule: Annotation ********/
   void Annotate(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
+  void Unannotate(const LoopRV& loop_rv, const String& ann_key) override;
   void Annotate(const BlockRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
+  void Unannotate(const BlockRV& loop_rv, const String& ann_key) override;
   /******** Schedule: Misc ********/
   void EnterPostproc() final;
 };

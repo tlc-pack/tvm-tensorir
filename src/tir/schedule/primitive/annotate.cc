@@ -55,6 +55,37 @@ void Annotate(ScheduleState self, const StmtSRef& sref, const String& ann_key,
   }
 }
 
+void Unannotate(ScheduleState self, const StmtSRef& sref, const String& ann_key) {
+  // Extract annotation
+  const Map<String, ObjectRef>* annotations = nullptr;
+  if (const auto* loop = sref->StmtAs<tir::ForNode>()) {
+    annotations = &loop->annotations;
+  } else if (const auto* block = sref->StmtAs<tir::BlockNode>()) {
+    annotations = &block->annotations;
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+  }
+  // Remove the annotation
+  ICHECK(annotations->find(ann_key) != annotations->end())
+      << "IndexError: Cannot find annotation key: " << ann_key;
+  Map<String, ObjectRef> new_ann(*annotations);
+  new_ann.erase(ann_key);
+  // Create the new stmt
+  if (const auto* loop = sref->StmtAs<tir::ForNode>()) {
+    ObjectPtr<tir::ForNode> n = make_object<tir::ForNode>(*loop);
+    n->annotations = std::move(new_ann);
+    self->Replace(sref, tir::For(n), {});
+  } else if (const auto* block = sref->StmtAs<tir::BlockNode>()) {
+    ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
+    n->annotations = std::move(new_ann);
+    tir::Block p(n);
+    self->Replace(sref, p, {{GetRef<tir::Block>(block), p}});
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+    throw;
+  }
+}
+
 struct AnnotateTraits : public UnpackedInstTraits<AnnotateTraits> {
   static constexpr const char* kName = "Annotate";
   static constexpr bool kIsPure = false;
@@ -79,7 +110,7 @@ struct AnnotateTraits : public UnpackedInstTraits<AnnotateTraits> {
   static String UnpackedAsPython(Array<String> outputs, ObjectRef block_or_loop_rv, ObjectRef ann_val,
                                  String ann_key) {
     PythonAPICall py("annotate");
-    py.Input("loop", block_or_loop_rv);
+    py.Input("block_or_loop", block_or_loop_rv);
     py.Input("ann_key", ann_key);
     if (const auto* int_imm = ann_val.as<IntImmNode>()) {
       py.Input("ann_val", std::to_string(int_imm->value));
@@ -99,7 +130,38 @@ struct AnnotateTraits : public UnpackedInstTraits<AnnotateTraits> {
   friend struct UnpackedInstTraits;
 };
 
+struct UnannotateTraits : public UnpackedInstTraits<UnannotateTraits> {
+  static constexpr const char* kName = "Unannotate";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 1;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, ObjectRef block_or_loop_rv, String ann_key) {
+    if (const auto* block = block_or_loop_rv.as<BlockRVNode>()) {
+      return sch->Unannotate(GetRef<BlockRV>(block), ann_key);
+    }
+    if (const auto* loop = block_or_loop_rv.as<LoopRVNode>()) {
+      return sch->Unannotate(GetRef<LoopRV>(loop), ann_key);
+    }
+    LOG(FATAL) << "TypeError: Expected Block or Loop, but gets: " << block_or_loop_rv->GetTypeKey();
+    throw;
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, ObjectRef block_or_loop_rv, String ann_key) {
+    PythonAPICall py("unannotate");
+    py.Input("block_or_loop", block_or_loop_rv);
+    py.Input("ann_key", ann_key);
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
 TVM_REGISTER_INST_KIND_TRAITS(AnnotateTraits);
+TVM_REGISTER_INST_KIND_TRAITS(UnannotateTraits);
 
 }  // namespace tir
 }  // namespace tvm
