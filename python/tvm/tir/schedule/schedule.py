@@ -1626,6 +1626,49 @@ class Schedule(Object):
 
     ########## Schedule: Annotation ##########
 
+    def annotate(
+        self,
+        block_or_loop: Union[BlockRV, LoopRV],
+        ann_key: str,
+        ann_val: str,
+    ) -> None:
+        """Annotate a block/loop with a key value pair
+
+        Parameters
+        ----------
+        block_or_loop: Union[BlockRV, LoopRV]
+            The block/loop to be annotated
+        ann_key : str
+            The annotation key
+        ann_val : str
+            The annotation value
+        """
+        if isinstance(ann_val, str):
+            ann_val = String(ann_val)
+        elif isinstance(ann_val, int):
+            ann_val = IntImm("int64", ann_val)
+        _ffi_api.ScheduleMarkLoop(  # pylint: disable=no-member
+            self, block_or_loop, ann_key, ann_val
+        )
+    
+    # def unannotate(
+    #     self,
+    #     block_or_loop: Union[BlockRV, LoopRV],
+    #     ann_key: str
+    # ) -> None:
+    #     """Unannotate a block/loop's annotation with key ann_key
+
+    #     Parameters
+    #     ----------
+    #     block_or_loop: Union[BlockRV, LoopRV]
+    #         The block/loop to be unannotated
+    #     ann_key : str
+    #         The annotation key        
+    #     """
+    #     _ffi_api.ScheduleUnmarkLoop(  # pylint: disable=no-member
+    #         self, block_or_loop, ann_key
+    #     )
+
     ########## Schedule: Misc ##########
 
     def enter_postproc(self) -> None:

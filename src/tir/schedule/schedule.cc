@@ -182,6 +182,18 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStorageAlign")
     .set_body_method<Schedule>(&ScheduleNode::StorageAlign);
 /******** (FFI) Blockize & Tensorize ********/
 /******** (FFI) Annotation ********/
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleAnnotate")
+    .set_body_typed([](Schedule self, ObjectRef rv, const String& ann_key, const ObjectRef& ann_val) {
+      if (const auto* block_rv = rv.as<BlockRVNode>()) {
+        return self->Annotate(GetRef<BlockRV>(block_rv), ann_key, ann_val);
+      }
+      if (const auto* loop_rv = rv.as<LoopRVNode>()) {
+        return self->Annotate(GetRef<LoopRV>(loop_rv), ann_key, ann_val);
+      }
+      LOG(FATAL) << "TypeError: Cannot evaluate the random variable of type: " << rv->GetTypeKey()
+                 << ". Its value is: " << rv;
+      throw;
+    });
 /******** (FFI) Misc ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostproc")
     .set_body_method<Schedule>(&ScheduleNode::EnterPostproc);

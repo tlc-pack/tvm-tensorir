@@ -337,6 +337,15 @@ TVM_DLL void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int bu
 
 /******** Schedule: Blockize & Tensorize ********/
 /******** Schedule: Annotation ********/
+/*!
+ * \brief 
+ * \param parameter-name description
+ * \param parameter-name description
+ * \param parameter-name description
+ * \param parameter-name description
+ */
+TVM_DLL void Annotate(ScheduleState self, const StmtSRef& sref, const String& ann_key,
+                      const ObjectRef& ann_val);
 /******** Schedule: Misc ********/
 
 }  // namespace tir
