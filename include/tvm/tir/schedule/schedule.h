@@ -469,12 +469,6 @@ class ScheduleNode : public runtime::Object {
    */
   virtual void Annotate(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) = 0;
   /*!
-   * \brief Unannotate a loop's annotation with key ann_key
-   * \param loop The loop to be unannotated
-   * \param ann_key The annotation key
-   */
-  virtual void Unannotate(const LoopRV& loop_rv, const String& ann_key) = 0;
-  /*!
    * \brief Annotate a block with a key value pair
    * \param loop The block to be annotated
    * \param ann_key The annotation key
@@ -482,6 +476,12 @@ class ScheduleNode : public runtime::Object {
    */
   virtual void Annotate(const BlockRV& block_rv, const String& ann_key,
                         const ObjectRef& ann_val) = 0;
+  /*!
+   * \brief Unannotate a loop's annotation with key ann_key
+   * \param loop The loop to be unannotated
+   * \param ann_key The annotation key
+   */
+  virtual void Unannotate(const LoopRV& loop_rv, const String& ann_key) = 0;
   /*!
    * \brief Unannotate a block's annotation with key ann_key
    * \param loop The block to be unannotated

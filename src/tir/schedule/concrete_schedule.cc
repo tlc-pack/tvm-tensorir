@@ -593,14 +593,14 @@ void ConcreteScheduleNode::Annotate(const LoopRV& loop_rv, const String& ann_key
   TVM_TIR_SCHEDULE_BEGIN();
   if (const auto* str = ann_val.as<StringObj>()) {
     tir::Annotate(state_, this->GetSRef(loop_rv), ann_key, GetRef<String>(str));
-  } else if (const auto* int_imm = ann_val.as<IntImmNode>()) {
-    tir::Annotate(state_, this->GetSRef(loop_rv), ann_key, GetRef<IntImm>(int_imm));
   } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
-    int64_t value = Downcast<IntImm>(this->Get(GetRef<PrimExpr>(expr)))->value;
-    tir::Annotate(state_, this->GetSRef(loop_rv), ann_key, String(std::to_string(value)));
+    ICHECK(ann_val.as<tir::StringImmNode>() == nullptr)
+        << "TypeError: runtime::String is expected, but gets tir::StringImm";
+    tir::Annotate(state_, this->GetSRef(loop_rv), ann_key, this->Get(GetRef<PrimExpr>(expr)));
   } else {
-    LOG(FATAL) << "TypeError: Only strings, integers and ExprRVs are supported for now, but gets: "
-               << ann_val->GetTypeKey();
+    LOG(FATAL)
+        << "TypeError: Only strings, integers, floats and ExprRVs are supported for now, but gets: "
+        << ann_val->GetTypeKey();
     throw;
   }
   this->state_->DebugVerify();
@@ -619,14 +619,14 @@ void ConcreteScheduleNode::Annotate(const BlockRV& block_rv, const String& ann_k
   TVM_TIR_SCHEDULE_BEGIN();
   if (const auto* str = ann_val.as<StringObj>()) {
     tir::Annotate(state_, this->GetSRef(block_rv), ann_key, GetRef<String>(str));
-  } else if (const auto* int_imm = ann_val.as<IntImmNode>()) {
-    tir::Annotate(state_, this->GetSRef(block_rv), ann_key, GetRef<IntImm>(int_imm));
   } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
-    int64_t value = Downcast<IntImm>(this->Get(GetRef<PrimExpr>(expr)))->value;
-    tir::Annotate(state_, this->GetSRef(block_rv), ann_key, String(std::to_string(value)));
+    ICHECK(ann_val.as<tir::StringImmNode>() == nullptr)
+        << "TypeError: runtime::String is expected, but gets tir::StringImm";
+    tir::Annotate(state_, this->GetSRef(block_rv), ann_key, this->Get(GetRef<PrimExpr>(expr)));
   } else {
-    LOG(FATAL) << "TypeError: Only strings, integers and ExprRVs are supported for now, but gets: "
-               << ann_val->GetTypeKey();
+    LOG(FATAL)
+        << "TypeError: Only strings, integers, floats and ExprRVs are supported for now, but gets: "
+        << ann_val->GetTypeKey();
     throw;
   }
   this->state_->DebugVerify();
