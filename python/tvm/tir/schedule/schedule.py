@@ -16,12 +16,14 @@
 # under the License.
 """The TensorIR schedule class"""
 from typing import Dict, List, Optional, Union
+from typing_extensions import Annotated
 
 from tvm._ffi import register_object as _register_object
 from tvm.error import TVMError, register_error
 from tvm.ir import IRModule, PrimExpr
-from tvm.runtime import Object
+from tvm.runtime import Object, String
 from tvm.tir import Block, For, IntImm, PrimFunc
+from tvm.tir.expr import FloatImm
 
 from . import _ffi_api
 from .state import ScheduleState, StmtSRef, _parse_debug_mask, _parse_mod
@@ -1655,6 +1657,45 @@ class Schedule(Object):
     ########## Schedule: Blockize & Tensorize ##########
 
     ########## Schedule: Annotation ##########
+
+    def annotate(
+        self,
+        block_or_loop: Union[BlockRV, LoopRV],
+        ann_key: str,
+        ann_val: Union[str, int, float, ExprRV],
+    ) -> None:
+        """Annotate a block/loop with a key value pair
+
+        Parameters
+        ----------
+        block_or_loop: Union[BlockRV, LoopRV]
+            The block/loop to be annotated
+        ann_key : str
+            The annotation key
+        ann_val : Union[str, int, float, ExprRV]
+            The annotation value
+        """
+        if isinstance(ann_val, str):
+            ann_val = String(ann_val)
+        elif isinstance(ann_val, int):
+            ann_val = IntImm("int32", ann_val)
+        elif isinstance(ann_val, float):
+            ann_val = FloatImm("float32", ann_val)
+        _ffi_api.ScheduleAnnotate(  # pylint: disable=no-member
+            self, block_or_loop, ann_key, ann_val
+        )
+
+    def unannotate(self, block_or_loop: Union[BlockRV, LoopRV], ann_key: str) -> None:
+        """Unannotate a block/loop's annotation with key ann_key
+
+        Parameters
+        ----------
+        block_or_loop: Union[BlockRV, LoopRV]
+            The block/loop to be unannotated
+        ann_key : str
+            The annotation key
+        """
+        _ffi_api.ScheduleUnannotate(self, block_or_loop, ann_key)  # pylint: disable=no-member
 
     ########## Schedule: Misc ##########
 
