@@ -421,5 +421,7 @@ extern "C" __global__ void __launch_bounds__(256) main_kernel0(half* __restrict_
       }
     }
   }
+  
+  32*128
 }
 

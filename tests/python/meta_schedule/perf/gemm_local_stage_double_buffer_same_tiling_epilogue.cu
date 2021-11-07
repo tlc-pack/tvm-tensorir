@@ -406,11 +406,11 @@ extern "C" __global__ void __launch_bounds__(256) main_kernel0(half* __restrict_
       
   __syncthreads(); // sync because C_shared reuse A_shared/B_shared
   for (int ax0_04 = 0; ax0_04 < 2; ++ax0_04) {
-    for (int ax1_04 = 0; ax1_04 < 4; ++ax1_04) {
+    for (int ax1_04 = 0; ax1_04 < 4; ++ax1_04) {///note:why here 2,4 but 4,2 for mma_sync?
       // (void)nvcuda::wmma::store_matrix_sync(((float *)C + (((((((((int)blockIdx.x) * 131072) + ((((int)threadIdx.y) & 3) * 32768)) + (ax0_04 * 16384)) + (((int)blockIdx.y) * 128)) + ((((int)threadIdx.y) >> 2) * 64)) + (ax1_04 * 16)))), C_wmma_accumulator[((ax0_04 * 4) + ax1_04)], 1024, nvcuda::wmma::mem_row_major);
       nvcuda::wmma::store_matrix_sync(C_shared + ax1_04 * mul * shared_mem_stride + threadIdx.y * 16, 
                                       C_wmma_accumulator[((ax0_04 * 4) +ax1_04)], shared_mem_stride, nvcuda::wmma::mem_row_major);
-    }
+    }///what's the layout of shared memory
     for (int ax1_04 = 0; ax1_04 < 4; ++ax1_04) {
       for (int v = 0; v < 2; v++) {
         *(float4*)((float *)C + (((((((((int)blockIdx.x) * 131072) + ((((int)threadIdx.y) & 3) * 32768)) + (ax0_04 * 16384)) + (((int)blockIdx.y) * 128)) + ((((int)threadIdx.y) >> 2) * 64)) + (ax1_04 * 16)) + (v * 8 + threadIdx.x / 4) * 1024 + threadIdx.x % 4 * 4)) = 
@@ -421,3 +421,11 @@ extern "C" __global__ void __launch_bounds__(256) main_kernel0(half* __restrict_
   }
 }
 
+for 32:
+    for 64:
+
+for 2:
+    for 4:
+        for 16:
+            for 16:
+    for 8:
