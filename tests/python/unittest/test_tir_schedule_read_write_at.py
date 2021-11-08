@@ -169,9 +169,31 @@ def cuda_matmul_write_at_c(a: T.handle, b: T.handle, c: T.handle) -> None:
                                     C[by * 64 + ax0, bx * 64 + ax1] = C_shared[by * 64 + ax0, bx * 64 + ax1]
 
 
+@T.prim_func
+def simple(a: T.handle, b: T.handle) -> None:
+    A = T.match_buffer(a, (32,))
+    B = T.match_buffer(b, (32,))
+    for tx in T.thread_binding(0, 4, thread="threadIdx.x"):
+        for i in T.serial(0, 8):
+            with T.block(
+                    [
+                        32,
+                    ],
+                    "B",
+            ) as vi:
+                T.bind(vi, tx * 8 + i)
+                B[vi] = A[vi] + 1.0
+
+
 # pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name,unexpected-keyword-arg,too-many-nested-blocks,not-callable
 # fmt: on
 
+def test_simple():
+    sch = tir.Schedule(simple, debug_mask="all")
+    block = sch.get_block("B")
+    _, i = sch.get_loops(block)
+    sch.write_at(i, block, 0, "shared")
+    print(sch.mod['main'].script())
 
 def test_read_at_global_to_shared_a():
     sch = tir.Schedule(cuda_matmul, debug_mask="all")

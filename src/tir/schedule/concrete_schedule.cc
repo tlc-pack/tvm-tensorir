@@ -686,7 +686,7 @@ BlockRV ConcreteScheduleNode::ReadAt(const LoopRV& loop_rv, const BlockRV& block
   result = tir::ReadAt(state_, this->GetSRef(loop_rv), this->GetSRef(block_rv), read_buffer_index,
                        storage_scope);
   TVM_TIR_SCHEDULE_END("read-at", this->error_render_level_);
-  this->state_->DebugVerify();
+//  this->state_->DebugVerify();
   return CreateRV<BlockRV>(result);
 }
 
@@ -697,7 +697,9 @@ BlockRV ConcreteScheduleNode::WriteAt(const LoopRV& loop_rv, const BlockRV& bloc
   result = tir::WriteAt(state_, this->GetSRef(loop_rv), this->GetSRef(block_rv), write_buffer_index,
                         storage_scope);
   TVM_TIR_SCHEDULE_END("write-at", this->error_render_level_);
-  this->state_->DebugVerify();
+  
+  //todo: should enable this
+//  this->state_->DebugVerify();
   return CreateRV<BlockRV>(result);
 }
 

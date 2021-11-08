@@ -53,7 +53,6 @@ class AccessPatternExtractor: public ExprVisitor{
   void VisitExpr_(const VarNode* op) final{
     arith::Analyzer analyzer;
     PrimExpr extent = var_range_[GetRef<Var>(op)]->extent;
-    LOG(INFO)<<"in var mod:"<<mod<<" div:"<<div<<" "<<op->name_hint;
     PrimExpr access_iter_range = min(mod, (max(1,floordiv(extent, div))));
     if(!analyzer.CanProveEqual(1, access_iter_range)){
       access_shape.push_back(access_iter_range);
