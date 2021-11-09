@@ -15,20 +15,15 @@
 # specific language governing permissions and limitations
 # under the License.
 # pylint: disable=missing-module-docstring,missing-function-docstring,missing-class-docstring
-
-from typing import List
-
 import math
 import re
+from typing import List
 
 import tvm
-from tvm.script import tir as T
-
-from tvm.meta_schedule.schedule_rule import PyScheduleRule
 from tvm.meta_schedule import TuneContext
-from tvm.meta_schedule.utils import _get_hex_address
-
-from tvm.tir.schedule import Schedule, BlockRV
+from tvm.meta_schedule.schedule_rule import PyScheduleRule
+from tvm.script import tir as T
+from tvm.tir.schedule import BlockRV, Schedule
 
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument,
@@ -61,7 +56,7 @@ def _check_correct(schedule: Schedule):
 
 def test_meta_schedule_schedule_rule():
     class FancyScheduleRule(PyScheduleRule):
-        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+        def initialize_with_tune_context(self, tune_context: TuneContext) -> None:
             pass
 
         def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
@@ -80,20 +75,17 @@ def test_meta_schedule_schedule_rule():
     try:
         tvm.ir.assert_structural_equal(mod, res[0].mod)
         raise Exception("The schedule rule did not change the schedule.")
-    except (ValueError):
+    except ValueError:
         _check_correct(res[0])
 
 
 def test_meta_schedule_schedule_rule_as_string():
     class YetStillSomeFancyScheduleRule(PyScheduleRule):
-        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+        def initialize_with_tune_context(self, tune_context: TuneContext) -> None:
             pass
 
-        def apply(self, schedule: Schedule, block: BlockRV) -> List[Schedule]:
+        def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
             pass
-
-        def __str__(self) -> str:
-            return f"YetStillSomeFancyScheduleRule({_get_hex_address(self.handle)})"
 
     sch_rule = YetStillSomeFancyScheduleRule()
     pattern = re.compile(r"YetStillSomeFancyScheduleRule\(0x[a-f|0-9]*\)")

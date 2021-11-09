@@ -44,7 +44,7 @@
 #include "../printer/text_printer.h"
 #include "../support/array.h"
 #include "../support/base64.h"
-#include "../tir/schedule/primitive.h"
+#include "../tir/schedule/utils.h"
 
 namespace tvm {
 namespace meta_schedule {

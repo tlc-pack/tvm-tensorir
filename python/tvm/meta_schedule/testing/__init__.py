@@ -15,6 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 """Testing utilities in meta schedule"""
+from . import te_workload
+from . import schedule_rule
 from .local_rpc import LocalRPC
 from .relay_workload import MODEL_TYPE, MODEL_TYPES, get_network, get_torch_model
 from .te_workload import create_te_workload
