@@ -52,12 +52,12 @@ class Postproc(Object):
             self, tune_context
         )
 
-    def apply(self, sch: Schedule) -> bool:
+    def apply(self, schedule: Schedule) -> bool:
         """Apply a post processing to the given schedule.
 
         Parameters
         ----------
-        sch : Schedule
+        schedule : Schedule
             The schedule to be post processed.
 
         Returns
@@ -65,7 +65,7 @@ class Postproc(Object):
         result : bool
             Whether the post processing was successfully applied.
         """
-        return _ffi_api.PostprocApply(self, sch)
+        return _ffi_api.PostprocApply(self, schedule)
 
 
 @register_object("meta_schedule.PyPostproc")
@@ -80,8 +80,8 @@ class PyPostproc(Postproc):
             self.initialize_with_tune_context(tune_context)
 
         @check_override(self.__class__, Postproc)
-        def f_apply(sch: Schedule) -> bool:
-            return self.apply(sch)
+        def f_apply(schedule: Schedule) -> bool:
+            return self.apply(schedule)
 
         def f_as_string() -> str:
             return str(self)
@@ -94,4 +94,4 @@ class PyPostproc(Postproc):
         )
 
     def __str__(self) -> str:
-        return f"PyPostproc({_get_hex_address(self.handle)})"
+        return f"{self.__class__.__name__}({_get_hex_address(self.handle)})"
