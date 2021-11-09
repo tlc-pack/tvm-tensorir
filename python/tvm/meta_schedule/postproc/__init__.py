@@ -16,7 +16,8 @@
 # under the License.
 """
 The tvm.meta_schedule.postproc package.
-Meta Schedule post processings that extracts features from
-measure candidates for use in cost model.
+Meta Schedule post processings that deal with the problem of
+undertermined schedule validity after applying some schedule
+primitves at runtime.
 """
 from .postproc import Postproc, PyPostproc
