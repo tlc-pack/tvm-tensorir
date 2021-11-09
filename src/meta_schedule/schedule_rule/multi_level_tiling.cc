@@ -241,11 +241,12 @@ inline std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const
     results.emplace_back(std::move(new_state));
   }
   // Case 3. Add one write cache
-  state.write_cache = state.sch->CacheWrite(/*block_rv=*/state.block_rv, /*read_buffer_index=*/0,
-                                            /*storage_scope=*/config.scope);
+  BlockRV write_cache = state.sch->CacheWrite(/*block_rv=*/state.block_rv, /*read_buffer_index=*/0,
+                                              /*storage_scope=*/config.scope);
+  state.write_cache = write_cache;
   {
-    tir::Annotate(state.sch->state(), state.sch->GetSRef(state.write_cache.value()),  //
-                  tir::attr::meta_schedule_cache_type,                                //
+    tir::Annotate(state.sch->state(), state.sch->GetSRef(write_cache),  //
+                  tir::attr::meta_schedule_cache_type,                  //
                   Integer(tir::attr::meta_schedule_cache_type_write));
   }
 

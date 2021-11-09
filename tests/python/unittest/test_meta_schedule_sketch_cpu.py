@@ -18,52 +18,14 @@
 
 from typing import List
 
-from tvm import meta_schedule as ms
 from tvm.meta_schedule.testing import te_workload
+from tvm.meta_schedule.testing.space_generation import check_trace, create_context
 from tvm.target import Target
 from tvm.te import create_prim_func
-from tvm.tir.schedule import Trace
-from tvm.tir.schedule.schedule import Schedule
 
 
-def _create_context(mod):
-    from tvm.meta_schedule.testing import (  # pylint: disable=import-outside-toplevel
-        schedule_rule as sch_rules,
-    )
-
-    target = Target("llvm")
-    ctx = ms.TuneContext(
-        mod=mod,
-        target=target,
-        space_generator=ms.space_generator.PostOrderApply(),
-        sch_rules=sch_rules.get(target),
-        task_name="test",
-    )
-    ctx.space_generator.initialize_with_tune_context(ctx)
-    for rule in ctx.sch_rules:
-        rule.initialize_with_tune_context(ctx)
-    return ctx
-
-
-def _check_trace(spaces: List[Schedule], expected: List[List[str]]):
-    expected_traces = {"\n".join(t) for t in expected}
-    actual_traces = set()
-    for space in spaces:
-        trace = Trace(space.trace.insts, {})
-        trace = trace.simplified(remove_postproc=True)
-        str_trace = "\n".join(str(trace).strip().splitlines())
-        actual_traces.add(str_trace)
-        assert str_trace in expected_traces, "\n" + str_trace
-    assert len(expected_traces) == len(actual_traces)
-
-
-def _debug_print(spaces):
-    for i, space in enumerate(spaces):
-        print(f"##### Space {i}")
-        print(space.mod.script())
-        trace = Trace(space.trace.insts, {})
-        trace = trace.simplified(remove_postproc=True)
-        print(str(trace).strip().splitlines())
+def _target() -> Target:
+    return Target("llvm")
 
 
 def test_meta_schedule_cpu_sketch_matmul():
@@ -106,18 +68,19 @@ def test_meta_schedule_cpu_sketch_matmul():
             "sch.reorder(l8, l16, l9, l17, l22, l10, l18, l23, l11, l19)",
         ],
     ]
-    ctx = _create_context(
+    ctx = create_context(
         create_prim_func(
             te_workload.matmul(
                 n=512,
                 m=512,
                 k=512,
             )
-        )
+        ),
+        target=_target(),
     )
     spaces = ctx.space_generator.generate_design_space(mod=ctx.mod)
     assert len(spaces) == 3
-    _check_trace(spaces, expected)
+    check_trace(spaces, expected)
 
 
 def test_meta_schedule_cpu_sketch_matmul_relu():
@@ -162,18 +125,19 @@ def test_meta_schedule_cpu_sketch_matmul_relu():
         ],
     ]
     # pylint: enable=line-too-long
-    ctx = _create_context(
+    ctx = create_context(
         create_prim_func(
             te_workload.matmul_relu(
                 n=512,
                 m=512,
                 k=512,
             )
-        )
+        ),
+        target=_target(),
     )
     spaces = ctx.space_generator.generate_design_space(mod=ctx.mod)
     assert len(spaces) == 3
-    _check_trace(spaces, expected)
+    check_trace(spaces, expected)
 
 
 def test_meta_schedule_cpu_sketch_conv2d_nchw():
@@ -242,7 +206,7 @@ def test_meta_schedule_cpu_sketch_conv2d_nchw():
         ],
     ]
     # pylint: enable=line-too-long
-    ctx = _create_context(
+    ctx = create_context(
         create_prim_func(
             te_workload.conv2d_nchw(
                 n=1,
@@ -255,11 +219,12 @@ def test_meta_schedule_cpu_sketch_conv2d_nchw():
                 stride=1,
                 padding=1,
             )
-        )
+        ),
+        target=_target(),
     )
     spaces = ctx.space_generator.generate_design_space(mod=ctx.mod)
     assert len(spaces) == 3
-    _check_trace(spaces, expected)
+    check_trace(spaces, expected)
 
 
 def test_meta_schedule_cpu_sketch_conv2d_nchw_bias_bn_relu():  # pylint: disable=invalid-name
@@ -346,7 +311,7 @@ def test_meta_schedule_cpu_sketch_conv2d_nchw_bias_bn_relu():  # pylint: disable
         ],
     ]
     # pylint: enable=line-too-long
-    ctx = _create_context(
+    ctx = create_context(
         create_prim_func(
             te_workload.conv2d_nchw_bias_bn_relu(
                 n=1,
@@ -359,16 +324,17 @@ def test_meta_schedule_cpu_sketch_conv2d_nchw_bias_bn_relu():  # pylint: disable
                 stride=1,
                 padding=1,
             )
-        )
+        ),
+        target=_target(),
     )
     spaces = ctx.space_generator.generate_design_space(mod=ctx.mod)
     assert len(spaces) == 3
-    _check_trace(spaces, expected)
+    check_trace(spaces, expected)
 
 
 def test_meta_schedule_sketch_cpu_max_pool2d_nchw():
     expected: List[List[str]] = [[]]
-    ctx = _create_context(
+    ctx = create_context(
         create_prim_func(
             te_workload.max_pool2d_nchw(
                 n=1,
@@ -377,11 +343,12 @@ def test_meta_schedule_sketch_cpu_max_pool2d_nchw():
                 ci=512,
                 padding=1,
             )
-        )
+        ),
+        target=_target(),
     )
     spaces = ctx.space_generator.generate_design_space(mod=ctx.mod)
     assert len(spaces) == 1
-    _check_trace(spaces, expected)
+    check_trace(spaces, expected)
 
 
 if __name__ == "__main__":
