@@ -48,7 +48,7 @@ class PostprocNode : public runtime::Object {
 
   /*!
    * \brief Apply a post processing to the given schedule.
-   * \param schedule The schedule to be post processed.
+   * \param sch The schedule to be post processed.
    * \return Whether the post processing was successfully applied.
    */
   virtual bool Apply(const tir::Schedule& sch) = 0;
@@ -67,7 +67,7 @@ class PyPostprocNode : public PostprocNode {
   using FInitializeWithTuneContext = runtime::TypedPackedFunc<void(const TuneContext&)>;
   /*!
    * \brief Apply a post processing to the given schedule.
-   * \param schedule The schedule to be post processed.
+   * \param sch The schedule to be post processed.
    * \return Whether the post processing was successfully applied.
    */
   using FApply = runtime::TypedPackedFunc<bool(const tir::Schedule&)>;
@@ -96,9 +96,9 @@ class PyPostprocNode : public PostprocNode {
     this->f_initialize_with_tune_context(context);
   }
 
-  bool Apply(const tir::Schedule& schedule) final {
+  bool Apply(const tir::Schedule& sch) final {
     ICHECK(f_apply != nullptr) << "PyPostproc's Apply method not implemented!";
-    return this->f_apply(schedule);
+    return this->f_apply(sch);
   }
 
   static constexpr const char* _type_key = "meta_schedule.PyPostproc";

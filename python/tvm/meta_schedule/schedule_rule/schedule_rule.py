@@ -52,7 +52,7 @@ class ScheduleRule(Object):
 
         Parameters
         ----------
-        schedule : Schedule
+        sch : Schedule
             The schedule to be modified.
         block : BlockRV
             The specific block to apply the schedule rule.
@@ -79,8 +79,8 @@ class PyScheduleRule(ScheduleRule):
             self.initialize_with_tune_context(tune_context)
 
         @check_override(self.__class__, ScheduleRule)
-        def f_apply(schedule: Schedule, block: BlockRV) -> List[Schedule]:
-            return self.apply(schedule, block)
+        def f_apply(sch: Schedule, block: BlockRV) -> List[Schedule]:
+            return self.apply(sch, block)
 
         def f_as_string() -> str:
             return self.__str__()
