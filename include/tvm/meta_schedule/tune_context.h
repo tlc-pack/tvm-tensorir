@@ -43,11 +43,11 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The search strategy. */
   Optional<SearchStrategy> search_strategy;
   /*! \brief The schedule rules. */
-  Array<ScheduleRule> sch_rules;
+  Optional<Array<ScheduleRule>> sch_rules;
   /*! \brief The post processings. */
-  Array<Postproc> postprocs;
+  Optional<Array<Postproc>> postprocs;
   /*! \brief The mutators. */
-  Array<Mutator> mutators;
+  Optional<Array<Mutator>> mutators;
   /*! \brief The name of the tuning task. */
   Optional<String> task_name;
   /*! \brief The random state. */
@@ -105,9 +105,9 @@ class TuneContext : public runtime::ObjectRef {
                                Optional<Target> target,                                   //
                                Optional<SpaceGenerator> space_generator,                  //
                                Optional<SearchStrategy> search_strategy,                  //
-                               Array<ScheduleRule> sch_rules,                             //
-                               Array<Postproc> postprocs,                                 //
-                               Array<Mutator> mutators,                                   //
+                               Optional<Array<ScheduleRule>> sch_rules,                   //
+                               Optional<Array<Postproc>> postprocs,                       //
+                               Optional<Array<Mutator>> mutators,                         //
                                Optional<String> task_name,                                //
                                support::LinearCongruentialEngine::TRandState rand_state,  //
                                int num_threads);

@@ -85,4 +85,4 @@ class PyMutator(Mutator):
         )
 
     def __str__(self) -> str:
-        return f"PyMutator({_get_hex_address(self.handle)})"
+        return f"{self.__class__.__name__}({_get_hex_address(self.handle)})"

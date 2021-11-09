@@ -94,4 +94,4 @@ class PyPostproc(Postproc):
         )
 
     def __str__(self) -> str:
-        return f"PyPostproc({_get_hex_address(self.handle)})"
+        return f"{self.__class__.__name__}({_get_hex_address(self.handle)})"

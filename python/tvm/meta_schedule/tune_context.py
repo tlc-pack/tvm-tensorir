@@ -54,11 +54,11 @@ class TuneContext(Object):
         The design space generator.
     search_strategy : Optional[SearchStrategy] = None
         The search strategy.
-    sch_rules : List[ScheduleRule] = []
+    sch_rules: Optional[List[ScheduleRule]] = None,
         The schedule rules.
-    postproc : List[Postproc] = []
+    postproc: Optional[List[Postproc"]] = None,
         The post processings.
-    mutator : List[Mutator] = []
+    mutator: Optional[List[Mutator]] = None,
         The mutators.
     task_name : Optional[str] = None
         The name of the tuning task.
@@ -80,9 +80,9 @@ class TuneContext(Object):
     target: Optional[Target]
     space_generator: Optional["SpaceGenerator"]
     search_strategy: Optional["SearchStrategy"]
-    sch_rules: List["ScheduleRule"]
-    postproc: List["Postproc"]
-    mutator: List["Mutator"]
+    sch_rules: Optional[List["ScheduleRule"]]
+    postproc: Optional[List["Postproc"]]
+    mutator: Optional[List["Mutator"]]
     task_name: Optional[str]
     rand_state: int
     num_threads: int
@@ -93,9 +93,9 @@ class TuneContext(Object):
         target: Optional[Target] = None,
         space_generator: Optional["SpaceGenerator"] = None,
         search_strategy: Optional["SearchStrategy"] = None,
-        sch_rules: List["ScheduleRule"] = [],
-        postproc: List["Postproc"] = [],
-        mutator: List["Mutator"] = [],
+        sch_rules: Optional[List["ScheduleRule"]] = None,
+        postproc: Optional[List["Postproc"]] = None,
+        mutator: Optional[List["Mutator"]] = None,
         task_name: Optional[str] = None,
         rand_state: int = -1,
         num_threads: Optional[int] = None,

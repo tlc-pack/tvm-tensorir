@@ -28,9 +28,9 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
                          Optional<Target> target,                                   //
                          Optional<SpaceGenerator> space_generator,                  //
                          Optional<SearchStrategy> search_strategy,                  //
-                         Array<ScheduleRule> sch_rules,                             //
-                         Array<Postproc> postprocs,                                 //
-                         Array<Mutator> mutators,                                   //
+                         Optional<Array<ScheduleRule>> sch_rules,                   //
+                         Optional<Array<Postproc>> postprocs,                       //
+                         Optional<Array<Mutator>> mutators,                         //
                          Optional<String> task_name,                                //
                          support::LinearCongruentialEngine::TRandState rand_state,  //
                          int num_threads) {

@@ -102,15 +102,18 @@ void TaskSchedulerNode::InitializeTask(int task_id) {
   space->InitializeWithTuneContext(task);
   strategy->InitializeWithTuneContext(task);
   // Initialize the rules.
-  for (const ScheduleRule& sch_rule : task->sch_rules) {
-    sch_rule->InitializeWithTuneContext(task);
-  }
-  for (const Mutator& mutator : task->mutators) {
-    mutator->InitializeWithTuneContext(task);
-  }
-  for (const Postproc& postproc : task->postprocs) {
-    postproc->InitializeWithTuneContext(task);
-  }
+  if (task->sch_rules.defined())
+    for (const ScheduleRule& sch_rule : task->sch_rules.value()) {
+      sch_rule->InitializeWithTuneContext(task);
+    }
+  if (task->mutators.defined())
+    for (const Mutator& mutator : task->mutators.value()) {
+      mutator->InitializeWithTuneContext(task);
+    }
+  if (task->postprocs.defined())
+    for (const Postproc& postproc : task->postprocs.value()) {
+      postproc->InitializeWithTuneContext(task);
+    }
 }
 
 void TaskSchedulerNode::Tune() {
@@ -211,7 +214,7 @@ TaskScheduler TaskScheduler::PyTaskScheduler(
     Builder builder,                                            //
     Runner runner,                                              //
     Database database,                                          //
-    Array<MeasureCallback> measure_callbacks,                   //
+    Optional<Array<MeasureCallback>> measure_callbacks,         //
     PyTaskSchedulerNode::FTune f_tune,                          //
     PyTaskSchedulerNode::FInitializeTask f_initialize_task,     //
     PyTaskSchedulerNode::FSetTaskStopped f_set_task_stopped,    //

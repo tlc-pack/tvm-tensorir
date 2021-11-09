@@ -51,7 +51,7 @@ class PostprocNode : public runtime::Object {
    * \param sch The schedule to be post processed.
    * \return Whether the post processing was successfully applied.
    */
-  virtual bool Apply(const tir::Schedule& schedule) = 0;
+  virtual bool Apply(const tir::Schedule& sch) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.Postproc";
   TVM_DECLARE_BASE_OBJECT_INFO(PostprocNode, Object);
