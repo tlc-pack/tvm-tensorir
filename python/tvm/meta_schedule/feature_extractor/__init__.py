@@ -16,6 +16,7 @@
 # under the License.
 """
 The tvm.meta_schedule.feature_extractor package.
-Meta Schedule feature extractors that
+Meta Schedule feature extractors that extracts features from
+measure candidates for use in cost model.
 """
 from .feature_extractor import FeatureExtractor, PyFeatureExtractor
