@@ -75,7 +75,7 @@ class TaskSchedulerNode : public runtime::Object {
   /*! \brief The database of the scheduler. */
   Database database{nullptr};
   /*! \brief The list of measure callbacks of the scheduler. */
-  Array<MeasureCallback> measure_callbacks;
+  Optional<Array<MeasureCallback>> measure_callbacks;
 
   /*! \brief The default desctructor. */
   virtual ~TaskSchedulerNode() = default;
@@ -250,13 +250,13 @@ class TaskScheduler : public runtime::ObjectRef {
                                           Builder builder,           //
                                           Runner runner,             //
                                           Database database,         //
-                                          Array<MeasureCallback> measure_callbacks);
+                                          Optional<Array<MeasureCallback>> measure_callbacks);
   TVM_DLL static TaskScheduler PyTaskScheduler(
       Array<TuneContext> tasks,                                   //
       Builder builder,                                            //
       Runner runner,                                              //
       Database database,                                          //
-      Array<MeasureCallback> measure_callbacks,                   //
+      Optional<Array<MeasureCallback>> measure_callbacks,         //
       PyTaskSchedulerNode::FTune f_tune,                          //
       PyTaskSchedulerNode::FInitializeTask f_initialize_task,     //
       PyTaskSchedulerNode::FSetTaskStopped f_set_task_stopped,    //

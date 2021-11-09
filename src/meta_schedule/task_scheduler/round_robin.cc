@@ -56,7 +56,7 @@ TaskScheduler TaskScheduler::RoundRobin(Array<TuneContext> tasks,  //
                                         Builder builder,           //
                                         Runner runner,             //
                                         Database database,         //
-                                        Array<MeasureCallback> measure_callbacks) {
+                                        Optional<Array<MeasureCallback>> measure_callbacks) {
   ObjectPtr<RoundRobinNode> n = make_object<RoundRobinNode>();
   n->tasks = tasks;
   n->builder = builder;
