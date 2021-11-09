@@ -210,26 +210,77 @@ inline Map<Var, arith::IntSet> AsIntSet(const Map<Var, Range>& var_dom) {
   return {result.begin(), result.end()};
 }
 
-/**************** Loop extents ****************/
+/**************** PrimExpr parsing and extents ****************/
 
 /*!
  * \brief Get the extents of a loop
  * \param loop The loop to be queried
- * \return The extents of the loop
+ * \return The extent of the loop, nullptr if the extent is not constant
  */
-inline int64_t GetLoopIntExtent(const ForNode* loop) {
-  const auto* int_extent = loop->extent.as<IntImmNode>();
-  return int_extent ? int_extent->value : -1;
-}
+inline const int64_t* GetLoopIntExtent(const ForNode* loop) { return as_const_int(loop->extent); }
 
 /*!
  * \brief Get the extents of a loop
  * \param loop_sref The loop to be queried
- * \return The extents of the loop
+ * \return The extent of the loop, nullptr if the extent is not constant
  */
-inline int64_t GetLoopIntExtent(const StmtSRef& loop_sref) {
+inline const int64_t* GetLoopIntExtent(const StmtSRef& loop_sref) {
   const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-  return GetLoopIntExtent(loop);
+  return as_const_int(loop->extent);
+}
+
+/*!
+ * \brief Check if an expression consists of a single variable,
+ * or a variable plus/minus an constant integer shift
+ * \param expr The expression to be checked
+ * \return result Output, the var if it satisfies the condition; otherwise NullOpt
+ */
+inline Optional<Var> AnalyzeVarWithShift(const PrimExpr& expr, Optional<IntImm>* constant) {
+  if (const auto* var = expr.as<VarNode>()) {
+    *constant = NullOpt;
+    return GetRef<Var>(var);
+  }
+  arith::PVar<Var> var;
+  arith::PVar<IntImm> shift;
+  // match: "var + shift"
+  if ((var + shift).Match(expr) || (shift + var).Match(expr)) {
+    *constant = shift.Eval();
+    return var.Eval();
+  }
+  // match: "var - shift"
+  if ((var - shift).Match(expr)) {
+    IntImm result = shift.Eval();
+    *constant = IntImm(result->dtype, -result->value);
+    return var.Eval();
+  }
+  return NullOpt;
+}
+
+/******** Annotation ********/
+
+/*!
+ * \brief Get the annotation on a Block/For
+ * \tparam TObjectRef The type of the annotation value
+ * \param sref The sref to the block or the for loop
+ * \param ann_key The annotation key to be looked up
+ * \return NullOpt if not found; otherwise the annotation value
+ */
+template <class TObjectRef>
+inline Optional<TObjectRef> GetAnn(const StmtSRef& sref, const String& ann_key) {
+  const Map<String, ObjectRef>* annotations = nullptr;
+  if (const auto* loop = sref->StmtAs<ForNode>()) {
+    annotations = &loop->annotations;
+  } else if (const auto* block = sref->StmtAs<BlockNode>()) {
+    annotations = &block->annotations;
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+  }
+  for (const auto& ann : *annotations) {
+    if (ann.first == ann_key) {
+      return Downcast<TObjectRef>(ann.second);
+    }
+  }
+  return NullOpt;
 }
 
 }  // namespace tir

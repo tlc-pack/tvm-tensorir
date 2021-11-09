@@ -440,6 +440,43 @@ void CheckNotOutputBlock(const ScheduleState& self, const StmtSRef& block_sref,
   }
 }
 
+bool IsSpatial(const StmtSRef& block_sref) {
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  for (const IterVar& iter_var : block->iter_vars) {
+    if (iter_var->iter_type != IterVarType::kDataPar) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::vector<IterVarType> GetBlockVarTypes(const StmtSRef& block_sref) {
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  std::vector<IterVarType> results;
+  results.reserve(block->iter_vars.size());
+  for (const IterVar& iter_var : block->iter_vars) {
+    results.push_back(iter_var->iter_type);
+  }
+  return results;
+}
+
+bool IsWriteCache(const StmtSRef& block_sref) {
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  if (block->writes.size() != 1) {
+    return false;
+  }
+  const BufferRegion& write_region = block->writes[0];
+  for (const BufferRegion& read_region : block->reads) {
+    bool exists, surjective, injective, ordered, no_const_read, no_shift_read;
+    std::tie(exists, surjective, injective, ordered, no_const_read, no_shift_read) =
+        AnalyzeReadWritePattern(read_region, write_region);
+    if (!(injective && ordered)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /******** Binding ********/
 
 bool IsAffineBinding(const BlockRealize& realize, const Map<Var, Range>& loop_var_ranges,
@@ -485,6 +522,22 @@ void CheckAffineBinding(const ScheduleState& self, Block block) {
   if (!self->IsAffineBlockBinding(self->stmt2ref.at(block.get()))) {
     throw NotAffineBindingError(self->mod, std::move(block));
   }
+}
+
+bool IsTrivialBinding(const ScheduleState& self, const StmtSRef& block_sref) {
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  Array<StmtSRef> loops = GetLoops(block_sref);
+  Array<PrimExpr> binds = GetBlockRealize(self, block_sref)->iter_values;
+  if (loops.size() != binds.size()) {
+    return false;
+  }
+  for (int i = 0, n = loops.size(); i < n; ++i) {
+    const ForNode* loop = TVM_SREF_TO_FOR(loop, loops[i]);
+    if (binds[i].get() != loop->loop_var.get()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 Map<Var, Range> LoopDomainOfSRefTreePath(const StmtSRef& low_inclusive,
@@ -1170,6 +1223,191 @@ StmtSRef GetSRefTreeRoot(const StmtSRef& sref) {
   for (; p->parent != nullptr; p = p->parent) {
   }
   return GetRef<StmtSRef>(p);
+}
+
+/******** Misc ********/
+
+std::tuple</*exists=*/bool,
+           /*surjective=*/bool,
+           /*injective=*/bool,
+           /*ordered=*/bool,
+           /*no_const_read=*/bool,
+           /*no_shift_read=*/bool>
+AnalyzeReadWritePattern(const BufferRegion& read_region, const BufferRegion& write_region) {
+  static constexpr const std::tuple<bool, bool, bool, bool, bool, bool> kNotExist = {
+      false, false, false, false, false, false};
+  // Step 1. Extract the write indices
+  int w_dim = write_region->buffer->shape.size();
+  std::unordered_map<const VarNode*, int> var2idx;
+  var2idx.reserve(w_dim);
+  for (int i = 0; i < w_dim; ++i) {
+    const Range& dom = write_region->region[i];
+    if (as_const_int(dom->extent) == nullptr) {
+      return kNotExist;
+    }
+    if (const auto* v = dom->min.as<VarNode>()) {
+      var2idx.emplace(v, i);
+    } else {
+      return kNotExist;
+    }
+  }
+  // Step 2. Map each read index to a write index
+  bool no_const_read = true;
+  bool no_shift_read = true;
+  int r_dim = read_region->buffer->shape.size();
+  std::vector<int> mapped(r_dim, -1);
+  for (int i = 0; i < r_dim; ++i) {
+    const Range& dom = read_region->region[i];
+    if (as_const_int(dom->extent) == nullptr) {
+      return kNotExist;
+    }
+    // Case 1. Read index is a constant
+    if (as_const_int(dom->min) != nullptr) {
+      no_const_read = false;
+      continue;
+    }
+    // Case 2. Read index cannot be recognized as `var +/- const`
+    // where `var` is a write index and `const` is an optional constant shift
+    Optional<IntImm> opt_const = NullOpt;
+    const VarNode* var =
+        static_cast<const VarNode*>(AnalyzeVarWithShift(dom->min, &opt_const).get());
+    if (var == nullptr || !var2idx.count(var)) {
+      return kNotExist;
+    }
+    // Case 3. Read index is `var +/- const`
+    mapped[i] = var2idx.at(var);
+    if (opt_const.defined()) {
+      no_shift_read = false;
+    }
+  }
+  // Step 3. Check if the mapping is ordered, and count how many times each var is mapped
+  std::vector<int> mapped_counter(w_dim, 0);
+  bool ordered = true;
+  int last_mapped = -1;
+  for (int i : mapped) {
+    if (i != -1) {
+      ++mapped_counter[i];
+      if (last_mapped != -1 && last_mapped > i) {
+        ordered = false;
+      }
+      last_mapped = i;
+    }
+  }
+  // Step 4. Check if the mapping is surjective or injective
+  // Surjective: each write index is mapped at least once
+  // Injective: each write index is mapped at most once
+  bool surjective = true;
+  bool injective = true;
+  for (int cnt : mapped_counter) {
+    if (cnt == 0) {
+      surjective = false;
+    } else if (cnt >= 2) {
+      injective = false;
+    }
+  }
+  return {/*exist=*/true, surjective, injective, ordered, no_const_read, no_shift_read};
+}
+
+bool NeedsMultiLevelTiling(const ScheduleState& self, const StmtSRef& block_sref) {
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  if (block->writes.size() != 1 || block->reads.empty() || IsSpatial(block_sref) ||
+      !IsTrivialBinding(self, block_sref)) {
+    return false;
+  }
+  const BufferNode* write_buffer = block->writes[0]->buffer.get();
+  // Step 1. Sort out spatial block variables
+  std::vector<const VarNode*> spatial_block_vars;
+  spatial_block_vars.reserve(block->iter_vars.size());
+  for (const IterVar& block_var : block->iter_vars) {
+    if (block_var->iter_type == IterVarType::kDataPar) {
+      spatial_block_vars.push_back(block_var->var.get());
+    }
+  }
+  // Step 2. Enumerate each read region, check the number of block vars that are not used
+  // to index the read region
+  int total_unused_block_vars = 0;
+  std::unordered_set<const BufferNode*> read_buffers;
+  read_buffers.reserve(block->reads.size());
+  for (const BufferRegion& buffer_region : block->reads) {
+    const BufferNode* buffer = buffer_region->buffer.get();
+    const Array<Range>& regions = buffer_region->region;
+    // Step 2.1. Duplication of read buffers are not allowed
+    if (read_buffers.insert(buffer).second == false) {
+      return false;
+    }
+    // Step 2.2. Skip the reduction buffer
+    if (buffer == write_buffer) {
+      continue;
+    }
+    // Step 2.3. Collect the block vars that are used to index the read region
+    std::unordered_set<const VarNode*> vars;
+    for (const Range& range : regions) {
+      if (as_const_int(range->extent) == nullptr) {
+        return false;
+      }
+      for (const Var& var : UndefinedVars(range->min)) {
+        vars.insert(var.get());
+      }
+    }
+    // Step 2.4. Check if the block vars are not used to index the read region
+    int n_unused_block_vars = 0;
+    for (const VarNode* block_var : spatial_block_vars) {
+      if (vars.count(block_var) == 0) {
+        ++n_unused_block_vars;
+      }
+    }
+    total_unused_block_vars += n_unused_block_vars;
+  }
+  return total_unused_block_vars >= 1;
+}
+
+bool HasOp(const Stmt& stmt, const Array<Op>& ops) {
+  std::unordered_set<const Object*> op_set;
+  op_set.reserve(ops.size());
+  for (const Op& op : ops) {
+    op_set.insert(op.operator->());
+  }
+  bool found = false;
+  tir::PreOrderVisit(stmt, [&found, &op_set](const ObjectRef& obj) -> bool {
+    if (found) {
+      return false;
+    }
+    if (const auto* call = obj.as<tir::CallNode>()) {
+      if (op_set.count(call->op.operator->())) {
+        found = true;
+      }
+    }
+    return !found;
+  });
+  return found;
+}
+
+bool HasIfThenElse(const Stmt& stmt) {
+  bool has_branch = false;
+  auto f_visit = [&has_branch](const ObjectRef& obj) -> bool {
+    if (has_branch) {
+      // stop visiting
+      return false;
+    }
+    if (const auto* realize = obj.as<tir::BlockRealizeNode>()) {
+      // Case 1: BlockRealize
+      if (!is_one(realize->predicate)) {
+        has_branch = true;
+      }
+    } else if (obj->IsInstance<tir::IfThenElseNode>() || obj->IsInstance<tir::SelectNode>()) {
+      // Case 2: IfThenElse / Select
+      has_branch = true;
+    } else if (const auto* call = obj.as<tir::CallNode>()) {
+      // Case 3: Call
+      static const Op& op_if_then_else = Op::Get("tir.if_then_else");
+      if (call->op.same_as(op_if_then_else)) {
+        has_branch = true;
+      }
+    }
+    return !has_branch;
+  };
+  tir::PreOrderVisit(stmt, f_visit);
+  return has_branch;
 }
 
 }  // namespace tir
