@@ -15,8 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """
-The tvm.meta_schedule.postproc package.
-Meta Schedule post processings that extracts features from
-measure candidates for use in cost model.
+The tvm.meta_schedule.feature_extractor package.
+Meta Schedule feature extractors that
 """
-from .postproc import Postproc, PyPostproc
+from .feature_extractor import FeatureExtractor, PyFeatureExtractor

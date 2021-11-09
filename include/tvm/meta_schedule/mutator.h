@@ -36,8 +36,9 @@ class MutatorNode : public runtime::Object {
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
-   * \brief The function type of `InitializeWithTuneContext` method.
+   * \brief Initialize the design space generator with tuning context.
    * \param tune_context The tuning context for initialization.
+   * \note This method is supposed to be called only once before every other method.
    */
   virtual void InitializeWithTuneContext(const TuneContext& context) = 0;
 
@@ -110,6 +111,7 @@ class Mutator : public runtime::ObjectRef {
    * \brief Create a mutator with customized methods on the python-side.
    * \param f_initialize_with_tune_context The packed function of `InitializeWithTuneContext`.
    * \param f_apply The packed function of `Apply`.
+   * \param f_as_string The packed function of `AsString`.
    * \return The mutator created.
    */
   TVM_DLL static Mutator PyMutator(
