@@ -104,8 +104,7 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
         /*mod=*/mod_,                                                   //
         /*rand_state=*/ForkSeed(&this->rand_state_),                    //
         /*debug_mode=*/tir::kVerifySRefTree | tir::kVerifyCachedFlags,  //
-        /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail   //
-    );
+        /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
 
     std::vector<ScheduleAndUnvisitedBlocks> stack;
     Array<tir::Schedule> result{sch};

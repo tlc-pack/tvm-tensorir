@@ -1,3 +1,6 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
 # regarding copyright ownership.  The ASF licenses this file
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
@@ -11,11 +14,4 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""
-The tvm.meta_schedule.schedule_rule package.
-Meta Schedule schedule rules are used for modification of
-blocks in a schedule. See also PostOrderApply.
-"""
-from .auto_inline import AutoInline
-from .multi_level_tiling import MultiLevelTiling, ReuseType
-from .schedule_rule import PyScheduleRule, ScheduleRule
+# pylint: disable=missing-module-docstring,missing-function-docstring,missing-class-docstring
