@@ -16,17 +16,12 @@
 # under the License.
 # pylint: disable=missing-module-docstring,missing-function-docstring,missing-class-docstring
 from typing import List
+
 import numpy as np
 import re
 
-import tvm
-from tvm.auto_scheduler import feature
-from tvm.script import tir as T
 from tvm.runtime import NDArray
-from tvm.runtime.ndarray import numpyasarray
-from tvm.tir.schedule import Schedule
 from tvm.meta_schedule import TuneContext
-from tvm.meta_schedule.utils import _get_hex_address
 from tvm.meta_schedule.search_strategy import MeasureCandidate
 from tvm.meta_schedule.feature_extractor import PyFeatureExtractor
 
