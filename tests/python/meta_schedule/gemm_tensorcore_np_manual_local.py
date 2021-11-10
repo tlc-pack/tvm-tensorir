@@ -1,15 +1,17 @@
 import tvm
+from tvm.contrib import nvcc
 import tvm.testing
 from tvm.script import tir
 import numpy as np
 
 import os
+
 def write_code(code, fname):
     with open(fname, "w") as f:
         f.write(code)
 
 TASK='gemm'
-USE_MANUAL_CODE=True
+USE_MANUAL_CODE=False
 @tvm.register_func('tvm_callback_cuda_postproc', override=True)
 def tvm_callback_cuda_postproc(code):
     if not os.path.exists("perf"):
@@ -18,6 +20,16 @@ def tvm_callback_cuda_postproc(code):
     if USE_MANUAL_CODE:
         code = open("perf/gemm_local_stage_double_buffer.cu").read()
     return code
+
+# @tvm.register_func('tvm_callback_cuda_compile', override=True)
+# def tvm_callback_cuda_compile(code):
+#     ptx = nvcc.compile_cuda(code, target="ptx", arch="sm_75")
+#     with open('1.ptx', 'wb') as f:
+#         f.write(ptx)
+#     with open('perf/manual_perf.ptx', 'rb') as f:
+#         ptx = f.read()
+#     return ptx
+
 M = N = K = 1024
 
 @tir.prim_func
@@ -75,8 +87,8 @@ def func(a: tir.handle, b: tir.handle, c: tir.handle) -> None:
                                         tir.bind(v0, i0_0_0_i1_0_0_fused * 128 + ax0_ax1_fused_0 * 64 + ax0_ax1_fused_1 * 8 + tir.floordiv(ax0_ax1_fused_2, 4))
                                         tir.bind(v1, i2_0_0 * 32 + tir.floormod(ax0_ax1_fused_2, 4) * 8 + ax0_ax1_fused_3)
                                         tir.reads([A_shared_local[tir.floordiv(v0 - i0_0_0_i1_0_0_fused * 128, 64), tir.floormod(v1 - i2_0_0 * 32, 8)]])
-                                        tir.writes([A_shared[v0, v1]])
-                                        tir.block_attr({"buffer_dim_align":[[0, 0, 32, 8]]})
+                                        tir.block_attr({"buffer_dim_align":[[0, 0, 32, 8]], 'double_buffer_scope': 1})
+                                        # tir.block_attr({"buffer_dim_align":[[0, 0, 32, 8]]})
                                         A_shared[v0, v1] = A_shared_local[tir.floordiv(v0 - i0_0_0_i1_0_0_fused * 128, 64), tir.floormod(v1 - i2_0_0 * 32, 8)]
                     for ax0_ax1_fused_1 in tir.thread_binding(0, 8, thread="threadIdx.y"):
                         for ax0_ax1_fused_2 in tir.thread_binding(0, 32, thread="threadIdx.x"):
@@ -95,7 +107,8 @@ def func(a: tir.handle, b: tir.handle, c: tir.handle) -> None:
                                         tir.bind(v1, i0_0_1_i1_0_1_fused * 128 + tir.floormod(ax0_ax1_fused_2, 16) * 8 + ax0_ax1_fused_3)
                                         tir.reads([B_shared_local[tir.floordiv(v0 - i2_0_0 * 32, 16), tir.floormod(v1 - i0_0_1_i1_0_1_fused * 128, 8)]])
                                         tir.writes([B_shared[v0, v1]])
-                                        tir.block_attr({"buffer_dim_align":[[0, 0, 32, 8]]})
+                                        tir.block_attr({"buffer_dim_align":[[0, 0, 32, 8]], 'double_buffer_scope': 1})
+                                        # tir.block_attr({"buffer_dim_align":[[0, 0, 32, 8]]})
                                         B_shared[v0, v1] = B_shared_local[tir.floordiv(v0 - i2_0_0 * 32, 16), tir.floormod(v1 - i0_0_1_i1_0_1_fused * 128, 8)]
 
                     for i2_0_1 in tir.serial(0, 2, annotations={'pipeline_scope': 2}):
@@ -166,7 +179,7 @@ def main():
     f(a, b, c)
     tvm.testing.assert_allclose(c.numpy(), c_np, rtol=1e-3)
 
-    evaluator = f.time_evaluator(f.entry_name, dev, number=100)
+    evaluator = f.time_evaluator(f.entry_name, dev, number=1000)
     gflops = (N*M*K) * 2 / 1e9
     time_ms = evaluator(a, b, c).mean * 1e3
     print("matmul with tensor core: %f ms, %f GFLOPS" % (time_ms, gflops / (time_ms / 1e3)))
