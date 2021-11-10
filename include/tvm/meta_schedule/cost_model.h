@@ -21,7 +21,6 @@
 #define TVM_META_SCHEDULE_COST_MODEL_H_
 
 #include <tvm/meta_schedule/search_strategy.h>
-#include <tvm/tir/schedule/schedule.h>
 
 namespace tvm {
 namespace meta_schedule {

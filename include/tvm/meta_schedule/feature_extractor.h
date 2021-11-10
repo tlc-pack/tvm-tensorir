@@ -20,9 +20,6 @@
 #ifndef TVM_META_SCHEDULE_FEATURE_EXTRACTOR_H_
 #define TVM_META_SCHEDULE_FEATURE_EXTRACTOR_H_
 
-#include <tvm/meta_schedule/search_strategy.h>
-#include <tvm/tir/schedule/schedule.h>
-
 namespace tvm {
 namespace meta_schedule {
 
