@@ -178,6 +178,18 @@ inline Array<Stmt> AsArray(const Stmt& stmt) {
   return {stmt};
 }
 
+/*!
+ * \brief Checks of a statement is a SeqStmt that contains multiple statements
+ * \param stmt The statement to be checked
+ * \return A boolean indicating the result
+ */
+inline bool IsSingleStmt(const Stmt& stmt) {
+  if (const auto* seq_stmt = stmt.as<SeqStmtNode>()) {
+    return seq_stmt->seq.size() == 1;
+  }
+  return true;
+}
+
 /******** IterVar ********/
 
 /*!
@@ -190,6 +202,36 @@ inline Array<Stmt> AsArray(const Stmt& stmt) {
 inline IterVar IterVarFromLoop(const For& loop, String name, IterVarType iter_var_type) {
   return IterVar(Range::FromMinExtent(loop->min, loop->extent),
                  Var(std::move(name), loop->loop_var.dtype()), iter_var_type);
+}
+
+/*!
+ * \brief Get the thread scope bound to the specific loop
+ * \param loop The loop to be inspected
+ * \return The thread scope bound to the loop
+ */
+inline runtime::ThreadScope GetThreadScope(const ForNode* loop) {
+  if (loop->kind == ForKind::kThreadBinding) {
+    return runtime::ThreadScope::Create(loop->thread_binding.value()->thread_tag);
+  }
+  return runtime::ThreadScope{-1, -1};
+}
+
+/*!
+ * \brief Check if the thread scope is blockIdx
+ * \param thread_scope The thread scope to be checked
+ * \return True if the thread scope is blockIdx
+ */
+inline bool IsBlockIdx(const runtime::ThreadScope& thread_scope) {
+  return thread_scope.rank == 0;  // The rank of blockIdx is 0
+}
+
+/*!
+ * \brief Check if the thread scope is threadIdx
+ * \param thread_scope The thread scope to be checked
+ * \return True if the thread scope is threadIdx
+ */
+inline bool IsThreadIdx(const runtime::ThreadScope& thread_scope) {
+  return thread_scope.rank == 1 && thread_scope.dim_index >= 0;
 }
 
 /******** Integer set ********/

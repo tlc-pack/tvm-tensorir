@@ -292,6 +292,13 @@ BlockRealize CheckGetSingleChildBlockRealizeOnSRefTree(const ScheduleState& self
  */
 BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sref);
 
+/*!
+ * \brief Get the IterVarType of the specific loop, according to the blocks it's bound to
+ * \param loop_sref The loop to be checked
+ * \return The IterVarType of the specific loop
+ */
+IterVarType GetLoopIterType(const StmtSRef& loop_sref);
+
 /******** Producer-consumer relation ********/
 
 /*!

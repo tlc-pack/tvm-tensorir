@@ -222,6 +222,19 @@ inline IRModule DeepCopyIRModule(IRModule mod) {
   return Downcast<IRModule>(LoadJSON(SaveJSON(mod)));
 }
 
+/*!
+ * \brief Get the BlockRV from a block StmtSRef
+ * \param sch The schedule
+ * \param block_sref The block StmtSRef
+ * \param globla_var_name The global variable name
+ * \return The BlockRV
+ */
+inline tir::BlockRV GetRVFromSRef(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                                  const String& global_var_name) {
+  const tir::BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  return sch->GetBlock(block->name_hint, global_var_name);
+}
+
 }  // namespace meta_schedule
 }  // namespace tvm
 

@@ -142,7 +142,7 @@ class NeedsInlinePaddingAndEpilogue:
             for i0_1_i1_1_i2_1_i3_1_fused in T.thread_binding(0, 2, thread="vthread.x"):
                 for i0_2_i1_2_i2_2_i3_2_fused in T.thread_binding(0, 8, thread="threadIdx.x"):
                     for i4_0, i5_0, i6_0 in T.grid(1, 3, 1):
-                        for ax0_ax1_ax2_ax3_fused_0 in T.serial(0, 40960, annotations={"meta_schedule.lazy_cooperative_fetch":1}):
+                        for ax0_ax1_ax2_ax3_fused_0 in T.serial(0, 40960, annotations={"meta_schedule.cooperative_fetch":1}):
                             for ax0_ax1_ax2_ax3_fused_1 in T.vectorized(0, 3):
                                 with T.block("pad_temp_shared"):
                                     v0 = T.axis.spatial(1, 0)
@@ -153,7 +153,7 @@ class NeedsInlinePaddingAndEpilogue:
                                     T.writes([pad_temp_shared[v0, v1, v2, v3]])
                                     T.block_attr({"meta_schedule.cache_type":0})
                                     pad_temp_shared[v0, v1, v2, v3] = pad_temp[v0, v1, v2, v3]
-                        for ax0_ax1_ax2_ax3_fused_0 in T.serial(0, 12288, annotations={"meta_schedule.lazy_cooperative_fetch":1}):
+                        for ax0_ax1_ax2_ax3_fused_0 in T.serial(0, 12288, annotations={"meta_schedule.cooperative_fetch":1}):
                             for ax0_ax1_ax2_ax3_fused_1 in T.vectorized(0, 4):
                                 with T.block("W_shared"):
                                     v0 = T.axis.spatial(512, i0_0_i1_0_i2_0_i3_0_fused // 14 * 32 + (ax0_ax1_ax2_ax3_fused_0 * 4 + ax0_ax1_ax2_ax3_fused_1) // 1536)
@@ -212,7 +212,7 @@ class PaddingAndEpilogueInlined:
             for i0_1_i1_1_i2_1_i3_1_fused in T.thread_binding(0, 2, thread="vthread.x"):
                 for i0_2_i1_2_i2_2_i3_2_fused in T.thread_binding(0, 8, thread="threadIdx.x"):
                     for i4_0, i5_0, i6_0 in T.grid(1, 3, 1):
-                        for ax0_ax1_ax2_ax3_fused_0 in T.serial(0, 40960, annotations={"meta_schedule.lazy_cooperative_fetch":1}):
+                        for ax0_ax1_ax2_ax3_fused_0 in T.serial(0, 40960, annotations={"meta_schedule.cooperative_fetch":1}):
                             for ax0_ax1_ax2_ax3_fused_1 in T.vectorized(0, 3):
                                 with T.block("pad_temp_shared"):
                                     v0 = T.axis.spatial(1, 0)
@@ -223,7 +223,7 @@ class PaddingAndEpilogueInlined:
                                     T.writes([pad_temp_shared[v0, v1, v2, v3]])
                                     T.block_attr({"meta_schedule.cache_type":0})
                                     pad_temp_shared[v0, v1, v2, v3] = T.if_then_else(v2 >= 1 and v2 < 57 and v3 >= 1 and v3 < 57, X[v0, v1, v2 - 1, v3 - 1], T.float32(0), dtype="float32")
-                        for ax0_ax1_ax2_ax3_fused_0 in T.serial(0, 12288, annotations={"meta_schedule.lazy_cooperative_fetch":1}):
+                        for ax0_ax1_ax2_ax3_fused_0 in T.serial(0, 12288, annotations={"meta_schedule.cooperative_fetch":1}):
                             for ax0_ax1_ax2_ax3_fused_1 in T.vectorized(0, 4):
                                 with T.block("W_shared"):
                                     v0 = T.axis.spatial(512, i0_0_i1_0_i2_0_i3_0_fused // 14 * 32 + (ax0_ax1_ax2_ax3_fused_0 * 4 + ax0_ax1_ax2_ax3_fused_1) // 1536)
