@@ -20,6 +20,8 @@
 #define TVM_META_SCHEDULE_UTILS_H_
 
 #include <dmlc/memory_io.h>
+#include <tvm/arith/analyzer.h>
+#include <tvm/driver/driver_api.h>
 #include <tvm/meta_schedule/arg_info.h>
 #include <tvm/meta_schedule/builder.h>
 #include <tvm/meta_schedule/database.h>
@@ -35,12 +37,10 @@
 #include <tvm/node/node.h>
 #include <tvm/node/serialization.h>
 #include <tvm/support/parallel_for.h>
+#include <tvm/tir/analysis.h>
 #include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/stmt.h>
 #include <tvm/tir/transform.h>
-#include <tvm/tir/analysis.h>
-#include <tvm/arith/analyzer.h>
-#include <tvm/driver/driver_api.h>
 
 #include <string>
 #include <vector>
@@ -227,25 +227,10 @@ inline IRModule DeepCopyIRModule(IRModule mod) {
 }
 
 /*!
- * \brief Check whether the block/loop has any annotation
- * \param sref The sref of block/loop
- * \return Whether the block/loop has any annotation
- */
-inline bool HasAnyAnn(const tir::StmtSRef& sref) {
-  if (const auto* loop = sref->StmtAs<tir::ForNode>()) {
-    return !loop->annotations.empty();
-  } else if (const auto* block = sref->StmtAs<tir::BlockNode>()) {
-    return !block->annotations.empty();
-  }
-  LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
-  throw;
-}
-  
-/*!
  * \brief Get the BlockRV from a block StmtSRef
  * \param sch The schedule
  * \param block_sref The block StmtSRef
- * \param globla_var_name The global variable name
+ * \param global_var_name The global variable name
  * \return The BlockRV
  */
 inline tir::BlockRV GetRVFromSRef(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
