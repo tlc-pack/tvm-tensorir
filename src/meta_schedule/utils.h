@@ -48,9 +48,6 @@
 #include "../printer/text_printer.h"
 #include "../support/array.h"
 #include "../support/base64.h"
-#include "../tir/schedule/primitive.h"
-#include "../runtime/thread_storage_scope.h"
-#include "../tir/schedule/analysis.h"
 #include "../tir/schedule/utils.h"
 
 namespace tvm {
@@ -242,6 +239,19 @@ inline bool HasAnyAnn(const tir::StmtSRef& sref) {
   }
   LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
   throw;
+}
+  
+/*!
+ * \brief Get the BlockRV from a block StmtSRef
+ * \param sch The schedule
+ * \param block_sref The block StmtSRef
+ * \param globla_var_name The global variable name
+ * \return The BlockRV
+ */
+inline tir::BlockRV GetRVFromSRef(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                                  const String& global_var_name) {
+  const tir::BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  return sch->GetBlock(block->name_hint, global_var_name);
 }
 
 }  // namespace meta_schedule

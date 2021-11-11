@@ -16,4 +16,6 @@ The tvm.meta_schedule.schedule_rule package.
 Meta Schedule schedule rules are used for modification of
 blocks in a schedule. See also PostOrderApply.
 """
-from .schedule_rule import ScheduleRule, PyScheduleRule
+from .auto_inline import AutoInline
+from .multi_level_tiling import MultiLevelTiling, ReuseType
+from .schedule_rule import PyScheduleRule, ScheduleRule

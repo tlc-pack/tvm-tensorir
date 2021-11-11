@@ -246,7 +246,7 @@ def test_meta_schedule_postproc():
     assert postproc.apply(sch)
     try:
         tvm.ir.assert_structural_equal(sch.mod, mod)
-        raise Exception("The post processing did not change the schedule.")
+        raise Exception("The postprocessors did not change the schedule.")
     except (ValueError):
         _check_correct(sch)
 

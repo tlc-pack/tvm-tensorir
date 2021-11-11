@@ -95,7 +95,9 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
 
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
-    this->sch_rules_ = tune_context->sch_rules;
+    CHECK(tune_context->sch_rules.defined())
+        << "ValueError: Schedules rules not given in PostOrderApply!";
+    this->sch_rules_ = tune_context->sch_rules.value();
   }
 
   Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod_) final {
@@ -104,8 +106,7 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
         /*mod=*/mod_,                                                   //
         /*rand_state=*/ForkSeed(&this->rand_state_),                    //
         /*debug_mode=*/tir::kVerifySRefTree | tir::kVerifyCachedFlags,  //
-        /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail   //
-    );
+        /*error_render_level=*/tir::ScheduleErrorRenderLevel::kDetail);
 
     std::vector<ScheduleAndUnvisitedBlocks> stack;
     Array<tir::Schedule> result{sch};
