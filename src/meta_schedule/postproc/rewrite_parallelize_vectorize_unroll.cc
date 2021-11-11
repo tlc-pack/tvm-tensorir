@@ -97,22 +97,22 @@ bool ParseAnnotation(const Block& block, ParsedAnnotation* parsed) {
   bool found = false;
   *parsed = ParsedAnnotation{-1, -1, -1, -1, -1, -1};
   for (const auto& ann : block->annotations) {
-    if (ann.first == tir::attr::auto_parallel_extent) {
+    if (ann.first == attr::meta_schedule_parallel) {
       found = true;
       if (const auto* str_imm = ann.second.as<StringImmNode>()) {
         parsed->max_parallel_extent = std::atoi(str_imm->value.c_str());
       }
-    } else if (ann.first == tir::attr::auto_vectorize_extent) {
+    } else if (ann.first == attr::meta_schedule_vectorize) {
       found = true;
       if (const auto* str_imm = ann.second.as<StringImmNode>()) {
         parsed->max_vectorize_extent = std::atoi(str_imm->value.c_str());
       }
-    } else if (ann.first == tir::attr::auto_unroll_explicit) {
+    } else if (ann.first == attr::meta_schedule_unroll_explicit) {
       found = true;
       if (const auto* str_imm = ann.second.as<StringImmNode>()) {
         parsed->unroll_explicit = std::atoi(str_imm->value.c_str());
       }
-    } else if (ann.first == tir::attr::auto_unroll_implicit) {
+    } else if (ann.first == attr::meta_schedule_unroll_implicit) {
       found = true;
       if (const auto* str_imm = ann.second.as<StringImmNode>()) {
         parsed->unroll_implicit = std::atoi(str_imm->value.c_str());
@@ -124,16 +124,16 @@ bool ParseAnnotation(const Block& block, ParsedAnnotation* parsed) {
 
 void RemoveParsedAnn(const Schedule& sch, const BlockRV& block_rv, const ParsedAnnotation& parsed) {
   if (parsed.max_parallel_extent != -1) {
-    sch->Unannotate(block_rv, tir::attr::auto_parallel_extent);
+    sch->Unannotate(block_rv, attr::meta_schedule_parallel);
   }
   if (parsed.max_vectorize_extent != -1) {
-    sch->Unannotate(block_rv, tir::attr::auto_vectorize_extent);
+    sch->Unannotate(block_rv, attr::meta_schedule_vectorize);
   }
   if (parsed.unroll_explicit != -1) {
-    sch->Unannotate(block_rv, tir::attr::auto_unroll_explicit);
+    sch->Unannotate(block_rv, attr::meta_schedule_unroll_explicit);
   }
   if (parsed.unroll_implicit != -1) {
-    sch->Unannotate(block_rv, tir::attr::auto_unroll_implicit);
+    sch->Unannotate(block_rv, attr::meta_schedule_unroll_implicit);
   }
 }
 

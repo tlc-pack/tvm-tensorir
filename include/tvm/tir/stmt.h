@@ -1336,18 +1336,6 @@ constexpr const char* fragment_shape = "fragment_shape";
  */
 constexpr const char* fragment_layout = "fragment_layout";
 
-/*! \brief Mark auto-parallel setting on the block. */
-constexpr const char* auto_parallel_extent = "auto_parallel_extent";
-
-/*! \brief Mark auto-vectorize setting on the block. */
-constexpr const char* auto_vectorize_extent = "auto_vectorize_extent";
-
-/*! \brief Mark auto-unroll setting on the block. */
-constexpr const char* auto_unroll_explicit = "auto_unroll_explicit";
-
-/*! \brief Mark auto-unroll setting on the block. */
-constexpr const char* auto_unroll_implicit = "auto_unroll_implicit";
-
 /*!
  * \brief Mark that the kernel is hand threaded and doesn't need syncs inserted
  */
@@ -1386,6 +1374,18 @@ constexpr const int meta_schedule_cache_type_read = 0;
 
 /*! \sa meta_schedule_cache_type */
 constexpr const int meta_schedule_cache_type_write = 1;
+
+/*! \brief Mark auto-parallel setting on the block. */
+constexpr const char* meta_schedule_parallel = "meta_schedule.parallel";
+
+/*! \brief Mark auto-vectorize setting on the block. */
+constexpr const char* meta_schedule_vectorize = "meta_schedule.vectorize";
+
+/*! \brief Mark auto-unroll setting on the block. */
+constexpr const char* meta_schedule_unroll_explicit = "meta_schedule.unroll_explicit";
+
+/*! \brief Mark auto-unroll setting on the block. */
+constexpr const char* meta_schedule_unroll_implicit = "meta_schedule.unroll_implicit";
 
 /*!
  * \brief Check if attr_key is a pragma key extension
