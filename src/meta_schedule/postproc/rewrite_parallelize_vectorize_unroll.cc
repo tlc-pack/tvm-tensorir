@@ -1,4 +1,3 @@
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -290,6 +289,47 @@ void AdjustParallelVectorize(const Schedule& sch, const BlockRV& block_rv,
   }
 }
 
+bool FindAnnotateRootBlock(const Schedule& sch, ParsedAnnotation* parsed, BlockRV* root_rv) {
+  IRModule mod = sch->mod();
+  for (const auto& kv : mod->functions) {
+    const GlobalVar& g_var = kv.first;
+    const BaseFunc& base_func = kv.second;
+    if (const auto* prim_func = base_func.as<PrimFuncNode>()) {
+      Block block = Downcast<BlockRealize>(prim_func->body)->block;
+      if (ParseAnnotation(block, parsed)) {
+        *root_rv = sch->GetBlock(block->name_hint, g_var->name_hint);
+        RemoveParsedAnn(sch, *root_rv, *parsed);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+void RewriteParallelize(const Schedule& sch, int n, Array<LoopRV>* loop_rvs) {
+  LoopRV fused = sch->Fuse({loop_rvs->begin(), loop_rvs->begin() + n});
+  sch->Parallel(fused);
+  for (int i = 0; i < n; ++i) {
+    loop_rvs->Set(i, fused);
+  }
+}
+
+void RewriteVectorize(const Schedule& sch, int n, Array<LoopRV>* loop_rvs) {
+  int n_loops = loop_rvs->size();
+  LoopRV fused = sch->Fuse({loop_rvs->end() - n, loop_rvs->end()});
+  sch->Vectorize(fused);
+  for (int i = n_loops - n; i < n_loops; ++i) {
+    loop_rvs->Set(i, fused);
+  }
+}
+
+void RewriteUnroll(const Schedule& sch, int unroll_explicit, int max_step, const LoopRV& loop) {
+  if (max_step > 0) {
+    sch->Annotate(loop, attr::pragma_auto_unroll_max_step, IntImm(DataType::Int(32), max_step));
+    sch->Annotate(loop, attr::pragma_unroll_explicit, IntImm(DataType::Int(32), unroll_explicit));
+  }
+}
+
 }  // namespace tir
 }  // namespace tvm
 
@@ -305,42 +345,30 @@ class RewriteParallelizeVectorizeUnrollNode : public PostprocNode {
   bool Apply(const Schedule& sch) final {
     using tir::BlockRV;
     using tir::LoopRV;
-    tir::ParsedAnnotation parsed;
-    BlockRV root_rv = sch->GetBlock("root");  // TODO(Junru): iterator each PrimFunc
-    if (!tir::ParseAnnotation(sch->Get(root_rv), &parsed)) {
-      return true;
-    }
-    RemoveParsedAnn(sch, root_rv, parsed);
-    for (BlockRV block_rv : sch->GetChildBlocks(root_rv)) {
-      Array<LoopRV> loop_rvs = sch->GetLoops(block_rv);
-      AdjustParallelVectorize(sch, block_rv, loop_rvs, &parsed);
-      // Parallelize
-      if (parsed.num_parallel_loops > 0) {
-        LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + parsed.num_parallel_loops});
-        sch->Parallel(fused);
-        for (int i = 0; i < parsed.num_parallel_loops; ++i) {
-          loop_rvs.Set(i, fused);
+    tir::ParsedAnnotation parsed_root;
+    BlockRV root_rv{nullptr};
+    while (tir::FindAnnotateRootBlock(sch, &parsed_root, &root_rv)) {
+      for (BlockRV block_rv : sch->GetChildBlocks(root_rv)) {
+        Array<LoopRV> loop_rvs = sch->GetLoops(block_rv);
+        if (loop_rvs.empty()) {
+          continue;
         }
-      }
-      // Vectorize
-      if (parsed.num_vectorize_loops > 0) {
-        LoopRV fused = sch->Fuse({loop_rvs.end() - parsed.num_vectorize_loops, loop_rvs.end()});
-        sch->Vectorize(fused);
-        int n_loops = loop_rvs.size();
-        for (int i = n_loops - parsed.num_vectorize_loops; i < n_loops; ++i) {
-          loop_rvs.Set(i, fused);
+        tir::ParsedAnnotation parsed = parsed_root;
+        tir::AdjustParallelVectorize(sch, block_rv, loop_rvs, &parsed);
+        // Parallelize
+        if (parsed.num_parallel_loops > 0) {
+          tir::RewriteParallelize(sch, parsed.num_parallel_loops, &loop_rvs);
         }
-      }
-      // AutoUnroll
-      if (parsed.unroll_explicit != -1 || parsed.unroll_implicit != -1) {
-        ICHECK(!(parsed.unroll_explicit != -1 && parsed.unroll_implicit != -1))
-            << "ValueError: `auto_unroll_explicit` and `auto_unroll_explicit` cannot co-exist";
-        int unroll_explicit = parsed.unroll_explicit != -1;
-        int max_step = parsed.unroll_explicit + parsed.unroll_implicit + 1;
-        LoopRV loop = loop_rvs[0];
-        if (max_step > 0) {
-          sch->Annotate(loop, "pragma_auto_unroll_max_step", IntImm(DataType::Int(32), max_step));
-          sch->Annotate(loop, "pragma_unroll_explicit", IntImm(DataType::Int(32), unroll_explicit));
+        // Vectorize
+        if (parsed.num_vectorize_loops > 0) {
+          tir::RewriteVectorize(sch, parsed.num_vectorize_loops, &loop_rvs);
+        }
+        // AutoUnroll
+        if (parsed.unroll_explicit != -1 || parsed.unroll_implicit != -1) {
+          ICHECK(parsed.unroll_explicit == -1 || parsed.unroll_implicit == -1);
+          int unroll_explicit = parsed.unroll_explicit != -1;
+          int max_step = parsed.unroll_explicit + parsed.unroll_implicit + 1;
+          tir::RewriteUnroll(sch, unroll_explicit, max_step, loop_rvs[0]);
         }
       }
     }
