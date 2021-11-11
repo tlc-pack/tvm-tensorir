@@ -56,9 +56,9 @@ class TuneContext(Object):
         The search strategy.
     sch_rules: Optional[List[ScheduleRule]] = None,
         The schedule rules.
-    postproc: Optional[List[Postproc"]] = None,
+    postprocs: Optional[List[Postproc"]] = None,
         The postprocessors.
-    mutator: Optional[List[Mutator]] = None,
+    mutators: Optional[List[Mutator]] = None,
         The mutators.
     task_name : Optional[str] = None
         The name of the tuning task.
@@ -81,8 +81,8 @@ class TuneContext(Object):
     space_generator: Optional["SpaceGenerator"]
     search_strategy: Optional["SearchStrategy"]
     sch_rules: Optional[List["ScheduleRule"]]
-    postproc: Optional[List["Postproc"]]
-    mutator: Optional[List["Mutator"]]
+    postprocs: Optional[List["Postproc"]]
+    mutators: Optional[List["Mutator"]]
     task_name: Optional[str]
     rand_state: int
     num_threads: int
@@ -94,8 +94,8 @@ class TuneContext(Object):
         space_generator: Optional["SpaceGenerator"] = None,
         search_strategy: Optional["SearchStrategy"] = None,
         sch_rules: Optional[List["ScheduleRule"]] = None,
-        postproc: Optional[List["Postproc"]] = None,
-        mutator: Optional[List["Mutator"]] = None,
+        postprocs: Optional[List["Postproc"]] = None,
+        mutators: Optional[List["Mutator"]] = None,
         task_name: Optional[str] = None,
         rand_state: int = -1,
         num_threads: Optional[int] = None,
@@ -114,9 +114,9 @@ class TuneContext(Object):
             The search strategy.
         sch_rules : List[ScheduleRule] = []
             The schedule rules.
-        postproc : List[Postproc] = []
+        postprocs : List[Postproc] = []
             The postprocessors.
-        mutator : List[Mutator] = []
+        mutators : List[Mutator] = []
             The mutators.
         task_name : Optional[str] = None
             The name of the tuning task.
@@ -138,8 +138,8 @@ class TuneContext(Object):
             space_generator,
             search_strategy,
             sch_rules,
-            postproc,
-            mutator,
+            postprocs,
+            mutators,
             task_name,
             rand_state,
             num_threads,

@@ -20,10 +20,8 @@ import tvm
 from tvm import tir
 from tvm.meta_schedule import TuneContext
 from tvm.meta_schedule.postproc import RewriteUnboundBlock
-from tvm.meta_schedule.testing import te_workload
 from tvm.script import tir as T
 from tvm.target import Target
-from tvm.te import create_prim_func
 
 
 def _target() -> Target:
@@ -34,7 +32,7 @@ def _create_context(mod, target) -> TuneContext:
     ctx = TuneContext(
         mod=mod,
         target=target,
-        postproc=[
+        postprocs=[
             RewriteUnboundBlock(),
         ],
         task_name="test",
