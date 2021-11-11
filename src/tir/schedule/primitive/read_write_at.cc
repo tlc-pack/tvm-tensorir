@@ -20,10 +20,6 @@
 #include <string>
 
 #include "../utils.h"
-#include "tvm/runtime/memory.h"
-#include "tvm/runtime/object.h"
-#include "tvm/tir/schedule/block_scope.h"
-#include "tvm/tir/stmt_functor.h"
 
 namespace tvm {
 namespace tir {

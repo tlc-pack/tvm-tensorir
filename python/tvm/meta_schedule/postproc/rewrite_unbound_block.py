@@ -14,8 +14,18 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""The tvm.meta_schedule.postproc package."""
-from .postproc import Postproc, PyPostproc
-from .rewrite_cooperative_fetch import RewriteCooperativeFetch
-from .rewrite_reduction_block import RewriteReductionBlock
-from .rewrite_unbound_block import RewriteUnboundBlock
+"""A postprocessor that adds thread binding to unbound blocks"""
+
+from tvm._ffi.registry import register_object
+from .. import _ffi_api
+from .postproc import Postproc
+
+
+@register_object("meta_schedule.RewriteUnboundBlock")
+class RewriteUnboundBlock(Postproc):
+    """A postprocessor that adds thread binding to unbound blocks"""
+
+    def __init__(self) -> None:
+        self.__init_handle_by_constructor__(
+            _ffi_api.PostprocRewriteUnboundBlock,  # type: ignore # pylint: disable=no-member
+        )

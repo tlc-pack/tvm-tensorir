@@ -58,9 +58,9 @@ void Annotate(ScheduleState self, const StmtSRef& sref, const String& ann_key,
 void Unannotate(ScheduleState self, const StmtSRef& sref, const String& ann_key) {
   // Extract annotation
   const Map<String, ObjectRef>* annotations = nullptr;
-  if (const auto* loop = sref->StmtAs<tir::ForNode>()) {
+  if (const auto* loop = sref->StmtAs<ForNode>()) {
     annotations = &loop->annotations;
-  } else if (const auto* block = sref->StmtAs<tir::BlockNode>()) {
+  } else if (const auto* block = sref->StmtAs<BlockNode>()) {
     annotations = &block->annotations;
   } else {
     LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
@@ -71,15 +71,15 @@ void Unannotate(ScheduleState self, const StmtSRef& sref, const String& ann_key)
   Map<String, ObjectRef> new_ann(*annotations);
   new_ann.erase(ann_key);
   // Create the new stmt
-  if (const auto* loop = sref->StmtAs<tir::ForNode>()) {
-    ObjectPtr<tir::ForNode> n = make_object<tir::ForNode>(*loop);
+  if (const auto* loop = sref->StmtAs<ForNode>()) {
+    ObjectPtr<ForNode> n = make_object<ForNode>(*loop);
     n->annotations = std::move(new_ann);
-    self->Replace(sref, tir::For(n), {});
-  } else if (const auto* block = sref->StmtAs<tir::BlockNode>()) {
-    ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
+    self->Replace(sref, For(n), {});
+  } else if (const auto* block = sref->StmtAs<BlockNode>()) {
+    ObjectPtr<BlockNode> n = make_object<BlockNode>(*block);
     n->annotations = std::move(new_ann);
-    tir::Block p(n);
-    self->Replace(sref, p, {{GetRef<tir::Block>(block), p}});
+    Block p(n);
+    self->Replace(sref, p, {{GetRef<Block>(block), p}});
   } else {
     LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
     throw;

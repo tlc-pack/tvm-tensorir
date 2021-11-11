@@ -57,7 +57,7 @@ class TuneContext(Object):
     sch_rules: Optional[List[ScheduleRule]] = None,
         The schedule rules.
     postproc: Optional[List[Postproc"]] = None,
-        The post processings.
+        The postprocessors.
     mutator: Optional[List[Mutator]] = None,
         The mutators.
     task_name : Optional[str] = None
@@ -115,7 +115,7 @@ class TuneContext(Object):
         sch_rules : List[ScheduleRule] = []
             The schedule rules.
         postproc : List[Postproc] = []
-            The post-processors.
+            The postprocessors.
         mutator : List[Mutator] = []
             The mutators.
         task_name : Optional[str] = None

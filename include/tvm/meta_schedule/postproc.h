@@ -28,10 +28,7 @@ namespace meta_schedule {
 class TuneContext;
 
 /*!
- * \brief Rules to apply a post processing to a schedule.
- * \note Post processing is designed to deal with the problem of undertermined schedule validity
- *  after applying some schedule primitves at runtime. E.g., Fuse the first X loops to reach the
- *  maximum number below 1024, X is only decided at runtime.
+ * \brief Rules to apply a postprocessor to a schedule.
  */
 class PostprocNode : public runtime::Object {
  public:
@@ -47,9 +44,9 @@ class PostprocNode : public runtime::Object {
   virtual void InitializeWithTuneContext(const TuneContext& context) = 0;
 
   /*!
-   * \brief Apply a post processing to the given schedule.
+   * \brief Apply a postprocessor to the given schedule.
    * \param sch The schedule to be post processed.
-   * \return Whether the post processing was successfully applied.
+   * \return Whether the postprocessor was successfully applied.
    */
   virtual bool Apply(const tir::Schedule& sch) = 0;
 
@@ -57,7 +54,7 @@ class PostprocNode : public runtime::Object {
   TVM_DECLARE_BASE_OBJECT_INFO(PostprocNode, Object);
 };
 
-/*! \brief The post processing with customized methods on the python-side. */
+/*! \brief The postprocessor with customized methods on the python-side. */
 class PyPostprocNode : public PostprocNode {
  public:
   /*!
@@ -66,22 +63,22 @@ class PyPostprocNode : public PostprocNode {
    */
   using FInitializeWithTuneContext = runtime::TypedPackedFunc<void(const TuneContext&)>;
   /*!
-   * \brief Apply a post processing to the given schedule.
+   * \brief Apply a postprocessor to the given schedule.
    * \param sch The schedule to be post processed.
-   * \return Whether the post processing was successfully applied.
+   * \return Whether the postprocessor was successfully applied.
    */
   using FApply = runtime::TypedPackedFunc<bool(const tir::Schedule&)>;
   /*!
-   * \brief Get the post processing function as string with name.
-   * \return The string of the post processing function.
+   * \brief Get the postprocessor function as string with name.
+   * \return The string of the postprocessor function.
    */
   using FAsString = runtime::TypedPackedFunc<String()>;
 
-  /*! \brief The packed function to the `InitializeWithTuneContext` funcion. */
+  /*! \brief The packed function to the `InitializeWithTuneContext` function. */
   FInitializeWithTuneContext f_initialize_with_tune_context;
-  /*! \brief The packed function to the `Apply` funcion. */
+  /*! \brief The packed function to the `Apply` function. */
   FApply f_apply;
-  /*! \brief The packed function to the `AsString` funcion. */
+  /*! \brief The packed function to the `AsString` function. */
   FAsString f_as_string;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -112,15 +109,31 @@ class PyPostprocNode : public PostprocNode {
 class Postproc : public runtime::ObjectRef {
  public:
   /*!
-   * \brief Create a post processing with customized methods on the python-side.
+   * \brief Create a postprocessor with customized methods on the python-side.
    * \param f_initialize_with_tune_context The packed function of `InitializeWithTuneContext`.
    * \param f_apply The packed function of `Apply`.
-   * \return The post processing created.
+   * \return The postprocessor created.
    */
   TVM_DLL static Postproc PyPostproc(
       PyPostprocNode::FInitializeWithTuneContext f_initialize_with_tune_context,  //
       PyPostprocNode::FApply f_apply,                                             //
       PyPostprocNode::FAsString f_as_string);
+  /*!
+   * \brief Create a postprocessor that rewrites the cooperative fetch annotation to
+   * actual vectorized cooperative fetching in loop bindings.
+   * \return The postprocessor created.
+   */
+  TVM_DLL static Postproc RewriteCooperativeFetch();
+  /*!
+   * \brief Create a postprocessor that rewrites reduction block by moving the init block out.
+   * \return The postprocessor created.
+   */
+  TVM_DLL static Postproc RewriteReductionBlock();
+  /*!
+   * \brief Create a postprocessor that adds thread binding to unbound blocks
+   * \return The postprocessor created.
+   */
+  TVM_DLL static Postproc RewriteUnboundBlock();
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Postproc, ObjectRef, PostprocNode);
 };
 
