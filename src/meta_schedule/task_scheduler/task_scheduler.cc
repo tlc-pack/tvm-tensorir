@@ -92,28 +92,8 @@ Array<RunnerFuture> SendToRunner(const Runner& runner,  //
   return results;
 }
 
-void TaskSchedulerNode::InitializeTask(int task_id) {
-  TuneContext task = this->tasks[task_id];
-  // Derive the values.
-  IRModule mod = task->mod.value();
-  SpaceGenerator space = task->space_generator.value();
-  SearchStrategy strategy = task->search_strategy.value();
-  // Initialize Modules.
-  space->InitializeWithTuneContext(task);
-  strategy->InitializeWithTuneContext(task);
-  // Initialize the rules.
-  if (task->sch_rules.defined())
-    for (const ScheduleRule& sch_rule : task->sch_rules.value()) {
-      sch_rule->InitializeWithTuneContext(task);
-    }
-  if (task->mutators.defined())
-    for (const Mutator& mutator : task->mutators.value()) {
-      mutator->InitializeWithTuneContext(task);
-    }
-  if (task->postprocs.defined())
-    for (const Postproc& postproc : task->postprocs.value()) {
-      postproc->InitializeWithTuneContext(task);
-    }
+void TaskSchedulerNode::InitializeTask(int task_id) {  //
+  this->tasks[task_id]->Initialize();
 }
 
 void TaskSchedulerNode::Tune() {

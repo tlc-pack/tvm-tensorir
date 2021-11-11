@@ -78,6 +78,9 @@ class TuneContextNode : public runtime::Object {
     v->Visit("measure_candidates", &measure_candidates);
   }
 
+  /*! \brief Initialize members that needs initialization with tune context. */
+  void Initialize();
+
   static constexpr const char* _type_key = "meta_schedule.TuneContext";
   TVM_DECLARE_FINAL_OBJECT_INFO(TuneContextNode, Object);
 };

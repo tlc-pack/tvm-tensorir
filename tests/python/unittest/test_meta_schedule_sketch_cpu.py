@@ -15,8 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 # pylint: disable=missing-module-docstring,missing-function-docstring,missing-class-docstring
-
 from typing import List
+import sys
+
+import pytest
 
 from tvm.meta_schedule.testing import te_workload
 from tvm.meta_schedule.testing.space_generation import check_trace, create_context
@@ -231,15 +233,15 @@ def test_meta_schedule_cpu_sketch_conv2d_nchw_bias_bn_relu():  # pylint: disable
     # pylint: disable=line-too-long
     expected = [
         [
-            'b0 = sch.get_block(name="bias_add", func_name="main")',
-            'b1 = sch.get_block(name="bn_mul", func_name="main")',
-            'b2 = sch.get_block(name="bn_add", func_name="main")',
+            'b0 = sch.get_block(name="compute", func_name="main")',
+            'b1 = sch.get_block(name="bias_add", func_name="main")',
+            'b2 = sch.get_block(name="bn_mul", func_name="main")',
+            'b3 = sch.get_block(name="bn_add", func_name="main")',
+            "sch.compute_inline(block=b3)",
             "sch.compute_inline(block=b2)",
             "sch.compute_inline(block=b1)",
-            "sch.compute_inline(block=b0)",
-            'b3 = sch.get_block(name="compute", func_name="main")',
-            "b4, = sch.get_consumers(block=b3)",
-            "l5, l6, l7, l8, l9, l10, l11 = sch.get_loops(block=b3)",
+            "b4, = sch.get_consumers(block=b0)",
+            "l5, l6, l7, l8, l9, l10, l11 = sch.get_loops(block=b0)",
             "v12, v13, v14, v15 = sch.sample_perfect_tile(loop=l5, n=4, max_innermost_factor=64)",
             "l16, l17, l18, l19 = sch.split(loop=l5, factors=[v12, v13, v14, v15])",
             "v20, v21, v22, v23 = sch.sample_perfect_tile(loop=l6, n=4, max_innermost_factor=64)",
@@ -258,15 +260,15 @@ def test_meta_schedule_cpu_sketch_conv2d_nchw_bias_bn_relu():  # pylint: disable
             "sch.reverse_compute_at(block=b4, loop=l41, preserve_unit_loops=1)",
         ],
         [
-            'b0 = sch.get_block(name="bias_add", func_name="main")',
-            'b1 = sch.get_block(name="bn_mul", func_name="main")',
-            'b2 = sch.get_block(name="bn_add", func_name="main")',
+            'b0 = sch.get_block(name="compute", func_name="main")',
+            'b1 = sch.get_block(name="bias_add", func_name="main")',
+            'b2 = sch.get_block(name="bn_mul", func_name="main")',
+            'b3 = sch.get_block(name="bn_add", func_name="main")',
+            "sch.compute_inline(block=b3)",
             "sch.compute_inline(block=b2)",
             "sch.compute_inline(block=b1)",
-            "sch.compute_inline(block=b0)",
-            'b3 = sch.get_block(name="compute", func_name="main")',
-            "b4, = sch.get_consumers(block=b3)",
-            "l5, l6, l7, l8, l9, l10, l11 = sch.get_loops(block=b3)",
+            "b4, = sch.get_consumers(block=b0)",
+            "l5, l6, l7, l8, l9, l10, l11 = sch.get_loops(block=b0)",
             "v12, v13, v14, v15 = sch.sample_perfect_tile(loop=l5, n=4, max_innermost_factor=64)",
             "l16, l17, l18, l19 = sch.split(loop=l5, factors=[v12, v13, v14, v15])",
             "v20, v21, v22, v23 = sch.sample_perfect_tile(loop=l6, n=4, max_innermost_factor=64)",
@@ -285,14 +287,14 @@ def test_meta_schedule_cpu_sketch_conv2d_nchw_bias_bn_relu():  # pylint: disable
             "sch.reverse_compute_at(block=b4, loop=l40, preserve_unit_loops=1)",
         ],
         [
-            'b0 = sch.get_block(name="bias_add", func_name="main")',
-            'b1 = sch.get_block(name="bn_mul", func_name="main")',
-            'b2 = sch.get_block(name="bn_add", func_name="main")',
+            'b0 = sch.get_block(name="compute", func_name="main")',
+            'b1 = sch.get_block(name="bias_add", func_name="main")',
+            'b2 = sch.get_block(name="bn_mul", func_name="main")',
+            'b3 = sch.get_block(name="bn_add", func_name="main")',
+            "sch.compute_inline(block=b3)",
             "sch.compute_inline(block=b2)",
             "sch.compute_inline(block=b1)",
-            "sch.compute_inline(block=b0)",
-            'b3 = sch.get_block(name="compute", func_name="main")',
-            "l4, l5, l6, l7, l8, l9, l10 = sch.get_loops(block=b3)",
+            "l4, l5, l6, l7, l8, l9, l10 = sch.get_loops(block=b0)",
             "v11, v12, v13, v14 = sch.sample_perfect_tile(loop=l4, n=4, max_innermost_factor=64)",
             "l15, l16, l17, l18 = sch.split(loop=l4, factors=[v11, v12, v13, v14])",
             "v19, v20, v21, v22 = sch.sample_perfect_tile(loop=l5, n=4, max_innermost_factor=64)",
@@ -352,8 +354,4 @@ def test_meta_schedule_sketch_cpu_max_pool2d_nchw():
 
 
 if __name__ == "__main__":
-    test_meta_schedule_cpu_sketch_matmul()
-    test_meta_schedule_cpu_sketch_matmul_relu()
-    test_meta_schedule_cpu_sketch_conv2d_nchw()
-    test_meta_schedule_cpu_sketch_conv2d_nchw_bias_bn_relu()
-    test_meta_schedule_sketch_cpu_max_pool2d_nchw()
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))
