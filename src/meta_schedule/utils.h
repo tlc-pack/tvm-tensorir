@@ -20,7 +20,6 @@
 #define TVM_META_SCHEDULE_UTILS_H_
 
 #include <dmlc/memory_io.h>
-#include <tvm/arith/analyzer.h>
 #include <tvm/driver/driver_api.h>
 #include <tvm/meta_schedule/arg_info.h>
 #include <tvm/meta_schedule/builder.h>
@@ -34,13 +33,7 @@
 #include <tvm/meta_schedule/space_generator.h>
 #include <tvm/meta_schedule/task_scheduler.h>
 #include <tvm/meta_schedule/tune_context.h>
-#include <tvm/node/node.h>
-#include <tvm/node/serialization.h>
 #include <tvm/support/parallel_for.h>
-#include <tvm/tir/analysis.h>
-#include <tvm/tir/schedule/schedule.h>
-#include <tvm/tir/stmt.h>
-#include <tvm/tir/transform.h>
 
 #include <string>
 #include <vector>
