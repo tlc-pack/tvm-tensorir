@@ -306,7 +306,7 @@ bool FindAnnotateRootBlock(const Schedule& sch, ParsedAnnotation* parsed, BlockR
   return false;
 }
 
-void RewriteParallelize(const Schedule& sch, int n, Array<LoopRV>* loop_rvs) {
+void RewriteParallel(const Schedule& sch, int n, Array<LoopRV>* loop_rvs) {
   LoopRV fused = sch->Fuse({loop_rvs->begin(), loop_rvs->begin() + n});
   sch->Parallel(fused);
   for (int i = 0; i < n; ++i) {
@@ -338,7 +338,7 @@ namespace meta_schedule {
 
 using tir::Schedule;
 
-class RewriteParallelizeVectorizeUnrollNode : public PostprocNode {
+class RewriteParallelVectorizeUnrollNode : public PostprocNode {
  public:
   void InitializeWithTuneContext(const TuneContext& context) final {}
 
@@ -355,9 +355,9 @@ class RewriteParallelizeVectorizeUnrollNode : public PostprocNode {
         }
         tir::ParsedAnnotation parsed = parsed_root;
         tir::AdjustParallelVectorize(sch, block_rv, loop_rvs, &parsed);
-        // Parallelize
+        // Parallel
         if (parsed.num_parallel_loops > 0) {
-          tir::RewriteParallelize(sch, parsed.num_parallel_loops, &loop_rvs);
+          tir::RewriteParallel(sch, parsed.num_parallel_loops, &loop_rvs);
         }
         // Vectorize
         if (parsed.num_vectorize_loops > 0) {
@@ -375,19 +375,19 @@ class RewriteParallelizeVectorizeUnrollNode : public PostprocNode {
     return true;
   }
 
-  static constexpr const char* _type_key = "meta_schedule.RewriteParallelizeVectorizeUnroll";
-  TVM_DECLARE_FINAL_OBJECT_INFO(RewriteParallelizeVectorizeUnrollNode, PostprocNode);
+  static constexpr const char* _type_key = "meta_schedule.RewriteParallelVectorizeUnroll";
+  TVM_DECLARE_FINAL_OBJECT_INFO(RewriteParallelVectorizeUnrollNode, PostprocNode);
 };
 
-Postproc Postproc::RewriteParallelizeVectorizeUnroll() {
-  ObjectPtr<RewriteParallelizeVectorizeUnrollNode> n =
-      make_object<RewriteParallelizeVectorizeUnrollNode>();
+Postproc Postproc::RewriteParallelVectorizeUnroll() {
+  ObjectPtr<RewriteParallelVectorizeUnrollNode> n =
+      make_object<RewriteParallelVectorizeUnrollNode>();
   return Postproc(n);
 }
 
-TVM_REGISTER_NODE_TYPE(RewriteParallelizeVectorizeUnrollNode);
-TVM_REGISTER_GLOBAL("meta_schedule.PostprocRewriteParallelizeVectorizeUnroll")
-    .set_body_typed(Postproc::RewriteParallelizeVectorizeUnroll);
+TVM_REGISTER_NODE_TYPE(RewriteParallelVectorizeUnrollNode);
+TVM_REGISTER_GLOBAL("meta_schedule.PostprocRewriteParallelVectorizeUnroll")
+    .set_body_typed(Postproc::RewriteParallelVectorizeUnroll);
 
 }  // namespace meta_schedule
 }  // namespace tvm
