@@ -54,6 +54,30 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   data_ = std::move(n);
 }
 
+void TuneContextNode::Initialize() {
+  if (this->space_generator.defined()) {
+    this->space_generator.value()->InitializeWithTuneContext(GetRef<TuneContext>(this));
+  }
+  if (this->search_strategy.defined()) {
+    this->search_strategy.value()->InitializeWithTuneContext(GetRef<TuneContext>(this));
+  }
+  if (this->sch_rules.defined()) {
+    for (const ScheduleRule& sch_rule : sch_rules.value()) {
+      sch_rule->InitializeWithTuneContext(GetRef<TuneContext>(this));
+    }
+  }
+  if (this->postprocs.defined()) {
+    for (const Postproc& postproc : postprocs.value()) {
+      postproc->InitializeWithTuneContext(GetRef<TuneContext>(this));
+    }
+  }
+  if (this->mutators.defined()) {
+    for (const Mutator& mutator : mutators.value()) {
+      mutator->InitializeWithTuneContext(GetRef<TuneContext>(this));
+    }
+  }
+}
+
 TVM_REGISTER_NODE_TYPE(TuneContextNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
