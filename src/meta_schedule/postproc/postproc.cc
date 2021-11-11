@@ -41,8 +41,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << f_as_string();
     });
 
-/********** VerifyGPUCode **********/
-
 TVM_REGISTER_OBJECT_TYPE(PostprocNode);
 TVM_REGISTER_NODE_TYPE(PyPostprocNode);
 
