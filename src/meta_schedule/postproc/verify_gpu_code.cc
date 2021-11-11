@@ -21,45 +21,56 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*! \brief Verify the correctness of the generated GPU code. */
+Integer Extract(const Target& target, const char* name) {
+  ICHECK(target.defined());
+  if (Optional<Integer> v = target->GetAttr<Integer>(name)) {
+    return v.value();
+  }
+  LOG(FATAL) << "AttributedError: \"" << name << "\" is not defined in the target";
+  throw;
+}
+
+/*! \brief Verify the correctness of the generated GPU code. */
 class VerifyGPUCodeNode : public PostprocNode {
  public:
-  Target target_;
+  Map<String, PrimExpr> target_constraints_{nullptr};
 
-  static Integer Extract(const Target& target, const char* name) {
-    ICHECK(target.defined());
-
-    if (Optional<Integer> v = target->GetAttr<Integer>(name)) {
-      return v.value();
-    }
-    LOG(FATAL) << "AttributedError: \"" << name << "\" is not defined in the target";
-    throw;
-  }
-
-  static bool VerifyGPU(const tir::PrimFunc& func, const Target& target) {
-    Map<String, PrimExpr> constraints{
+  void InitializeWithTuneContext(const TuneContext& context) final {
+    ICHECK(context->target.defined());
+    Target target = context->target.value();
+    this->target_constraints_ = Map<String, PrimExpr>{
         {"max_shared_memory_per_block", Extract(target, "shared_memory_per_block")},
         {"max_local_memory_per_block", Extract(target, "registers_per_block")},
         {"max_threads_per_block", Extract(target, "max_threads_per_block")},
         {"max_vthread", Integer(8)},
         {"max_vector_bytes", Integer(16)}};
-    return tir::VerifyGPUCode(func, constraints);
   }
 
-  void InitializeWithTuneContext(const TuneContext& context) final {
-    ICHECK(context->target != nullptr);
-    this->target_ = context->target.value();
+  bool Verify(const IRModule& mod) const {
+    for (const auto& kv : mod->functions) {
+      if (const auto* prim_func = kv.second.as<tir::PrimFuncNode>()) {
+        if (!tir::VerifyGPUCode(GetRef<tir::PrimFunc>(prim_func), this->target_constraints_)) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   bool Apply(const tir::Schedule& sch) final {
     IRModule mod = sch->mod();
-    try {
-      mod = LowerModule(std::move(mod));
-    } catch (const dmlc::Error& e) {
-      return false;
-    }
     for (const auto& kv : mod->functions) {
-      if (const auto* func = kv.second.as<tir::PrimFuncNode>()) {
-        if (!VerifyGPU(GetRef<tir::PrimFunc>(func), this->target_)) {
+      const GlobalVar& g_var = kv.first;
+      const BaseFunc& base_func = kv.second;
+      if (const auto* prim_func = base_func.as<tir::PrimFuncNode>()) {
+        IRModule lowered{nullptr};
+        try {
+          lowered = LowerPrimFunc(GetRef<tir::PrimFunc>(prim_func), g_var->name_hint);
+        } catch (const dmlc::Error& e) {
+          return false;
+        }
+        if (!Verify(mod)) {
           return false;
         }
       }
