@@ -20,7 +20,6 @@
 #include <random>
 
 #include "../utils.h"
-#include "tvm/support/random_engine.h"
 
 namespace tvm {
 namespace tir {
