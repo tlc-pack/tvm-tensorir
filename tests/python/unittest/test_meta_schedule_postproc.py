@@ -21,7 +21,7 @@ import re
 import tvm
 from tvm.script import tir as T
 
-from tvm.meta_schedule.postproc import PyPostproc, VerifyGPUCode, DisallowDynamicLoops
+from tvm.meta_schedule.postproc import PyPostproc, VerifyGPUCode, DisallowDynamicLoop
 from tvm.meta_schedule import TuneContext
 from tvm.meta_schedule.utils import _get_hex_address
 from tvm.target.target import Target
@@ -312,13 +312,13 @@ def test_meta_schedule_postproc_verify_gpu_code3():
 
 
 def test_meta_schedule_postproc_disallow_dynamic_loops():
-    postproc = DisallowDynamicLoops()
+    postproc = DisallowDynamicLoop()
     sch = Schedule(Matmul)
     assert postproc.apply(sch)
 
 
 def test_meta_schedule_postproc_disallow_dynamic_loops_fail():
-    postproc = DisallowDynamicLoops()
+    postproc = DisallowDynamicLoop()
     sch = Schedule(DynamicLoop)
     assert not postproc.apply(sch)
 

@@ -143,7 +143,7 @@ class Postproc : public runtime::ObjectRef {
    * \brief Create a postprocessor that checks if all loops are static
    * \return The postprocessor created
    */
-  TVM_DLL static Postproc DisallowDynamicLoops();
+  TVM_DLL static Postproc DisallowDynamicLoop();
   /*!
    * \brief Creates a postprocessor that applies parallelization, vectorization and auto unrolling
    * according to the annotation of each block

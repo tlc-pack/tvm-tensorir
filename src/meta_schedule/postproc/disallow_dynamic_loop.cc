@@ -19,42 +19,71 @@
 #include "../utils.h"
 
 namespace tvm {
-namespace meta_schedule {
+namespace tir {
 
-class DisallowDynamicLoopsNode : public PostprocNode {
+/*! \brief Check if the loop is dynamic. */
+struct DynamicExtentFinder : private StmtVisitor {
  public:
-  void InitializeWithTuneContext(const TuneContext& context) final {}
-
-  bool Apply(const tir::Schedule& schedule) final {
-    bool has_dyn_ext = false;
-    auto f_visit = [&has_dyn_ext](const ObjectRef& obj) -> bool {
-      if (has_dyn_ext) {
-        return false;
-      }
-      if (const auto* loop = obj.as<tir::ForNode>()) {
-        if (!loop->extent->IsInstance<IntImmNode>()) {
-          has_dyn_ext = true;
-          return false;
+  static bool Find(const IRModule& mod) {
+    DynamicExtentFinder finder;
+    for (const auto& kv : mod->functions) {
+      const BaseFunc& func = kv.second;
+      if (const auto* prim_func = func.as<PrimFuncNode>()) {
+        finder(prim_func->body);
+        if (finder.found_) {
+          return true;
         }
       }
-      return true;
-    };
-    tir::PreOrderVisit(FindEntryFunc(schedule->mod())->body, f_visit);
-    return !has_dyn_ext;
+    }
+    return false;
   }
 
-  static constexpr const char* _type_key = "meta_schedule.DisallowDynamicLoops";
-  TVM_DECLARE_FINAL_OBJECT_INFO(DisallowDynamicLoopsNode, PostprocNode);
+ private:
+  void VisitStmt_(const ForNode* loop) final {
+    if (!loop->extent->IsInstance<IntImmNode>()) {
+      found_ = true;
+    } else {
+      StmtVisitor::VisitStmt_(loop);
+    }
+  }
+
+  void VisitStmt(const Stmt& stmt) final {
+    if (!found_) {
+      StmtVisitor::VisitStmt(stmt);
+    }
+  }
+
+  bool found_ = false;
 };
 
-Postproc Postproc::DisallowDynamicLoops() {
-  ObjectPtr<DisallowDynamicLoopsNode> n = make_object<DisallowDynamicLoopsNode>();
+}  // namespace tir
+}  // namespace tvm
+
+namespace tvm {
+namespace meta_schedule {
+
+using tir::Schedule;
+
+/*! \brief Check if the IRModule has any loop with non-constant extent. */
+class DisallowDynamicLoopNode : public PostprocNode {
+ public:
+  // Inherited from PostprocNode
+  void InitializeWithTuneContext(const TuneContext& context) final {}
+  // Inherited from PostprocNode
+  bool Apply(const tir::Schedule& sch) final { return !tir::DynamicExtentFinder::Find(sch->mod()); }
+
+  static constexpr const char* _type_key = "meta_schedule.DisallowDynamicLoop";
+  TVM_DECLARE_FINAL_OBJECT_INFO(DisallowDynamicLoopNode, PostprocNode);
+};
+
+Postproc Postproc::DisallowDynamicLoop() {
+  ObjectPtr<DisallowDynamicLoopNode> n = make_object<DisallowDynamicLoopNode>();
   return Postproc(n);
 }
 
-TVM_REGISTER_NODE_TYPE(DisallowDynamicLoopsNode);
-TVM_REGISTER_GLOBAL("meta_schedule.PostprocDisallowDynamicLoops")
-    .set_body_typed(Postproc::DisallowDynamicLoops);
+TVM_REGISTER_NODE_TYPE(DisallowDynamicLoopNode);
+TVM_REGISTER_GLOBAL("meta_schedule.PostprocDisallowDynamicLoop")
+    .set_body_typed(Postproc::DisallowDynamicLoop);
 
 }  // namespace meta_schedule
 }  // namespace tvm
