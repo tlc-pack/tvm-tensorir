@@ -34,7 +34,7 @@ def _create_context(mod, target) -> TuneContext:
     ctx = TuneContext(
         mod=mod,
         target=target,
-        postproc=[
+        postprocs=[
             RewriteCooperativeFetch(),
         ],
         task_name="test",

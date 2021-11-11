@@ -119,11 +119,22 @@ class Postproc : public runtime::ObjectRef {
       PyPostprocNode::FApply f_apply,                                             //
       PyPostprocNode::FAsString f_as_string);
   /*!
+   * \brief Create a postprocessor that checks if all loops are static
+   * \return The postprocessor created
+   */
+  TVM_DLL static Postproc DisallowDynamicLoop();
+  /*!
    * \brief Create a postprocessor that rewrites the cooperative fetch annotation to
    * actual vectorized cooperative fetching in loop bindings.
    * \return The postprocessor created.
    */
   TVM_DLL static Postproc RewriteCooperativeFetch();
+  /*!
+   * \brief Creates a postprocessor that applies parallelization, vectorization and auto unrolling
+   * according to the annotation of each block
+   * \return The postprocessor created
+   */
+  TVM_DLL static Postproc RewriteParallelVectorizeUnroll();
   /*!
    * \brief Create a postprocessor that rewrites reduction block by moving the init block out.
    * \return The postprocessor created.
@@ -134,6 +145,11 @@ class Postproc : public runtime::ObjectRef {
    * \return The postprocessor created.
    */
   TVM_DLL static Postproc RewriteUnboundBlock();
+  /*!
+   * \brief Creates a postprocessor that verifies if the GPU code is correct
+   * \return The postprocessor created
+   */
+  TVM_DLL static Postproc VerifyGPUCode();
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Postproc, ObjectRef, PostprocNode);
 };
 

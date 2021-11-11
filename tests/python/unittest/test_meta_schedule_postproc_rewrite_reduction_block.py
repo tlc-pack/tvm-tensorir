@@ -32,7 +32,7 @@ def _create_context(mod, target) -> TuneContext:
     ctx = TuneContext(
         mod=mod,
         target=target,
-        postproc=[
+        postprocs=[
             RewriteReductionBlock(),
         ],
         task_name="test",

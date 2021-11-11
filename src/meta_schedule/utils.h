@@ -20,6 +20,7 @@
 #define TVM_META_SCHEDULE_UTILS_H_
 
 #include <dmlc/memory_io.h>
+#include <tvm/driver/driver_api.h>
 #include <tvm/meta_schedule/arg_info.h>
 #include <tvm/meta_schedule/builder.h>
 #include <tvm/meta_schedule/database.h>
@@ -32,11 +33,7 @@
 #include <tvm/meta_schedule/space_generator.h>
 #include <tvm/meta_schedule/task_scheduler.h>
 #include <tvm/meta_schedule/tune_context.h>
-#include <tvm/node/node.h>
-#include <tvm/node/serialization.h>
 #include <tvm/support/parallel_for.h>
-#include <tvm/tir/schedule/schedule.h>
-#include <tvm/tir/stmt.h>
 
 #include <string>
 #include <vector>
@@ -226,7 +223,7 @@ inline IRModule DeepCopyIRModule(IRModule mod) {
  * \brief Get the BlockRV from a block StmtSRef
  * \param sch The schedule
  * \param block_sref The block StmtSRef
- * \param globla_var_name The global variable name
+ * \param global_var_name The global variable name
  * \return The BlockRV
  */
 inline tir::BlockRV GetRVFromSRef(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
