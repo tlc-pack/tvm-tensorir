@@ -47,19 +47,18 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 TVM_REGISTER_OBJECT_TYPE(CostModelNode);
 TVM_REGISTER_NODE_TYPE(PyCostModelNode);
 
-struct Internal {
-  static void CostModelPredict(CostModel model, const TuneContext& tune_context,
-                               Array<MeasureCandidate> candidates, void* p_addr) {
-    std::vector<double> result = model->Predict(tune_context, candidates);
-    std::copy(result.begin(), result.end(), static_cast<double*>(p_addr));
-  }
-};
-
 TVM_REGISTER_GLOBAL("meta_schedule.CostModelLoad").set_body_method<CostModel>(&CostModelNode::Load);
 TVM_REGISTER_GLOBAL("meta_schedule.CostModelSave").set_body_method<CostModel>(&CostModelNode::Save);
 TVM_REGISTER_GLOBAL("meta_schedule.CostModelUpdate")
     .set_body_method<CostModel>(&CostModelNode::Update);
-TVM_REGISTER_GLOBAL("meta_schedule.CostModelPredict").set_body_typed(Internal::CostModelPredict);
+TVM_REGISTER_GLOBAL("meta_schedule.CostModelPredict")
+    .set_body_typed([](CostModel model,                     //
+                       const TuneContext& tune_context,     //
+                       Array<MeasureCandidate> candidates,  //
+                       void* p_addr) -> void {
+      std::vector<double> result = model->Predict(tune_context, candidates);
+      std::copy(result.begin(), result.end(), static_cast<double*>(p_addr));
+    });
 TVM_REGISTER_GLOBAL("meta_schedule.CostModelPyCostModel").set_body_typed(CostModel::PyCostModel);
 
 }  // namespace meta_schedule

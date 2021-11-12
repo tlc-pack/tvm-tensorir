@@ -20,7 +20,6 @@ from typing import List
 
 from tvm._ffi import register_object
 from tvm.runtime import Object, NDArray
-from tvm.tir.schedule import Schedule
 
 from .. import _ffi_api
 from ..utils import _get_hex_address, check_override
@@ -49,7 +48,9 @@ class FeatureExtractor(Object):
         features : List[NDArray]
             The feature ndarray extracted.
         """
-        return _ffi_api.FeatureExtractorExtractFrom(self, tune_context, candidates)
+        return _ffi_api.FeatureExtractorExtractFrom(  # type: ignore # pylint: disable=no-member
+            self, tune_context, candidates
+        )
 
 
 @register_object("meta_schedule.PyFeatureExtractor")

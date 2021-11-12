@@ -63,18 +63,18 @@ def test_meta_schedule_cost_model():
             tune_context: TuneContext,
             candidates: List[MeasureCandidate],
             results: List[RunnerResult],
-        ) -> bool:
-            return True
+        ) -> None:
+            pass
 
         def predict(
             self, tune_context: TuneContext, candidates: List[MeasureCandidate]
         ) -> np.ndarray:
-            return np.random.rand(10, 12)
+            return [np.random.rand(10, 12)]
 
     model = FancyCostModel()
     assert model.save("fancy_test_location")
     assert model.load("fancy_test_location")
-    assert model.update(TuneContext(), [], [])
+    model.update(TuneContext(), [], [])
     results = model.predict(TuneContext, [MeasureCandidate(Schedule(mod=Matmul), [])])
     assert len(results) == 1
     assert results[0].shape == (10, 12)
@@ -93,8 +93,8 @@ def test_meta_schedule_cost_model_as_string():
             tune_context: TuneContext,
             candidates: List[MeasureCandidate],
             results: List[RunnerResult],
-        ) -> bool:
-            return True
+        ) -> None:
+            pass
 
         def predict(
             self, tune_context: TuneContext, candidates: List[MeasureCandidate]
@@ -107,5 +107,5 @@ def test_meta_schedule_cost_model_as_string():
 
 
 if __name__ == "__main__":
-    # test_meta_schedule_cost_model()
+    test_meta_schedule_cost_model()
     test_meta_schedule_cost_model_as_string()

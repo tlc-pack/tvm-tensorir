@@ -73,11 +73,11 @@ class PyMutatorNode : public MutatorNode {
    */
   using FAsString = runtime::TypedPackedFunc<String()>;
 
-  /*! \brief The packed function to the `InitializeWithTuneContext` funcion. */
+  /*! \brief The packed function to the `InitializeWithTuneContext` function. */
   FInitializeWithTuneContext f_initialize_with_tune_context;
-  /*! \brief The packed function to the `Apply` funcion. */
+  /*! \brief The packed function to the `Apply` function. */
   FApply f_apply;
-  /*! \brief The packed function to the `AsString` funcion. */
+  /*! \brief The packed function to the `AsString` function. */
   FAsString f_as_string;
 
   void VisitAttrs(tvm::AttrVisitor* v) {

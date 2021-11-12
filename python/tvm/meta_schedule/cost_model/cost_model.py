@@ -16,7 +16,7 @@
 # under the License.
 """Meta Schedule CostModel."""
 
-from typing import List, TYPE_CHECKING
+from typing import List
 import ctypes
 
 import numpy as np
@@ -33,7 +33,7 @@ from ..utils import _get_hex_address, check_override
 
 @register_object("meta_schedule.CostModel")
 class CostModel(Object):
-    """Cost model for estimation of running time, thus reducing search space."""
+    """Cost model."""
 
     def load(self, file_location: str) -> bool:
         """Load the cost model from given file location.
@@ -48,7 +48,7 @@ class CostModel(Object):
         result : bool
             Whether cost model was loaded successfully.
         """
-        _ffi_api.CostModelLoad(self, file_location)  # type: ignore # pylint: disable=no-member
+        return bool(_ffi_api.CostModelLoad(self, file_location))  # type: ignore # pylint: disable=no-member
 
     def save(self, file_location: str) -> bool:
         """Save the cost model to given file location.
@@ -63,14 +63,14 @@ class CostModel(Object):
         result : bool
             Whether cost model was saved successfully.
         """
-        _ffi_api.CostModelSave(self, file_location)  # type: ignore # pylint: disable=no-member
+        return bool(_ffi_api.CostModelSave(self, file_location))  # type: ignore # pylint: disable=no-member
 
     def update(
         self,
         tune_context: TuneContext,
         candidates: List[MeasureCandidate],
         results: List[RunnerResult],
-    ) -> bool:
+    ) -> None:
         """Update the cost model given running results.
 
         Parameters
@@ -81,11 +81,6 @@ class CostModel(Object):
             The measure candidates.
         results : List[RunnerResult]
             The running results of the measure candidates.
-
-        Return
-        ------
-        result : bool
-            Whether cost model was updated successfully.
         """
         _ffi_api.CostModelUpdate(self, tune_context, candidates, results)  # type: ignore # pylint: disable=no-member
 
@@ -99,7 +94,6 @@ class CostModel(Object):
         candidates : List[MeasureCandidate]
             The measure candidates.
 
-
         Return
         ------
         result : bool
@@ -107,12 +101,12 @@ class CostModel(Object):
         """
         n = len(candidates)
         results = np.zeros(shape=(n,), dtype="float64")
-        _ffi_api.CostModelPredict(
+        _ffi_api.CostModelPredict(  # type: ignore # pylint: disable=no-member
             self,
             tune_context,
             candidates,
             results.ctypes.data_as(ctypes.c_void_p),
-        )  # type: ignore # pylint: disable=no-member
+        )
         return results
 
 
@@ -125,11 +119,11 @@ class PyCostModel(CostModel):
 
         @check_override(self.__class__, CostModel)
         def f_load(file_location: str) -> bool:
-            self.load(file_location)
+            return self.load(file_location)
 
         @check_override(self.__class__, CostModel)
         def f_save(file_location: str) -> bool:
-            self.save(file_location)
+            return self.save(file_location)
 
         @check_override(self.__class__, CostModel)
         def f_update(
@@ -141,11 +135,16 @@ class PyCostModel(CostModel):
             self.update(tune_context, candidates, results)
 
         @check_override(self.__class__, CostModel)
-        def f_predict(tune_context: TuneContext, candidates: List[MeasureCandidate], return_ptr):
+        def f_predict(
+            tune_context: TuneContext, candidates: List[MeasureCandidate], return_ptr
+        ) -> None:
             n = len(candidates)
             return_ptr = ctypes.cast(return_ptr, ctypes.POINTER(ctypes.c_double))
             array_wrapper = np.ctypeslib.as_array(return_ptr, shape=(n,))
             array_wrapper[:] = self.predict(tune_context, candidates)
+            assert (
+                array_wrapper.dtype == "float64"
+            ), "ValueError: Invalid data type returned from CostModel Predict!"
 
         def f_as_string() -> str:
             return str(self)

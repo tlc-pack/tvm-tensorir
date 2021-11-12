@@ -27,7 +27,7 @@ namespace meta_schedule {
 
 class TuneContext;
 
-/*! \brief Cost model for estimation of running time, thus reducing search space. */
+/*! \brief Cost model. */
 class CostModelNode : public runtime::Object {
  public:
   /*! \brief Virtual destructor. */
@@ -54,9 +54,8 @@ class CostModelNode : public runtime::Object {
    * \param tune_context The tuning context.
    * \param candidates The measure candidates.
    * \param results The running results of the measure candidates.
-   * \return Whether cost model was updated successfully.
    */
-  virtual bool Update(const TuneContext& tune_context, const Array<MeasureCandidate>& candidates,
+  virtual void Update(const TuneContext& tune_context, const Array<MeasureCandidate>& candidates,
                       const Array<RunnerResult>& results) = 0;
 
   /*!
@@ -94,7 +93,7 @@ class PyCostModelNode : public CostModelNode {
    * \param results The running results of the measure candidates.
    * \return Whether cost model was updated successfully.
    */
-  using FUpdate = runtime::TypedPackedFunc<bool(const TuneContext&, const Array<MeasureCandidate>&,
+  using FUpdate = runtime::TypedPackedFunc<void(const TuneContext&, const Array<MeasureCandidate>&,
                                                 const Array<RunnerResult>&)>;
   /*!
    * \brief Predict the running results of given measure candidates.
@@ -110,15 +109,15 @@ class PyCostModelNode : public CostModelNode {
    */
   using FAsString = runtime::TypedPackedFunc<String()>;
 
-  /*! \brief The packed function to the `Load` funcion. */
+  /*! \brief The packed function to the `Load` function. */
   FLoad f_load;
-  /*! \brief The packed function to the `Save` funcion. */
+  /*! \brief The packed function to the `Save` function. */
   FSave f_save;
-  /*! \brief The packed function to the `Update` funcion. */
+  /*! \brief The packed function to the `Update` function. */
   FUpdate f_update;
-  /*! \brief The packed function to the `Predict` funcion. */
+  /*! \brief The packed function to the `Predict` function. */
   FPredict f_predict;
-  /*! \brief The packed function to the `AsString` funcion. */
+  /*! \brief The packed function to the `AsString` function. */
   FAsString f_as_string;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -139,10 +138,10 @@ class PyCostModelNode : public CostModelNode {
     return f_save(file_location);
   }
 
-  bool Update(const TuneContext& tune_context, const Array<MeasureCandidate>& candidates,
+  void Update(const TuneContext& tune_context, const Array<MeasureCandidate>& candidates,
               const Array<RunnerResult>& results) {
     ICHECK(f_update != nullptr) << "PyCostModel's Update method not implemented!";
-    return f_update(tune_context, candidates, results);
+    f_update(tune_context, candidates, results);
   }
 
   std::vector<double> Predict(const TuneContext& tune_context,

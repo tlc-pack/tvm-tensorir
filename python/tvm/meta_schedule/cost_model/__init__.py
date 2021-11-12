@@ -16,7 +16,5 @@
 # under the License.
 """
 The tvm.meta_schedule.cost_model package.
-Meta Schedule cost model for estimation of running time, thus
-reducing search space.
 """
 from .cost_model import CostModel, PyCostModel

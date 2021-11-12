@@ -20,6 +20,8 @@
 #ifndef TVM_META_SCHEDULE_FEATURE_EXTRACTOR_H_
 #define TVM_META_SCHEDULE_FEATURE_EXTRACTOR_H_
 
+#include <tvm/meta_schedule/search_strategy.h>
+
 namespace tvm {
 namespace meta_schedule {
 
@@ -63,9 +65,9 @@ class PyFeatureExtractorNode : public FeatureExtractorNode {
    */
   using FAsString = runtime::TypedPackedFunc<String()>;
 
-  /*! \brief The packed function to the `ExtractFrom` funcion. */
+  /*! \brief The packed function to the `ExtractFrom` function. */
   FExtractFrom f_extract_from;
-  /*! \brief The packed function to the `AsString` funcion. */
+  /*! \brief The packed function to the `AsString` function. */
   FAsString f_as_string;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
