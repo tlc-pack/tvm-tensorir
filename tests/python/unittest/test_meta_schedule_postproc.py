@@ -377,7 +377,6 @@ def test_meta_schedule_postproc_rewrite_parallel_unroll_vectorize():
     postproc = RewriteParallelVectorizeUnroll()
     sch = Schedule(Move_PUV)
     assert postproc.apply(sch)
-    print(sch.mod["main"])
     tvm.ir.assert_structural_equal(sch.mod["main"], Move_PUV0)
 
 
