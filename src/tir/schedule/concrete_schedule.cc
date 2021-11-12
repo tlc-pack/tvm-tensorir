@@ -594,8 +594,8 @@ void ConcreteScheduleNode::Annotate(const LoopRV& loop_rv, const String& ann_key
   if (const auto* str = ann_val.as<StringObj>()) {
     tir::Annotate(state_, this->GetSRef(loop_rv), ann_key, GetRef<String>(str));
   } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
-    ICHECK(ann_val.as<tir::StringImmNode>() == nullptr)
-        << "TypeError: runtime::String is expected, but gets tir::StringImm";
+    ICHECK(!ann_val->IsInstance<StringImmNode>())
+        << "TypeError: runtime::String is expected, but gets StringImm";
     tir::Annotate(state_, this->GetSRef(loop_rv), ann_key, this->Get(GetRef<PrimExpr>(expr)));
   } else {
     LOG(FATAL)
@@ -620,8 +620,8 @@ void ConcreteScheduleNode::Annotate(const BlockRV& block_rv, const String& ann_k
   if (const auto* str = ann_val.as<StringObj>()) {
     tir::Annotate(state_, this->GetSRef(block_rv), ann_key, GetRef<String>(str));
   } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
-    ICHECK(ann_val.as<tir::StringImmNode>() == nullptr)
-        << "TypeError: runtime::String is expected, but gets tir::StringImm";
+    ICHECK(!ann_val->IsInstance<StringImmNode>())
+        << "TypeError: runtime::String is expected, but gets StringImm";
     tir::Annotate(state_, this->GetSRef(block_rv), ann_key, this->Get(GetRef<PrimExpr>(expr)));
   } else {
     LOG(FATAL)

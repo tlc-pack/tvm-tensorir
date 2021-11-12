@@ -21,9 +21,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-using tir::BlockRV;
-using tir::Schedule;
-
 /*! \brief The type of inline to be performed on a specific block */
 enum class InlineType : int32_t {
   /*! \brief No inline opportunity */
@@ -38,13 +35,13 @@ enum class InlineType : int32_t {
 class AutoInlineNode : public ScheduleRuleNode {
  public:
   /*! \brief Checks if the specific block should be inlined */
-  inline InlineType CheckInline(const Schedule& sch, const BlockRV& block_rv);
+  inline InlineType CheckInline(const tir::Schedule& sch, const tir::BlockRV& block_rv);
 
   // Inherited from ScheduleRuleNode
   void InitializeWithTuneContext(const TuneContext& context) final {}
 
   // Inherited from ScheduleRuleNode
-  Array<Schedule> Apply(const Schedule& sch, const BlockRV& block_rv) final {
+  Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block_rv) final {
     InlineType inline_type = CheckInline(sch, block_rv);
     if (inline_type == InlineType::kInlineIntoConsumer) {
       sch->ComputeInline(block_rv);
@@ -87,7 +84,8 @@ class AutoInlineNode : public ScheduleRuleNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(AutoInlineNode, ScheduleRuleNode);
 };
 
-inline InlineType AutoInlineNode::CheckInline(const Schedule& sch, const BlockRV& block_rv) {
+inline InlineType AutoInlineNode::CheckInline(const tir::Schedule& sch,
+                                              const tir::BlockRV& block_rv) {
   using namespace tvm::tir;
   StmtSRef block_sref = sch->GetSRef(block_rv);
   ScheduleState state = sch->state();

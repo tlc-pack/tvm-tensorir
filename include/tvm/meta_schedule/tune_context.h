@@ -44,7 +44,7 @@ class TuneContextNode : public runtime::Object {
   Optional<SearchStrategy> search_strategy;
   /*! \brief The schedule rules. */
   Optional<Array<ScheduleRule>> sch_rules;
-  /*! \brief The post processings. */
+  /*! \brief The postprocessors. */
   Optional<Array<Postproc>> postprocs;
   /*! \brief The mutators. */
   Optional<Array<Mutator>> mutators;
@@ -78,6 +78,9 @@ class TuneContextNode : public runtime::Object {
     v->Visit("measure_candidates", &measure_candidates);
   }
 
+  /*! \brief Initialize members that needs initialization with tune context. */
+  void Initialize();
+
   static constexpr const char* _type_key = "meta_schedule.TuneContext";
   TVM_DECLARE_FINAL_OBJECT_INFO(TuneContextNode, Object);
 };
@@ -95,7 +98,7 @@ class TuneContext : public runtime::ObjectRef {
    * \param space_generator The design space generator.
    * \param search_strategy The search strategy.
    * \param sch_rules The schedule rules.
-   * \param postprocs The post processings.
+   * \param postprocs The postprocessors.
    * \param mutators The mutators.
    * \param task_name The name of the tuning task.
    * \param rand_state The random state.

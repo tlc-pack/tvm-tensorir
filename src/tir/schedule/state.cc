@@ -897,7 +897,7 @@ class ChildReplacer : private StmtMutator {
   int seq_index_;
 };
 
-void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_stmt,
+void ScheduleStateNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
                                 const Map<Block, Block>& _block_sref_reuse) {
   if (this->debug_mask != 0) {
     const StmtNode* src_stmt = _src_sref->stmt;

@@ -333,18 +333,14 @@ inline std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const 
       Array<LoopRV> buffer_loops = sch->GetLoops(cache_read_block);
       LoopRV fused = sch->Fuse(Array<LoopRV>{buffer_loops.end() - buffer_ndim,  //
                                              buffer_loops.end()});
-      // Do cooperative fetching
+      // Annotate cooperative fetching
       if (vector_load_max_len > 0) {
         // cooperative fetch + vectorized loading
-        // Split into inner and outer
+        // Split into inner and outer, vectorize the inner loop
         Array<ExprRV> factors = sch->SamplePerfectTile(fused, 2, vector_load_max_len);
-        Array<LoopRV> splits = sch->Split(fused, {factors[0], factors[1]});
-        // Vectorize the inner loop
-        sch->Vectorize(splits[1]);
-        fused = splits[0];
+        // Add cooperative fetching
+        sch->Annotate(cache_read_block, tir::attr::meta_schedule_cooperative_fetch, factors[1]);
       }
-      // Add cooperative fetching
-      sch->Annotate(fused, tir::attr::meta_schedule_lazy_cooperative_fetch, Integer(1));
     }
     State new_state = state;
     new_state.sch = sch;

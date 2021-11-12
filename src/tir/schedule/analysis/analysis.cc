@@ -727,6 +727,53 @@ BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sr
   }
 }
 
+IterVarType GetLoopIterType(const StmtSRef& loop_sref) {
+  const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  const Var& loop_var = loop->loop_var;
+  int n_spatial = 0;
+  int n_reduce = 0;
+  int n_other = 0;
+  auto f_visit = [&loop_var, &n_spatial, &n_reduce, &n_other](const ObjectRef& obj) -> bool {
+    if (const auto* realize = obj.as<BlockRealizeNode>()) {
+      const BlockNode* block = realize->block.get();
+      // Number of block vars and their bindings
+      ICHECK_EQ(realize->iter_values.size(), block->iter_vars.size());
+      int n = realize->iter_values.size();
+      for (int i = 0; i < n; ++i) {
+        const IterVar& iter_var = block->iter_vars[i];
+        const PrimExpr& binding = realize->iter_values[i];
+        // Categorize the current block var
+        int* ref = nullptr;
+        if (iter_var->iter_type == IterVarType::kDataPar) {
+          ref = &n_spatial;
+        } else if (iter_var->iter_type == IterVarType::kCommReduce) {
+          ref = &n_reduce;
+        } else {
+          ref = &n_other;
+        }
+        // Visit the binding to see if `loop_var` appears
+        PostOrderVisit(binding, [&ref, &loop_var](const ObjectRef& obj) -> void {
+          if (obj.same_as(loop_var)) {
+            (*ref) += 1;
+          }
+        });
+      }
+      return false;
+    }
+    return true;
+  };
+  PreOrderVisit(loop->body, f_visit);
+  if (n_other) {
+    return IterVarType::kOpaque;
+  } else if (n_spatial && n_reduce) {
+    return IterVarType::kOpaque;
+  } else if (n_reduce) {
+    return IterVarType::kCommReduce;
+  } else {
+    return IterVarType::kDataPar;
+  }
+}
+
 /******** Producer-consumer relation ********/
 
 Array<StmtSRef> GetProducers(const StmtSRef& block_sref, const BlockScope& scope) {
@@ -1368,11 +1415,11 @@ bool HasOp(const Stmt& stmt, const Array<Op>& ops) {
     op_set.insert(op.operator->());
   }
   bool found = false;
-  tir::PreOrderVisit(stmt, [&found, &op_set](const ObjectRef& obj) -> bool {
+  PreOrderVisit(stmt, [&found, &op_set](const ObjectRef& obj) -> bool {
     if (found) {
       return false;
     }
-    if (const auto* call = obj.as<tir::CallNode>()) {
+    if (const auto* call = obj.as<CallNode>()) {
       if (op_set.count(call->op.operator->())) {
         found = true;
       }
@@ -1389,15 +1436,15 @@ bool HasIfThenElse(const Stmt& stmt) {
       // stop visiting
       return false;
     }
-    if (const auto* realize = obj.as<tir::BlockRealizeNode>()) {
+    if (const auto* realize = obj.as<BlockRealizeNode>()) {
       // Case 1: BlockRealize
       if (!is_one(realize->predicate)) {
         has_branch = true;
       }
-    } else if (obj->IsInstance<tir::IfThenElseNode>() || obj->IsInstance<tir::SelectNode>()) {
+    } else if (obj->IsInstance<IfThenElseNode>() || obj->IsInstance<SelectNode>()) {
       // Case 2: IfThenElse / Select
       has_branch = true;
-    } else if (const auto* call = obj.as<tir::CallNode>()) {
+    } else if (const auto* call = obj.as<CallNode>()) {
       // Case 3: Call
       static const Op& op_if_then_else = Op::Get("tir.if_then_else");
       if (call->op.same_as(op_if_then_else)) {
@@ -1406,7 +1453,7 @@ bool HasIfThenElse(const Stmt& stmt) {
     }
     return !has_branch;
   };
-  tir::PreOrderVisit(stmt, f_visit);
+  PreOrderVisit(stmt, f_visit);
   return has_branch;
 }
 

@@ -31,29 +31,22 @@ if TYPE_CHECKING:
 
 @register_object("meta_schedule.Postproc")
 class Postproc(Object):
-    """Rules to apply a post processing to a schedule.
-
-    Note
-    ----
-    Post processing is designed to deal with the problem of undertermined schedule validity after
-    applying some schedule primitves at runtime. E.g., Fuse the first X loops to reach the maximum
-    number below 1024, X is only decided at runtime.
-    """
+    """Rules to apply a postprocessor to a schedule."""
 
     def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
-        """Initialize the post processing with a tune context.
+        """Initialize the postprocessor with a tune context.
 
         Parameters
         ----------
         tune_context : TuneContext
-            The tuning context for initializing the post processing.
+            The tuning context for initializing the postprocessor.
         """
         _ffi_api.PostprocInitializeWithTuneContext(  # type: ignore # pylint: disable=no-member
             self, tune_context
         )
 
     def apply(self, sch: Schedule) -> bool:
-        """Apply a post processing to the given schedule.
+        """Apply a postprocessor to the given schedule.
 
         Parameters
         ----------
@@ -63,9 +56,9 @@ class Postproc(Object):
         Returns
         -------
         result : bool
-            Whether the post processing was successfully applied.
+            Whether the postprocessor was successfully applied.
         """
-        return _ffi_api.PostprocApply(self, sch)
+        return _ffi_api.PostprocApply(self, sch)  # type: ignore # pylint: disable=no-member
 
 
 @register_object("meta_schedule.PyPostproc")

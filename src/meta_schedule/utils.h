@@ -20,6 +20,7 @@
 #define TVM_META_SCHEDULE_UTILS_H_
 
 #include <dmlc/memory_io.h>
+#include <tvm/driver/driver_api.h>
 #include <tvm/meta_schedule/arg_info.h>
 #include <tvm/meta_schedule/builder.h>
 #include <tvm/meta_schedule/cost_model.h>
@@ -34,11 +35,7 @@
 #include <tvm/meta_schedule/space_generator.h>
 #include <tvm/meta_schedule/task_scheduler.h>
 #include <tvm/meta_schedule/tune_context.h>
-#include <tvm/node/node.h>
-#include <tvm/node/serialization.h>
 #include <tvm/support/parallel_for.h>
-#include <tvm/tir/schedule/schedule.h>
-#include <tvm/tir/stmt.h>
 
 #include <string>
 #include <vector>
@@ -222,6 +219,19 @@ inline std::vector<support::LinearCongruentialEngine::TRandState> ForkSeed(
  */
 inline IRModule DeepCopyIRModule(IRModule mod) {
   return Downcast<IRModule>(LoadJSON(SaveJSON(mod)));
+}
+
+/*!
+ * \brief Get the BlockRV from a block StmtSRef
+ * \param sch The schedule
+ * \param block_sref The block StmtSRef
+ * \param global_var_name The global variable name
+ * \return The BlockRV
+ */
+inline tir::BlockRV GetRVFromSRef(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                                  const String& global_var_name) {
+  const tir::BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  return sch->GetBlock(block->name_hint, global_var_name);
 }
 
 }  // namespace meta_schedule
