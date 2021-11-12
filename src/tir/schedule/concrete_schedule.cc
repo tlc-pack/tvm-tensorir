@@ -586,7 +586,28 @@ BlockRV ConcreteScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
 }
 
 /******** Schedule: Blockize & Tensorize ********/
-/******** Schedule: Annotation ********/
+BlockRV ConcreteScheduleNode::Blockize(const LoopRV& loop_rv) {
+  StmtSRef result{nullptr};
+  TVM_TIR_SCHEDULE_BEGIN();
+  result = tir::Blockize(state_, this->GetSRef(loop_rv));
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("blockize", this->error_render_level_);
+  return CreateRV<BlockRV>(result);
+}
+
+void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::Tensorize(state_, this->GetSRef(loop_rv), intrin);
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("tensorize", this->error_render_level_);
+}
+
+void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin_name) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::Tensorize(state_, this->GetSRef(loop_rv), tir::TensorIntrin::Get(intrin_name));
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("tensorize", this->error_render_level_);
+}
 
 void ConcreteScheduleNode::Annotate(const LoopRV& loop_rv, const String& ann_key,
                                     const ObjectRef& ann_val) {

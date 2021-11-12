@@ -350,6 +350,11 @@ TVM_DLL void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int bu
                           int axis, int factor, int offset);
 
 /******** Schedule: Blockize & Tensorize ********/
+
+TVM_DLL StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref);
+TVM_DLL void Tensorize(ScheduleState self, const StmtSRef& loop_sref,
+                       const TensorIntrin& intrinsic);
+
 /******** Schedule: Annotation ********/
 /*!
  * \brief Annotate a block/loop with a key value pair

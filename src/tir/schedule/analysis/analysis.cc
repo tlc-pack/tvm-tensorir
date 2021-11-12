@@ -50,6 +50,10 @@ const PrimFuncNode* GetRootPrimFunc(const IRModule& mod, const StmtNode* root_bl
 StmtSRef GetScopeRoot(const ScheduleState& self, const StmtSRef& sref,  //
                       bool require_stage_pipeline,                      //
                       bool require_subtree_compact_dataflow) {
+  // FIXME(wuwei): ignore for now
+  require_stage_pipeline = false;
+  require_subtree_compact_dataflow = false;
+
   class RootBlockError : public ScheduleError {
    public:
     explicit RootBlockError(IRModule mod) : mod_(mod) {}

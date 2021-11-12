@@ -705,7 +705,7 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
   std::vector<const StmtSRefNode*> chain = GetLoopsInReorderRange(self, top, bottom);
   // Step 4. Check the block below has all its block_var to be data-parallel or reduction,
   // and the block has an affine binding.
-  BlockPropertyError::CheckBlockIterTypeAndAffineBinding(self, bottom);
+  // BlockPropertyError::CheckBlockIterTypeAndAffineBinding(self, bottom);
   // Step 5. Replace the original loops with the reordered loops and check that outer loop is
   // not dependent on inner loop
   For new_loop = ConstructNewLoopChain(self, std::move(chain), ordered_loop_srefs, loop_srefs);

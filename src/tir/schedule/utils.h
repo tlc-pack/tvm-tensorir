@@ -325,6 +325,158 @@ inline Optional<TObjectRef> GetAnn(const StmtSRef& sref, const String& ann_key) 
   return NullOpt;
 }
 
+/* \brief Deep comparison to check if two IR graph are equivalent */
+using ExprComparator = ExprFunctor<bool(const PrimExpr& n, const PrimExpr& other)>;
+using StmtComparator = StmtFunctor<bool(const Stmt& n, const Stmt& other)>;
+
+class TensorizeComparator : public ExprComparator, public StmtComparator {
+ public:
+  explicit TensorizeComparator(bool assert_mode = true) : assert_mode_(assert_mode) {}
+
+  // Map from rhs buffer to lhs buffer
+  std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual> rhs_buffer_map_;
+  // Buffer indices mapping
+  std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
+  std::vector<IterVar> extra_block_vars_;
+  // variable remap if any
+  std::unordered_map<ObjectRef, ObjectRef, ObjectPtrHash, ObjectPtrEqual> equal_map_;
+
+  bool VisitExpr(const PrimExpr& n, const PrimExpr& other) override;
+  bool VisitStmt(const Stmt& n, const Stmt& other) override;
+
+  bool VisitStmt_(const ForNode* op, const Stmt& other) override;
+  bool VisitStmt_(const SeqStmtNode* op, const Stmt& other) override;
+  bool VisitStmt_(const BufferStoreNode* op, const Stmt& other) override;
+  bool VisitStmt_(const BlockRealizeNode* op, const Stmt& other) override;
+  bool VisitStmt_(const BlockNode* op, const Stmt& other) override;
+
+  bool VisitExpr_(const AddNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const SubNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const MulNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const DivNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const ModNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const EQNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const NENode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const LTNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const LENode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const GTNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const GENode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const AndNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const OrNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const MinNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const MaxNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const FloorDivNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const FloorModNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const IntImmNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const FloatImmNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const CastNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const VarNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const BufferLoadNode* op, const PrimExpr& other) override;
+
+  bool DefEqual(const ObjectRef& lhs, const ObjectRef& rhs);
+  virtual bool CompareBuffer(const Buffer& lhs, const Buffer& rhs);
+  bool CompareBufferRegion(const BufferRegion& lhs, const BufferRegion& rhs);
+  bool CompareAnnotation(const std::pair<String, ObjectRef>& lhs,
+                         const std::pair<String, ObjectRef>& rhs);
+  bool CompareAnnotationMap(const Map<String, ObjectRef>& lhs, const Map<String, ObjectRef>& rhs);
+  template <typename T>
+  bool CompareBufferAccess(const T* lhs, const T* rhs);
+  template <typename T, typename F>
+  bool CompareArray(const Array<T>& lhs, const Array<T>& rhs, F cmp);
+  bool CompareRange(const Range& lhs, const Range& rhs);
+  bool CompareType(const DataType& lhs, const DataType& rhs);
+
+ protected:
+  bool assert_mode_;
+  bool is_scope_block = true, is_inner_block = true;
+};
+
+bool CheckOneLine(const Stmt& s);
+
+class StmtReplacer : public StmtMutator {
+ public:
+  explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map)
+      : replace_map(replace_map) {}
+
+  Stmt VisitStmt(const Stmt& stmt) override;
+
+  const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map;
+};
+
+/* \brief Auto calculate the block read write region */
+class BlockReadWriteCollector : public StmtExprVisitor {
+ public:
+  explicit BlockReadWriteCollector(const Array<Buffer>& allocations) {
+    for (const auto& allocate : allocations) inner_buffers_.insert(allocate.get());
+  }
+
+  Array<BufferRegion> reads();
+  Array<BufferRegion> writes();
+
+ private:
+  std::unordered_map<const VarNode*, arith::IntSet> dom_map_;
+  std::vector<Buffer> read_buffers_, writes_buffers_;
+  std::vector<std::vector<tvm::arith::IntSet>> read_regions_, write_regions_;
+  std::unordered_set<const BufferNode*> inner_buffers_;
+
+  void VisitStmt_(const ForNode* op) override;
+  void Update(std::vector<Buffer>* buffers, std::vector<std::vector<arith::IntSet>>* regions,
+              const Buffer& buffer, const std::vector<arith::IntSet>& region);
+  void VisitExpr_(const BufferLoadNode* op) override;
+  void VisitStmt_(const BufferStoreNode* op) override;
+  void VisitStmt_(const BlockRealizeNode* op) override;
+};
+
+
+/*!
+ * \brief Substitute the var in current block scope specified in key->var to be value.
+ * \param stmt The source stmt to be substituted
+ * \param value_func The function of new values mapping.
+ * \return The converted stmt.
+ */
+Stmt SubstituteInScope(const Stmt& stmt, const std::function<PrimExpr(const VarNode*)>& value_func);
+
+/*!
+ * \brief Substitute the var in current block scope specified in var map
+ * \param stmt The source stmt to be substituted
+ * \param var_map The mapping of var
+ * \return The converted stmt
+ */
+Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::unordered_map<const VarNode*, const VarNode*>& var_map);
+
+/*!
+ * \param var_map The mapping of var
+ * \return The converted stmt
+ */
+Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::unordered_map<const VarNode*, PrimExpr>& var_map);
+
+/*!
+ * \brief Substitute the var in BufferRegion
+ * \param buffer_region The source BufferRegion to be substituted
+ * \param var_map the mapping of var
+ * \return The converted tensor region
+ */
+BufferRegion SubstituteBufferRegion(
+    const BufferRegion& buffer_region,
+    const std::unordered_map<const VarNode*, const VarNode*>& var_map);
+
+/*!
+ * \brief Substitute the var in BufferRegion
+ * \param buffer_region The source BufferRegion to be substituted
+ * \param var_map the mapping of var
+ * \return The converted tensor region
+ */
+BufferRegion SubstituteBufferRegion(const BufferRegion& buffer_region,
+                                    const std::unordered_map<const VarNode*, PrimExpr>& var_map);
+
+void UpdateScope(ScheduleState self, const StmtSRef& block_sref);
+
+void UpdateAffineFlag(ScheduleState self, const StmtSRef& block_sref);
+
+bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& loop_var_ranges);
+
 }  // namespace tir
 }  // namespace tvm
 
