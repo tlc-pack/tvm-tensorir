@@ -162,10 +162,10 @@ void ParallelizeComputation(const ScheduleState& self, const StmtSRef& loop_sref
 
   // Step 2. Check whether the loop can be parallelized/vectorized/bound with regard to each
   // underlying block.
-  // CheckParallelizability(self, GetRef<For>(loop), for_kind,
-  //                        thread_axis.defined()
-  //                            ? runtime::ThreadScope::Create(thread_axis.value()->thread_tag)
-  //                            : runtime::ThreadScope{-1, -1});
+  CheckParallelizability(self, GetRef<For>(loop), for_kind,
+                         thread_axis.defined()
+                             ? runtime::ThreadScope::Create(thread_axis.value()->thread_tag)
+                             : runtime::ThreadScope{-1, -1});
 
   // Step 3. Loop update and IR replacement
   ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop);

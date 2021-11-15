@@ -426,27 +426,6 @@ bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& lo
   return true;
 }
 
-void UpdateAffineFlag(ScheduleState self, const StmtSRef& block_sref) {
-  if (block_sref->parent == nullptr) {
-    ICHECK(self->block_info.count(block_sref));
-    self->block_info[block_sref].affine_binding = true;
-    return;
-  }
-  BlockRealize realize = GetBlockRealize(block_sref);
-  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  Map<Var, Range> loop_var_ranges;
-  for (StmtSRefNode* loop_sref = block_sref->parent; loop_sref != nullptr;
-       loop_sref = loop_sref->parent) {
-    if (const auto* loop = loop_sref->StmtAs<ForNode>()) {
-      loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
-    } else {
-      break;
-    }
-  }
-  ICHECK(self->block_info.count(block_sref));
-  self->block_info[block_sref].affine_binding = ValidateBlockBinding(realize, loop_var_ranges);
-}
-
 Array<BufferRegion> BlockReadWriteCollector::reads() {
   std::vector<BufferRegion> res;
   for (size_t i = 0; i < read_regions_.size(); ++i) {

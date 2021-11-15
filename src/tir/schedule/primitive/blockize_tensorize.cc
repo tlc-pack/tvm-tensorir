@@ -32,6 +32,23 @@ Block GetRootBlock(StmtSRef sref) {
   return GetRef<Block>(root_block);
 }
 
+void RecalculateCachedFlags(ScheduleState& self) {
+  ScheduleState new_state(self->mod);
+  for (const auto& kv : new_state->stmt2ref) {
+    const StmtNode* stmt = kv.first;
+    const StmtSRef& new_sref = kv.second;
+    if (stmt->IsInstance<ForNode>() || !self->stmt2ref.count(stmt)) {
+      continue;
+    }
+    const BlockInfo& new_block_info = new_state->block_info.at(new_sref);
+    const StmtSRef& old_sref = self->stmt2ref.at(stmt);
+    BlockInfo& old_block_info = self->block_info.at(old_sref);
+    old_block_info.affine_binding = new_block_info.affine_binding;
+    old_block_info.region_cover = new_block_info.region_cover;
+    old_block_info.scope->stage_pipeline = new_block_info.scope->stage_pipeline;
+  }
+}
+
 bool TensorizeComparator::VisitStmt(const Stmt& n, const Stmt& other) {
   if (n.same_as(other)) return true;
   if (n->type_index() != other->type_index()) return false;
@@ -490,7 +507,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
       outer_bindings.push_back(
           arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(outer_binding)));
       outer_block_vars.push_back(iter_var);
-      bv_iters[iter_var->var] = Range::FromMinExtent(iter_var->var, 1);
+      bv_iters[iter_var->var] = Range::FromMinExtent(0, division[i][0]->extent);
     } else {
       const IterVar outer_var(Range::FromMinExtent(0, division[i][0]->extent),
                               iter_var->var.copy_with_suffix("o"), iter_var->iter_type);
@@ -617,38 +634,49 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
 
   self->Replace(loop_sref, outer_realize, {{block, inner_block}});
   {
-    StmtSRef block_sref = self->stmt2ref.at(inner_block.get());
-    UpdateAffineFlag(self, block_sref);
-  }
-  {
     StmtSRef block_sref = self->stmt2ref.at(outer_block.get());
     StmtSRef scope_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false,
                                        /*require_compact_dataflow*/false);
     UpdateScope(self, scope_sref);
-    UpdateAffineFlag(self, scope_sref);
   }
-  {
-    StmtSRef block_sref = self->stmt2ref.at(outer_block.get());
-    UpdateScope(self, block_sref);
-    UpdateAffineFlag(self, block_sref);
-  }
+  RecalculateCachedFlags(self);
 
-  // Check loop binding
+  // }
+  // TODO: fix affine flags
+  // self->Replace(loop_sref, outer_realize, {{block, inner_block}});
+  // {
+  //   StmtSRef block_sref = self->stmt2ref.at(inner_block.get());
+  //   UpdateAffineFlag(self, block_sref);
+  // }
+  // {
+  //   StmtSRef block_sref = self->stmt2ref.at(outer_block.get());
+  //   StmtSRef scope_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false,
+  //                                      /*require_compact_dataflow*/false);
+  //   UpdateScope(self, scope_sref);
+  //   UpdateAffineFlag(self, scope_sref);
+  // }
+  // {
+  //   StmtSRef block_sref = self->stmt2ref.at(outer_block.get());
+  //   UpdateScope(self, block_sref);
+  //   UpdateAffineFlag(self, block_sref);
+  // }
 
-  {
-    struct BindingValidator : public StmtVisitor {
-      void VisitStmt_(const BlockRealizeNode* realize) final {
-        StmtSRef& sref = self->stmt2ref.at(realize->block.get());
-        UpdateAffineFlag(self, sref);
-        VisitStmt(realize->block->body);
-      }
-      ScheduleState self;
-    };
-    BindingValidator validator;
-    validator.self = self;
-    const PrimFuncNode* func = GetRootPrimFunc(self->mod, GetRootBlock(loop_sref).get(), nullptr);
-    validator(func->body);
-  }
+  // // Check loop binding
+
+  // {
+  //   struct BindingValidator : public StmtVisitor {
+  //     void VisitStmt_(const BlockRealizeNode* realize) final {
+  //       StmtSRef& sref = self->stmt2ref.at(realize->block.get());
+  //       UpdateAffineFlag(self, sref);
+  //       VisitStmt(realize->block->body);
+  //     }
+  //     ScheduleState self;
+  //   };
+  //   BindingValidator validator;
+  //   validator.self = self;
+  //   const PrimFuncNode* func = GetRootPrimFunc(self->mod, GetRootBlock(loop_sref).get(), nullptr);
+  //   validator(func->body);
+  // }
   return self->stmt2ref.at(outer_block.get());
 }
 
@@ -894,21 +922,21 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   Block new_block(new_block_ptr);
   self->Replace(self->stmt2ref.at(block_realize->block.get()), new_block,
                 {{block_realize->block, new_block}});
-  {
-    struct BindingValidator : public StmtVisitor {
-      void VisitStmt_(const BlockRealizeNode* realize) final {
-        StmtSRef& sref = self->stmt2ref.at(realize->block.get());
-        UpdateAffineFlag(self, sref);
-        VisitStmt(realize->block->body);
-      }
-      ScheduleState self;
-    };
-    BindingValidator validator;
-    StmtSRef block_sref = self->stmt2ref.at(new_block.get());
-    const PrimFuncNode* func = GetRootPrimFunc(self->mod, GetRootBlock(block_sref).get(), nullptr);
-    validator.self = self;
-    validator(func->body);
-  }
+  // {
+  //   struct BindingValidator : public StmtVisitor {
+  //     void VisitStmt_(const BlockRealizeNode* realize) final {
+  //       StmtSRef& sref = self->stmt2ref.at(realize->block.get());
+  //       UpdateAffineFlag(self, sref);
+  //       VisitStmt(realize->block->body);
+  //     }
+  //     ScheduleState self;
+  //   };
+  //   BindingValidator validator;
+  //   StmtSRef block_sref = self->stmt2ref.at(new_block.get());
+  //   const PrimFuncNode* func = GetRootPrimFunc(self->mod, GetRootBlock(block_sref).get(), nullptr);
+  //   validator.self = self;
+  //   validator(func->body);
+  // }
 }
 
 struct BlockizeTraits : public UnpackedInstTraits<BlockizeTraits> {
