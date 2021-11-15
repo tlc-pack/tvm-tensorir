@@ -583,7 +583,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
       outer_bindings.push_back(
           arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(outer_binding)));
       outer_block_vars.push_back(iter_var);
-      bv_iters[iter_var->var] = Range::FromMinExtent(0, division[i][0]->extent);
+      // bv_iters[iter_var->var] = Range::FromMinExtent(0, division[i][0]->extent);
     } else {
       const IterVar outer_var(Range::FromMinExtent(0, division[i][0]->extent),
                               iter_var->var.copy_with_suffix("o"), iter_var->iter_type);
@@ -998,6 +998,7 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   Block new_block(new_block_ptr);
   self->Replace(self->stmt2ref.at(block_realize->block.get()), new_block,
                 {{block_realize->block, new_block}});
+  RecalculateCachedFlags(self);
   // {
   //   struct BindingValidator : public StmtVisitor {
   //     void VisitStmt_(const BlockRealizeNode* realize) final {

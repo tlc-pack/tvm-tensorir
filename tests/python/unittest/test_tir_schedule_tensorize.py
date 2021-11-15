@@ -306,7 +306,7 @@ def test_tensorize_gemm():
     func = matmul
     tensor_intrin = tvm.tir.TensorIntrin(desc_func, intrin_func)
     # schedule
-    s = tir.Schedule(func, debug_mask='none')
+    s = tir.Schedule(func, debug_mask='all')
     update = s.get_block("update")
     i, j, k = s.get_loops(update)
     io, ii = s.split(i, factors=[None, 16])
@@ -330,7 +330,7 @@ def test_tensorize_gemm():
 def test_tensorize_buffer_bind():
     func = matmul
     # schedule
-    s = tir.Schedule(func, debug_mask='none')
+    s = tir.Schedule(func, debug_mask='all')
     update = s.get_block("update")
     i, j, k = s.get_loops(update)
     io, ii = s.split(i, factors=[None, 16])
@@ -344,7 +344,7 @@ def test_tensorize_buffer_bind():
 
 
 def test_high_dim_tensorize():
-    s = tir.Schedule(batch_matmul, debug_mask='none')
+    s = tir.Schedule(batch_matmul, debug_mask='all')
     update = s.get_block("update")
     _, i, j, k = s.get_loops(update)
     io, ii = s.split(i, factors=[None, 16])
@@ -353,12 +353,13 @@ def test_high_dim_tensorize():
     s.reorder(io, jo, ko, ii, ji, ki)
     tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
     s.tensorize(ii, tensor_intrin)
+    print(s.mod.script())
     tvm.ir.assert_structural_equal(tensorized_batch_matmul, s.mod["main"])
 
 
 def test_tensorize_dot_product():
     dot_prod = tvm.tir.TensorIntrin(dot_product_desc, dot_product_impl)
-    s = tir.Schedule(batch_matmul_dot_product, debug_mask='none')
+    s = tir.Schedule(batch_matmul_dot_product, debug_mask='all')
     C = s.get_block("update")
     _, _, _, k = s.get_loops(C)
     _, ki = s.split(k, factors=[None, 4])
@@ -382,5 +383,5 @@ def test_tensorize_dot_product():
 if __name__ == "__main__":
     test_tensorize_gemm()
     test_tensorize_buffer_bind()
-    # test_high_dim_tensorize()
+    test_high_dim_tensorize()
     # test_tensorize_dot_product()
