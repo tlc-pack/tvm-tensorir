@@ -746,6 +746,48 @@ IterVarType GetLoopIterType(const StmtSRef& loop_sref) {
   }
 }
 
+bool HasSingleChild(const StmtSRef& loop_or_block_sref) {
+  const StmtNode* body = nullptr;
+  if (const auto* loop = loop_or_block_sref->StmtAs<ForNode>()) {
+    body = loop->body.get();
+  } else if (const auto* block = loop_or_block_sref->StmtAs<BlockNode>()) {
+    body = block->body.get();
+  } else {
+    LOG(FATAL) << "TypeError: Unable to recognize the type of `loop_or_block_sref`: "
+               << loop_or_block_sref->stmt->GetTypeKey();
+  }
+  if (body->IsInstance<SeqStmtNode>()) {
+    const auto* seq_stmt = static_cast<const SeqStmtNode*>(body);
+    return seq_stmt->seq.size() == 1;
+  }
+  return true;
+}
+
+bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
+  tir::StmtSRef parent_block_sref = GetScopeRoot(self, block_sref, false, false);
+  return parent_block_sref->parent == nullptr;
+}
+
+Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref) {
+  Array<StmtSRef> loop_srefs = GetLoops(block_sref);
+  Array<StmtSRef> result;
+  result.reserve(loop_srefs.size());
+  bool visited_reduce = false;
+  for (const StmtSRef& loop_sref : loop_srefs) {
+    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+    IterVarType iter_type = GetLoopIterType(loop_sref);
+    if (iter_type == IterVarType::kDataPar) {
+      if (visited_reduce) {
+        break;
+      }
+    } else {
+      visited_reduce = true;
+    }
+    result.push_back(loop_sref);
+  }
+  return result;
+}
+
 /******** Producer-consumer relation ********/
 
 Array<StmtSRef> GetProducers(const StmtSRef& block_sref, const BlockScope& scope) {

@@ -332,6 +332,55 @@ std::vector<int64_t> SamplePerfectTile(
   return result;
 }
 
+tir::StmtSRef SampleComputeLocation(tir::ScheduleState self,
+                                    support::LinearCongruentialEngine::TRandState* rand_state,
+                                    const tir::StmtSRef& block_sref, Optional<Integer>* decision) {
+  // Find all possible compute-at locations
+  Array<tir::StmtSRef> loop_srefs = tir::CollectComputeLocation(self, block_sref);
+  int n = loop_srefs.size();
+  // Extract non-unit loops
+  std::vector<int> choices;
+  choices.reserve(n);
+  for (int i = 0; i < n; ++i) {
+    const int64_t* extent = tir::GetLoopIntExtent(loop_srefs[i]);
+    if (extent != nullptr) {
+      choices.push_back(i);
+    }
+  }
+  // The decision made, by default it is -1
+  int i = -1;
+  if (decision->defined()) {
+    // Handle existing decision
+    const auto* int_imm = decision->as<IntImmNode>();
+    int64_t decided = int_imm->value;
+    if (decided == -2 || decided == -1) {
+      i = decided;
+    } else {
+      for (int choice : choices) {
+        if (choice <= decided) {
+          i = choice;
+        } else {
+          break;
+        }
+      }
+    }
+  } else {
+    // Sample possible combinations
+    i = SampleInt(rand_state, -2, choices.size());
+    if (i >= 0) {
+      i = choices[i];
+    }
+  }
+  *decision = Integer(i);
+  if (i == -2) {
+    return tir::StmtSRef::InlineMark();
+  }
+  if (i == -1) {
+    return tir::StmtSRef::RootMark();
+  }
+  return loop_srefs[i];
+}
+
 /******** InstructionKind Registration ********/
 
 struct SampleCategoricalTraits : public UnpackedInstTraits<SampleCategoricalTraits> {
@@ -396,8 +445,37 @@ struct SamplePerfectTileTraits : public UnpackedInstTraits<SamplePerfectTileTrai
   friend struct ::tvm::tir::UnpackedInstTraits;
 };
 
+struct SampleComputeLocationTraits : public UnpackedInstTraits<SampleComputeLocationTraits> {
+  static constexpr const char* kName = "SampleComputeLocation";
+  static constexpr bool kIsPure = true;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 1;
+
+  static LoopRV UnpackedApplyToSchedule(Schedule sch,      //
+                                        BlockRV block_rv,  //
+                                        Optional<Integer> decision) {
+    return sch->SampleComputeLocation(block_rv, decision);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs,  //
+                                 String block_rv,        //
+                                 Optional<Integer> decision) {
+    PythonAPICall py("sample_compute_location");
+    py.Input("block", block_rv);
+    py.Decision(decision);
+    py.SingleOutput(outputs);
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
 TVM_REGISTER_INST_KIND_TRAITS(SampleCategoricalTraits);
 TVM_REGISTER_INST_KIND_TRAITS(SamplePerfectTileTraits);
+TVM_REGISTER_INST_KIND_TRAITS(SampleComputeLocationTraits);
 
 }  // namespace tir
 }  // namespace tvm

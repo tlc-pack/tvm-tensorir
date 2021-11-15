@@ -153,6 +153,27 @@ class ScheduleRule : public runtime::ObjectRef {
                                                Optional<Map<String, ObjectRef>> reuse_read,  //
                                                Optional<Map<String, ObjectRef>> reuse_write);
   /*!
+   * \brief A rule that randomly select a compute-at location for a free block
+   * \return The rule created
+   */
+  TVM_DLL static ScheduleRule RandomComputeLocation();
+  /*!
+   * \brief Mark parallelize, vectorize and unroll to each block correspondingly
+   * \param max_jobs_per_core The maximum number of jobs to be launched per CPU core. It sets the
+   * uplimit of CPU parallelism, i.e. `num_cores * max_jobs_per_core`. Use -1 to disable
+   * parallelism.
+   * \param max_vectorize_extent The maximum extent to be vectorized.
+   * It sets the uplimit of the CPU vectorization. Use -1 to disable vectorization.
+   * \param unroll_max_steps The maximum number of unroll steps to be done.
+   * Use an empty array to disable unroll.
+   * \param unroll_explicit Whether to explicitly unroll the loop, or just add a unroll pragma.
+   * \return The schedule rule created
+   */
+  TVM_DLL static ScheduleRule ParallelizeVectorizeUnroll(int max_jobs_per_core,            //
+                                                         int max_vectorize_extent,         //
+                                                         Array<Integer> unroll_max_steps,  //
+                                                         bool unroll_explicit);
+  /*!
    * \brief Create a schedule rule with customized methods on the python-side.
    * \param f_initialize_with_tune_context The packed function of `InitializeWithTuneContext`.
    * \param f_apply The packed function of `Apply`.
