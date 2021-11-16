@@ -36,6 +36,9 @@
 namespace tvm {
 namespace tir {
 
+using support::NDIntSet;
+
+
 class AutoCopyMutator : public StmtExprMutator {
  public:
   AutoCopyMutator(std::unordered_map<std::string, int> thread_extent){
@@ -347,153 +350,165 @@ class AutoCopyMutator : public StmtExprMutator {
     return ret;
   }
   
-  class IterSumExprCompactor{
-   public:
-    IterSumExprCompactor(const std::unordered_set<const VarNode*>& compact_vars)
-        : compact_vars_(compact_vars) {}
-    
-    static Array<PrimExpr> CompactIndices(const Array<PrimExpr>& indices,
-                                                    const Map<Var, Range>& iter_range,
-                                          const std::unordered_set<const VarNode*>& compact_vars) {
-      arith::Analyzer analyzer;
-      analyzer.Bind(iter_range);
-      Array<PrimExpr> simplified_indices;
-      for (const PrimExpr& index : indices) {
-        simplified_indices.push_back(analyzer.Simplify(index));
-      }
-      Array<arith::IterSumExpr> iter_map =
-          arith::DetectIterMap(simplified_indices, iter_range, Bool(true), false, &analyzer);
-      Array<PrimExpr> ret;
-      IterSumExprCompactor compactor(compact_vars);
-      for (const arith::IterSumExpr& expr : iter_map) {
-        ret.push_back(analyzer.Simplify(arith::NormalizeIterMapToExpr(compactor.MutateIterSumExpr
-                                                                      (expr))));
-      }
-      return ret;
-    }
-
-   private:
-    Optional<arith::IterSplitExpr> MutateIterSplitExpr(const arith::IterSplitExpr& expr){
-      if (const VarNode* var = expr->source->source.as<VarNode>() ) {
-        if (!compact_vars_.count(var)) {
-          return NullOpt;
-        } else {
-          return expr;
-        }
-      } else if (const auto* op = expr->source->source.as<arith::IterSumExprNode>()) {
-        arith::IterSumExpr new_sum_expr = MutateIterSumExpr(runtime::GetRef<arith::IterSumExpr>
-(op));
-        arith::IterSplitExpr split_expr = new_sum_expr->args[0];
-        PrimExpr new_extent = min(floordiv(split_expr->source->extent, split_expr->lower_factor),
-                                  split_expr->extent)*split_expr->scale;
-        return arith::IterSplitExpr(arith::IterMark(new_sum_expr, new_extent),
-                                    expr->lower_factor, expr->extent, expr->scale);
-      } else {
-        LOG(FATAL);
-        throw;
-      }
-    }
-    
-    arith::IterSumExpr MutateIterSumExpr(const arith::IterSumExpr& expr) {
-      Array<arith::IterSplitExpr> reverse_new_args;
-      PrimExpr base = expr->base;
-      PrimExpr next_scale = 1;
-      for (int i=static_cast<int>(expr->args.size())-1;i>=0;i--) {
-        Optional<arith::IterSplitExpr> op = MutateIterSplitExpr(expr->args[i]);
-        if (op.defined()) {
-          arith::IterSplitExpr split_expr = op.value();
-          reverse_new_args.push_back(arith::IterSplitExpr(split_expr->source,
-                                                           split_expr->lower_factor,
-                                                          split_expr->extent,next_scale));
-          next_scale = max(1, min(floordiv(split_expr->source->extent, split_expr->lower_factor),
-split_expr->extent)*next_scale);
-        }
-      }
-      Array<arith::IterSplitExpr> new_args;
-      for (auto riter = reverse_new_args.rbegin(); riter != reverse_new_args.rend();
-           ++riter) {
-        new_args.push_back(*riter);
-      }
-
-      return arith::IterSumExpr(new_args,base);
-    }
-    
-    const std::unordered_set<const VarNode*>& compact_vars_;
-  };
-  
-  Stmt CreateLocalStage(Stmt stmt){
-    Stmt body = stmt;
-    Map<Var, Range> var_range;
-    std::unordered_set<const VarNode*> keep_vars;
+  std::pair<Stmt, For> LiftThreadBindingLoops(Stmt stmt){
     std::vector<const ForNode*> normal_loops;
-    std::vector<const ForNode*> thread_loops;
+    std::vector<const ForNode*> thread_binding_loops;
+    Stmt body = stmt;
     while (const ForNode* loop = body.as<ForNode>()) {
-      var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
-      if(loop->kind==ForKind::kThreadBinding){
-        String thread_tag = loop->thread_binding.value()->thread_tag;
-        thread_loops.push_back(loop);
+      if (loop->kind == ForKind::kThreadBinding) {
+        thread_binding_loops.push_back(loop);
       } else {
         normal_loops.push_back(loop);
-        keep_vars.insert(loop->loop_var.get());
       }
       body = loop->body;
     }
-    for (const ForNode* loop : outer_loops_) {
-      var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
-      if(loop->kind==ForKind::kThreadBinding){
-        String thread_tag = loop->thread_binding.value()->thread_tag;
-      }
-    }
-    Array<PrimExpr> indices;
-    const auto* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
-    if (buf_store->buffer.scope() == "global") {
-      indices = buf_store->indices;
-    } else {
-      const auto* buf_load = TVM_TYPE_AS(buf_load, buf_store->value, BufferLoadNode);
-      ICHECK(buf_load->buffer.scope()=="global");
-      indices = buf_load->indices;
-    }
-    Array<PrimExpr> compacted_indices = IterSumExprCompactor::CompactIndices(indices, var_range,
-                                                            keep_vars);
-    Array<PrimExpr> local_buffer_shape;
-    Map<Var, arith::IntSet> var_dom = AsIntSet(var_range);
-    for (const PrimExpr& expr : compacted_indices) {
-      arith::IntSet region = arith::EvalSet(expr, var_dom);
-      local_buffer_shape.push_back(region.max()-region.min()+1);
-    }
-    Buffer local_buffer = WithScope(buf_store->buffer, "local");
-    BufferNode* local_buffer_ptr = local_buffer.CopyOnWrite();
-    local_buffer_ptr->shape = local_buffer_shape;
-    local_buffers_.push_back(local_buffer);
-    Stmt new_body[2];
-    new_body[0] = BufferStore(local_buffer, buf_store->value, compacted_indices);
-    new_body[1] = BufferStore(buf_store->buffer, BufferLoad(local_buffer,
-                                                                                compacted_indices),
-                                                  buf_store->indices);
     
-    Map<Var, PrimExpr> loop_map[2];
     for (int i = static_cast<int>(normal_loops.size()) - 1; i >= 0; i--) {
       const ForNode* loop = normal_loops[i];
-      for (int j = 0; j < 2; j++) {
-        Var new_loop_var = loop->loop_var.copy_with_suffix("_"+ std::to_string(j));
-        loop_map[j].Set(loop->loop_var, new_loop_var);
-        new_body[j] = For(new_loop_var, loop->min, loop->extent, loop->kind, new_body[j],
-                          loop->thread_binding, loop->annotations);
+      body = For(loop->loop_var, loop->min, loop->extent, loop->kind, body, loop->thread_binding,
+                 loop->annotations);
+    }
+    For compute_location;
+    for (int i = static_cast<int>(thread_binding_loops.size()) - 1; i >= 0; i--) {
+      const ForNode* loop = thread_binding_loops[i];
+      body = For(loop->loop_var, loop->min, loop->extent, loop->kind, body, loop->thread_binding,
+                 loop->annotations);
+      if (i == static_cast<int>(thread_binding_loops.size()) - 1) {
+        compute_location=Downcast<For>(body);
       }
     }
-    for (int i = 0; i < 2; i++) {
-      new_body[i]= Substitute(new_body[i], loop_map[i]);
+    return std::make_pair(body, compute_location);
+  }
+  
+  Stmt CreateLocalStage(Stmt stmt, int vector_bytes){
+    Stmt body;
+    For compute_location;
+    std::tie(body, compute_location) = LiftThreadBindingLoops(std::move(stmt));
+    return InsertCacheStage(body ,false, "local", compute_location).first;
+
+  }
+  
+  Stmt RewriteWmmaLoad(Stmt stmt){
+    Array<MatchBufferRegion> match_buffers;
+    Stmt body = stmt;
+    Map<Var, Range> var_range;
+    std::vector<const ForNode*> loops;
+    while (const ForNode* loop = body.as<ForNode>()) {
+      loops.push_back(loop);
+      body = loop->body;
     }
-    Stmt ret= SeqStmt({new_body[0],new_body[1]});
-    Map<Var, PrimExpr> thread_loop_map;
-    for (int i = static_cast<int>(thread_loops.size()) - 1; i >= 0; i--) {
-      const ForNode* loop = thread_loops[i];
-      Var new_loop_var = loop->loop_var.copy_with_suffix("_"+ std::to_string(i));
-      thread_loop_map.Set(loop->loop_var, new_loop_var);
-      ret = For(new_loop_var, loop->min, loop->extent, loop->kind, ret,
-                loop->thread_binding, loop->annotations);
+    for (int i = 1; i <= 2; i++) {
+      const ForNode* loop = loops[loops.size()-i];
+      var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
     }
-    return Substitute(ret, thread_loop_map);
+    const BufferStoreNode* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
+    const BufferLoadNode* buf_load = TVM_TYPE_AS(buf_load, buf_store->value, BufferLoadNode);
+    Buffer src_buffer = buf_load->buffer;
+    Buffer tgt_buffer = buf_store->buffer;
+    padding_constraint[src_buffer.get()] = 3;
+    TensorIntrin wmma_load;
+    if (tgt_buffer.scope() == "wmma.matrix_a") {
+      wmma_load = tir::TensorIntrin::Get("wmma_load_a");
+    } else {
+      wmma_load = tir::TensorIntrin::Get("wmma_load_b");
+    }
+    
+    auto param = wmma_load->implementation->params[0];
+    Buffer new_src_buffer = wmma_load->implementation->buffer_map.at(param);
+    auto read_int_set = arith::EvalSet(buf_load->indices, AsIntSet(var_range));
+    Array<Range> read_region;
+    for (const auto& int_set : read_int_set) {
+      read_region.push_back(int_set.CoverRange(Range()));
+    }
+    match_buffers.push_back(MatchBufferRegion(new_src_buffer, BufferRegion(src_buffer,
+                                                                           read_region)));
+    param = wmma_load->implementation->params[1];
+    Buffer new_tgt_buffer = wmma_load->implementation->buffer_map.at(param);
+    auto write_int_set = arith::EvalSet(buf_store->indices, AsIntSet(var_range));
+    Array<Range> write_region;
+    for (const auto& int_set : write_int_set) {
+      write_region.push_back(int_set.CoverRange(Range()));
+    }
+    match_buffers.push_back(MatchBufferRegion(new_tgt_buffer, BufferRegion(tgt_buffer,
+                                                                            write_region)));
+
+    PrimExpr frag_index = floordiv(new_tgt_buffer->elem_offset, 256) +
+                          floordiv(floormod(new_tgt_buffer->elem_offset, 256), 16);
+
+    auto new_src_pointer = Call(
+        runtime::DataType::Handle(), builtin::tvm_access_ptr(),
+        {TypeAnnotation(new_src_buffer->dtype), new_src_buffer->data, new_src_buffer->elem_offset,
+         new_src_buffer->strides[new_src_buffer->strides.size() - 2] * 16, 1});
+    
+    Stmt wmma_body = Evaluate(Call(
+        runtime::DataType::Handle(), builtin::tvm_load_matrix_sync(),
+        {new_tgt_buffer->data, 16, 16, 16, frag_index, new_src_pointer,
+         new_src_buffer->strides[new_src_buffer->strides.size() - 2], StringImm("row_major")}));
+    wmma_body =  BlockRealize({},Bool(true), Block({},{},{},"wmma_load",wmma_body,NullOpt, {},
+                                             match_buffers,{}));
+    for (int i = static_cast<int>(loops.size()) - 3; i >= 0; i--) {
+      wmma_body = For(loops[i]->loop_var, loops[i]->min, loops[i]->extent, loops[i]->kind,
+                      wmma_body, loops[i]->thread_binding, loops[i]->annotations);
+    }
+    return wmma_body;
+  }
+  
+  Stmt RewriteWmmaStore(Stmt stmt){
+    Array<MatchBufferRegion> match_buffers;
+    Stmt body = stmt;
+    Map<Var, Range> var_range;
+    std::vector<const ForNode*> loops;
+    while (const ForNode* loop = body.as<ForNode>()) {
+      loops.push_back(loop);
+      body = loop->body;
+    }
+    for (int i = 1; i <= 2; i++) {
+      const ForNode* loop = loops[loops.size()-i];
+      var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+    }
+    const BufferStoreNode* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
+    const BufferLoadNode* buf_load = TVM_TYPE_AS(buf_load, buf_store->value, BufferLoadNode);
+    Buffer src_buffer = buf_load->buffer;
+    Buffer tgt_buffer = buf_store->buffer;
+    padding_constraint[tgt_buffer.get()] = 3;
+    TensorIntrin wmma_store = tir::TensorIntrin::Get("wmma_store");
+    
+    auto param = wmma_store->implementation->params[0];
+    Buffer new_src_buffer = wmma_store->implementation->buffer_map.at(param);
+    auto read_int_set = arith::EvalSet(buf_load->indices, AsIntSet(var_range));
+    Array<Range> read_region;
+    for (const auto& int_set : read_int_set) {
+      read_region.push_back(int_set.CoverRange(Range()));
+    }
+    match_buffers.push_back(MatchBufferRegion(new_src_buffer, BufferRegion(src_buffer,
+                                                                           read_region)));
+    param = wmma_store->implementation->params[1];
+    Buffer new_tgt_buffer = wmma_store->implementation->buffer_map.at(param);
+    auto write_int_set = arith::EvalSet(buf_store->indices, AsIntSet(var_range));
+    Array<Range> write_region;
+    for (const auto& int_set : write_int_set) {
+      write_region.push_back(int_set.CoverRange(Range()));
+    }
+    match_buffers.push_back(MatchBufferRegion(new_tgt_buffer, BufferRegion(tgt_buffer,
+                                                                            write_region)));
+
+    PrimExpr frag_index = floordiv(new_src_buffer->elem_offset, 256) +
+                          floordiv(floormod(new_src_buffer->elem_offset, 256), 16);
+
+    auto new_tgt_pointer = Call(runtime::DataType::Handle(), builtin::tvm_access_ptr(),
+                                {TypeAnnotation(new_tgt_buffer->dtype), new_tgt_buffer->data,
+                                 new_tgt_buffer->elem_offset, new_tgt_buffer->strides[0] * 16, 2});
+
+    Stmt wmma_body = Evaluate(Call(runtime::DataType::Handle(), builtin::tvm_store_matrix_sync(),
+                         {new_src_buffer->data, 16, 16, 16, frag_index, new_tgt_pointer,
+                          new_tgt_buffer->strides[0], StringImm("row_major")}));
+    wmma_body =  BlockRealize({},Bool(true), Block({},{},{},"wmma_store",wmma_body,NullOpt, {},
+                                             match_buffers,{}));
+    for (int i = static_cast<int>(loops.size()) - 3; i >= 0; i--) {
+      wmma_body = For(loops[i]->loop_var, loops[i]->min, loops[i]->extent, loops[i]->kind,
+                      wmma_body, loops[i]->thread_binding, loops[i]->annotations);
+    }
+    return wmma_body;
   }
   
   /**
@@ -502,60 +517,9 @@ split_expr->extent)*next_scale);
    * @param match_buffers the match_buffer to be appended to the new block
    * @return the result stmt
    */
-  Stmt RewriteWmmaLoad(Block block, Array<MatchBufferRegion>* match_buffers) {
-    Stmt body = block->body;
-    std::vector<int> index;
-    arith::Analyzer analyzer;
-    Map<Var, PrimExpr> substitute_map;
-    int i = 0;
-    while (const ForNode* loop = body.as<ForNode>()) {
-      if (!analyzer.CanProveEqual(loop->min, 0)) {
-        return block->body;
-      }
-      if (analyzer.CanProveEqual(loop->extent, 1)) {
-        continue;
-      } else if (analyzer.CanProveEqual(loop->extent, 16)) {
-        index.push_back(i);
-      } else {
-        return block->body;
-      }
-      substitute_map.Set(loop->loop_var, 0);
-      i++;
-      body = loop->body;
-    }
-    if (index.size() != 2 || index[1] != i - 1 || index[0] != i - 2) {
-      return block->body;
-    }
-    Buffer src_buffer = block->reads[0]->buffer;
-    Buffer tgt_buffer = block->writes[0]->buffer;
-    padding_constraint[src_buffer.get()] = 3;
-//    TensorIntrin wmma_load;
-//    if (tgt_buffer.scope() == "wmma.matrix_a") {
-//      wmma_load = tir::TensorIntrin::Get("wmma_load_a");
-//    } else {
-//      wmma_load = tir::TensorIntrin::Get("wmma_load_b");
-//    }
-//
-//    auto param = wmma_load->implementation->params[0];
-//    Buffer new_src_buffer = wmma_load->implementation->buffer_map.at(param);
-//    match_buffers->push_back(MatchBufferRegion(new_src_buffer, block->reads[0]));
-//    param = wmma_load->implementation->params[1];
-//    Buffer new_tgt_buffer = wmma_load->implementation->buffer_map.at(param);
-//    match_buffers->push_back(MatchBufferRegion(new_tgt_buffer, block->writes[0]));
-//
-//    PrimExpr frag_index = floordiv(new_tgt_buffer->elem_offset, 256) +
-//                          floordiv(floormod(new_tgt_buffer->elem_offset, 256), 16);
-//
-//    auto new_src_pointer = Call(
-//        runtime::DataType::Handle(), builtin::tvm_access_ptr(),
-//        {TypeAnnotation(new_src_buffer->dtype), new_src_buffer->data, new_src_buffer->elem_offset,
-//         new_src_buffer->strides[new_src_buffer->strides.size() - 2] * 16, 1});
-//
-//    return Evaluate(Call(
-//        runtime::DataType::Handle(), builtin::tvm_load_matrix_sync(),
-//        {new_tgt_buffer->data, 16, 16, 16, frag_index, new_src_pointer,
-//         new_src_buffer->strides[new_src_buffer->strides.size() - 2], StringImm("row_major")}));
-    return body;
+  Stmt SharedToWmma(Stmt stmt) {
+    auto pair = TileWmmaBlock(stmt);
+    return RewriteWmmaLoad(pair.first);
   }
 
   /**
@@ -564,56 +528,384 @@ split_expr->extent)*next_scale);
    * @param match_buffers the match_buffer to be appended to the new block
    * @return the result stmt
    */
-  Stmt RewriteWmmaStore(Block block, Array<MatchBufferRegion>* match_buffers) {
-    Stmt body = block->body;
-    std::vector<int> index;
-    arith::Analyzer analyzer;
-    Map<Var, PrimExpr> substitute_map;
-    int i = 0;
+  Stmt WmmaToShared(Stmt stmt) {
+    auto pair = TileWmmaBlock(stmt);
+    return RewriteWmmaStore(pair.first);
+  }
+  
+  
+  std::pair<Stmt, Optional<For>> TileWmmaBlock(Stmt stmt){
+    Stmt body = stmt;
+    std::vector<const ForNode*> loops;
     while (const ForNode* loop = body.as<ForNode>()) {
-      if (!analyzer.CanProveEqual(loop->min, 0)) {
-        return block->body;
-      }
-      if (analyzer.CanProveEqual(loop->extent, 1)) {
-        continue;
-      } else if (analyzer.CanProveEqual(loop->extent, 16)) {
-        index.push_back(i);
-      } else {
-        return block->body;
-      }
-      substitute_map.Set(loop->loop_var, 0);
-      i++;
+      loops.push_back(loop);
       body = loop->body;
     }
-    if (index.size() != 2 || index[1] != i - 1 || index[0] != i - 2) {
-      return block->body;
+    arith::Analyzer analyzer;
+    PrimExpr extent_last1 = loops[loops.size() - 1]->extent, extent_last2=loops[loops.size() -
+                                                                                  2]->extent;
+    
+    if (!analyzer.CanProve(floormod(extent_last1, 16) == 0) ||
+        !analyzer.CanProve(floormod(extent_last2, 16) == 0)) {
+      return std::make_pair(stmt, NullOpt);
     }
-    Buffer src_buffer = block->reads[0]->buffer;
-    Buffer tgt_buffer = block->writes[0]->buffer;
-    padding_constraint[tgt_buffer.get()] = 3;
-//    TensorIntrin wmma_store = tir::TensorIntrin::Get("wmma_store");
-//
-//    auto param = wmma_store->implementation->params[0];
-//    Buffer new_src_buffer = wmma_store->implementation->buffer_map.at(param);
-//    match_buffers->push_back(MatchBufferRegion(new_src_buffer, block->reads[0]));
-//    param = wmma_store->implementation->params[1];
-//    Buffer new_tgt_buffer = wmma_store->implementation->buffer_map.at(param);
-//    match_buffers->push_back(MatchBufferRegion(new_tgt_buffer, block->writes[0]));
-//
-//    // todo(jinhongyii): consider non-packed layout situation
-//    PrimExpr frag_index = floordiv(new_src_buffer->elem_offset, 256) +
-//                          floordiv(floormod(new_src_buffer->elem_offset, 256), 16);
-//
-//    auto new_tgt_pointer = Call(runtime::DataType::Handle(), builtin::tvm_access_ptr(),
-//                                {TypeAnnotation(new_tgt_buffer->dtype), new_tgt_buffer->data,
-//                                 new_tgt_buffer->elem_offset, new_tgt_buffer->strides[0] * 16, 2});
-//
-//    return Evaluate(Call(runtime::DataType::Handle(), builtin::tvm_store_matrix_sync(),
-//                         {new_src_buffer->data, 16, 16, 16, frag_index, new_tgt_pointer,
-//                          new_tgt_buffer->strides[0], StringImm("row_major")}));
-    return  body;
+    std::vector<Var> new_loop_vars;
+    Array<PrimExpr> factor{floordiv(extent_last2,16), floordiv(extent_last1, 16), 16, 16};
+    new_loop_vars.reserve(4);
+    for (int i = 0; i < 4; i++) {
+      new_loop_vars.push_back(loops[loops.size()-(i+1)%2-1]->loop_var.copy_with_suffix
+                              (std::to_string(i/2)));
+    }
+    Map<Var, PrimExpr> substitue_value;
+    substitue_value.Set(loops[loops.size() - 2]->loop_var, new_loop_vars[0]*16+new_loop_vars[2]);
+    substitue_value.Set(loops[loops.size()-1]->loop_var, new_loop_vars[1]*16+new_loop_vars[3]);
+    body = Substitute(body, substitue_value);
+    for (int i = 3; i >= 0; i--) {
+      body = For(new_loop_vars[i], 0, factor[i], ForKind::kSerial, body);
+    }
+    For compute_location = Downcast<For>(body);
+    for (int i = static_cast<int>(loops.size()) - 3; i>=0;i--) {
+      body = For(loops[i]->loop_var, loops[i]->min, loops[i]->extent, loops[i]->kind, body,
+                 loops[i]->thread_binding, loops[i]->annotations);
+    }
+    return std::make_pair(body, compute_location);
   }
+  
+  std::pair<Stmt, SeqStmt> InsertCacheStage(Stmt stmt, bool is_write_cache, String storage_scope,
+                                            Stmt
+                                                                                   compute_location){
+    class IndexPatternFinder : public ExprVisitor{
+     public:
+      IndexPatternFinder(const Map<Var, Range>& var_range, Array<PrimExpr>* resulting_index)
+          :var_range_(var_range), resulting_index(resulting_index){}
+      
+      static Array<Array<PrimExpr>> getRankPromotedShape(Array<PrimExpr> indices, const Map<Var, Range>&
+                                                                                      var_range,
+                                                         Array<PrimExpr>* rewrite_indices){
+        Map<Var, arith::IntSet> var_dom = AsIntSet(var_range);
+        Array<Array<PrimExpr>> new_shape;
+        for (const PrimExpr& expr : indices) {
+          IndexPatternFinder extractor(var_range, rewrite_indices);
+          arith::IntSet intset = arith::EvalSet(expr, var_dom);
+          extractor.mod = intset.max()+1;
+          extractor.div = 1;
+          extractor.offset =0;
+          extractor(expr);
+          Array<PrimExpr> access_shape = extractor.access_shape;
+          for (int i = static_cast<int>(access_shape.size()) - 1; i >= 1; i--) {
+            if (!is_zero(floormod(extractor.offset, access_shape[i]))) {
+              return {};
+            } else {
+              extractor.offset= floordiv(extractor.offset, access_shape[i]);
+            }
+          }
+          access_shape.Set(0, extractor.offset+access_shape[0]);
+          new_shape.push_back(access_shape);
+        }
+        return new_shape;
+      }
+  
+      void VisitExpr_(const VarNode* op) final{
+        arith::Analyzer analyzer;
+        PrimExpr extent = var_range_[GetRef<Var>(op)]->extent;
+        PrimExpr access_iter_range = min(mod, (max(1,floordiv(extent, div))));
+        if(!analyzer.CanProveEqual(1, access_iter_range)){
+          access_shape.push_back(access_iter_range);
+          resulting_index->push_back(floormod(floordiv(GetRef<Var>(op),div), mod));
+        }
+      }
+  
+      void VisitExpr_(const FloorDivNode* op) final{
+        PrimExpr old_div = div;
+        div*=op->b;
+        ExprVisitor::VisitExpr_(op);
+        div = old_div;
+      }
+  
+      void VisitExpr_(const FloorModNode* op) final{
+        PrimExpr old_mod = mod;
+        mod=max(1, min(floordiv(op->b,div), mod));
+        ExprVisitor::VisitExpr_(op);
+        mod = old_mod;
+      }
+  
+      void VisitExpr_(const MulNode* op) final{
+        PrimExpr old_mod = mod;
+        PrimExpr old_div = div;
+        div = max(1, floordiv(div,op->b));
+        mod = max(1, floordiv(mod, floordiv(op->b, floordiv(old_div, div))));
+        ExprVisitor::VisitExpr_(op);
+        mod = old_mod;
+        div = old_div;
+      }
+  
+      void VisitExpr_(const AddNode* op) final{
+        if (is_const_int(op->b)) {
+          offset+= floormod(floordiv(op->b, div),mod);
+        }
+        ExprVisitor::VisitExpr_(op);
+      }
+  
+      PrimExpr div;
+      PrimExpr mod;
+      PrimExpr offset;
+      Map<Var, Range> var_range_;
+      Array<PrimExpr> access_shape;
+      Array<PrimExpr>* resulting_index;
+    };
+    
+    class RankPromoter:public StmtExprMutator{
+     public:
+      static Array<PrimExpr> FlattenNewShape(const Array<Array<PrimExpr>>& new_shape){
+        Array<PrimExpr> ret;
+        ret.reserve(new_shape.size());
+        for (int i = 0; i < static_cast<int>(new_shape.size()); i++) {
+          PrimExpr prod = 1;
+          for (int j = 0; j < static_cast<int>(new_shape[i].size()); j++) {
+            prod*=new_shape[i][j];
+          }
+          ret.push_back(prod);
+        }
+        return ret;
+      }
+      
+      static Array<PrimExpr> RewriteIndex(const Array<PrimExpr>& indices, const
+                                          Array<Array<PrimExpr>>&
+                                              new_shape){
+        Array<PrimExpr> new_indices;
+        ICHECK_EQ(indices.size(), new_shape.size());
+        for (int i = 0; i < static_cast<int>(indices.size()); i++) {
+          PrimExpr index = indices[i];
+          Array<PrimExpr> dim_convert_index(new_shape[i].size(), 0);
+          for (int j = static_cast<int>(new_shape[i].size()) - 1; j >= 0; j--) {
+            dim_convert_index.Set(j, floormod(index, new_shape[i][j]));
+            index = floordiv(index, new_shape[i][j]);
+          }
+          for (int j = 0; j < static_cast<int>(new_shape[i].size()); j++) {
+            new_indices.push_back(dim_convert_index[j]);
+          }
+        }
+        return new_indices;
+      }
+      
+      
+      static Array<PrimExpr> RewriteBackIndex(const Array<PrimExpr>& indices, const
+                                              Array<Array<PrimExpr>>&
+                                                  new_shape){
+        Array<PrimExpr> new_indices;
+        int offset =0;
+        for (int i = 0; i < static_cast<int>(new_shape.size()); i++) {
+          PrimExpr index = 0;
+          for (int j = 0; j < static_cast<int>(new_shape[i].size()); j++) {
+            index *=new_shape[i][j];
+            index+=indices[offset+j];
+          }
+          new_indices.push_back(index);
+          offset+=new_shape[i].size();
+        }
+        return new_indices;
+      }
+      RankPromoter(const Buffer& src, const Buffer& dst, const Array<Array<PrimExpr>>& new_shape,
+                   const Array<Array<PrimExpr>>& relaxed_new_shape, const Array<Range>& relaxed_region)
+          : src_(src),
+            dst_(dst),
+            new_shape_(new_shape),
+            relaxed_new_shape_(relaxed_new_shape),
+            relaxed_region_(relaxed_region) {}
 
+      static Stmt RewriteBody(Stmt stmt, const Buffer& src, const Buffer& dst,
+                              const Array<Array<PrimExpr>>& new_shape, const
+                              Array<Array<PrimExpr>>& relaxed_new_shape,
+                              const Array<Range>& relaxed_region){
+        RankPromoter promoter(src, dst, new_shape, relaxed_new_shape, relaxed_region);
+        return promoter(stmt);
+      }
+     private:
+      Stmt VisitStmt_(const BufferStoreNode* _store) final {
+        BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(_store));
+        if (store->buffer.same_as(src_)) {
+          ObjectPtr<BufferStoreNode> new_store = make_object<BufferStoreNode>(*store.get());
+          new_store->buffer = dst_;
+          new_store->indices = ConvertIndices(new_store->indices);
+          return BufferStore(new_store);
+        }
+        return std::move(store);
+      }
+      
+      PrimExpr VisitExpr_(const BufferLoadNode* _load) final {
+        BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_load));
+        if (load->buffer.same_as(src_)) {
+          ObjectPtr<BufferLoadNode> new_load = make_object<BufferLoadNode>(*load.get());
+          new_load->buffer = dst_;
+          new_load->indices = ConvertIndices(new_load->indices);
+          return BufferLoad(new_load);
+        }
+        return std::move(load);
+      }
+      
+      Array<PrimExpr> ConvertIndices(const Array<PrimExpr>& indices){
+        Array<PrimExpr> rewrite_indices = RewriteIndex(indices, new_shape_);
+        arith::Analyzer analyzer;
+        for (int i = 0; i < rewrite_indices.size(); i++) {
+          rewrite_indices.Set(i, analyzer.Simplify(rewrite_indices[i]- relaxed_region_[i]->min));
+        }
+        return RewriteBackIndex(rewrite_indices, relaxed_new_shape_);
+      }
+      
+      const Buffer& src_;
+      const Buffer& dst_;
+      Array<Array<PrimExpr>> new_shape_;
+      Array<Array<PrimExpr>> relaxed_new_shape_;
+      Array<Range> relaxed_region_;
+
+    };
+    
+    Stmt body = stmt;
+    std::vector<const ForNode*> loops;
+    bool is_relax_var = compute_location->IsInstance<BlockNode>();
+    Map<Var, Range> relax_var_range;
+    Map<Var, Range> all_var_range;
+    while (const ForNode* loop = body.as<ForNode>()) {
+      if (is_relax_var) {
+        relax_var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      } else {
+        loops.push_back(loop);
+      }
+      all_var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+      if (loop == compute_location.get()) {
+        is_relax_var=true;
+      }
+      body = loop->body;
+    }
+    for (const ForNode* loop : outer_loops_) {
+      if (loop->kind == ForKind::kThreadBinding) {
+        const String& thread_tag = loop->thread_binding.value()->thread_tag;
+        if (CanRelaxStorageUndereThread(runtime::StorageScope::Create(storage_scope),
+                                        runtime::ThreadScope::Create
+                                        (thread_tag))) {
+          relax_var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+        }
+      }
+      all_var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+    }
+    
+    const BufferStoreNode* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
+    const BufferLoadNode* buf_load = TVM_TYPE_AS(buf_load, buf_store->value, BufferLoadNode);
+    Buffer orig_buffer = is_write_cache?buf_store->buffer:buf_load->buffer;
+    Array<PrimExpr> indices = is_write_cache? buf_store->indices:buf_load->indices;
+    //step 1. get the rank promotion shape
+    Array<PrimExpr> rewrite_indices;
+    Array<Array<PrimExpr>> new_shape =
+        IndexPatternFinder::getRankPromotedShape(indices, all_var_range, &rewrite_indices);
+    Region relaxed_region;
+    auto relax_var_intset = AsIntSet(relax_var_range);
+    arith::Analyzer analyzer;
+    analyzer.Bind(all_var_range);
+    for (const PrimExpr& index : rewrite_indices) {
+      auto int_set = arith::EvalSet(index, relax_var_intset);
+      relaxed_region.push_back(Range::FromMinExtent(
+          int_set.min(), analyzer.Simplify(int_set.max() - int_set.min() + 1)));
+    }
+//    step 2. generate loops
+    Array<Var> new_loop_vars;
+    Array<PrimExpr> orig_buf_indices, new_buf_indices;
+    Array<Array<PrimExpr>> relaxed_new_shape;
+    for (int i=0;i<static_cast<int>(relaxed_region.size());i++) {
+      Var new_loop_var = Var("ax"+ std::to_string(i));
+      new_loop_vars.push_back(new_loop_var);
+      orig_buf_indices.push_back(relaxed_region[i]->min+new_loop_var);
+      new_buf_indices.push_back(new_loop_var);
+    }
+    relaxed_new_shape.reserve(new_shape.size());
+    for (int i = 0, ct = 0; i < static_cast<int>(new_shape.size()); i++) {
+      Array<PrimExpr> layer;
+      for (int j = 0; j < static_cast<int>(new_shape[i].size()); j++, ct++) {
+        layer.push_back(relaxed_region[ct]->extent);
+      }
+      relaxed_new_shape.push_back(layer);
+    }
+    Buffer new_buffer = WithScope(orig_buffer, storage_scope);
+    BufferNode* buffer_ptr = new_buffer.CopyOnWrite();
+    buffer_ptr->shape= RankPromoter::FlattenNewShape(relaxed_new_shape);
+    alloc_buffers_.push_back(new_buffer);
+    Array<PrimExpr> real_orig_buf_indices =
+        RankPromoter::RewriteBackIndex(orig_buf_indices,
+                                                                          new_shape);
+    Array<PrimExpr> real_new_buf_indices =
+        RankPromoter::RewriteBackIndex(new_buf_indices,
+                                                                          relaxed_new_shape);
+    Stmt generate_body =
+        is_write_cache ? BufferStore(orig_buffer, BufferLoad(new_buffer, real_new_buf_indices),
+                                     real_orig_buf_indices)
+                       : BufferStore(new_buffer, BufferLoad(orig_buffer, real_orig_buf_indices),
+                                     real_new_buf_indices);
+    for (int i = static_cast<int>(relaxed_region.size()) - 1; i >= 0; i--) {
+      generate_body = For(new_loop_vars[i], 0, relaxed_region[i]->extent, ForKind::kSerial,
+                          generate_body);
+    }
+    Stmt rewrite_body;
+    if (const auto* node = compute_location.as<ForNode>()) {
+      rewrite_body = node->body;
+    } else if (const auto* node = compute_location.as<BlockNode>()) {
+      rewrite_body = node->body;
+    } else {
+      LOG(FATAL)<<"wrong compute location type";
+    }
+    rewrite_body = RankPromoter::RewriteBody(rewrite_body, orig_buffer,
+                                                  new_buffer, new_shape, relaxed_new_shape,
+                                                  relaxed_region);
+    SeqStmt insert_location;
+    if (is_write_cache) {
+      generate_body = insert_location = SeqStmt({rewrite_body, generate_body});
+    } else {
+       generate_body = insert_location = SeqStmt({generate_body, rewrite_body});
+    }
+    for (int i = static_cast<int>(loops.size()) - 1; i >= 0; i--) {
+      generate_body = For(loops[i]->loop_var, loops[i]->min, loops[i]->extent, loops[i]->kind,
+generate_body,loops[i]->thread_binding, loops[i]->annotations);
+    }
+    return std::make_pair(generate_body, insert_location);
+  }
+  
+  
+  class WmmaToGlobalRewriter: public StmtExprMutator{
+   public:
+    WmmaToGlobalRewriter(const SeqStmtNode* tgt_stmt,
+                         AutoCopyMutator* self, int vector_bytes_)
+        : tgt_stmt_(tgt_stmt),
+          self(self),
+          vector_bytes_(vector_bytes_) {}
+
+   private:
+    Stmt VisitStmt_(const SeqStmtNode* op) final{
+      if (op == tgt_stmt_) {
+        ICHECK_EQ(op->seq.size(), 2);
+        Stmt wmma_to_shared = self->RewriteWmmaStore(op->seq[0]);
+        Stmt shared_to_global = self->FuseNestLoops(op->seq[1]);
+        shared_to_global = self->SplitBindVectorize(shared_to_global, vector_bytes_);
+        return SeqStmt({wmma_to_shared, shared_to_global});
+      } else {
+        return StmtMutator::VisitStmt_(op);
+      }
+    }
+    
+    const SeqStmtNode* tgt_stmt_;
+    AutoCopyMutator* self;
+    int vector_bytes_;
+  };
+  
+  Stmt WmmaToGlobal(Stmt stmt, int vector_bytes){
+    
+    Stmt body;
+    Optional<For> compute_location;
+    
+    std::tie(body, compute_location) = TileWmmaBlock(stmt);
+    SeqStmt seq;
+    std::tie(body, seq) = InsertCacheStage(body, true, "shared", compute_location.value());
+    WmmaToGlobalRewriter rewriter(seq.get(), this, vector_bytes);
+    return rewriter(body);
+  }
+  
   /**
    * \brief do coalesce load/store
    * @param block the specific block
@@ -635,9 +927,9 @@ split_expr->extent)*next_scale);
   }
   /**
    * \brief do padding to the given buffers whose storage scope is "shared"
-   * @param buffers the given buffers
-   * @param buffer_map the mapping from old buffer to the new padded buffer
-   * @return the list of new padded buffers
+   * \param buffers the given buffers
+   * \param buffer_map the mapping from old buffer to the new padded buffer
+   * \return the list of new padded buffers
    */
   Array<Buffer> PadSharedMemory(const Array<Buffer>& buffers, Map<Buffer, Buffer>* buffer_map) {
     Array<Buffer> result;
@@ -1095,32 +1387,32 @@ split_expr->extent)*next_scale);
         n->body = CoalesceGlobalLoad(block, mapping, vector_bytes, need_inverse);
         if (block->annotations.count("local_stage") && is_one(Downcast<PrimExpr>
             (op->annotations["local_stage"]))) {
-          n->body = CreateLocalStage(n->body);
+          n->body = CreateLocalStage(n->body, vector_bytes);
         }
       } else if ((tgt_scope_.rank == runtime::StorageRank::kWMMAMatrixA ||
                   tgt_scope_.rank == runtime::StorageRank::kWMMAMatrixB)) {
-        Array<MatchBufferRegion> match_buffers;
-        n->body = RewriteWmmaLoad(block, &match_buffers);
-        n->match_buffers = match_buffers;
-      } else if (src_scope_.rank == runtime::StorageRank::kWMMAAccumulator) {
-        Array<MatchBufferRegion> match_buffers;
-        n->body = RewriteWmmaStore(block, &match_buffers);
-        n->match_buffers = match_buffers;
+        n->body = SharedToWmma(block->body);
+      } else if (src_scope_.rank == runtime::StorageRank::kWMMAAccumulator &&
+                 tgt_scope_.rank ==runtime::StorageRank::kShared) {
+        n->body = WmmaToShared(block->body);
+      } else if(src_scope_.rank == runtime::StorageRank::kWMMAAccumulator &&
+                 tgt_scope_.rank ==runtime::StorageRank::kGlobal){
+        n->body= WmmaToGlobal(block->body,vector_bytes);
       }
       AnalyzePatternForPadding(block);
-      for (const Buffer& buffer : local_buffers_) {
+      for (const Buffer& buffer : alloc_buffers_) {
         n->alloc_buffers.push_back(buffer);
       }
       n->alloc_buffers = PadSharedMemory(n->alloc_buffers, &padded_buffer_map_);
     } else {
       block = runtime::Downcast<Block>(StmtMutator::VisitStmt_(op));
       BlockNode* n = block.CopyOnWrite();
-      for (const Buffer& buffer : local_buffers_) {
+      for (const Buffer& buffer : alloc_buffers_) {
         n->alloc_buffers.push_back(buffer);
       }
       n->alloc_buffers = PadSharedMemory(n->alloc_buffers, &padded_buffer_map_);
     }
-    local_buffers_.clear();
+    alloc_buffers_.clear();
     return std::move(block);
   }
 
@@ -1152,7 +1444,7 @@ split_expr->extent)*next_scale);
   int data_bits_ = -1;
   std::vector<const ForNode*> outer_loops_;
   Map<Buffer, Buffer> padded_buffer_map_;
-  Array<Buffer> local_buffers_;
+  Array<Buffer> alloc_buffers_;
   std::unordered_map<const BufferNode*, std::vector<std::vector<std::vector<Pattern>>>> patterns_;
   std::unordered_map<const BufferNode*, int> padding_constraint;
 };

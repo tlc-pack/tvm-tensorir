@@ -100,9 +100,9 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   void EnterPostproc() final;
   /******** Schedule: Data movement ********/
   BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
-                 const String& storage_scope) final;
+                 const String& storage_scope, bool rank_promotion) final;
   BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
-                  const String& storage_scope) final;
+                  const String& storage_scope, bool rank_promotion) final;
   
 };
 

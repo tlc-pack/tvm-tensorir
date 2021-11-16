@@ -386,10 +386,10 @@ TVM_DLL void PromoteRank(ScheduleState self, const StmtSRef& block_sref, int wri
 /******** Schedule: Data movement ********/
 
 TVM_DLL StmtSRef ReadAt(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
-                        int read_buffer_index, const String& storage_scope);
+                        int read_buffer_index, const String& storage_scope, bool rank_promotion);
 
 TVM_DLL StmtSRef WriteAt(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
-                         int write_buffer_index, const String& storage_scope);
+                         int write_buffer_index, const String& storage_scope,bool rank_promotion);
 
 }  // namespace tir
 }  // namespace tvm

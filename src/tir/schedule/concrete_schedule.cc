@@ -680,22 +680,24 @@ void ConcreteScheduleNode::PromoteRank(const BlockRV& block_rv, int i) {
 /******** Schedule: Data movement ********/
 
 BlockRV ConcreteScheduleNode::ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv,
-                                     int read_buffer_index, const String& storage_scope) {
+                                     int read_buffer_index, const String& storage_scope, bool
+                                                                                             rank_promotion) {
   StmtSRef result{nullptr};
   TVM_TIR_SCHEDULE_BEGIN();
   result = tir::ReadAt(state_, this->GetSRef(loop_rv), this->GetSRef(block_rv), read_buffer_index,
-                       storage_scope);
+                       storage_scope, rank_promotion);
   TVM_TIR_SCHEDULE_END("read-at", this->error_render_level_);
 //  this->state_->DebugVerify();
   return CreateRV<BlockRV>(result);
 }
 
 BlockRV ConcreteScheduleNode::WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv,
-                                      int write_buffer_index, const String& storage_scope) {
+                                      int write_buffer_index, const String& storage_scope,
+                                      bool rank_promotion) {
   StmtSRef result{nullptr};
   TVM_TIR_SCHEDULE_BEGIN();
   result = tir::WriteAt(state_, this->GetSRef(loop_rv), this->GetSRef(block_rv), write_buffer_index,
-                        storage_scope);
+                        storage_scope, rank_promotion);
   TVM_TIR_SCHEDULE_END("write-at", this->error_render_level_);
   
   //todo: should enable this

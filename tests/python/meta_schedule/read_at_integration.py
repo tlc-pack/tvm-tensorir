@@ -1,22 +1,24 @@
 import tvm
-from tvm import tir
+from tvm import te, tir
 from tvm.script import tir as T
 import numpy as np
+import tir_tensor_intrin
+import te_workload
 
-@T.prim_func
-def original_matmul(a: T.handle, b: T.handle, c: T.handle) ->None:
-    A = T.match_buffer(a, [1024, 1024], "float32")
-    B = T.match_buffer(b, [1024, 1024], "float32")
-    C = T.match_buffer(c, [1024, 1024], "float32")
-
-    for i, j, k in T.grid(1024, 1024, 1024):
-        with T.block([1024, 1024, T.reduce_axis(0, 1024)], "C") as [vi,vj,vk]:
-            T.bind(vi,i)
-            T.bind(vj,j)
-            T.bind(vk, k)
-            with T.init():
-                C[vi, vj] = 0.0
-            C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+# @T.prim_func
+# def original_matmul(a: T.handle, b: T.handle, c: T.handle) ->None:
+#     A = T.match_buffer(a, [1024, 1024], "float16")
+#     B = T.match_buffer(b, [1024, 1024], "float16")
+#     C = T.match_buffer(c, [1024, 1024], "float32")
+#
+#     for i, j, k in T.grid(1024, 1024, 1024):
+#         with T.block([1024, 1024, T.reduce_axis(0, 1024)], "C") as [vi,vj,vk]:
+#             T.bind(vi,i)
+#             T.bind(vj,j)
+#             T.bind(vk, k)
+#             with T.init():
+#                 C[vi, vj] = 0.0
+#             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 
 @T.prim_func
@@ -43,7 +45,9 @@ def cuda_matmul(a: T.handle, b: T.handle, c: T.handle) -> None:  # pylint: disab
 
 
 def test():
-    sch = tir.Schedule(original_matmul, debug_mask="all")
+    workload = te_workload.matmul_fp16(n=1024, m=1024, k=1024)
+    workload = te.create_prim_func(workload)
+    sch = tir.Schedule(workload)
     block = sch.get_block("C")
     i, j, k = sch.get_loops(block)
     # Step 1. Rule-Auto-Tensorize
@@ -58,6 +62,8 @@ def test():
         i_tc, j_tc, k_tc,
         # fmt: on
     )
+    block_inner = sch.blockize(i_tc)
+    block_outer, block_inner = block_inner, block
     del block
     # Step 2. Rule-Multi-Level-Tiling
     i_factors = [8, 1, 2, 1, 4]
@@ -88,13 +94,25 @@ def test():
     sch.bind(block_idx, "blockIdx.x")
     sch.bind(block_idy, "blockIdx.y")
     sch.bind(thread_idy, "threadIdx.y")
-    block = sch.get_block("C")
-    by, _bx, ty,  k0, k1,_,_,_, _i, _j, _, _, _ = sch.get_loops(block)
-    block_wmma_a = sch.read_at(k1, block, 1, "wmma.matrix_a")
-    block_wmma_b = sch.read_at(k1, block, 2, "wmma.matrix_b")
-    sch.read_at(k0, block_wmma_a, 0, "shared")
-    sch.read_at(k0, block_wmma_b, 0, "shared")
-    sch.write_at(ty, block, 0, "wmma.accumulator")
+
+    by, _bx, ty,  k0, k1,_,_,_, _i, _j, = sch.get_loops(block_outer)
     print(sch.mod["main"].script())
+    block_wmma_a = sch.read_at(k1, block_outer, 1, "wmma.matrix_a", False)
+    block_wmma_b = sch.read_at(k1, block_outer, 2, "wmma.matrix_b", False)
+    sch.read_at(k0, block_wmma_a, 0, "shared", False)
+    sch.read_at(k0, block_wmma_b, 0, "shared", False)
+    sch.write_at(ty, block_outer, 0, "wmma.accumulator", False)
+    loop = sch.get_loops(block_outer)[3]
+    block_init_c = sch.decompose_reduction(block_outer, loop)
+    block_init_c_inner = sch.get_child_blocks(block_init_c)[0]
+
+    loop = sch.get_loops(block_inner)[-3]
+    sch.tensorize(loop, "wmma_sync")
+    loop = sch.get_loops(block_init_c_inner)[-2]
+    sch.tensorize(loop, "wmma_fill")
+    sch.annotate
+    print(sch.mod["main"].script())
+
+
 
 test()

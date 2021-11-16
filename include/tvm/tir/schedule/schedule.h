@@ -522,9 +522,9 @@ class ScheduleNode : public runtime::Object {
   
   /******** Schedule: Data movement ********/
   virtual BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
-                         const String& storage_scope) = 0;
+                         const String& storage_scope, bool rank_promotion) = 0;
   virtual BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
-                          const String& storage_scope) = 0;
+                          const String& storage_scope, bool rank_promotion) = 0;
   
 };
 /*!

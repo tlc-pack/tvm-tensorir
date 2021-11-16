@@ -141,9 +141,9 @@ class ConcreteScheduleNode : public ScheduleNode {
   void PromoteRank(const BlockRV& block_rv, int i) override;
   /******** Schedule: Data movement ********/
   BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
-                 const String& storage_scope) override;
+                 const String& storage_scope, bool rank_promotion) override;
   BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
-                  const String& storage_scope) override;
+                  const String& storage_scope, bool rank_promotion) override;
   
  protected:
   /******** Utility functions ********/

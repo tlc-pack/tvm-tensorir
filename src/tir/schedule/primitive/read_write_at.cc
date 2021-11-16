@@ -316,54 +316,56 @@ struct ReadWriteAtImpl {
  template <bool is_read>
  static StmtSRef Main(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
                       int buffer_index, const String& storage_scope,
-                      Map<String, ObjectRef> annotations) {
+                      Map<String, ObjectRef> annotations, bool rank_promotion) {
    const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
    Buffer src =
        GetNthAccessBuffer(self, GetRef<Block>(block), buffer_index, /*is_write=*/!is_read);
    Array<StmtSRef> loop_srefs = GetLoops(block_sref);
-   Map<Var, Range> var_range;
-   for (const StmtSRef& loop_sref : loop_srefs) {
-     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-     var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
-   }
-   Array<Range> region = is_read?block->reads[buffer_index]->region:block->writes[buffer_index]->region;
-   Map<Var, PrimExpr> binding;
-   const tir::BlockRealize& realize = tir::GetBlockRealize(self, block_sref);
-   for (int i = 0; i < static_cast<int>(realize->iter_values.size()); i++) {
-     binding.Set(block->iter_vars[i]->var,realize->iter_values[i]);
-   }
-   Array<PrimExpr> indices;
-   for (const Range& range : region) {
-     indices.push_back(Substitute(range->min, binding));
-   }
-   Array<Array<PrimExpr>> new_shape = PatternExtractor::getRankPromotedShape(indices, var_range);
-   LOG(INFO)<<"new_shape: "<<new_shape;
-   Buffer dst_buffer = WithScope(src, storage_scope);
-   auto dst =  dst_buffer.CopyOnWrite();
-   dst->shape.clear();
-   for (int i = 0; i < static_cast<int>(new_shape.size()); i++) {
-     for (const PrimExpr& extent : new_shape[i]) {
-       dst->shape.push_back(extent);
-     }
-   }
-   ReadWriteAtImpl impl(self, loop_sref, src, dst_buffer, annotations, new_shape);
+ 
    std::pair<For, BlockRealize> new_loop_block;
-   new_loop_block =
-       impl.MakeLoopAndBlock<is_read>(src->name + "_" + storage_scope);
-   if (!impl.rank_promotion_success_) {
-     dst_buffer = WithScope(src, storage_scope);
+   if (rank_promotion) {
+     Map<Var, Range> var_range;
+     for (const StmtSRef& loop_sref : loop_srefs) {
+       const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+       var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+     }
+     Array<Range> region = is_read?block->reads[buffer_index]->region:block->writes[buffer_index]->region;
+     Map<Var, PrimExpr> binding;
+     const tir::BlockRealize& realize = tir::GetBlockRealize(self, block_sref);
+     for (int i = 0; i < static_cast<int>(realize->iter_values.size()); i++) {
+       binding.Set(block->iter_vars[i]->var,realize->iter_values[i]);
+     }
+     Array<PrimExpr> indices;
+     for (const Range& range : region) {
+       indices.push_back(Substitute(range->min, binding));
+     }
+     Array<Array<PrimExpr>> new_shape = PatternExtractor::getRankPromotedShape(indices, var_range);
+     LOG(INFO)<<"new_shape: "<<new_shape;
+     Buffer dst_buffer = WithScope(src, storage_scope);
+     auto dst =  dst_buffer.CopyOnWrite();
+     dst->shape.clear();
+     for (int i = 0; i < static_cast<int>(new_shape.size()); i++) {
+       for (const PrimExpr& extent : new_shape[i]) {
+         dst->shape.push_back(extent);
+       }
+     }
+     
+     ReadWriteAtImpl impl(self, loop_sref, src, dst_buffer, annotations, new_shape);
+     new_loop_block = impl.MakeLoopAndBlock<is_read>(src->name + "_" + storage_scope);
+     StmtSRef result_block_sref =
+         impl.ReplaceScopeBlock(new_loop_block.first.get(), new_loop_block.second->block.get());
+     impl.UpdateBlockInfo(result_block_sref);
+     return result_block_sref;
+   } else{
+     Buffer dst_buffer = WithScope(src, storage_scope);
      ReadWriteAtImpl impl(self, loop_sref, src, dst_buffer, annotations);
      new_loop_block =
-         impl.MakeLoopAndBlock<is_read>(src->name + "_" + storage_scope);
+        impl.MakeLoopAndBlock<is_read>(src->name + "_" + storage_scope);
+     StmtSRef result_block_sref =
+         impl.ReplaceScopeBlock(new_loop_block.first.get(), new_loop_block.second->block.get());
+     impl.UpdateBlockInfo(result_block_sref);
+     return result_block_sref;
    }
-//   dst_buffer = WithScope(src, storage_scope);
-//   ReadWriteAtImpl impl(self, loop_sref, src, dst_buffer, annotations);
-//   std::pair<For, BlockRealize> new_loop_block =
-//       impl.MakeLoopAndBlock<is_read>(src->name + "_" + storage_scope);
-   StmtSRef result_block_sref =
-       impl.ReplaceScopeBlock(new_loop_block.first.get(), new_loop_block.second->block.get());
-   impl.UpdateBlockInfo(result_block_sref);
-   return result_block_sref;
  }
 
 private:
@@ -627,15 +629,15 @@ private:
 };
 
 StmtSRef ReadAt(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
-               int read_buffer_index, const String& storage_scope) {
+               int read_buffer_index, const String& storage_scope, bool rank_promotion) {
  return ReadWriteAtImpl::Main<true>(self, loop_sref, block_sref, read_buffer_index, storage_scope,
-                                    {{"auto_copy", Integer(1)}});
+                                    {{"auto_copy", Integer(1)}}, rank_promotion);
 }
 
 StmtSRef WriteAt(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
-                int write_buffer_index, const String& storage_scope) {
+                int write_buffer_index, const String& storage_scope, bool rank_promotion) {
  return ReadWriteAtImpl::Main<false>(self, loop_sref, block_sref, write_buffer_index,
-                                     storage_scope, {{"auto_copy", Integer(1)}});
+                                     storage_scope, {{"auto_copy", Integer(1)}}, rank_promotion);
 }
 
 /******** Instruction Registration ********/
@@ -646,23 +648,26 @@ struct ReadAtTraits : public UnpackedInstTraits<ReadAtTraits> {
 
 private:
  static constexpr size_t kNumInputs = 2;
- static constexpr size_t kNumAttrs = 2;
+ static constexpr size_t kNumAttrs = 3;
  static constexpr size_t kNumDecisions = 0;
 
  StmtSRef ReadAt(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
-                 int buffer_index, const String& storage_scope);
+                 int buffer_index, const String& storage_scope, bool rank_promotion);
  static BlockRV UnpackedApplyToSchedule(Schedule sch, LoopRV loop, BlockRV block,
-                                        Integer read_buffer_index, String storage_scope) {
-   return sch->ReadAt(loop, block, read_buffer_index->value, storage_scope);
+                                        Integer read_buffer_index, String storage_scope,
+                                        Bool rank_promotion) {
+   return sch->ReadAt(loop, block, read_buffer_index->value, storage_scope, rank_promotion);
  }
 
  static String UnpackedAsPython(Array<String> outputs, String loop, String block,
-                                Integer read_buffer_index, String storage_scope) {
+                                Integer read_buffer_index, String storage_scope,
+                                Bool rank_promotion) {
    PythonAPICall py("read_at");
    py.Input("loop", loop);
    py.Input("block", block);
    py.Input("read_buffer_index", read_buffer_index->value);
    py.Input("storage_scope", storage_scope);
+   py.Input("rank_promotion", rank_promotion);
    py.SingleOutput(outputs);
    return py.Str();
  }
@@ -677,21 +682,24 @@ struct WriteAtTraits : public UnpackedInstTraits<WriteAtTraits> {
 
 private:
  static constexpr size_t kNumInputs = 2;
- static constexpr size_t kNumAttrs = 2;
+ static constexpr size_t kNumAttrs = 3;
  static constexpr size_t kNumDecisions = 0;
 
  static BlockRV UnpackedApplyToSchedule(Schedule sch, LoopRV loop, BlockRV block,
-                                        Integer write_buffer_index, String storage_scope) {
-   return sch->WriteAt(loop, block, write_buffer_index->value, storage_scope);
+                                        Integer write_buffer_index, String storage_scope,
+                                        Bool rank_promotion) {
+   return sch->WriteAt(loop, block, write_buffer_index->value, storage_scope, rank_promotion);
  }
 
  static String UnpackedAsPython(Array<String> outputs, String loop, String block,
-                                Integer write_buffer_index, String storage_scope) {
+                                Integer write_buffer_index, String storage_scope,
+                                Bool rank_promotion) {
    PythonAPICall py("write_at");
    py.Input("loop", loop);
    py.Input("block", block);
    py.Input("write_buffer_index", write_buffer_index->value);
    py.Input("storage_scope", storage_scope);
+   py.Input("rank_promotion",rank_promotion);
    py.SingleOutput(outputs);
    return py.Str();
  }

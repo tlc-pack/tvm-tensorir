@@ -422,27 +422,31 @@ void TracedScheduleNode::EnterPostproc() {
 }
 
 BlockRV TracedScheduleNode::ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv,
-                                   int read_buffer_index, const String& storage_scope) {
+                                   int read_buffer_index, const String& storage_scope,
+                                   bool rank_promotion) {
   BlockRV result =
-      ConcreteScheduleNode::ReadAt(loop_rv, block_rv, read_buffer_index, storage_scope);
+      ConcreteScheduleNode::ReadAt(loop_rv, block_rv, read_buffer_index, storage_scope,rank_promotion);
   
   static const InstructionKind& kind = InstructionKind::Get("ReadAt");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                       /*inputs=*/{loop_rv, block_rv},
-                                      /*attrs=*/{Integer(read_buffer_index), storage_scope},
+                                      /*attrs=*/{Integer(read_buffer_index), storage_scope, Bool
+                                                 (rank_promotion)},
                                       /*outputs=*/{result}));
   return result;
 }
 
 BlockRV TracedScheduleNode::WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv,
-                                    int write_buffer_index, const String& storage_scope) {
+                                    int write_buffer_index, const String& storage_scope,
+                                    bool rank_promotion) {
   BlockRV result =
-      ConcreteScheduleNode::WriteAt(loop_rv, block_rv, write_buffer_index, storage_scope);
+      ConcreteScheduleNode::WriteAt(loop_rv, block_rv, write_buffer_index, storage_scope, rank_promotion);
 
   static const InstructionKind& kind = InstructionKind::Get("WriteAt");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                       /*inputs=*/{loop_rv, block_rv},
-                                      /*attrs=*/{Integer(write_buffer_index), storage_scope},
+                                      /*attrs=*/{Integer(write_buffer_index), storage_scope,
+                                      Bool(rank_promotion)},
                                       /*outputs=*/{result}));
   return result;
 }

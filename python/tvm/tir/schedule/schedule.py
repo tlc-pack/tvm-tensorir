@@ -1747,9 +1747,10 @@ class Schedule(Object):
             block: BlockRV,
             read_buffer_index: int,
             storage_scope: str,
+            rank_promotion: bool
     ) -> BlockRV:
         return _ffi_api.ScheduleReadAt(  # type: ignore # pylint: disable=no-member
-            self, loop, block, read_buffer_index, storage_scope
+            self, loop, block, read_buffer_index, storage_scope, rank_promotion
         )
 
     def write_at(
@@ -1758,8 +1759,9 @@ class Schedule(Object):
             block: BlockRV,
             write_buffer_index: int,
             storage_scope: str,
+            rank_promotion: bool
     ) -> BlockRV:
         return _ffi_api.ScheduleWriteAt(  # type: ignore # pylint: disable=no-member
-            self, loop, block, write_buffer_index, storage_scope
+            self, loop, block, write_buffer_index, storage_scope, rank_promotion
         )
 
