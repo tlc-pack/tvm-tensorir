@@ -452,6 +452,8 @@ bool CanComputeInline(const ScheduleState& self, const StmtSRef& block_sref);
  */
 bool CanReverseComputeInline(const ScheduleState& self, const StmtSRef& block_sref);
 
+bool CheckOneLine(const Stmt& s);
+
 }  // namespace tir
 }  // namespace tvm
 

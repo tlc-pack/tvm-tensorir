@@ -22,7 +22,7 @@ from tvm._ffi import register_object as _register_object
 from tvm.error import TVMError, register_error
 from tvm.ir import IRModule, PrimExpr
 from tvm.runtime import Object, String
-from tvm.tir import Block, For, IntImm, PrimFunc
+from tvm.tir import Block, For, IntImm, PrimFunc, TensorIntrin
 from tvm.tir.expr import FloatImm
 
 from . import _ffi_api
@@ -1655,6 +1655,14 @@ class Schedule(Object):
         )
 
     ########## Schedule: Blockize & Tensorize ##########
+
+    def blockize(self, loop: LoopRV) -> BlockRV:
+        return _ffi_api.ScheduleBlockize(self, loop)  # pylint: disable=no-member
+
+    def tensorize(self, loop: LoopRV, intrin: Union[str, TensorIntrin]) -> None:
+        if isinstance(intrin, str):
+            intrin = String(intrin)
+        _ffi_api.ScheduleTensorize(self, loop, intrin)  # pylint: disable=no-member
 
     ########## Schedule: Annotation ##########
 

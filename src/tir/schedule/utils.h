@@ -325,6 +325,30 @@ inline Optional<TObjectRef> GetAnn(const StmtSRef& sref, const String& ann_key) 
   return NullOpt;
 }
 
+/*!
+ * \brief Substitute the var in current block scope specified in key->var to be value.
+ * \param stmt The source stmt to be substituted
+ * \param value_func The function of new values mapping.
+ * \return The converted stmt.
+ */
+Stmt SubstituteInScope(const Stmt& stmt, const std::function<PrimExpr(const VarNode*)>& value_func);
+
+/*!
+ * \brief Substitute the var in current block scope specified in var map
+ * \param stmt The source stmt to be substituted
+ * \param var_map The mapping of var
+ * \return The converted stmt
+ */
+Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::unordered_map<const VarNode*, const VarNode*>& var_map);
+
+/*!
+ * \param var_map The mapping of var
+ * \return The converted stmt
+ */
+Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::unordered_map<const VarNode*, PrimExpr>& var_map);
+
 }  // namespace tir
 }  // namespace tvm
 

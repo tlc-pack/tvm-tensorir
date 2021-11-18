@@ -460,6 +460,25 @@ class ScheduleNode : public runtime::Object {
   virtual void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
                             int offset) = 0;
   /******** Schedule: Blockize & Tensorize ********/
+  /*!
+   * \brief Make subtree rooted by a specific loop into a block
+   * \param loop_rv The root of the subtree
+   * \return The new block
+   */
+  virtual BlockRV Blockize(const LoopRV& loop_rv) = 0;
+  /*!
+   * \brief Tensorize the computation enclosed by loop with tensor_intrin
+   * \param loop_rv the loop/block to be tensorized
+   * \param intrin the tensor intrinsic
+   */
+  virtual void Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) = 0;
+  /*!
+   * \brief Tensorize the computation enclosed by loop with tensor_intrin
+   * \param loop_rv The loop/block to be tensorized
+   * \param intrin_name Name of the tensor intrinsic
+   */
+  virtual void Tensorize(const LoopRV& loop_rv, const String& intrin_name) = 0;
+
   /******** Schedule: Annotation ********/
   /*!
    * \brief Annotate a loop with a key value pair
