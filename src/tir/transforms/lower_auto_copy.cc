@@ -385,7 +385,6 @@ class AutoCopyMutator : public StmtExprMutator {
     For compute_location;
     std::tie(body, compute_location) = LiftThreadBindingLoops(std::move(stmt));
     return InsertCacheStage(body ,false, "local", compute_location).first;
-
   }
   
   Stmt RewriteWmmaLoad(Stmt stmt){
@@ -765,6 +764,7 @@ class AutoCopyMutator : public StmtExprMutator {
     bool is_relax_var = compute_location->IsInstance<BlockNode>();
     Map<Var, Range> relax_var_range;
     Map<Var, Range> all_var_range;
+    PrimExpr vector_bytes =-1;
     while (const ForNode* loop = body.as<ForNode>()) {
       if (is_relax_var) {
         relax_var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
@@ -774,6 +774,9 @@ class AutoCopyMutator : public StmtExprMutator {
       all_var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
       if (loop == compute_location.get()) {
         is_relax_var=true;
+      }
+      if (loop->kind == ForKind::kVectorized) {
+        vector_bytes = loop->extent;
       }
       body = loop->body;
     }
@@ -840,8 +843,14 @@ class AutoCopyMutator : public StmtExprMutator {
                        : BufferStore(new_buffer, BufferLoad(orig_buffer, real_orig_buf_indices),
                                      real_new_buf_indices);
     for (int i = static_cast<int>(relaxed_region.size()) - 1; i >= 0; i--) {
-      generate_body = For(new_loop_vars[i], 0, relaxed_region[i]->extent, ForKind::kSerial,
-                          generate_body);
+      if(i==static_cast<int>(relaxed_region.size()) - 1 && !is_const_int(vector_bytes, -1)){
+        ICHECK(analyzer.CanProve(vector_bytes==relaxed_region[i]->extent));
+        generate_body = For(new_loop_vars[i], 0, relaxed_region[i]->extent, ForKind::kVectorized,
+                            generate_body);
+      } else {
+        generate_body =
+            For(new_loop_vars[i], 0, relaxed_region[i]->extent, ForKind::kSerial, generate_body);
+      }
     }
     Stmt rewrite_body;
     if (const auto* node = compute_location.as<ForNode>()) {
@@ -880,6 +889,7 @@ generate_body,loops[i]->thread_binding, loops[i]->annotations);
     Stmt VisitStmt_(const SeqStmtNode* op) final{
       if (op == tgt_stmt_) {
         ICHECK_EQ(op->seq.size(), 2);
+//        LOG(INFO)<<op->seq[0];
         Stmt wmma_to_shared = self->RewriteWmmaStore(op->seq[0]);
         Stmt shared_to_global = self->FuseNestLoops(op->seq[1]);
         shared_to_global = self->SplitBindVectorize(shared_to_global, vector_bytes_);
@@ -901,7 +911,7 @@ generate_body,loops[i]->thread_binding, loops[i]->annotations);
     
     std::tie(body, compute_location) = TileWmmaBlock(stmt);
     SeqStmt seq;
-    std::tie(body, seq) = InsertCacheStage(body, true, "shared", compute_location.value());
+    std::tie(body, seq) = InsertCacheStage(body, true, "shared.dyn", compute_location.value());
     WmmaToGlobalRewriter rewriter(seq.get(), this, vector_bytes);
     return rewriter(body);
   }
@@ -935,7 +945,8 @@ generate_body,loops[i]->thread_binding, loops[i]->annotations);
     Array<Buffer> result;
 
     for (const Buffer& buffer : buffers) {
-      if (buffer.scope() == "shared") {
+      runtime::StorageScope scope =runtime::StorageScope::Create(buffer.scope());
+      if (scope.rank==runtime::StorageRank::kShared) {
         int type_factor = 32 / buffer->dtype.bits();
         auto patterns = patterns_[buffer.get()];
         int base_2_bank_size = std::log2(32 * type_factor);
@@ -1232,7 +1243,7 @@ generate_body,loops[i]->thread_binding, loops[i]->annotations);
     const Map<Var, Range>& var_range_;
   };
   
-  Array<PrimExpr> getWarpAccess(const Array<PrimExpr>& indices,
+  static Array<PrimExpr> getWarpAccess(const Array<PrimExpr>& indices,
                                 const std::vector<const ForNode*>& warp_access_loops,
                                 Map<Var, PrimExpr> substitute_map, Map<Var, Range>* var_range) {
     int prod = 1;
@@ -1287,80 +1298,120 @@ generate_body,loops[i]->thread_binding, loops[i]->annotations);
    *      then pattern would be {{2,3},{2,0}}, {{2,0}}
    * @param block the given block
    */
-  void AnalyzePatternForPadding(Block block) {
-    Array<Stmt> bodies;
-    if (const SeqStmtNode* seq = block->body.as<SeqStmtNode>()) {
-      bodies = seq->seq;
-    } else {
-      bodies.push_back(block->body);
-    }
-    for(Stmt body:bodies) {
-      Map<Var, PrimExpr> substitute_map;
-      std::vector<const ForNode*> warp_access_loops;
-      PrimExpr outer_loop_ct = 1;
-      while (const ForNode* loop = body.as<ForNode>()) {
-        substitute_map.Set(loop->loop_var, loop->min);
-        if (loop->kind == ForKind::kThreadBinding) {
-          warp_access_loops.push_back(loop);
-        } else if (loop->kind == ForKind::kVectorized) {
-          warp_access_loops.push_back(loop);
-        }
-        outer_loop_ct *= loop->extent;
-        body = loop->body;
-      }
-      for (const ForNode* loop : outer_loops_) {
-        substitute_map.Set(loop->loop_var, loop->min);
-        outer_loop_ct *= loop->extent;
-      }
+  void AnalyzePatternForPadding(Stmt stmt) {
+    
+    class PatternAnalyzer:public StmtExprVisitor{
+     public:
+      PatternAnalyzer(const Map<Var, PrimExpr>& substitute_map,
+                     AutoCopyMutator* self)
+          : substitute_map_(substitute_map), self(self) {}
 
-      Buffer buffer;
-      Map<Var, Range> var_range;
-      Array<PrimExpr> indices;
-      Array<Range> region;
-      if (const BufferStoreNode* node = body.as<BufferStoreNode>()) {
-        if (node->buffer.scope() == "shared") {
-          buffer = node->buffer;
-          indices = node->indices;
-        } else {
-          const BufferLoadNode* buf_load = node->value.as<BufferLoadNode>();
-          if (buf_load->buffer.scope() == "shared") {
-            buffer = buf_load->buffer;
-            indices = buf_load->indices;
-          } else {
-            continue;
+     private:
+      void VisitStmt_(const ForNode* op)final{
+        if (op->kind == ForKind::kVectorized || op->kind == ForKind::kThreadBinding) {
+          warp_access_loops_.push_back(op);
+        }
+        substitute_map_.Set(op->loop_var, op->min);
+        StmtExprVisitor::VisitStmt_(op);
+        substitute_map_.erase(op->loop_var);
+        if (op->kind == ForKind::kVectorized || op->kind == ForKind::kThreadBinding) {
+          warp_access_loops_.pop_back();
+        }
+      }
+      
+      void VisitStmt_(const BufferStoreNode* op) final{
+        runtime::StorageScope scope = runtime::StorageScope::Create(op->buffer.scope());
+        if (scope.rank == runtime::StorageRank::kShared) {
+          Map<Var, Range> var_range;
+          Array<PrimExpr> substitued_indices =
+              getWarpAccess(op->indices, warp_access_loops_, substitute_map_, &var_range);
+          std::vector<std::vector<Pattern>> patterns =
+              PatternCollector::CollectPattern(substitued_indices, var_range);
+          self->patterns_[op->buffer.get()].push_back(patterns);
+          LOG(INFO)<<op->buffer->name;
+          for (const auto& pattern_single_dim : patterns) {
+            std::cerr << "{";
+            for (const auto& pattern : pattern_single_dim) {
+              std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
+            }
+            std::cerr << "}, ";
+          }
+          std::cerr << std::endl;
+        }
+        StmtExprVisitor::VisitStmt_(op);
+      }
+      
+      void VisitExpr_(const BufferLoadNode* op) final{
+        runtime::StorageScope scope = runtime::StorageScope::Create(op->buffer.scope());
+        if (scope.rank == runtime::StorageRank::kShared) {
+          Map<Var, Range> var_range;
+          Array<PrimExpr> substitued_indices =
+              getWarpAccess(op->indices, warp_access_loops_, substitute_map_, &var_range);
+          std::vector<std::vector<Pattern>> patterns =
+              PatternCollector::CollectPattern(substitued_indices, var_range);
+          self->patterns_[op->buffer.get()].push_back(patterns);
+          LOG(INFO)<<op->buffer->name;
+          for (const auto& pattern_single_dim : patterns) {
+            std::cerr << "{";
+            for (const auto& pattern : pattern_single_dim) {
+              std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
+            }
+            std::cerr << "}, ";
+          }
+          std::cerr << std::endl;
+        }
+        StmtExprVisitor::VisitExpr_(op);
+      }
+      
+      void VisitStmt_(const BlockNode* op) final{
+        if (const auto* eval = op->body.as<EvaluateNode>()) {
+          if (const auto* call = eval->value.as<CallNode>()) {
+            if (call->op == builtin::tvm_load_matrix_sync() ||
+                call->op == builtin::tvm_store_matrix_sync()) {
+              for (const MatchBufferRegion& r : op->match_buffers) {
+                Buffer src_buffer = r->source->buffer;
+                runtime::StorageScope scope = runtime::StorageScope::Create(src_buffer.scope());
+                if (scope.rank == runtime::StorageRank::kShared) {
+                  Region region = r->source->region;
+                  Array<PrimExpr> indices;
+                  Map<Var, Range> var_range;
+                  for (int i = 0; i < static_cast<int>(region.size()); i++) {
+                    Var var("region" + std::to_string(i));
+                    indices.push_back(region[i]->min + var);
+                    var_range.Set(var, Range::FromMinExtent(0, region[i]->extent));
+                  }
+                  Array<PrimExpr> substitued_indices =
+                      getWarpAccess(indices, warp_access_loops_, substitute_map_, &var_range);
+                  std::vector<std::vector<Pattern>> patterns =
+                      PatternCollector::CollectPattern(substitued_indices, var_range);
+                  self->patterns_[src_buffer.get()].push_back(patterns);
+                  LOG(INFO)<<src_buffer->name;
+                  for (const auto& pattern_single_dim : patterns) {
+                    std::cerr << "{";
+                    for (const auto& pattern : pattern_single_dim) {
+                      std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
+                    }
+                    std::cerr << "}, ";
+                  }
+                  std::cerr << std::endl;
+                }
+              }
+            }
           }
         }
-      } else {
-        if (block->reads[0]->buffer.scope() == "shared") {
-          buffer = block->reads[0]->buffer;
-          region = block->reads[0]->region;
-        } else if (block->writes[0]->buffer.scope() == "shared") {
-          buffer = block->writes[0]->buffer;
-          region = block->writes[0]->region;
-        } else {
-          continue;
-        }
-        for (int i = 0; i < static_cast<int>(region.size()); i++) {
-          Var var("region" + i);
-          indices.push_back(region[i]->min + var);
-          var_range.Set(var, Range::FromMinExtent(0, region[i]->extent));
-        }
       }
-      arith::Analyzer analyzer;
-      Array<PrimExpr> substitued_indices =
-          getWarpAccess(indices, warp_access_loops, substitute_map, &var_range);
-      std::vector<std::vector<Pattern>> patterns =
-          PatternCollector::CollectPattern(substitued_indices, var_range);
-      patterns_[buffer.get()].push_back(patterns);
-      for (const auto& pattern_single_dim : patterns) {
-        std::cerr << "{";
-        for (const auto& pattern : pattern_single_dim) {
-          std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
-        }
-        std::cerr << "}, ";
-      }
-      std::cerr << std::endl;
+      
+      Map<Var, PrimExpr> substitute_map_;
+      std::vector<const ForNode*> warp_access_loops_;
+      AutoCopyMutator* self;
+    };
+    
+    Map<Var, PrimExpr> substitute_map;
+    for (const ForNode* loop : outer_loops_) {
+      substitute_map.Set(loop->loop_var, loop->min);
     }
+    PatternAnalyzer analyzer(substitute_map, this);
+    analyzer(stmt);
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
@@ -1399,7 +1450,7 @@ generate_body,loops[i]->thread_binding, loops[i]->annotations);
                  tgt_scope_.rank ==runtime::StorageRank::kGlobal){
         n->body= WmmaToGlobal(block->body,vector_bytes);
       }
-      AnalyzePatternForPadding(block);
+      AnalyzePatternForPadding(block->body);
       for (const Buffer& buffer : alloc_buffers_) {
         n->alloc_buffers.push_back(buffer);
       }
@@ -1458,6 +1509,13 @@ class ThreadExtentCollector:public StmtVisitor{
   }
   
  private:
+  void VisitStmt_(const BlockNode* op) final{
+    if (op->annotations.count("warp_execution") && is_one
+        (Downcast<PrimExpr>(op->annotations["warp_execution"]))) {
+      thread_extent_["threadIdx.x"] = 32;
+    }
+    StmtVisitor::VisitStmt_(op);
+  }
   void VisitStmt_(const ForNode* op) final{
     if (op->thread_binding.defined() && op->thread_binding.value()->iter_type==kThreadIndex) {
       thread_extent_[op->thread_binding.value()->thread_tag] = op->extent.as<IntImmNode>()->value;

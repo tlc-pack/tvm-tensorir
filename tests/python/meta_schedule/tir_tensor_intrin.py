@@ -146,7 +146,7 @@ def wmma_sync_impl(a: T.handle, b: T.handle, c: T.handle) -> None:
 @T.prim_func
 def wmma_load_a_desc(a: T.handle, c: T.handle) -> None:
     A = T.match_buffer(a, (16, 16), "float16", align=128, offset_factor=16,
-                         scope="shared")
+                         scope="shared.dyn")
     C = T.match_buffer(c, (16, 16), "float16", align=128, offset_factor=16,
                          scope="wmma.matrix_a")
 
@@ -164,7 +164,7 @@ def wmma_load_a_desc(a: T.handle, c: T.handle) -> None:
 def wmma_load_a_impl(a: T.handle, c: T.handle) -> None:
     s1 = T.var("int32")
     s0 = T.var("int32")
-    A = T.match_buffer(a, (16, 16), "float16", align=128, offset_factor=16, scope="shared", strides=[s1, s0])
+    A = T.match_buffer(a, (16, 16), "float16", align=128, offset_factor=16, scope="shared.dyn", strides=[s1, s0])
     C = T.match_buffer(c, (16, 16), "float16", align=128, offset_factor=16, scope="wmma.matrix_a")
 
     with T.block("root"):
@@ -179,7 +179,7 @@ def wmma_load_a_impl(a: T.handle, c: T.handle) -> None:
 
 @T.prim_func
 def wmma_load_b_desc(a: T.handle, c: T.handle) -> None:
-    A = T.match_buffer(a, (16, 16), "float16", align=128, offset_factor=16, scope="shared")
+    A = T.match_buffer(a, (16, 16), "float16", align=128, offset_factor=16, scope="shared.dyn")
     C = T.match_buffer(c, (16, 16), "float16", align=128, offset_factor=16, scope="wmma.matrix_b")
     with T.block("root"):
         vi = T.axis.S(16, 0)
@@ -195,7 +195,7 @@ def wmma_load_b_desc(a: T.handle, c: T.handle) -> None:
 def wmma_load_b_impl(a: T.handle, c: T.handle) -> None:
     s1 = T.var("int32")
     s0 = T.var("int32")
-    A = T.match_buffer(a, (16, 16), "float16", align=128, offset_factor=16, scope="shared", strides=[s1, s0])
+    A = T.match_buffer(a, (16, 16), "float16", align=128, offset_factor=16, scope="shared.dyn", strides=[s1, s0])
     C = T.match_buffer(c, (16, 16), "float16", align=128, offset_factor=16, scope="wmma.matrix_b")
     with T.block("root"):
         vi = T.axis.S(16, 0)
@@ -234,7 +234,7 @@ def wmma_fill_impl(c: T.handle) -> None:
 @T.prim_func
 def wmma_store_desc(a: T.handle, c: T.handle) -> None:
     A = T.match_buffer(a, (16, 16), "float32", align=128, offset_factor=16, scope="wmma.accumulator")
-    C = T.match_buffer(c, (16, 16), "float32", align=128, offset_factor=16, scope="global")
+    C = T.match_buffer(c, (16, 16), "float32", align=128, offset_factor=16, scope="shared.dyn")
     with T.block("root"):
         vi = T.axis.S(16, 0)
         vj = T.axis.S(16, 0)
@@ -250,7 +250,7 @@ def wmma_store_impl(a: T.handle, c: T.handle) -> None:
     s1 = T.var("int32")
     s0 = T.var("int32")
     A = T.match_buffer(a, (16, 16), "float32", align=128, offset_factor=16, scope="wmma.accumulator")
-    C = T.match_buffer(c, (16, 16), "float32", align=128, offset_factor=16, scope="global", strides=[s1, s0])
+    C = T.match_buffer(c, (16, 16), "float32", align=128, offset_factor=16, scope="shared.dyn", strides=[s1, s0])
     with T.block("root"):
         vi = T.axis.S(16, 0)
         vj = T.axis.S(16, 0)
