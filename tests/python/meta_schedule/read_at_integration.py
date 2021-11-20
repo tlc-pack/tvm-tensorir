@@ -109,15 +109,18 @@ def test():
     block_shared_a = sch.read_at(k0, block_wmma_a, 0, "shared.dyn", False)
     sch.annotate(block_shared_a, "local_stage", True)
     sch.annotate(block_shared_a,"vector_bytes", 16)
+    sch.annotate(block_shared_a,"pragma_double_buffer", 1)
     block_shared_b = sch.read_at(k0, block_wmma_b, 0, "shared.dyn", False)
     sch.annotate(block_shared_b, "local_stage", True)
     sch.annotate(block_shared_b,"vector_bytes", 16)
+    sch.annotate(block_shared_b,"pragma_double_buffer", 1)
     block_epilogue = sch.write_at(ty, block_outer, 0, "wmma.accumulator", False)
     sch.annotate(block_epilogue,"vector_bytes", 16)
+
+
     loop = sch.get_loops(block_outer)[3]
     block_init_c = sch.decompose_reduction(block_outer, loop)
     block_init_c_inner = sch.get_child_blocks(block_init_c)[0]
-
     loop = sch.get_loops(block_inner)[-3]
     sch.tensorize(loop, "wmma_sync")
     loop = sch.get_loops(block_init_c_inner)[-2]

@@ -949,6 +949,10 @@ generate_body,loops[i]->thread_binding, loops[i]->annotations);
       if (scope.rank==runtime::StorageRank::kShared) {
         int type_factor = 32 / buffer->dtype.bits();
         auto patterns = patterns_[buffer.get()];
+        if (patterns.empty()) {
+          result.push_back(buffer);
+          continue;
+        }
         int base_2_bank_size = std::log2(32 * type_factor);
         std::vector<std::vector<int>> base_2_bank(patterns.size(),std::vector<int>(base_2_bank_size));
         

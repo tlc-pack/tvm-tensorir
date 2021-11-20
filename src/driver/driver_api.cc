@@ -253,6 +253,7 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   pass_list.push_back(tir::transform::Simplify());
 //  pass_list.push_back(transform::PrintIR("AfterSoftwarePipelining"));
   pass_list.push_back(tir::transform::FlattenBuffer());
+  pass_list.push_back(transform::PrintIR("AfterFlatten"));
   pass_list.push_back(tir::transform::BF16Legalize());
   pass_list.push_back(tir::transform::NarrowDataType(32));
   pass_list.push_back(tir::transform::Simplify());
