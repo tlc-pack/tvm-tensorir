@@ -16,7 +16,6 @@
 # under the License.
 """The TensorIR schedule class"""
 from typing import Dict, List, Optional, Union
-from typing_extensions import Annotated
 
 from tvm._ffi import register_object as _register_object
 from tvm.error import TVMError, register_error

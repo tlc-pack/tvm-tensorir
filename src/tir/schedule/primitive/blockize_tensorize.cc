@@ -23,6 +23,18 @@
 namespace tvm {
 namespace tir {
 
+bool CheckOneLine(const Stmt& s) {
+  bool legal = true, meet_block = false;
+  PostOrderVisit(s, [&legal, &meet_block](const ObjectRef& obj) {
+    if (obj->IsInstance<SeqStmtNode>() && !meet_block) {
+      legal = false;
+    } else if (obj->IsInstance<BlockRealizeNode>()) {
+      meet_block = true;
+    }
+  });
+  return legal;
+}
+
 Block GetRootBlock(StmtSRef sref) {
   const StmtSRefNode* p_sref = sref.get();
   while (p_sref->parent != nullptr) {
@@ -32,7 +44,7 @@ Block GetRootBlock(StmtSRef sref) {
   return GetRef<Block>(root_block);
 }
 
-void RecalculateCachedFlags(ScheduleState& self) {
+void RecalculateCachedFlags(ScheduleStateNode* self) {
   ScheduleState new_state(self->mod);
   for (const auto& kv : new_state->stmt2ref) {
     const StmtNode* stmt = kv.first;
@@ -54,7 +66,7 @@ void UpdateScope(ScheduleState self, const StmtSRef& block_sref) {
   // The caller is responsible for correcting the flags
   bool affine_binding = false;
   bool region_cover = false;
-  // TODO: stage_pipeline
+  // TODO(@Wuwei): stage_pipeline
   self->block_info[block_sref] = BlockInfo(std::move(scope), affine_binding, region_cover);
 }
 
@@ -123,7 +135,6 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   bool assert_mode_;
   bool is_scope_block = true, is_inner_block = true;
 };
-
 
 bool TensorizeComparator::VisitStmt(const Stmt& n, const Stmt& other) {
   if (n.same_as(other)) return true;
@@ -712,13 +723,13 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   {
     StmtSRef block_sref = self->stmt2ref.at(outer_block.get());
     StmtSRef scope_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/false,
-                                       /*require_compact_dataflow*/false);
+                                       /*require_compact_dataflow*/ false);
     UpdateScope(self, scope_sref);
   }
-  RecalculateCachedFlags(self);
+  RecalculateCachedFlags(self.operator->());
 
   // }
-  // TODO: fix affine flags
+  // TODO(@wuwei): fix affine flags
   // self->Replace(loop_sref, outer_realize, {{block, inner_block}});
   // {
   //   StmtSRef block_sref = self->stmt2ref.at(inner_block.get());
@@ -750,8 +761,8 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   //   };
   //   BindingValidator validator;
   //   validator.self = self;
-  //   const PrimFuncNode* func = GetRootPrimFunc(self->mod, GetRootBlock(loop_sref).get(), nullptr);
-  //   validator(func->body);
+  //   const PrimFuncNode* func = GetRootPrimFunc(self->mod, GetRootBlock(loop_sref).get(),
+  //   nullptr); validator(func->body);
   // }
   return self->stmt2ref.at(outer_block.get());
 }
@@ -982,14 +993,13 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
       bv_map[impl_block->iter_vars[i]->var] = 0;
     }
   }
-  Stmt new_body = SubstituteInScope(impl_block,
-                                    [&](const VarNode* var) -> PrimExpr {
-                                      auto it = bv_map.find(GetRef<Var>(var));
-                                      if (it == bv_map.end())
-                                        return GetRef<Var>(var);
-                                      else
-                                        return it->second;
-                                    });
+  Stmt new_body = SubstituteInScope(impl_block, [&](const VarNode* var) -> PrimExpr {
+    auto it = bv_map.find(GetRef<Var>(var));
+    if (it == bv_map.end())
+      return GetRef<Var>(var);
+    else
+      return it->second;
+  });
   // Replace
   ObjectPtr<BlockNode> new_block_ptr = make_object<BlockNode>(*block_realize->block.get());
   new_block_ptr->body = Downcast<Block>(new_body)->body;
@@ -998,7 +1008,7 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   Block new_block(new_block_ptr);
   self->Replace(self->stmt2ref.at(block_realize->block.get()), new_block,
                 {{block_realize->block, new_block}});
-  RecalculateCachedFlags(self);
+  RecalculateCachedFlags(self.operator->());
   // {
   //   struct BindingValidator : public StmtVisitor {
   //     void VisitStmt_(const BlockRealizeNode* realize) final {
@@ -1010,9 +1020,8 @@ void Tensorize(ScheduleState self, const StmtSRef& loop_sref, const TensorIntrin
   //   };
   //   BindingValidator validator;
   //   StmtSRef block_sref = self->stmt2ref.at(new_block.get());
-  //   const PrimFuncNode* func = GetRootPrimFunc(self->mod, GetRootBlock(block_sref).get(), nullptr);
-  //   validator.self = self;
-  //   validator(func->body);
+  //   const PrimFuncNode* func = GetRootPrimFunc(self->mod, GetRootBlock(block_sref).get(),
+  //   nullptr); validator.self = self; validator(func->body);
   // }
 }
 

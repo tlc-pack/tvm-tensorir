@@ -19,12 +19,16 @@
 #ifndef TVM_TIR_SCHEDULE_ANALYSIS_H_
 #define TVM_TIR_SCHEDULE_ANALYSIS_H_
 
+#include <tvm/arith/analyzer.h>
+#include <tvm/ir/op.h>
 #include <tvm/tir/schedule/state.h>
 
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include "../../runtime/thread_storage_scope.h"
 
 namespace tvm {
 namespace tir {
@@ -452,7 +456,18 @@ bool CanComputeInline(const ScheduleState& self, const StmtSRef& block_sref);
  */
 bool CanReverseComputeInline(const ScheduleState& self, const StmtSRef& block_sref);
 
-bool CheckOneLine(const Stmt& s);
+/*!
+ * \brief Provided the access pattern to a buffer, suggest one of the possible layout
+ * transformation to minimize the locality of the access pattern.
+ * \param buffer The buffer to be transformed
+ * \param indices The access pattern to the buffer
+ * \param loops The loops above the buffer
+ * \param predicate The predicate of the access
+ * \param analyzer Arithmetic analyzer
+ */
+Optional<IndexMap> SuggestIndexMap(const Buffer& buffer, const Array<PrimExpr>& indices,
+                                   const Array<For>& loops, const PrimExpr& predicate,
+                                   arith::Analyzer* analyzer);
 
 }  // namespace tir
 }  // namespace tvm
