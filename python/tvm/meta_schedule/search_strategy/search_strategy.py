@@ -48,7 +48,11 @@ class MeasureCandidate(Object):
     sch: Schedule
     args_info: List[ArgInfo]
 
-    def __init__(self, sch: Schedule, args_info: List[ArgInfo]) -> None:
+    def __init__(
+        self,
+        sch: Schedule,
+        args_info: List[ArgInfo],
+    ) -> None:
         """Constructor.
 
         Parameters
@@ -72,10 +76,7 @@ class SearchStrategy(Object):
     before usage and post-tuned after usage.
     """
 
-    def initialize_with_tune_context(
-        self,
-        tune_context: "TuneContext",
-    ) -> None:
+    def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
         """Initialize the search strategy with tuning context.
 
         Parameters
@@ -111,15 +112,29 @@ class SearchStrategy(Object):
         """
         return _ffi_api.SearchStrategyGenerateMeasureCandidates(self)  # type: ignore # pylint: disable=no-member
 
-    def notify_runner_results(self, results: List[RunnerResult]) -> None:
+    def notify_runner_results(
+        self,
+        tune_context: "TuneContext",
+        measure_candidates: List[MeasureCandidate],
+        results: List[RunnerResult],
+    ) -> None:
         """Update the search strategy with profiling results.
 
         Parameters
         ----------
+        tune_context : TuneContext
+            The tuning context for update.
+        measure_candidates : List[MeasureCandidate]
+            The measure candidates for update.
         results : List[RunnerResult]
             The profiling results from the runner.
         """
-        _ffi_api.SearchStrategyNotifyRunnerResults(self, results)  # type: ignore # pylint: disable=no-member
+        _ffi_api.SearchStrategyNotifyRunnerResults(  # type: ignore # pylint: disable=no-member
+            self,
+            tune_context,
+            measure_candidates,
+            results,
+        )
 
 
 @register_object("meta_schedule.PySearchStrategy")
@@ -146,8 +161,12 @@ class PySearchStrategy(SearchStrategy):
             return self.generate_measure_candidates()
 
         @check_override(self.__class__, SearchStrategy)
-        def f_notify_runner_results(results: List["RunnerResult"]) -> None:
-            self.notify_runner_results(results)
+        def f_notify_runner_results(
+            tune_context: "TuneContext",
+            measure_candidates: List[MeasureCandidate],
+            results: List["RunnerResult"],
+        ) -> None:
+            self.notify_runner_results(tune_context, measure_candidates, results)
 
         self.__init_handle_by_constructor__(
             _ffi_api.SearchStrategyPySearchStrategy,  # type: ignore # pylint: disable=no-member

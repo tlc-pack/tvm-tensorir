@@ -86,6 +86,7 @@ struct PrimeTable {
       pow_tab.emplace_back(std::move(tab));
     }
   }
+
   /*!
    * \brief Factorize a number n, and return in a cryptic format
    * \param n The number to be factorized
@@ -185,6 +186,28 @@ int64_t SampleCategorical(support::LinearCongruentialEngine::TRandState* rand_st
 
   *decision = Integer(i);  // decision is guaranteed not to be nullptr.
   return candidates[i];
+}
+
+std::function<int32_t()> MakeMultinomialSampler(
+    support::LinearCongruentialEngine::TRandState* rand_state, const std::vector<double>& weights) {
+  ICHECK(!weights.empty());
+  std::vector<double> sums;
+  sums.reserve(weights.size());
+  double sum = 0.0;
+  for (double w : weights) {
+    sums.push_back(sum += w);
+  }
+  return [rng = support::LinearCongruentialEngine(rand_state).ForkSeed(),
+          dist = std::uniform_real_distribution<double>(0.0, sum),
+          sums = std::move(sums)]() mutable -> int32_t {
+    support::LinearCongruentialEngine rand_(&rng);
+    double p = dist(rand_);
+    int32_t idx = std::lower_bound(sums.begin(), sums.end(), p) - sums.begin();
+    int32_t n = sums.size();
+    CHECK_LE(0, idx);
+    CHECK_LE(idx, n);
+    return (idx == n) ? (n - 1) : idx;
+  };
 }
 
 std::vector<int64_t> SamplePerfectTile(support::LinearCongruentialEngine::TRandState* rand_state,
@@ -297,12 +320,12 @@ std::vector<int64_t> SamplePerfectTile(support::LinearCongruentialEngine::TRandS
 
 std::vector<int64_t> SamplePerfectTile(
     support::LinearCongruentialEngine::TRandState* rand_state,  //
-    const tir::StmtSRef& loop_sref, int32_t n_splits, int32_t max_innermost_factor,
+    const StmtSRef& loop_sref, int32_t n_splits, int32_t max_innermost_factor,
     Optional<Array<Integer>>* decision) {
   const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-  int64_t extent = GetLoopIntExtent(loop);
+  const int64_t* extent = GetLoopIntExtent(loop);
   std::vector<int64_t> result;
-  if (extent == -1) {
+  if (extent == nullptr) {
     // Case 1. Handle loops with non-constant length
     result = std::vector<int64_t>(n_splits, 1);
     result[0] = -1;
@@ -311,7 +334,7 @@ std::vector<int64_t> SamplePerfectTile(
     result = support::AsVector<Integer, int64_t>(decision->value());
     int n = result.size();
     ICHECK_GE(n, 2);
-    int64_t len = extent;
+    int64_t len = *extent;
     for (int i = n - 1; i > 0; --i) {
       int64_t& l = result[i];
       // A previous decision could become invalid because of the change of outer tiles
@@ -325,11 +348,60 @@ std::vector<int64_t> SamplePerfectTile(
     result[0] = len;
   } else {
     // Case 3. Use fresh new sampling result
-    result = SamplePerfectTile(rand_state, extent, n_splits, max_innermost_factor);
+    result = SamplePerfectTile(rand_state, *extent, n_splits, max_innermost_factor);
     ICHECK_LE(result.back(), max_innermost_factor);
   }
   *decision = support::AsArray<int64_t, Integer>(result);
   return result;
+}
+
+tir::StmtSRef SampleComputeLocation(tir::ScheduleState self,
+                                    support::LinearCongruentialEngine::TRandState* rand_state,
+                                    const tir::StmtSRef& block_sref, Optional<Integer>* decision) {
+  // Find all possible compute-at locations
+  Array<tir::StmtSRef> loop_srefs = tir::CollectComputeLocation(self, block_sref);
+  int n = loop_srefs.size();
+  // Extract non-unit loops
+  std::vector<int> choices;
+  choices.reserve(n);
+  for (int i = 0; i < n; ++i) {
+    const int64_t* extent = tir::GetLoopIntExtent(loop_srefs[i]);
+    if (extent != nullptr) {
+      choices.push_back(i);
+    }
+  }
+  // The decision made, by default it is -1
+  int i = -1;
+  if (decision->defined()) {
+    // Handle existing decision
+    const auto* int_imm = decision->as<IntImmNode>();
+    int64_t decided = int_imm->value;
+    if (decided == -2 || decided == -1) {
+      i = decided;
+    } else {
+      for (int choice : choices) {
+        if (choice <= decided) {
+          i = choice;
+        } else {
+          break;
+        }
+      }
+    }
+  } else {
+    // Sample possible combinations
+    i = SampleInt(rand_state, -2, choices.size());
+    if (i >= 0) {
+      i = choices[i];
+    }
+  }
+  *decision = Integer(i);
+  if (i == -2) {
+    return tir::StmtSRef::InlineMark();
+  }
+  if (i == -1) {
+    return tir::StmtSRef::RootMark();
+  }
+  return loop_srefs[i];
 }
 
 /******** InstructionKind Registration ********/
@@ -396,8 +468,37 @@ struct SamplePerfectTileTraits : public UnpackedInstTraits<SamplePerfectTileTrai
   friend struct ::tvm::tir::UnpackedInstTraits;
 };
 
+struct SampleComputeLocationTraits : public UnpackedInstTraits<SampleComputeLocationTraits> {
+  static constexpr const char* kName = "SampleComputeLocation";
+  static constexpr bool kIsPure = true;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 1;
+
+  static LoopRV UnpackedApplyToSchedule(Schedule sch,      //
+                                        BlockRV block_rv,  //
+                                        Optional<Integer> decision) {
+    return sch->SampleComputeLocation(block_rv, decision);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs,  //
+                                 String block_rv,        //
+                                 Optional<Integer> decision) {
+    PythonAPICall py("sample_compute_location");
+    py.Input("block", block_rv);
+    py.Decision(decision);
+    py.SingleOutput(outputs);
+    return py.Str();
+  }
+
+  friend struct UnpackedInstTraits;
+};
+
 TVM_REGISTER_INST_KIND_TRAITS(SampleCategoricalTraits);
 TVM_REGISTER_INST_KIND_TRAITS(SamplePerfectTileTraits);
+TVM_REGISTER_INST_KIND_TRAITS(SampleComputeLocationTraits);
 
 }  // namespace tir
 }  // namespace tvm

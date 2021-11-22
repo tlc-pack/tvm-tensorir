@@ -15,13 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 """The TensorIR schedule class"""
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 from tvm._ffi import register_object as _register_object
 from tvm.error import TVMError, register_error
 from tvm.ir import IRModule, PrimExpr
-from tvm.runtime import Object
-from tvm.tir import Block, For, IntImm, PrimFunc
+from tvm.runtime import Object, String
+from tvm.tir import Block, For, IntImm, IndexMap, PrimFunc, TensorIntrin
+from tvm.tir.expr import FloatImm
 
 from . import _ffi_api
 from .state import ScheduleState, StmtSRef, _parse_debug_mask, _parse_mod
@@ -367,6 +368,31 @@ class Schedule(Object):
                 max_innermost_factor,
                 decision,
             )
+        )
+
+    def sample_compute_location(
+        self,
+        block: BlockRV,
+        decision: Optional[int] = None,
+    ) -> LoopRV:
+        """Sample a compute-at location on a BlockRV so that its producer can compute at that loop
+
+        Parameters
+        ----------
+        block : BlockRV
+            The consumer block to be computed at
+        decision : Optional[int]
+            The sampling decision
+
+        Returns
+        -------
+        result : LoopRV
+            The sampled loop to be computed at
+        """
+        return _ffi_api.ScheduleSampleComputeLocation(  # pylint: disable=no-member
+            self,
+            block,
+            decision,
         )
 
     ########## Schedule: Get blocks & loops ##########
@@ -1029,6 +1055,30 @@ class Schedule(Object):
             self, block, write_buffer_index, storage_scope
         )
 
+    ########## Schedule: Data movement ##########
+
+    def read_at(
+        self,
+        loop: LoopRV,
+        block: BlockRV,
+        read_buffer_index: int,
+        storage_scope: str,
+    ) -> BlockRV:
+        return _ffi_api.ScheduleReadAt(  # type: ignore # pylint: disable=no-member
+            self, loop, block, read_buffer_index, storage_scope
+        )
+
+    def write_at(
+        self,
+        loop: LoopRV,
+        block: BlockRV,
+        write_buffer_index: int,
+        storage_scope: str,
+    ) -> BlockRV:
+        return _ffi_api.ScheduleWriteAt(  # type: ignore # pylint: disable=no-member
+            self, loop, block, write_buffer_index, storage_scope
+        )
+
     ########## Schedule: Compute location ##########
 
     @type_checked
@@ -1662,7 +1712,130 @@ class Schedule(Object):
 
     ########## Schedule: Blockize & Tensorize ##########
 
+    def blockize(self, loop: LoopRV) -> BlockRV:
+        return _ffi_api.ScheduleBlockize(self, loop)  # pylint: disable=no-member
+
+    def tensorize(self, loop: LoopRV, intrin: Union[str, TensorIntrin]) -> None:
+        if isinstance(intrin, str):
+            intrin = String(intrin)
+        _ffi_api.ScheduleTensorize(self, loop, intrin)  # pylint: disable=no-member
+
     ########## Schedule: Annotation ##########
+
+    def annotate(
+        self,
+        block_or_loop: Union[BlockRV, LoopRV],
+        ann_key: str,
+        ann_val: Union[str, int, float, ExprRV],
+    ) -> None:
+        """Annotate a block/loop with a key value pair
+
+        Parameters
+        ----------
+        block_or_loop: Union[BlockRV, LoopRV]
+            The block/loop to be annotated
+        ann_key : str
+            The annotation key
+        ann_val : Union[str, int, float, ExprRV]
+            The annotation value
+        """
+        if isinstance(ann_val, str):
+            ann_val = String(ann_val)
+        elif isinstance(ann_val, int):
+            ann_val = IntImm("int32", ann_val)
+        elif isinstance(ann_val, float):
+            ann_val = FloatImm("float32", ann_val)
+        _ffi_api.ScheduleAnnotate(  # pylint: disable=no-member
+            self, block_or_loop, ann_key, ann_val
+        )
+
+    def unannotate(self, block_or_loop: Union[BlockRV, LoopRV], ann_key: str) -> None:
+        """Unannotate a block/loop's annotation with key ann_key
+
+        Parameters
+        ----------
+        block_or_loop: Union[BlockRV, LoopRV]
+            The block/loop to be unannotated
+        ann_key : str
+            The annotation key
+        """
+        _ffi_api.ScheduleUnannotate(self, block_or_loop, ann_key)  # pylint: disable=no-member
+
+    ########## Schedule: Layout transformation ##########
+
+    def transform_layout(
+        self,
+        block: BlockRV,
+        buffer_index: int,
+        is_write_index: bool,
+        index_map: Union[IndexMap, Callable],
+    ) -> None:
+        """Apply a transformation represented by IndexMap to buffer
+
+        Parameters
+        ----------
+        block_rv : BlockRV
+            The block that accesses the target buffer
+        buffer_index: int
+            The index of the buffer in block's read or write region
+        is_write_index : bool
+            Whether the buffer_index is the index of the block's write region
+        index_map : Union[IndexMap, Callable]
+            The transformation to apply
+
+        Examples
+        --------
+
+        Before transform_layout, in TensorIR, the IR is:
+
+        .. code-block:: python
+
+            @T.prim_func
+            def before_transform_layout(a: T.handle, c: T.handle) -> None:
+                A = T.match_buffer(a, (128, 128), "float32")
+                B = T.alloc_buffer((128, 128), "float32")
+                C = T.match_buffer(c, (128, 128), "float32")
+                for i, j in T.grid(128, 128):
+                    with T.block("B"):
+                        vi, vj = T.axis.remap("SS", [i, j])
+                        B[vi, vj] = A[vi, vj] * 2.0
+                for i, j in T.grid(128, 128):
+                    with T.block("C"):
+                        vi, vj = T.axis.remap("SS", [i, j])
+                        C[vi, vj] = B[vi, vj] + 1.0
+
+        Create the schedule and do transform_layout:
+
+        .. code-block:: python
+
+            sch = tir.Schedule(before_storage_align)
+            sch.transform_layout(sch.get_block("B"), buffer_index=0, is_write_index=True,
+                                 index_map=lambda m, n: (m // 16, n // 16, m % 16, n % 16))
+            print(sch.mod["main"].script())
+
+        After applying transform_layout, the IR becomes:
+
+        .. code-block:: python
+
+            @T.prim_func
+            def two_elementwise_transformed_intermediate_buffer(a: T.handle, c: T.handle) -> None:
+                A = T.match_buffer(a, (128, 128), "float32")
+                B = T.alloc_buffer((8, 8, 16, 16), "float32")
+                C = T.match_buffer(c, (128, 128), "float32")
+                for i, j in T.grid(128, 128):
+                    with T.block("B"):
+                        vi, vj = T.axis.remap("SS", [i, j])
+                        B[vi // 16, vj // 16, vi % 16, vj % 16] = A[vi, vj] * 2.0
+                for i, j in T.grid(128, 128):
+                    with T.block("C"):
+                        vi, vj = T.axis.remap("SS", [i, j])
+                        C[vi, vj] = B[vi // 16, vj // 16, vi % 16, vj % 16] + 1.0
+        """
+        if callable(index_map):
+            index_map = IndexMap.from_func(index_map)
+        _ffi_api.ScheduleTransformLayout(  # type: ignore # pylint: disable=no-member
+            self, block, buffer_index, is_write_index, index_map
+        )
 
     ########## Schedule: Misc ##########
 
