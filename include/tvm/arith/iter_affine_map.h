@@ -352,6 +352,8 @@ Array<Array<IterMark>> SubspaceDivide(const Array<PrimExpr>& bindings,
 
 PrimExpr NormalizeIterMapToExpr(const IterMapExpr& expr);
 
+PrimExpr NormalizeIterMapToExpr(const IterMapExpr& expr);
+
 }  // namespace arith
 }  // namespace tvm
 #endif  // TVM_ARITH_ITER_AFFINE_MAP_H_
