@@ -18,6 +18,7 @@
 import tvm
 from tvm.meta_schedule.space_generator.post_order_apply import PostOrderApply
 from tvm.meta_schedule.testing.schedule_rule import parallel_vectorize_unroll
+from tvm.meta_schedule.testing.space_generation import check_trace
 from tvm.meta_schedule.tune_context import TuneContext
 from tvm.script import tir as T
 from tvm.target import Target
@@ -79,6 +80,15 @@ def _create_context(mod, target, rule):
 
 
 def test_parallel_vectorize_unroll():
+    expected = [
+        [
+            'b0 = sch.get_block(name="root", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.parallel", ann_val=512)',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.vectorize", ann_val=32)',
+            'v1 = sch.sample_categorical(candidates=[0, 16, 64, 512], probs=[0.25, 0.25, 0.25, 0.25])',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.unroll_explicit", ann_val=v1)',
+        ]
+    ]
     mod = Matmul
     target = Target("llvm")
     ctx = _create_context(
@@ -86,8 +96,9 @@ def test_parallel_vectorize_unroll():
         target=target,
         rule=parallel_vectorize_unroll(target=target),
     )
-    (space,) = ctx.space_generator.generate_design_space(mod=mod)
-    tvm.ir.assert_structural_equal(lhs=space.mod, rhs=ParallelizeVectorizeUnroll)
+    spaces = ctx.space_generator.generate_design_space(mod=mod)
+    assert len(spaces) == 1
+    check_trace(spaces, expected)
 
 
 if __name__ == "__main__":

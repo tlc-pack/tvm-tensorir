@@ -46,7 +46,7 @@ class ParallelizeVectorizeUnroll(ScheduleRule):
     def __init__(
         self,
         max_jobs_per_core: int = 16,
-        max_vectorize_extent: int = 32,
+        max_vectorize_extent: int = 16,
         unroll_max_steps: Optional[List[int]] = None,
         unroll_explicit: bool = True,
     ) -> None:

@@ -137,9 +137,9 @@ def parallel_vectorize_unroll(target: Target) -> ScheduleRule:
     """Default schedule rules for with parallel-vectorize-unroll"""
     if target.kind.name == "llvm" or target.kind.name == "cuda":
         return ParallelizeVectorizeUnroll(
-            max_jobs_per_core=4,
-            max_vectorize_extent=16,
-            unroll_max_steps=[2],
+            max_jobs_per_core=16,
+            max_vectorize_extent=32,
+            unroll_max_steps=[0, 16, 64, 512],
             unroll_explicit=True,
         )
     raise NotImplementedError(f"{target.kind.name} is not supported")
@@ -147,6 +147,6 @@ def parallel_vectorize_unroll(target: Target) -> ScheduleRule:
 
 def random_compute_location(target: Target) -> ScheduleRule:
     """Default schedule rules for with random-compute-location"""
-    if target.kind.name == "llvm" or target.kind.name == "cuda":
+    if target.kind.name == "llvm":
         return RandomComputeLocation()
     raise NotImplementedError(f"{target.kind.name} is not supported")
