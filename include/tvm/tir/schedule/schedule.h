@@ -210,6 +210,14 @@ class ScheduleNode : public runtime::Object {
    */
   virtual Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
                                           Optional<Array<Integer>> decision = NullOpt) = 0;
+  /*!
+   * \brief Sample a compute-at location on a BlockRV so that its producer can compute at that loop
+   * \param block_rv The consumer block to be computed at
+   * \param decision The sampling decision
+   * \return The sampled loop to be computed at
+   */
+  virtual LoopRV SampleComputeLocation(const BlockRV& block_rv,
+                                       Optional<Integer> decision = NullOpt) = 0;
 
   /******** Schedule: Get blocks & loops ********/
   /*!

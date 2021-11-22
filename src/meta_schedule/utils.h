@@ -234,6 +234,27 @@ inline tir::BlockRV GetRVFromSRef(const tir::Schedule& sch, const tir::StmtSRef&
   return sch->GetBlock(block->name_hint, global_var_name);
 }
 
+/*!
+ * \brief Get the number of cores in CPU
+ * \param target The target
+ * \param
+ */
+inline int GetTargetNumCores(const Target& target) {
+  int num_cores = target->GetAttr<Integer>("num_cores").value_or(-1);
+  if (num_cores == -1) {
+    static const auto* f_cpu_count = runtime::Registry::Get("meta_schedule.cpu_count");
+    ICHECK(f_cpu_count)
+        << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
+    num_cores = (*f_cpu_count)(false);
+    LOG(WARNING) << "Warning: Target does not have attribute \"num_cores\", falling back the "
+                    "number of CPU cores on the local machine. The inaccuracy in number of "
+                    "cores may lead to dramatically inferior performance. Falling back to "
+                    "assuming "
+                 << num_cores << " CPU core(s)";
+  }
+  return num_cores;
+}
+
 }  // namespace meta_schedule
 }  // namespace tvm
 
