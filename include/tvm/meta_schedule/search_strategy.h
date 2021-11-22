@@ -21,6 +21,7 @@
 
 #include <tvm/meta_schedule/arg_info.h>
 #include <tvm/meta_schedule/runner.h>
+#include <tvm/meta_schedule/space_generator.h>
 #include <tvm/tir/schedule/schedule.h>
 
 namespace tvm {
