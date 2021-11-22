@@ -20,5 +20,6 @@ Meta Schedule search strategy utilizes the design spaces given
 to generate measure candidates.
 """
 
-from .search_strategy import SearchStrategy, PySearchStrategy
+from .search_strategy import SearchStrategy, PySearchStrategy, MeasureCandidate
 from .replay_trace import ReplayTrace
+from .replay_func import ReplayFunc

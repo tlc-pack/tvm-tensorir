@@ -224,6 +224,15 @@ TVM_DLL StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int r
  */
 TVM_DLL StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_buffer_index,
                             const String& storage_scope);
+
+/******** Schedule: Data movement ********/
+
+TVM_DLL StmtSRef ReadAt(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
+                        int read_buffer_index, const String& storage_scope);
+
+TVM_DLL StmtSRef WriteAt(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
+                         int write_buffer_index, const String& storage_scope);
+
 /******** Schedule: Compute location ********/
 /*!
  * \brief Move a producer block under the specific loop, and regenerate the
@@ -339,7 +348,28 @@ TVM_DLL void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int bu
                           int axis, int factor, int offset);
 
 /******** Schedule: Blockize & Tensorize ********/
+
+TVM_DLL StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref);
+TVM_DLL void Tensorize(ScheduleState self, const StmtSRef& loop_sref,
+                       const TensorIntrin& intrinsic);
+
 /******** Schedule: Annotation ********/
+/*!
+ * \brief Annotate a block/loop with a key value pair
+ * \param self The state of the schedule
+ * \param sref The block/loop sref to be annotated
+ * \param ann_key The annotation key
+ * \param ann_val The annotation value
+ */
+TVM_DLL void Annotate(ScheduleState self, const StmtSRef& sref, const String& ann_key,
+                      const ObjectRef& ann_val);
+/*!
+ * \brief Unannotate a block/loop's annotation with key ann_key
+ * \param self The state of the schedule
+ * \param sref The block/loop to be unannotated
+ * \param ann_key The annotation key
+ */
+TVM_DLL void Unannotate(ScheduleState self, const StmtSRef& sref, const String& ann_key);
 /******** Schedule: Misc ********/
 
 }  // namespace tir

@@ -16,9 +16,10 @@
 # under the License.
 """Round Robin Task Scheduler"""
 
-from typing import List, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 from tvm._ffi import register_object
+from tvm.meta_schedule.measure_callback.measure_callback import MeasureCallback
 
 from ..builder import Builder
 from ..runner import Runner
@@ -33,7 +34,21 @@ if TYPE_CHECKING:
 
 @register_object("meta_schedule.RoundRobin")
 class RoundRobin(TaskScheduler):
-    """Round Robin Task Scheduler"""
+    """Round Robin Task Scheduler
+
+    Parameters
+    ----------
+    tasks: List[TuneContext]
+        The list of tune context to process.
+    builder: Builder
+        The builder of the scheduler.
+    runner: Runner
+        The runner of the scheduler.
+    database: Database
+        The database of the scheduler.
+    measure_callbacks: Optional[List[MeasureCallback]] = None
+        The list of measure callbacks of the scheduler.
+    """
 
     def __init__(
         self,
@@ -41,6 +56,7 @@ class RoundRobin(TaskScheduler):
         builder: Builder,
         runner: Runner,
         database: Database,
+        measure_callbacks: Optional[List[MeasureCallback]] = None,
     ) -> None:
         """Constructor.
 
@@ -54,6 +70,8 @@ class RoundRobin(TaskScheduler):
             The runner.
         database : Database
             The database.
+        measure_callbacks: Optional[List[MeasureCallback]]
+            The list of measure callbacks of the scheduler.
         """
         self.__init_handle_by_constructor__(
             _ffi_api.TaskSchedulerRoundRobin,  # type: ignore # pylint: disable=no-member
@@ -61,4 +79,5 @@ class RoundRobin(TaskScheduler):
             builder,
             runner,
             database,
+            measure_callbacks,
         )

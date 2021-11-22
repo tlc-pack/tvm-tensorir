@@ -16,19 +16,23 @@
 # under the License.
 """Meta Schedule tuning context."""
 
-from typing import Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 from tvm import IRModule
 from tvm._ffi import register_object
 from tvm.meta_schedule.utils import cpu_count
 from tvm.runtime import Object
 from tvm.target import Target
+from tvm.tir import PrimFunc
 
 from . import _ffi_api
 
 if TYPE_CHECKING:
     from .space_generator import SpaceGenerator
     from .search_strategy import SearchStrategy
+    from .schedule_rule import ScheduleRule
+    from .postproc import Postproc
+    from .mutator import Mutator
 
 
 @register_object("meta_schedule.TuneContext")
@@ -50,6 +54,12 @@ class TuneContext(Object):
         The design space generator.
     search_strategy : Optional[SearchStrategy] = None
         The search strategy.
+    sch_rules: Optional[List[ScheduleRule]] = None,
+        The schedule rules.
+    postprocs: Optional[List[Postproc"]] = None,
+        The postprocessors.
+    mutators: Optional[List[Mutator]] = None,
+        The mutators.
     task_name : Optional[str] = None
         The name of the tuning task.
     rand_state : int = -1
@@ -68,8 +78,11 @@ class TuneContext(Object):
 
     mod: Optional[IRModule]
     target: Optional[Target]
-    space_generator: "SpaceGenerator"
-    search_strategy: "SearchStrategy"
+    space_generator: Optional["SpaceGenerator"]
+    search_strategy: Optional["SearchStrategy"]
+    sch_rules: Optional[List["ScheduleRule"]]
+    postprocs: Optional[List["Postproc"]]
+    mutators: Optional[List["Mutator"]]
     task_name: Optional[str]
     rand_state: int
     num_threads: int
@@ -80,6 +93,9 @@ class TuneContext(Object):
         target: Optional[Target] = None,
         space_generator: Optional["SpaceGenerator"] = None,
         search_strategy: Optional["SearchStrategy"] = None,
+        sch_rules: Optional[List["ScheduleRule"]] = None,
+        postprocs: Optional[List["Postproc"]] = None,
+        mutators: Optional[List["Mutator"]] = None,
         task_name: Optional[str] = None,
         rand_state: int = -1,
         num_threads: Optional[int] = None,
@@ -96,6 +112,12 @@ class TuneContext(Object):
             The design space generator.
         search_strategy : Optional[SearchStrategy] = None
             The search strategy.
+        sch_rules : List[ScheduleRule] = []
+            The schedule rules.
+        postprocs : List[Postproc] = []
+            The postprocessors.
+        mutators : List[Mutator] = []
+            The mutators.
         task_name : Optional[str] = None
             The name of the tuning task.
         rand_state : int = -1
@@ -104,6 +126,8 @@ class TuneContext(Object):
         num_threads : Optional[int] = None
             The number of threads to be used, None means using the logical cpu count.
         """
+        if isinstance(mod, PrimFunc):
+            mod = IRModule.from_expr(mod)
         if num_threads is None:
             num_threads = cpu_count()
 
@@ -113,6 +137,9 @@ class TuneContext(Object):
             target,
             space_generator,
             search_strategy,
+            sch_rules,
+            postprocs,
+            mutators,
             task_name,
             rand_state,
             num_threads,

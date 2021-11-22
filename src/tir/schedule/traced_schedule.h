@@ -72,6 +72,11 @@ class TracedScheduleNode : public ConcreteScheduleNode {
                     const String& storage_scope) final;
   BlockRV CacheWrite(const BlockRV& block_rv, int write_buffer_index,
                      const String& storage_scope) final;
+  /******** Schedule: Data movement ********/
+  BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
+                 const String& storage_scope) final;
+  BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
+                  const String& storage_scope) final;
   /******** Schedule: Compute location ********/
   void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv, bool preserve_unit_loops) final;
   void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
@@ -86,6 +91,10 @@ class TracedScheduleNode : public ConcreteScheduleNode {
                     int offset) final;
   /******** Schedule: Blockize & Tensorize ********/
   /******** Schedule: Annotation ********/
+  void Annotate(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
+  void Unannotate(const LoopRV& loop_rv, const String& ann_key) override;
+  void Annotate(const BlockRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
+  void Unannotate(const BlockRV& loop_rv, const String& ann_key) override;
   /******** Schedule: Misc ********/
   void EnterPostproc() final;
 };

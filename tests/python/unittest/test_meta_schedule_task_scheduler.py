@@ -24,9 +24,10 @@ import random
 import pytest
 
 import tvm
+from tvm._ffi.base import TVMError
 from tvm.script import tir as T
 from tvm.ir import IRModule
-from tvm.tir import Schedule
+from tvm.tir import Schedule, schedule
 from tvm.meta_schedule import TuneContext
 from tvm.meta_schedule.space_generator import ScheduleFn
 from tvm.meta_schedule.search_strategy import ReplayTrace

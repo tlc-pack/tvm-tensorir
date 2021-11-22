@@ -20,18 +20,22 @@
 #define TVM_META_SCHEDULE_UTILS_H_
 
 #include <dmlc/memory_io.h>
+#include <tvm/driver/driver_api.h>
 #include <tvm/meta_schedule/arg_info.h>
 #include <tvm/meta_schedule/builder.h>
+#include <tvm/meta_schedule/cost_model.h>
 #include <tvm/meta_schedule/database.h>
+#include <tvm/meta_schedule/feature_extractor.h>
+#include <tvm/meta_schedule/measure_callback.h>
+#include <tvm/meta_schedule/mutator.h>
+#include <tvm/meta_schedule/postproc.h>
 #include <tvm/meta_schedule/runner.h>
+#include <tvm/meta_schedule/schedule_rule.h>
 #include <tvm/meta_schedule/search_strategy.h>
 #include <tvm/meta_schedule/space_generator.h>
 #include <tvm/meta_schedule/task_scheduler.h>
 #include <tvm/meta_schedule/tune_context.h>
-#include <tvm/node/node.h>
-#include <tvm/node/serialization.h>
 #include <tvm/support/parallel_for.h>
-#include <tvm/tir/schedule/schedule.h>
 
 #include <string>
 #include <vector>
@@ -39,7 +43,7 @@
 #include "../printer/text_printer.h"
 #include "../support/array.h"
 #include "../support/base64.h"
-#include "../tir/schedule/primitive.h"
+#include "../tir/schedule/utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -193,7 +197,7 @@ inline support::LinearCongruentialEngine::TRandState ForkSeed(
 
 /*!
  * \brief Fork a random state into another ones, i.e. PRNG splitting.
- * The given random state is also mutated.
+ *  The given random state is also mutated.
  * \param rand_state The random state to be forked
  * \param n The number of forks
  * \return The forked random states
@@ -206,6 +210,28 @@ inline std::vector<support::LinearCongruentialEngine::TRandState> ForkSeed(
     results.push_back(support::LinearCongruentialEngine(rand_state).ForkSeed());
   }
   return results;
+}
+
+/*!
+ * \brief Get deep copy of an IRModule.
+ * \param mod The IRModule to make a deep copy.
+ * \return The deep copy of the IRModule.
+ */
+inline IRModule DeepCopyIRModule(IRModule mod) {
+  return Downcast<IRModule>(LoadJSON(SaveJSON(mod)));
+}
+
+/*!
+ * \brief Get the BlockRV from a block StmtSRef
+ * \param sch The schedule
+ * \param block_sref The block StmtSRef
+ * \param global_var_name The global variable name
+ * \return The BlockRV
+ */
+inline tir::BlockRV GetRVFromSRef(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                                  const String& global_var_name) {
+  const tir::BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  return sch->GetBlock(block->name_hint, global_var_name);
 }
 
 }  // namespace meta_schedule

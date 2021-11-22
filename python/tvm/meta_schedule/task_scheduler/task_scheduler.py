@@ -16,9 +16,10 @@
 # under the License.
 """Auto-tuning Task Scheduler"""
 
-from typing import List
+from typing import List, Optional
 
 from tvm._ffi import register_object
+from tvm.meta_schedule.measure_callback.measure_callback import MeasureCallback
 from tvm.runtime import Object
 
 from ..runner import Runner
@@ -43,12 +44,15 @@ class TaskScheduler(Object):
         The runner of the scheduler.
     database: Database
         The database of the scheduler.
+    measure_callbacks: List[MeasureCallback] = None
+        The list of measure callbacks of the scheduler.
     """
 
     tasks: List[TuneContext]
     builder: Builder
     runner: Runner
     database: Database
+    measure_callbacks: List[MeasureCallback]
 
     def tune(self) -> None:
         """Auto-tuning."""
@@ -120,6 +124,7 @@ class PyTaskScheduler(TaskScheduler):
         builder: Builder,
         runner: Runner,
         database: Database,
+        measure_callbacks: Optional[List[MeasureCallback]] = None,
     ):
         """Constructor.
 
@@ -133,6 +138,8 @@ class PyTaskScheduler(TaskScheduler):
             The runner of the scheduler.
         database: Database
             The database of the scheduler.
+        measure_callbacks: List[MeasureCallback]
+            The list of measure callbacks of the scheduler.
         """
 
         @check_override(self.__class__, TaskScheduler, required=False)
@@ -173,6 +180,7 @@ class PyTaskScheduler(TaskScheduler):
             builder,
             runner,
             database,
+            measure_callbacks,
             f_tune,
             f_initialize_task,
             f_set_task_stopped,

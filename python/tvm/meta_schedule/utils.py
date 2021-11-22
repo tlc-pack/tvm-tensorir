@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Utilities for meta schedule"""
+import ctypes
 import json
 import os
 import shutil
@@ -205,6 +206,22 @@ def structural_hash(mod: IRModule) -> str:
         # but ffi can't handle unsigned integers properly so it's parsed into a negative number
         shash += 1 << 64
     return str(shash)
+
+
+def _get_hex_address(handle: ctypes.c_void_p) -> str:
+    """Get the hexadecimal address of a handle.
+
+    Parameters
+    ----------
+    handle : ctypes.c_void_p
+        The handle to be converted.
+
+    Returns
+    -------
+    result : str
+        The hexadecimal address of the handle.
+    """
+    return hex(ctypes.cast(handle, ctypes.c_void_p).value)
 
 
 def check_override(

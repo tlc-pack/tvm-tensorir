@@ -250,6 +250,31 @@ BlockRV TracedScheduleNode::CacheWrite(const BlockRV& block_rv, int write_buffer
   return result;
 }
 
+BlockRV TracedScheduleNode::ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv,
+                                   int read_buffer_index, const String& storage_scope) {
+  BlockRV result =
+      ConcreteScheduleNode::ReadAt(loop_rv, block_rv, read_buffer_index, storage_scope);
+
+  static const InstructionKind& kind = InstructionKind::Get("ReadAt");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{loop_rv, block_rv},
+                                      /*attrs=*/{Integer(read_buffer_index), storage_scope},
+                                      /*outputs=*/{result}));
+  return result;
+}
+
+BlockRV TracedScheduleNode::WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv,
+                                    int write_buffer_index, const String& storage_scope) {
+  BlockRV result =
+      ConcreteScheduleNode::WriteAt(loop_rv, block_rv, write_buffer_index, storage_scope);
+
+  static const InstructionKind& kind = InstructionKind::Get("WriteAt");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{loop_rv, block_rv},
+                                      /*attrs=*/{Integer(write_buffer_index), storage_scope},
+                                      /*outputs=*/{result}));
+  return result;
+}
 /******** Schedule: Compute location ********/
 
 void TracedScheduleNode::ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
@@ -332,6 +357,44 @@ void TracedScheduleNode::StorageAlign(const BlockRV& block_rv, int buffer_index,
 /******** Schedule: Blockize & Tensorize ********/
 
 /******** Schedule: Annotation ********/
+
+void TracedScheduleNode::Annotate(const LoopRV& loop_rv, const String& ann_key,
+                                  const ObjectRef& ann_val) {
+  ConcreteScheduleNode::Annotate(loop_rv, ann_key, ann_val);
+  static const InstructionKind& kind = InstructionKind::Get("Annotate");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{loop_rv, ann_val},
+                                      /*attrs=*/{ann_key},
+                                      /*outputs=*/{}));
+}
+
+void TracedScheduleNode::Annotate(const BlockRV& block_rv, const String& ann_key,
+                                  const ObjectRef& ann_val) {
+  ConcreteScheduleNode::Annotate(block_rv, ann_key, ann_val);
+  static const InstructionKind& kind = InstructionKind::Get("Annotate");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{block_rv, ann_val},
+                                      /*attrs=*/{ann_key},
+                                      /*outputs=*/{}));
+}
+
+void TracedScheduleNode::Unannotate(const LoopRV& loop_rv, const String& ann_key) {
+  ConcreteScheduleNode::Unannotate(loop_rv, ann_key);
+  static const InstructionKind& kind = InstructionKind::Get("Unannotate");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{loop_rv},
+                                      /*attrs=*/{ann_key},
+                                      /*outputs=*/{}));
+}
+
+void TracedScheduleNode::Unannotate(const BlockRV& block_rv, const String& ann_key) {
+  ConcreteScheduleNode::Unannotate(block_rv, ann_key);
+  static const InstructionKind& kind = InstructionKind::Get("Unannotate");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{block_rv},
+                                      /*attrs=*/{ann_key},
+                                      /*outputs=*/{}));
+}
 
 /******** Schedule: Misc ********/
 

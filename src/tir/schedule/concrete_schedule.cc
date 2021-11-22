@@ -477,6 +477,30 @@ BlockRV ConcreteScheduleNode::CacheWrite(const BlockRV& block_rv, int write_buff
   return CreateRV<BlockRV>(result);
 }
 
+/******** Schedule: Data movement ********/
+
+BlockRV ConcreteScheduleNode::ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv,
+                                     int read_buffer_index, const String& storage_scope) {
+  StmtSRef result{nullptr};
+  TVM_TIR_SCHEDULE_BEGIN();
+  result = tir::ReadAt(state_, this->GetSRef(loop_rv), this->GetSRef(block_rv), read_buffer_index,
+                       storage_scope);
+  TVM_TIR_SCHEDULE_END("read-at", this->error_render_level_);
+  this->state_->DebugVerify();
+  return CreateRV<BlockRV>(result);
+}
+
+BlockRV ConcreteScheduleNode::WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv,
+                                      int write_buffer_index, const String& storage_scope) {
+  StmtSRef result{nullptr};
+  TVM_TIR_SCHEDULE_BEGIN();
+  result = tir::WriteAt(state_, this->GetSRef(loop_rv), this->GetSRef(block_rv), write_buffer_index,
+                        storage_scope);
+  TVM_TIR_SCHEDULE_END("write-at", this->error_render_level_);
+  this->state_->DebugVerify();
+  return CreateRV<BlockRV>(result);
+}
+
 /******** Schedule: Compute location ********/
 
 void ConcreteScheduleNode::ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
@@ -562,7 +586,81 @@ BlockRV ConcreteScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
 }
 
 /******** Schedule: Blockize & Tensorize ********/
-/******** Schedule: Annotation ********/
+BlockRV ConcreteScheduleNode::Blockize(const LoopRV& loop_rv) {
+  StmtSRef result{nullptr};
+  TVM_TIR_SCHEDULE_BEGIN();
+  result = tir::Blockize(state_, this->GetSRef(loop_rv));
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("blockize", this->error_render_level_);
+  return CreateRV<BlockRV>(result);
+}
+
+void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::Tensorize(state_, this->GetSRef(loop_rv), intrin);
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("tensorize", this->error_render_level_);
+}
+
+void ConcreteScheduleNode::Tensorize(const LoopRV& loop_rv, const String& intrin_name) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::Tensorize(state_, this->GetSRef(loop_rv), tir::TensorIntrin::Get(intrin_name));
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("tensorize", this->error_render_level_);
+}
+
+void ConcreteScheduleNode::Annotate(const LoopRV& loop_rv, const String& ann_key,
+                                    const ObjectRef& ann_val) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  if (const auto* str = ann_val.as<StringObj>()) {
+    tir::Annotate(state_, this->GetSRef(loop_rv), ann_key, GetRef<String>(str));
+  } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
+    ICHECK(!ann_val->IsInstance<StringImmNode>())
+        << "TypeError: runtime::String is expected, but gets StringImm";
+    tir::Annotate(state_, this->GetSRef(loop_rv), ann_key, this->Get(GetRef<PrimExpr>(expr)));
+  } else {
+    LOG(FATAL)
+        << "TypeError: Only strings, integers, floats and ExprRVs are supported for now, but gets: "
+        << ann_val->GetTypeKey();
+    throw;
+  }
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("annotate", this->error_render_level_);
+}
+
+void ConcreteScheduleNode::Unannotate(const LoopRV& loop_rv, const String& ann_key) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::Unannotate(state_, this->GetSRef(loop_rv), ann_key);
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("unannotate", this->error_render_level_);
+}
+
+void ConcreteScheduleNode::Annotate(const BlockRV& block_rv, const String& ann_key,
+                                    const ObjectRef& ann_val) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  if (const auto* str = ann_val.as<StringObj>()) {
+    tir::Annotate(state_, this->GetSRef(block_rv), ann_key, GetRef<String>(str));
+  } else if (const auto* expr = ann_val.as<PrimExprNode>()) {
+    ICHECK(!ann_val->IsInstance<StringImmNode>())
+        << "TypeError: runtime::String is expected, but gets StringImm";
+    tir::Annotate(state_, this->GetSRef(block_rv), ann_key, this->Get(GetRef<PrimExpr>(expr)));
+  } else {
+    LOG(FATAL)
+        << "TypeError: Only strings, integers, floats and ExprRVs are supported for now, but gets: "
+        << ann_val->GetTypeKey();
+    throw;
+  }
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("annotate", this->error_render_level_);
+}
+
+void ConcreteScheduleNode::Unannotate(const BlockRV& loop_rv, const String& ann_key) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::Unannotate(state_, this->GetSRef(loop_rv), ann_key);
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("unannotate", this->error_render_level_);
+}
+
 /******** Schedule: Misc ********/
 
 }  // namespace tir

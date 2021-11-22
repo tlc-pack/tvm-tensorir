@@ -92,15 +92,8 @@ Array<RunnerFuture> SendToRunner(const Runner& runner,  //
   return results;
 }
 
-void TaskSchedulerNode::InitializeTask(int task_id) {
-  TuneContext task = this->tasks[task_id];
-  // Derive the values.
-  IRModule mod = task->mod.value();
-  SpaceGenerator space = task->space_generator.value();
-  SearchStrategy strategy = task->search_strategy.value();
-  // Initialize Modules.
-  space->InitializeWithTuneContext(task);
-  strategy->InitializeWithTuneContext(task);
+void TaskSchedulerNode::InitializeTask(int task_id) {  //
+  this->tasks[task_id]->Initialize();
 }
 
 void TaskSchedulerNode::Tune() {
@@ -201,6 +194,7 @@ TaskScheduler TaskScheduler::PyTaskScheduler(
     Builder builder,                                            //
     Runner runner,                                              //
     Database database,                                          //
+    Optional<Array<MeasureCallback>> measure_callbacks,         //
     PyTaskSchedulerNode::FTune f_tune,                          //
     PyTaskSchedulerNode::FInitializeTask f_initialize_task,     //
     PyTaskSchedulerNode::FSetTaskStopped f_set_task_stopped,    //
@@ -212,6 +206,7 @@ TaskScheduler TaskScheduler::PyTaskScheduler(
   n->builder = builder;
   n->runner = runner;
   n->database = database;
+  n->measure_callbacks = measure_callbacks;
   n->f_tune = f_tune;
   n->f_initialize_task = f_initialize_task;
   n->f_set_task_stopped = f_set_task_stopped;

@@ -20,6 +20,10 @@
 #define TVM_META_SCHEDULE_TUNE_CONTEXT_H_
 
 #include <tvm/ir/module.h>
+#include <tvm/meta_schedule/mutator.h>
+#include <tvm/meta_schedule/postproc.h>
+#include <tvm/meta_schedule/schedule_rule.h>
+#include <tvm/meta_schedule/search_strategy.h>
 #include <tvm/meta_schedule/space_generator.h>
 #include <tvm/support/random_engine.h>
 #include <tvm/target/target.h>
@@ -38,6 +42,12 @@ class TuneContextNode : public runtime::Object {
   Optional<SpaceGenerator> space_generator;
   /*! \brief The search strategy. */
   Optional<SearchStrategy> search_strategy;
+  /*! \brief The schedule rules. */
+  Optional<Array<ScheduleRule>> sch_rules;
+  /*! \brief The postprocessors. */
+  Optional<Array<Postproc>> postprocs;
+  /*! \brief The mutators. */
+  Optional<Array<Mutator>> mutators;
   /*! \brief The name of the tuning task. */
   Optional<String> task_name;
   /*! \brief The random state. */
@@ -57,6 +67,9 @@ class TuneContextNode : public runtime::Object {
     v->Visit("target", &target);
     v->Visit("space_generator", &space_generator);
     v->Visit("search_strategy", &search_strategy);
+    v->Visit("sch_rules", &sch_rules);
+    v->Visit("postprocs", &postprocs);
+    v->Visit("mutators", &mutators);
     v->Visit("task_name", &task_name);
     v->Visit("rand_state", &rand_state);
     v->Visit("num_threads", &num_threads);
@@ -64,6 +77,9 @@ class TuneContextNode : public runtime::Object {
     v->Visit("runner_futures", &runner_futures);
     v->Visit("measure_candidates", &measure_candidates);
   }
+
+  /*! \brief Initialize members that needs initialization with tune context. */
+  void Initialize();
 
   static constexpr const char* _type_key = "meta_schedule.TuneContext";
   TVM_DECLARE_FINAL_OBJECT_INFO(TuneContextNode, Object);
@@ -81,6 +97,9 @@ class TuneContext : public runtime::ObjectRef {
    * \param target The target to be tuned for.
    * \param space_generator The design space generator.
    * \param search_strategy The search strategy.
+   * \param sch_rules The schedule rules.
+   * \param postprocs The postprocessors.
+   * \param mutators The mutators.
    * \param task_name The name of the tuning task.
    * \param rand_state The random state.
    * \param num_threads The number of threads to be used.
@@ -89,6 +108,9 @@ class TuneContext : public runtime::ObjectRef {
                                Optional<Target> target,                                   //
                                Optional<SpaceGenerator> space_generator,                  //
                                Optional<SearchStrategy> search_strategy,                  //
+                               Optional<Array<ScheduleRule>> sch_rules,                   //
+                               Optional<Array<Postproc>> postprocs,                       //
+                               Optional<Array<Mutator>> mutators,                         //
                                Optional<String> task_name,                                //
                                support::LinearCongruentialEngine::TRandState rand_state,  //
                                int num_threads);

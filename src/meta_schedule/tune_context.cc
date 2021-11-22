@@ -24,20 +24,13 @@
 namespace tvm {
 namespace meta_schedule {
 
-/*!
- * \brief Constructor function of TuneContext class.
- * \param mod The mod to be optimized.
- * \param target The target to be optimized for.
- * \param space_generator The design space generator.
- * \param task_name The name of the tuning task.
- * \param rand_state The random state.
- * \param num_threads The number of threads to be used.
- * \param verbose The verbosity level.
- */
 TuneContext::TuneContext(Optional<IRModule> mod,                                    //
                          Optional<Target> target,                                   //
                          Optional<SpaceGenerator> space_generator,                  //
                          Optional<SearchStrategy> search_strategy,                  //
+                         Optional<Array<ScheduleRule>> sch_rules,                   //
+                         Optional<Array<Postproc>> postprocs,                       //
+                         Optional<Array<Mutator>> mutators,                         //
                          Optional<String> task_name,                                //
                          support::LinearCongruentialEngine::TRandState rand_state,  //
                          int num_threads) {
@@ -46,6 +39,9 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   n->target = target;
   n->space_generator = space_generator;
   n->search_strategy = search_strategy;
+  n->sch_rules = sch_rules;
+  n->postprocs = postprocs;
+  n->mutators = mutators;
   n->task_name = task_name;
   if (rand_state == -1) {
     rand_state = std::random_device()();
@@ -58,6 +54,30 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   data_ = std::move(n);
 }
 
+void TuneContextNode::Initialize() {
+  if (this->space_generator.defined()) {
+    this->space_generator.value()->InitializeWithTuneContext(GetRef<TuneContext>(this));
+  }
+  if (this->search_strategy.defined()) {
+    this->search_strategy.value()->InitializeWithTuneContext(GetRef<TuneContext>(this));
+  }
+  if (this->sch_rules.defined()) {
+    for (const ScheduleRule& sch_rule : sch_rules.value()) {
+      sch_rule->InitializeWithTuneContext(GetRef<TuneContext>(this));
+    }
+  }
+  if (this->postprocs.defined()) {
+    for (const Postproc& postproc : postprocs.value()) {
+      postproc->InitializeWithTuneContext(GetRef<TuneContext>(this));
+    }
+  }
+  if (this->mutators.defined()) {
+    for (const Mutator& mutator : mutators.value()) {
+      mutator->InitializeWithTuneContext(GetRef<TuneContext>(this));
+    }
+  }
+}
+
 TVM_REGISTER_NODE_TYPE(TuneContextNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
@@ -65,11 +85,14 @@ TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
                        Optional<Target> target,                                   //
                        Optional<SpaceGenerator> space_generator,                  //
                        Optional<SearchStrategy> search_strategy,                  //
+                       Array<ScheduleRule> sch_rules,                             //
+                       Array<Postproc> postprocs,                                 //
+                       Array<Mutator> mutators,                                   //
                        Optional<String> task_name,                                //
                        support::LinearCongruentialEngine::TRandState rand_state,  //
                        int num_threads) -> TuneContext {
-      return TuneContext(mod, target, space_generator, search_strategy, task_name, rand_state,
-                         num_threads);
+      return TuneContext(mod, target, space_generator, search_strategy, sch_rules, postprocs,
+                         mutators, task_name, rand_state, num_threads);
     });
 }  // namespace meta_schedule
 }  // namespace tvm
