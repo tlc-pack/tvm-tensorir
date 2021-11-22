@@ -16,6 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <unordered_map>
+
 #include "../utils.h"
 
 namespace tvm {
@@ -1455,18 +1457,6 @@ bool HasIfThenElse(const Stmt& stmt) {
   };
   PreOrderVisit(stmt, f_visit);
   return has_branch;
-}
-
-bool CheckOneLine(const Stmt& s) {
-  bool legal = true, meet_block = false;
-  PostOrderVisit(s, [&legal, &meet_block](const ObjectRef& obj) {
-    if (obj->IsInstance<SeqStmtNode>() && !meet_block) {
-      legal = false;
-    } else if (obj->IsInstance<BlockRealizeNode>()) {
-      meet_block = true;
-    }
-  });
-  return legal;
 }
 
 }  // namespace tir

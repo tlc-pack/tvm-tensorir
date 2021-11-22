@@ -22,6 +22,8 @@
 
 #include <tvm/meta_schedule/search_strategy.h>
 
+#include <vector>
+
 namespace tvm {
 namespace meta_schedule {
 
