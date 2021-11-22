@@ -156,6 +156,12 @@ class ScheduleNode : public runtime::Object {
    */
   virtual StmtSRef GetSRef(const LoopRV& loop_rv) const = 0;
   /*!
+   * \brief Check the existance of a specific BlockRV
+   * \param block_rv The BlockRV to be looked up
+   * \return Whether the corresponding block exists
+   */
+  virtual bool HasBlock(const BlockRV& block_rv) const = 0;
+  /*!
    * \brief Get the block/loop sref corresponding to the specific statement
    * \param stmt The statement to be looked up
    * \return The corresponding block/loop sref
@@ -204,6 +210,14 @@ class ScheduleNode : public runtime::Object {
    */
   virtual Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
                                           Optional<Array<Integer>> decision = NullOpt) = 0;
+  /*!
+   * \brief Sample a compute-at location on a BlockRV so that its producer can compute at that loop
+   * \param block_rv The consumer block to be computed at
+   * \param decision The sampling decision
+   * \return The sampled loop to be computed at
+   */
+  virtual LoopRV SampleComputeLocation(const BlockRV& block_rv,
+                                       Optional<Integer> decision = NullOpt) = 0;
 
   /******** Schedule: Get blocks & loops ********/
   /*!
@@ -339,6 +353,11 @@ class ScheduleNode : public runtime::Object {
    */
   virtual BlockRV CacheWrite(const BlockRV& block_rv, int write_buffer_index,
                              const String& storage_scope) = 0;
+  /******** Schedule: Data movement ********/
+  virtual BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
+                         const String& storage_scope) = 0;
+  virtual BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
+                          const String& storage_scope) = 0;
   /******** Schedule: Compute location ********/
   /*!
    * \brief Move a producer block under the specific loop, and regenerate the
@@ -449,7 +468,53 @@ class ScheduleNode : public runtime::Object {
   virtual void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
                             int offset) = 0;
   /******** Schedule: Blockize & Tensorize ********/
+  /*!
+   * \brief Make subtree rooted by a specific loop into a block
+   * \param loop_rv The root of the subtree
+   * \return The new block
+   */
+  virtual BlockRV Blockize(const LoopRV& loop_rv) = 0;
+  /*!
+   * \brief Tensorize the computation enclosed by loop with tensor_intrin
+   * \param loop_rv the loop/block to be tensorized
+   * \param intrin the tensor intrinsic
+   */
+  virtual void Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) = 0;
+  /*!
+   * \brief Tensorize the computation enclosed by loop with tensor_intrin
+   * \param loop_rv The loop/block to be tensorized
+   * \param intrin_name Name of the tensor intrinsic
+   */
+  virtual void Tensorize(const LoopRV& loop_rv, const String& intrin_name) = 0;
+
   /******** Schedule: Annotation ********/
+  /*!
+   * \brief Annotate a loop with a key value pair
+   * \param loop The loop to be annotated
+   * \param ann_key The annotation key
+   * \param ann_val The annotation value, a string or a ExprRV
+   */
+  virtual void Annotate(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) = 0;
+  /*!
+   * \brief Annotate a block with a key value pair
+   * \param loop The block to be annotated
+   * \param ann_key The annotation key
+   * \param ann_val The annotation value, a string or a ExprRV
+   */
+  virtual void Annotate(const BlockRV& block_rv, const String& ann_key,
+                        const ObjectRef& ann_val) = 0;
+  /*!
+   * \brief Unannotate a loop's annotation with key ann_key
+   * \param loop The loop to be unannotated
+   * \param ann_key The annotation key
+   */
+  virtual void Unannotate(const LoopRV& loop_rv, const String& ann_key) = 0;
+  /*!
+   * \brief Unannotate a block's annotation with key ann_key
+   * \param loop The block to be unannotated
+   * \param ann_key The annotation key
+   */
+  virtual void Unannotate(const BlockRV& block_rv, const String& ann_key) = 0;
   /******** Schedule: Misc ********/
   /*! \brief A no-op that marks the start of postprocessing phase of scheduling */
   virtual void EnterPostproc() = 0;

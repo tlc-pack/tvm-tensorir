@@ -125,6 +125,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSampleCategorical")
     .set_body_method<Schedule>(&ScheduleNode::SampleCategorical);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSamplePerfectTile")
     .set_body_method<Schedule>(&ScheduleNode::SamplePerfectTile);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSampleComputeLocation")
+    .set_body_method<Schedule>(&ScheduleNode::SampleComputeLocation);
 /******** (FFI) Get blocks & loops ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetBlock")
     .set_body_method<Schedule>(&ScheduleNode::GetBlock);
@@ -163,6 +165,10 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead")
     .set_body_method<Schedule>(&ScheduleNode::CacheRead);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
     .set_body_method<Schedule>(&ScheduleNode::CacheWrite);
+/******** (FFI) Data movement ********/
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReadAt").set_body_method<Schedule>(&ScheduleNode::ReadAt);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleWriteAt")
+    .set_body_method<Schedule>(&ScheduleNode::WriteAt);
 /******** (FFI) Compute location ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeAt")
     .set_body_method<Schedule>(&ScheduleNode::ComputeAt);
@@ -181,7 +187,46 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRFactor")
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStorageAlign")
     .set_body_method<Schedule>(&ScheduleNode::StorageAlign);
 /******** (FFI) Blockize & Tensorize ********/
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBlockize")
+    .set_body_method<Schedule>(&ScheduleNode::Blockize);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")
+    .set_body_typed([](Schedule self, LoopRV loop_rv, ObjectRef intrin) {
+      if (const auto* str = intrin.as<runtime::StringObj>()) {
+        return self->Tensorize(loop_rv, GetRef<String>(str));
+      }
+      if (const auto* p_intrin = intrin.as<TensorIntrinNode>()) {
+        return self->Tensorize(loop_rv, GetRef<TensorIntrin>(p_intrin));
+      }
+      LOG(FATAL) << "TypeError: Cannot handle type: " << intrin->GetTypeKey();
+      throw;
+    });
+
 /******** (FFI) Annotation ********/
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleAnnotate")
+    .set_body_typed([](Schedule self, ObjectRef rv, const String& ann_key,
+                       const ObjectRef& ann_val) {
+      if (const auto* block_rv = rv.as<BlockRVNode>()) {
+        return self->Annotate(GetRef<BlockRV>(block_rv), ann_key, ann_val);
+      }
+      if (const auto* loop_rv = rv.as<LoopRVNode>()) {
+        return self->Annotate(GetRef<LoopRV>(loop_rv), ann_key, ann_val);
+      }
+      LOG(FATAL) << "TypeError: Cannot evaluate the random variable of type: " << rv->GetTypeKey()
+                 << ". Its value is: " << rv;
+      throw;
+    });
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnannotate")
+    .set_body_typed([](Schedule self, ObjectRef rv, const String& ann_key) {
+      if (const auto* block_rv = rv.as<BlockRVNode>()) {
+        return self->Unannotate(GetRef<BlockRV>(block_rv), ann_key);
+      }
+      if (const auto* loop_rv = rv.as<LoopRVNode>()) {
+        return self->Unannotate(GetRef<LoopRV>(loop_rv), ann_key);
+      }
+      LOG(FATAL) << "TypeError: Cannot evaluate the random variable of type: " << rv->GetTypeKey()
+                 << ". Its value is: " << rv;
+      throw;
+    });
 /******** (FFI) Misc ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostproc")
     .set_body_method<Schedule>(&ScheduleNode::EnterPostproc);

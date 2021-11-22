@@ -43,7 +43,7 @@ namespace tir {
  *
  *   // Convertible to `InstructionKindNode::FInstructionApply`
  *   static Array<ObjectRef> ApplyToSchedule(
- *      const tir::Schedule& sch,
+ *      const Schedule& sch,
  *      const Array<ObjectRef>& inputs,
  *      const Array<ObjectRef>& attrs,
  *      const Optional<ObjectRef>& decision);

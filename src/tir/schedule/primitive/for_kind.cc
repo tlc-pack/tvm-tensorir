@@ -83,7 +83,7 @@ void CheckLoopParallelizableInBlock(const ScheduleState& self, ForKind for_kind,
   const Block& block = block_realize->block;
 
   // Cond 1. The block is required to have affine bindings.
-  CheckAffineBinding(self, block);
+  /* CheckAffineBinding(self, block); */
 
   // Cond 2. For each block iter whose binding contains `loop_var`, only two cases are allowed.
   ICHECK_EQ(block->iter_vars.size(), block_realize->iter_values.size());

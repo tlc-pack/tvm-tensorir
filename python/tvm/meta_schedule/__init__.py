@@ -19,7 +19,14 @@ from . import arg_info
 from . import database
 from . import builder
 from . import runner
+from . import mutator
+from . import postproc
+from . import schedule_rule
 from . import space_generator
 from . import search_strategy
 from . import integration
+from . import feature_extractor
+from . import cost_model
+from .search_strategy import MeasureCandidate, ReplayFuncConfig, ReplayTraceConfig
 from .tune_context import TuneContext
+from .tune import tune_tir, tune_te

@@ -22,20 +22,40 @@
 #include <tvm/support/random_engine.h>
 #include <tvm/tir/schedule/state.h>
 
+#include <random>
 #include <vector>
 
 namespace tvm {
 namespace tir {
 
+/*!
+ * \brief Create a sampling function that does multinomial sampling.
+ * \param rand_state The random state.
+ * \param weights The weights for multinomial sampling.
+ * \return The multinomial sampling function.
+ */
+TVM_DLL std::function<int32_t()> MakeMultinomialSampler(
+    support::LinearCongruentialEngine::TRandState* rand_state, const std::vector<double>& weights);
+
 /******** Schedule: Sampling ********/
 /*!
  * \brief Sample a random integer from a given range.
+ * \param rand_state The pointer to schedule's random state
  * \param min_inclusive The minimum value of the range, inclusive.
  * \param max_exclusive The maximum value of the range, exclusive.
  * \return The random integer sampled in the given range.
  */
 TVM_DLL int32_t SampleInt(support::LinearCongruentialEngine::TRandState* rand_state,
                           int32_t min_inclusive, int32_t max_exclusive);
+/*!
+ * \brief Sample k random integers from given range without replacement, i.e, no duplication.
+ * \param rand_state The pointer to schedule's random state
+ * \param n The range is defined as 0 to n-1.
+ * \param k The total number of samples.
+ * \return The randomly selected samples from the n candidates.
+ */
+std::vector<int32_t> SampleWithoutReplacement(
+    support::LinearCongruentialEngine::TRandState* rand_state, int32_t n, int32_t k);
 /*!
  * \brief Sample once category from candidates according to the probability weights.
  * \param rand_state The pointer to schedule's random state
@@ -47,6 +67,14 @@ TVM_DLL int32_t SampleInt(support::LinearCongruentialEngine::TRandState* rand_st
 TVM_DLL int64_t SampleCategorical(support::LinearCongruentialEngine::TRandState* rand_state,
                                   const Array<Integer>& candidates, const Array<FloatImm>& probs,
                                   Optional<Integer>* decision);
+/*!
+ * \brief Create a sampling function that does multinomial sampling.
+ * \param rand_state The random state.
+ * \param weights The weights for multinomial sampling.
+ * \return The multinomial sampling function.
+ */
+TVM_DLL std::function<int32_t()> MakeMultinomialSampler(
+    support::LinearCongruentialEngine::TRandState* rand_state, const std::vector<double>& weights);
 /*!
  * \brief Sample the factors to perfect tile a specific loop
  * \param rand_state The random state
@@ -81,6 +109,16 @@ TVM_DLL std::vector<int64_t> SamplePerfectTile(
     support::LinearCongruentialEngine::TRandState* rand_state,  //
     const tir::StmtSRef& loop_sref, int32_t n_split, int32_t max_innermost_factor,
     Optional<Array<Integer>>* decision);
+/*!
+ * \brief Sample a compute-at location on a BlockRV so that its producer can compute at that loop
+ * \param self The schedule state
+ * \param rand_state The random state
+ * \param block_rv The consumer block to be computed at
+ * \return The sampled loop to be computed at
+ */
+TVM_DLL tir::StmtSRef SampleComputeLocation(
+    tir::ScheduleState self, support::LinearCongruentialEngine::TRandState* rand_state,
+    const tir::StmtSRef& block_sref, Optional<Integer>* decision);
 
 /******** Schedule: Get blocks & loops ********/
 /*!
@@ -224,6 +262,15 @@ TVM_DLL StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int r
  */
 TVM_DLL StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_buffer_index,
                             const String& storage_scope);
+
+/******** Schedule: Data movement ********/
+
+TVM_DLL StmtSRef ReadAt(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
+                        int read_buffer_index, const String& storage_scope);
+
+TVM_DLL StmtSRef WriteAt(ScheduleState self, const StmtSRef& loop_sref, const StmtSRef& block_sref,
+                         int write_buffer_index, const String& storage_scope);
+
 /******** Schedule: Compute location ********/
 /*!
  * \brief Move a producer block under the specific loop, and regenerate the
@@ -339,7 +386,28 @@ TVM_DLL void StorageAlign(ScheduleState self, const StmtSRef& block_sref, int bu
                           int axis, int factor, int offset);
 
 /******** Schedule: Blockize & Tensorize ********/
+
+TVM_DLL StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref);
+TVM_DLL void Tensorize(ScheduleState self, const StmtSRef& loop_sref,
+                       const TensorIntrin& intrinsic);
+
 /******** Schedule: Annotation ********/
+/*!
+ * \brief Annotate a block/loop with a key value pair
+ * \param self The state of the schedule
+ * \param sref The block/loop sref to be annotated
+ * \param ann_key The annotation key
+ * \param ann_val The annotation value
+ */
+TVM_DLL void Annotate(ScheduleState self, const StmtSRef& sref, const String& ann_key,
+                      const ObjectRef& ann_val);
+/*!
+ * \brief Unannotate a block/loop's annotation with key ann_key
+ * \param self The state of the schedule
+ * \param sref The block/loop to be unannotated
+ * \param ann_key The annotation key
+ */
+TVM_DLL void Unannotate(ScheduleState self, const StmtSRef& sref, const String& ann_key);
 /******** Schedule: Misc ********/
 
 }  // namespace tir

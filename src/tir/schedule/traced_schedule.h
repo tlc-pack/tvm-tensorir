@@ -51,6 +51,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
                            Optional<Integer> decision = NullOpt) final;
   Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
                                   Optional<Array<Integer>> decision = NullOpt) final;
+  LoopRV SampleComputeLocation(const BlockRV& block_rv, Optional<Integer> decision = NullOpt) final;
   /******** Schedule: Get blocks & loops ********/
   BlockRV GetBlock(const String& name, const String& func_name = "main") final;
   Array<LoopRV> GetLoops(const BlockRV& block_rv) final;
@@ -72,6 +73,11 @@ class TracedScheduleNode : public ConcreteScheduleNode {
                     const String& storage_scope) final;
   BlockRV CacheWrite(const BlockRV& block_rv, int write_buffer_index,
                      const String& storage_scope) final;
+  /******** Schedule: Data movement ********/
+  BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
+                 const String& storage_scope) final;
+  BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
+                  const String& storage_scope) final;
   /******** Schedule: Compute location ********/
   void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv, bool preserve_unit_loops) final;
   void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
@@ -85,7 +91,13 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
                     int offset) final;
   /******** Schedule: Blockize & Tensorize ********/
+  BlockRV Blockize(const LoopRV& loop_rv) final;
+  void Tensorize(const LoopRV& loop_rv, const String& intrin_name) final;
   /******** Schedule: Annotation ********/
+  void Annotate(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
+  void Unannotate(const LoopRV& loop_rv, const String& ann_key) override;
+  void Annotate(const BlockRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
+  void Unannotate(const BlockRV& loop_rv, const String& ann_key) override;
   /******** Schedule: Misc ********/
   void EnterPostproc() final;
 };
