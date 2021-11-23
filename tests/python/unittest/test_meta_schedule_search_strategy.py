@@ -80,10 +80,9 @@ def _is_trace_equal(sch_1: Schedule, sch_2: Schedule, remove_decisions=True) -> 
 def _schedule_matmul(sch: Schedule):
     block = sch.get_block("matmul")
     i, j, k = sch.get_loops(block=block)
-    # TODO(@zxybazh): Change to `sample_perfect_tile` after upstreaming
-    i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=[2, 4, 64, 2])
-    j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=[4, 64, 2, 2])
-    k_0, k_1 = sch.split(loop=k, factors=[32, 32])
+    i_0, i_1, i_2, i_3 = sch.split(i, sch.sample_perfect_tile(i, n=4))
+    j_0, j_1, j_2, j_3 = sch.split(j, sch.sample_perfect_tile(j, n=4))
+    k_0, k_1 = sch.split(k, sch.sample_perfect_tile(k, n=2))
     sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
 
 
@@ -135,6 +134,12 @@ def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
             super().__init__()
             self.records = []
             self.workload_reg = []
+
+        def has_workload(self, mod: IRModule) -> bool:
+            for workload in self.workload_reg:
+                if tvm.ir.structural_equal(workload.mod, mod):
+                    return True
+            return False
 
         def commit_tuning_record(self, record: TuningRecord) -> None:
             self.records.append(record)
@@ -216,17 +221,18 @@ def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
         population=5,
         init_measured_ratio=0.1,
         genetic_algo_iters=3,
+        max_evolve_fail_cnt=10,
         p_mutate=0.5,
         eps_greedy=0.9,
-        mutator_probs={mutator: 1.0},
         database=database,
         cost_model=cost_model,
     )
     tune_context = TuneContext(
         mod=Matmul,
         space_generator=ScheduleFn(sch_fn=_schedule_matmul),
-        mutators=[mutator],
+        mutator_probs={mutator: 1.0},
         target=tvm.target.Target("llvm"),
+        num_threads=1,  # beacuse we are using a mutator from the python side
     )
     tune_context.space_generator.initialize_with_tune_context(tune_context)
     spaces = tune_context.space_generator.generate_design_space(tune_context.mod)
@@ -250,10 +256,10 @@ def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
         candidates = strategy.generate_measure_candidates()
     strategy.post_tuning()
     print(num_trials_each_iter)
-    correct_count = 6  # For each iteration except the last one
-    assert num_trials_each_iter == [correct_count] * (num_trials_total // correct_count) + [
-        num_trials_total % correct_count
-    ]
+    correct_count = 10  # For each iteration except the last one
+    assert num_trials_each_iter == [correct_count] * (num_trials_total // correct_count) + (
+        [num_trials_total % correct_count] if num_trials_total % correct_count != 0 else []
+    )
 
 
 if __name__ == "__main__":

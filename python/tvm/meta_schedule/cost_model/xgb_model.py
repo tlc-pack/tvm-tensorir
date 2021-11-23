@@ -294,7 +294,7 @@ class XGBModel(PyCostModel):
         # model-related
         if config.nthread is None:
             # use physical core number
-            config._replace(nthread=cpu_count(logical=False))
+            config = config._replace(nthread=cpu_count(logical=False))
         self.config = config
         # serialization-related
         if path is not None:

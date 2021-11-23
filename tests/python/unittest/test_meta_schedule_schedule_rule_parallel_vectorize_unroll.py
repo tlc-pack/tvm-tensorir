@@ -79,7 +79,6 @@ def _create_context(mod, target, rule):
     return ctx
 
 
-# @pytest.mark.skip(reason="failing in staging branch @bohan")
 def test_parallel_vectorize_unroll():
     expected = [
         [

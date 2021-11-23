@@ -19,10 +19,33 @@
 
 #include "../utils.h"
 
+#define TVM_META_SCHEDULE_CHECK_PROB_RANGE(p, name)                               \
+  CHECK(0.0 <= (p) && (p) <= 1.0) << "ValueError: name should be within [0, 1], " \
+                                  << "but get `" << #p << " = " << (p) << '\'';
+
 namespace tvm {
 namespace meta_schedule {
 
 /**************** Data Structure ****************/
+
+/*! \brief The postprocessed built of a trace */
+struct CachedTrace {
+  /*! \brief The type of structural hash */
+  using THashCode = size_t;
+  /*! \brief The trace */
+  tir::Trace trace{nullptr};
+  /*! \brief The schedule the trace creates */
+  tir::Schedule sch{nullptr};
+  /*! \brief The structural hash of the schedule */
+  THashCode shash;  // todo(@zxybazh): deduplication
+  /*! \brief The normalized score, the higher the better */
+  double score;
+
+  inline bool defined() const { return trace.defined(); }
+  friend bool operator<(const CachedTrace& lhs, const CachedTrace& rhs) {
+    return lhs.score > rhs.score;
+  }
+};
 
 /*!
  * \brief A heap with a size up-limit. If overflow happens, it evicted the worst items.
@@ -31,11 +54,6 @@ namespace meta_schedule {
  * As time goes, the elements in the heap are going to be larger.
  */
 class SizedHeap {
-  /*! \brief The comparator class, used by `std::push_heap` and `std::pop_heap` */
-  struct Comparator {
-    bool operator()(const CachedTrace& a, const CachedTrace& b) const { return a.score > b.score; }
-  };
-
  public:
   /*!
    * \brief Constructor
@@ -48,19 +66,19 @@ class SizedHeap {
    * \param item The item to be pushed
    */
   void Push(const CachedTrace& item) {
-    if (!in_heap.insert(item.repr).second) {
+    if (!in_heap.insert(item.shash).second) {
       return;
     }
     int size = heap.size();
     if (size < size_limit) {
       // Heap is not full, just push
       heap.emplace_back(item);
-      std::push_heap(heap.begin(), heap.end(), Comparator());
-    } else if (Comparator()(item, heap.front())) {
+      std::push_heap(heap.begin(), heap.end());
+    } else if (item < heap.front()) {
       // if the item is better than the worst one in the heap, we can safely kick it out
-      std::pop_heap(heap.begin(), heap.end(), Comparator());
+      std::pop_heap(heap.begin(), heap.end());
       heap.back() = item;
-      std::push_heap(heap.begin(), heap.end(), Comparator());
+      std::push_heap(heap.begin(), heap.end());
     }
     // Otherwise, the item is worse than any other element in the heap
   }
@@ -70,8 +88,166 @@ class SizedHeap {
   /*! \brief The heap, the worse the topper */
   std::vector<CachedTrace> heap;
   /*! \brief The traces that are in the heap */
-  std::unordered_set<String> in_heap;
+  std::unordered_set<CachedTrace::THashCode> in_heap;
 };
+
+struct PerThreadData {
+  IRModule mod;
+  TRandState rand_state;
+};
+
+struct PerThreadDataEx {
+  IRModule mod;
+  TRandState rand_state;
+  std::function<int32_t()> trace_sampler;
+  std::function<Optional<Mutator>()> mutator_sampler;
+  explicit PerThreadDataEx() {}
+  explicit PerThreadDataEx(PerThreadData* data, const std::vector<double>& scores, double p_mutate,
+                           const Map<Mutator, FloatImm>& mutator_probs);
+};
+
+struct ConcurrentBitmask {
+  /*! The bit width. */
+  const static int bitw = 64;
+  /*!
+   * \brief Constructor
+   * \param size The size of the concurrent bitmask.
+   */
+  explicit ConcurrentBitmask(int size) : size(size) {
+    bitmask.assign((size + bitw - 1) / bitw, 0);
+    std::vector<std::mutex> list((size + bitw - 1) / bitw);
+    trace_used_mutex.swap(list);
+  }
+  /*! \brief The size of the concurrent bitmask. */
+  int size;
+  /*! \brief The bitmasks. */
+  std::vector<uint64_t> bitmask;
+  /*! \brief The mutexes, one per bitw(64 here) bitmasks. */
+  std::vector<std::mutex> trace_used_mutex;
+  /*!
+   * \brief Query and mark the given index if not visted before.
+   * \param x The index to concurrently check if used. If not, mark as used.
+   * \return Whether the index has been used before.
+   */
+  bool query_and_mark(int x) {
+    if (x < 0 || x >= size) return false;
+    std::unique_lock<std::mutex> lock(trace_used_mutex[x / bitw]);
+    if (bitmask[x / bitw] & ((uint64_t)1 << (x % bitw))) {
+      return false;
+    } else {
+      bitmask[x / bitw] |= (uint64_t)1 << (x % bitw);
+      return true;
+    }
+  }
+};
+
+/**************** Util Functions ****************/
+
+/*!
+ * \brief Assemble measure candidates from the given candidate traces.
+ * \param traces The picked candidate traces.
+ * \return The assembled measure candidates.
+ */
+inline Array<MeasureCandidate> AssembleCandidates(const std::vector<CachedTrace>& picks,
+                                                  const Array<ArgInfo>& args_info) {
+  Array<MeasureCandidate> measure_inputs;
+  measure_inputs.reserve(picks.size());
+  for (const CachedTrace& pick : picks) {
+    measure_inputs.push_back(MeasureCandidate(pick.sch, args_info));
+  }
+  return measure_inputs;
+}
+
+/*!
+ * \brief Predict the normalized score of each candidate.
+ * \param candidates The candidates for prediction
+ * \param task The search task
+ * \param space The search space
+ * \return The normalized score in the prediction
+ */
+inline std::vector<double> PredictNormalizedScore(const std::vector<CachedTrace>& cached_traces,
+                                                  const TuneContext& tune_context,
+                                                  const CostModel& cost_model,
+                                                  const Array<ArgInfo>& args_info) {
+  ICHECK(cached_traces.size() > 0)
+      << "Candidates given for score prediction can not be empty list!";
+  std::vector<double> scores =
+      cost_model->Predict(tune_context, AssembleCandidates(cached_traces, args_info));
+  // Normalize the score
+  // TODO(@junrushao1994): use softmax + temperature to replace simple normalization to [0.0, +oo)
+  for (double& score : scores) {
+    score = std::max(0.0, score);
+  }
+  return scores;
+}
+
+/*!
+ * \brief Create a sampler function that picks mutators according to the mass function
+ * \param rand_state The random state for sampling
+ * \return The sampler created
+ */
+inline std::function<Optional<Mutator>()> MakeMutatorSampler(
+    double p_mutate, const Map<Mutator, FloatImm>& mutator_probs,
+    support::LinearCongruentialEngine::TRandState* rand_state) {
+  std::vector<Optional<Mutator>> mutators;
+  std::vector<double> masses;
+  mutators.push_back(NullOpt);
+  masses.push_back(1.0 - p_mutate);
+  double total_mass_mutator = 0.0;
+  if (p_mutate > 0) {
+    for (const auto& kv : mutator_probs) {
+      const Mutator& mutator = kv.first;
+      double mass = kv.second->value;
+      CHECK_GE(mass, 0.0) << "ValueError: Probability of mutator '" << mutator
+                          << "' is ill-formed: " << mass;
+      total_mass_mutator += mass;
+      mutators.push_back(kv.first);
+      masses.push_back(mass * p_mutate);
+    }
+  }
+  // Normalize the sum to 1.0
+  if (total_mass_mutator == 0.0) {
+    masses[0] = 1.0;
+    for (int i = 1, n = masses.size(); i < n; ++i) {
+      masses[i] = 0.0;
+    }
+  } else if (total_mass_mutator != 1.0) {
+    for (int i = 1, n = masses.size(); i < n; ++i) {
+      masses[i] /= total_mass_mutator;
+    }
+  }
+  return [idx_sampler = tir::MakeMultinomialSampler(rand_state, masses),
+          mutators = std::move(mutators)]() -> Optional<Mutator> {
+    int i = idx_sampler();
+    return mutators[i];
+  };
+}
+
+/*!
+ * \brief Get the structural hash for the given schedule's IRModule.
+ * \param sch The given schedule.
+ * \return The structural hash of the schedule's IRModule.
+ */
+inline CachedTrace::THashCode StructuralHash(const tir::Schedule& sch) {
+  return tvm::StructuralHash()(sch->mod());
+}
+
+/*!
+ * \brief Constructor to create a more extensive per-thread data pack from original per-thread one.
+ * \param data The pointer to original per-thread data pack.
+ * \param scores The predicted score for the given samples.
+ * \param p_mutate The probability of mutation.
+ * \param mutator_probs The probability of each mutator as a dict.
+ */
+PerThreadDataEx::PerThreadDataEx(PerThreadData* data, const std::vector<double>& scores,
+                                 double p_mutate, const Map<Mutator, FloatImm>& mutator_probs) {
+  rand_state = ForkSeed(&data->rand_state);
+  mod = data->mod;
+  trace_sampler = tir::MakeMultinomialSampler(&rand_state, scores);
+  mutator_sampler = MakeMutatorSampler(p_mutate, mutator_probs, &rand_state);
+}
+
+/**************** Evolutionary Search ****************/
 
 /*!
  * \brief A search strategy that generates measure candidates using evolutionary search.
@@ -98,145 +274,136 @@ class EvolutionarySearchNode : public SearchStrategyNode {
   struct State {
     /*! \brief The search strategy itself */
     EvolutionarySearchNode* self;
-    /*! \brief The design spaces. */
-    Array<tir::Schedule> design_spaces;
+    /*! \brief The design spaces. Decisions are not used so traces only. */
+    Array<tir::Trace> design_spaces;
     /*! \brief `[st, ed)` are the indices of the next batch of candidates. */
     int st;
     /*! \brief `[st, ed)` are the indices of the next batch of candidates. */
     int ed;
 
-    explicit State(EvolutionarySearchNode* self, Array<tir::Schedule> design_spaces)
+    explicit State(EvolutionarySearchNode* self, Array<tir::Trace> design_spaces)
         : self(self), design_spaces(design_spaces), st(0), ed(self->num_trials_per_iter) {}
 
     /*!
+     * \brief Pick up best candidates from database.
+     * \param num The number of traces to produce.
+     * \return The picked best candidates.
+     */
+    inline std::vector<CachedTrace> PickBestFromDatabase(int num);
+    /*!
      * \brief Sample the initial population from previous measured results and randomly generated
      *  traces via trace replaying.
+     * \param num The number of traces to produce.
      * \return The initial population of traces sampled.
      */
-    inline Array<tir::Trace> SampleInitPopulation();
+    inline std::vector<CachedTrace> SampleInitPopulation(int num);
+    /*!
+     * \brief Pick final candidates from the given initial population and bests of evolved ones.
+     * \param measured Measured samples from database.
+     * \param unmeasured Unmeasured samples from replaying traces from design space.
+     * \return The merged results, excluding undefined samples.
+     */
+    inline std::vector<CachedTrace> PruneAndMergeSamples(
+        const std::vector<CachedTrace>& measured, const std::vector<CachedTrace>& unmeasured);
     /*!
      * \brief Evolve the initial population using mutators and samplers.
      * \param inits The initial population of traces sampled.
+     * \param num The number of traces to produce.
      * \return The evolved traces from initial population.
      */
-    inline Array<tir::Trace> EvolveWithCostModel(const Array<tir::Trace>& inits);
+    inline std::vector<CachedTrace> EvolveWithCostModel(const std::vector<CachedTrace>& inits,
+                                                        int num);
     /*!
      * \brief Pick final candidates from the given initial population and bests of evolved ones.
      * \param inits The initial population of traces sampled.
      * \param bests The best candidates predicted from evolved traces.
+     * \param num The number of traces to produce.
      * \return The final picked candidates with a ratio of both.
      */
-    inline Array<tir::Trace> PickWithEpsGreedy(const Array<tir::Trace>& inits,
-                                               const Array<tir::Trace>& bests);
-    /*!
-     * \brief Assemble measure candidates from the given candidate traces.
-     * \param traces The picked candidate traces.
-     * \return The assembled measure candidates.
-     */
-    inline Array<MeasureCandidate> AssembleCandidates(const Array<tir::Trace>& picks);
+    inline std::vector<CachedTrace> PickWithEpsGreedy(const std::vector<CachedTrace>& inits,
+                                                      const std::vector<CachedTrace>& bests,
+                                                      int num);
     inline Optional<Array<MeasureCandidate>> GenerateMeasureCandidates();
     inline void NotifyRunnerResults(const Array<RunnerResult>& results);
   };
 
+  /*! \brief The tuning context of the evolutionary search strategy. */
+  TuneContext tune_context_{nullptr};
+  /*! \brief The target for the workload. */
+  Target target_{nullptr};
+  /*! \brief The metadata of the function arguments. */
+  Array<ArgInfo> args_info_{nullptr};
+  /*! \brief A Database for selecting useful candidates. */
+  Database database_{nullptr};
+  /*! \brief A cost model helping to explore the search space */
+  CostModel cost_model_{nullptr};
+  /*! \brief The postprocessors. */
+  Array<Postproc> postprocs_{nullptr};
+  /*! \brief Mutators and their probability mass */
+  Map<Mutator, FloatImm> mutator_probs_{nullptr};
+  /*! \brief The number of threads to use. To be initialized with TuneContext. */
+  int num_threads_;
+  /*! \brief The random state. To be initialized with TuneContext. */
+  TRandState rand_state_;
+  /*! \brief Pre thread data including module to be tuned and random state. */
+  std::vector<PerThreadData> per_thread_data_;
+  /*! \brief The state of the search strategy. */
+  std::unique_ptr<State> state_ = nullptr;
+  /*! \brief The token registered for the given workload in database. */
+  Workload token_{nullptr};
+
+  /*** Configuration: global ***/
   /*! \brief The number of trials per iteration. */
   int num_trials_per_iter;
   /*! \brief The number of total trials. */
   int num_trials_total;
-  /*! \brief THe population size in the evolutionary search.*/
-  int population;
-
-  /*! \brief The target for the workload. */
-  Target target_{nullptr};
-  /*! \brief The tuning context of the evolutionary search strategy. */
-  TuneContext tune_context_{nullptr};
-  /*! \brief The mutators to be used. */
-  Array<Mutator> mutators_{nullptr};
-  /*! \brief The module to be tuned. */
-  Array<IRModule> mod_{nullptr};
-  /*! \brief The metadata of the function arguments. */
-  Array<ArgInfo> args_info_{nullptr};
-  /*! \brief The number of threads to use. -1 means using logical cpu number. */
-  int num_threads_ = -1;
-  /*! \brief The random state. -1 means using random number. */
-  TRandState rand_state_ = -1;
-  /*! \brief The state of the search strategy. */
-  std::unique_ptr<State> state_ = nullptr;
 
   /*** Configuration: the initial population ***/
+  /*! \brief The population size in the evolutionary search. */
+  int population;
   /*! \brief The ratio of measured states used in the initial population */
   double init_measured_ratio;
+  /*! \brief The maximum number to fail trace replaying. */
+  int max_replay_fail_cnt;
 
   /*** Configuration: evolution ***/
   /*! \brief The number of iterations performed by generic algorithm. */
   int genetic_algo_iters;
+  /*! \brief The maximum number to try evolving the given trace. */
+  int max_evolve_fail_cnt;
   /*! \brief The probability to perform mutation */
   double p_mutate;
-  /*! \brief Mutators and their probability mass */
-  Map<Mutator, FloatImm> mutator_probs{nullptr};
-  /*! \brief A Database for selecting useful candidates. */
-  Database database{nullptr};
-  /*! \brief A cost model helping to explore the search space */
-  CostModel cost_model{nullptr};
-  /*! \brief The batch of measure candidates generated for measurement. */
-  Array<MeasureCandidate> candidates{nullptr};
 
   /*** Configuration: pick states for measurement ***/
   /*! \brief The ratio of measurements to use randomly sampled states. */
   double eps_greedy;
 
-  /*!
-   * Helpers
-   * Note that the use of trace cache could be multi-threaded.
-   */
-  mutable std::unordered_map<tir::Trace, CachedTrace, ObjectPtrHash, ObjectPtrEqual> trace_cache_;
-  mutable std::mutex trace_cache_mutex_;
-
   void VisitAttrs(tvm::AttrVisitor* v) {
     // `tune_context_` is not visited
     // `target_` is not visited
-    // `mod_` is not visited
     // `args_info_` is not visited
-    // `num_threads_` is not visited
+    // `database` is not visited
+    // `cost_model` is not visited
+    // `postprocs` is not visited
+    // `mutator_probs_` is not visited
+    // `num_threads` is not visited
     // `rand_state_` is not visited
+    // `per_thread_data_` is not visited
     // `state_` is not visited
 
     /*** Configuration: global ***/
     v->Visit("num_trials_total", &num_trials_total);
     v->Visit("num_trials_per_iter", &num_trials_per_iter);
-    v->Visit("population", &population);
     /*** Configuration: the initial population ***/
+    v->Visit("population", &population);
     v->Visit("init_measured_ratio", &init_measured_ratio);
+    v->Visit("max_replay_fail_cnt", &max_replay_fail_cnt);
     /*** Configuration: evolution ***/
     v->Visit("genetic_algo_iters", &genetic_algo_iters);
+    v->Visit("max_evolve_fail_cnt", &max_evolve_fail_cnt);
     v->Visit("p_mutate", &p_mutate);
-    v->Visit("mutator_probs", &mutator_probs);
-    v->Visit("cost_model", &cost_model);
     /*** Configuration: pick states for measurement ***/
     v->Visit("eps_greedy", &eps_greedy);
-    /*** Helpers ***/
-    // Not visited: `trace_cache_`
-    // Not visited: `trace_cache_mutex_`
-  }
-
-  /*!
-   * \brief Add the cached trace into the trace_cache_
-   * \param cached_trace The cached_trace to be added
-   */
-  void _AddCachedTrace(const CachedTrace& cached_trace) const {
-    // Todo(@zxybazh): Avoid redundent traces
-    std::unique_lock<std::mutex> lock(this->trace_cache_mutex_);
-    trace_cache_.emplace(GetRef<tir::Trace>(cached_trace.trace), cached_trace);
-  }
-
-  /*!
-   * \brief Retrieve the cached trace given the trace
-   * \param trace The trace to be retrieved
-   * \return The cached trace
-   */
-  CachedTrace _GetCachedTrace(const tir::Trace& trace) const {
-    auto iter = trace_cache_.find(trace);
-    ICHECK(iter != trace_cache_.end());
-    return iter->second;
   }
 
   static constexpr const char* _type_key = "meta_schedule.EvolutionarySearch";
@@ -245,27 +412,36 @@ class EvolutionarySearchNode : public SearchStrategyNode {
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
     CHECK(tune_context.defined()) << "TuneContext must be defined!";
     CHECK(tune_context->num_threads > 0) << "Number of threads has to be larger than 0.";
-    CHECK(tune_context->mutators.defined()) << "Mutators must be defined!";
+    CHECK(p_mutate == 0 || tune_context->mutator_probs.defined())
+        << "Mutators and their probabilities must be defined given mutation probability is not 0!";
     CHECK(tune_context->target.defined()) << "Target must be defined!";
+
     this->tune_context_ = tune_context;
     this->target_ = tune_context->target.value();
-    this->mutators_ = tune_context->mutators.value();
-    this->num_threads_ = tune_context->num_threads;
-
-    this->mod_.reserve(this->num_threads_);
-    for (int i = 0; i < this->num_threads_; i++) {
-      this->mod_.push_back(DeepCopyIRModule(tune_context->mod.value()));
-    }
-
     this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(tune_context->mod.value()));
+    if (p_mutate > 0) this->mutator_probs_ = tune_context->mutator_probs.value();
+    this->postprocs_ = tune_context->postprocs;
+    this->num_threads_ = tune_context->num_threads;
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
+    this->token_ = this->database_->CommitWorkload(tune_context->mod.value());
+    this->per_thread_data_.reserve(this->num_threads_);
+    for (int i = 0; i < this->num_threads_; i++) {
+      this->per_thread_data_.push_back(
+          PerThreadData{DeepCopyIRModule(tune_context->mod.value()), ForkSeed(&this->rand_state_)});
+    }
     this->state_.reset();
   }
 
   void PreTuning(const Array<tir::Schedule>& design_spaces) final {
     ICHECK(!design_spaces.empty());
     ICHECK(this->state_ == nullptr);
-    this->state_ = std::make_unique<State>(this, design_spaces);
+    // Change to traces
+    Array<tir::Trace> design_space_traces;
+    design_space_traces.reserve(design_spaces.size());
+    for (const tir::Schedule& space : design_spaces) {
+      design_space_traces.push_back(space->trace().value()->Simplified(true));
+    }
+    this->state_ = std::make_unique<State>(this, design_space_traces);
   }
 
   void PostTuning() final {
@@ -284,312 +460,276 @@ class EvolutionarySearchNode : public SearchStrategyNode {
   }
 };
 
-inline Array<tir::Trace> EvolutionarySearchNode::State::SampleInitPopulation() {
-  self->trace_cache_.clear();
-  std::vector<tir::Trace> results;
-  results.reserve(self->population);
-  // Threading RNG
-  std::vector<TRandState> per_thread_rand_state = ForkSeed(&self->rand_state_, self->num_threads_);
-  // Pick measured states
-  int num_measured = self->population * self->init_measured_ratio;
-  for (TuningRecord record :
-       self->database->GetTopK(self->database->CommitWorkload(self->mod_[0]), num_measured)) {
-    results.push_back(record->trace);
+inline std::vector<CachedTrace> EvolutionarySearchNode::State::PickBestFromDatabase(int num) {
+  std::vector<tir::Trace> measured_traces;
+  measured_traces.reserve(num);
+  std::vector<CachedTrace> results(num, CachedTrace());
+
+  for (TuningRecord record : self->database_->GetTopK(self->token_, num)) {
+    measured_traces.push_back(record->trace);
   }
 
-  auto f_proc_measured = [this, &results, &per_thread_rand_state](int thread_id,
-                                                                  int trace_id) -> void {
-    TRandState& rand_state = per_thread_rand_state[trace_id];
-    const tir::Trace& trace = results[trace_id];
+  auto f_proc_measured = [this, &measured_traces, &results](int thread_id, int trace_id) -> void {
+    TRandState& rand_state = self->per_thread_data_[thread_id].rand_state;
+    const IRModule& mod = self->per_thread_data_[thread_id].mod;
+    tir::Trace trace = measured_traces[trace_id];
     if (Optional<tir::Schedule> opt_sch =
-            meta_schedule::ReplayTrace(trace, self->mod_[trace_id], &rand_state)) {
+            meta_schedule::ApplyTrace(mod, trace, &rand_state, self->postprocs_)) {
       tir::Schedule sch = opt_sch.value();
-      self->_AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
+      results[trace_id] = CachedTrace{trace, sch, StructuralHash(sch), -1.0};
     } else {
       LOG(FATAL) << "ValueError: Cannot postprocess the trace:\n" << trace;
       throw;
     }
   };
-  support::parallel_for_dynamic(0, results.size(), self->num_threads_, f_proc_measured);
+  support::parallel_for_dynamic(0, measured_traces.size(), self->num_threads_, f_proc_measured);
+  return results;
+}
 
+inline std::vector<CachedTrace> EvolutionarySearchNode::State::SampleInitPopulation(int num) {
   // Pick unmeasured states
-  std::atomic<int> tot_fail_ct(0);
-  std::atomic<int> success_ct(0);
-  auto f_proc_unmeasured = [this, &results, &per_thread_rand_state, &tot_fail_ct, &success_ct](
-                               int thread_id, int trace_id) -> void {
-    TRandState& rand_state = per_thread_rand_state[trace_id];
-    for (;;) {
+  std::vector<CachedTrace> results;
+  auto f_proc_unmeasured = [this, &results, &num](int thread_id, int trace_id) -> void {
+    TRandState& rand_state = self->per_thread_data_[thread_id].rand_state;
+    const IRModule& mod = self->per_thread_data_[thread_id].mod;
+    CachedTrace& result = results[trace_id];
+    for (int fail_ct = 0; fail_ct <= self->max_replay_fail_cnt; fail_ct++) {
       int design_space_index = tir::SampleInt(&rand_state, 0, design_spaces.size());
-      tir::Trace trace = design_spaces[design_space_index]->trace().value();
-      Map<tir::Instruction, ObjectRef> decisions;
-      try {
-        if (Optional<tir::Schedule> opt_sch =
-                meta_schedule::ReplayTrace(trace, self->mod_[trace_id], &rand_state)) {
-          tir::Schedule sch = opt_sch.value();
-          tir::Trace old_trace = sch->trace().value();
-          tir::Trace trace(old_trace->insts, old_trace->decisions);
-          self->_AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
-          results[trace_id] = std::move(trace);
-          success_ct++;
-          break;
-        } else {
-          tot_fail_ct++;
-        }
-      } catch (const dmlc::Error& e) {
-        tot_fail_ct++;
-      }
-      if (success_ct > 64) {  // Todo(@junru): Why 64? Add to constructor.
+      tir::Trace trace = design_spaces[design_space_index];
+      if (Optional<tir::Schedule> opt_sch =
+              // replay trace, i.e., remove decisions
+          ApplyTrace(mod, tir::Trace(trace->insts, {}), &rand_state, self->postprocs_)) {
+        tir::Schedule sch = opt_sch.value();
+        tir::Trace trace = sch->trace().value();
+        result = CachedTrace{trace, sch, StructuralHash(sch), -1.0};
         break;
       }
     }
-  };
-  num_measured = results.size();
-  results.resize(self->population, tir::Trace(nullptr));
-  support::parallel_for_dynamic(num_measured, self->population, self->num_threads_,
-                                f_proc_unmeasured);
-  std::vector<tir::Trace> pruned_results;
-  for (const tir::Trace& result : results) {
-    if (result.defined()) {
-      pruned_results.push_back(result);
+    if (!result.defined()) {
+      LOG(FATAL) << "Sample-Init-Population failed over the maximum limit!";
     }
-  }
-  // LOG(INFO) << "fail count: " << tot_fail_ct;
-  return pruned_results;
+  };
+  results.resize(num, CachedTrace());
+  support::parallel_for_dynamic(0, num, self->num_threads_, f_proc_unmeasured);
+  return results;
 }
 
-Array<tir::Trace> EvolutionarySearchNode::State::EvolveWithCostModel(
-    const Array<tir::Trace>& inits) {
+inline std::vector<CachedTrace> EvolutionarySearchNode::State::PruneAndMergeSamples(
+    const std::vector<CachedTrace>& measured, const std::vector<CachedTrace>& unmeasured) {
+  std::vector<CachedTrace> pruned;
+  pruned.reserve(measured.size() + unmeasured.size());
+  for (const CachedTrace& entry : measured) {
+    if (entry.defined()) {
+      pruned.push_back(entry);
+    }
+  }
+  for (const CachedTrace& entry : unmeasured) {
+    if (entry.defined()) {
+      pruned.push_back(entry);
+    }
+  }
+  return pruned;
+}
+
+std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
+    const std::vector<CachedTrace>& inits, int num) {
+  std::vector<PerThreadDataEx> per_thread_data_ex(self->num_threads_);
   // The heap to record best schedule, we do not consider schedules that are already measured
   // Also we use `in_heap` to make sure items in the heap are de-duplicated
-  SizedHeap heap(self->num_trials_per_iter);
-  // Threading RNG
-  std::vector<TRandState> per_thread_rand_state = ForkSeed(&self->rand_state_, self->num_threads_);
-  std::vector<std::function<int()>> thread_trace_samplers(self->num_threads_);
-  std::vector<std::function<Optional<Mutator>()>> thread_mutator_samplers(self->num_threads_);
-  std::vector<int> trace_used;
-  std::mutex trace_used_mutex;
+  SizedHeap heap(num);
+
   // Prepare search queues
   std::vector<CachedTrace> sch_curr;
   std::vector<CachedTrace> sch_next;
   sch_curr.reserve(self->population);
   sch_next.reserve(self->population);
-  for (const tir::Trace& trace : inits) {
-    sch_curr.push_back(self->_GetCachedTrace(trace));
+  for (const CachedTrace& ctrace : inits) {
+    sch_curr.push_back(ctrace);
   }
   // Main loop: (genetic_algo_iters + 1) times
   for (int iter = 0;; ++iter) {
-    // Predict running time with the cost model,
-    // and put the schedules with the predicted perf to the heap
+    // Predict normalized score with the cost model,
     std::vector<double> scores =
-        PredictNormalizedScore(sch_curr, self->tune_context_, self->cost_model, self->args_info_);
-    for (int i = 0, n = sch_curr.size(); i < n; ++i) {
-      CachedTrace& entry = sch_curr[i];
-      entry.score = scores[i];
-      if (!self->database->GetTopK(self->database->CommitWorkload(entry.sch->mod()), 1).size()) {
-        heap.Push(entry);
+        PredictNormalizedScore(sch_curr, self->tune_context_, self->cost_model_, self->args_info_);
+    for (int i = 0, n = sch_curr.size(); i < n; ++i)
+      if (sch_curr[i].defined()) {
+        CachedTrace& entry = sch_curr[i];
+        entry.score = scores[i];
+        Workload token = self->database_->CommitWorkload(entry.sch->mod());
+        if (!self->database_->GetTopK(token, 1).size()) {
+          heap.Push(entry);
+        }
       }
-    }
     // Discontinue once it reaches end of search
     if (iter == self->genetic_algo_iters) {
       break;
     }
     // Set threaded samplers, with probability from predicated normalized throughputs
     for (int i = 0; i < self->num_threads_; ++i) {
-      TRandState& rand_state = per_thread_rand_state[i];
-      thread_trace_samplers[i] = MakeMultinomial(rand_state, scores);
-      thread_mutator_samplers[i] =
-          MakeMutatorSampler(self->p_mutate, self->mutator_probs, rand_state);
+      per_thread_data_ex[i] =
+          PerThreadDataEx(&self->per_thread_data_[i], scores, self->p_mutate, self->mutator_probs_);
     }
-    trace_used = std::vector<int>(scores.size(), 0);
+    ConcurrentBitmask cbmask(scores.size());
     // The worker function
-    auto f_find_candidate = [&per_thread_rand_state, &thread_trace_samplers,
-                             &thread_mutator_samplers, &trace_used, &trace_used_mutex, &sch_curr,
-                             &sch_next, this](int thread_id, int i) {
+    auto f_find_candidate = [&per_thread_data_ex, &cbmask, &sch_curr, &sch_next, this](
+                                int thread_id, int trace_id) {
       // Prepare samplers
-      TRandState& rand_state = per_thread_rand_state[thread_id];
-      const std::function<int()>& trace_sampler = thread_trace_samplers[thread_id];
+      TRandState& rand_state = per_thread_data_ex[thread_id].rand_state;
+      const IRModule& mod = per_thread_data_ex[thread_id].mod;
+      const std::function<int()>& trace_sampler = per_thread_data_ex[thread_id].trace_sampler;
       const std::function<Optional<Mutator>()>& mutator_sampler =
-          thread_mutator_samplers[thread_id];
+          per_thread_data_ex[thread_id].mutator_sampler;
       // Loop until success
-      int max_retry_cnt = 10;
-      int retry_cnt = 0;
-      for (;;) {
-        int trace_idx = trace_sampler();
-        const CachedTrace& cached_trace = sch_curr[trace_idx];
+      for (int retry_cnt = 0; retry_cnt <= self->max_evolve_fail_cnt; retry_cnt++) {
+        int sampled_trace_id = trace_sampler();
+        const CachedTrace& ctrace = sch_curr[sampled_trace_id];
+        // skip undefined cached trace
+        if (!ctrace.defined()) continue;
         if (Optional<Mutator> opt_mutator = mutator_sampler()) {
           // Decision: mutate
           Mutator mutator = opt_mutator.value();
-          if (Optional<tir::Trace> opt_new_trace =
-                  mutator->Apply(GetRef<tir::Trace>(cached_trace.trace))) {
+          if (Optional<tir::Trace> opt_new_trace = mutator->Apply(ctrace.trace)) {
             tir::Trace new_trace = opt_new_trace.value();
             if (Optional<tir::Schedule> opt_sch =
-                    ReplayTrace(new_trace, self->mod_[i], &rand_state)) {
+                    ApplyTrace(mod, new_trace, &rand_state, self->postprocs_)) {
               tir::Schedule sch = opt_sch.value();
-              CachedTrace new_cached_trace{new_trace.get(), sch, Repr(sch), -1.0};
-              self->_AddCachedTrace(new_cached_trace);
-              sch_next[i] = new_cached_trace;
+              CachedTrace new_ctrace{new_trace, sch, StructuralHash(sch), -1.0};
+              sch_next[trace_id] = new_ctrace;
               break;
             }
           }
         } else {
           // Decision: do not mutate
-          std::unique_lock<std::mutex> lock(trace_used_mutex);
-          if (!trace_used[trace_idx]) {
-            trace_used[trace_idx] = 1;
-            sch_next[i] = cached_trace;
+          if (cbmask.query_and_mark(sampled_trace_id)) {
+            sch_next[trace_id] = ctrace;
             break;
           }
         }
-        retry_cnt++;
-        if (retry_cnt >= max_retry_cnt) {
-          sch_next[i] = cached_trace;
-          break;
-        }
       }
+      // if retry count exceeds the limit, the result remain undefined and will not be used
     };
     sch_next.clear();
-    sch_next.resize(self->population);
-    support::parallel_for_dynamic(0, self->population, 1, f_find_candidate);
+    sch_next.resize(self->population, CachedTrace());
+    support::parallel_for_dynamic(0, self->population, self->num_threads_, f_find_candidate);
     sch_curr.clear();
     sch_curr.swap(sch_next);
   }
   // Return the best states from the heap, sorting from higher score to lower ones
-  std::sort(heap.heap.begin(), heap.heap.end(), CachedTrace::Compare);
-  Array<tir::Trace> results;
-  results.reserve(self->num_trials_per_iter);
+  std::sort(heap.heap.begin(), heap.heap.end());
+  std::vector<CachedTrace> results;
+  results.reserve(num);
   for (const CachedTrace& item : heap.heap) {
-    results.push_back(GetRef<tir::Trace>(item.trace));
+    results.push_back(item);
   }
-  /* Logging
-    constexpr int kNumScoresPerLine = 16;
-    std::ostringstream os;
-    int n = heap.heap.size();
-    for (int st = 0; st < n; st += kNumScoresPerLine) {
-      os << std::endl;
-      int ed = std::min(st + kNumScoresPerLine, n);
-      os << "[" << (st + 1) << " : " << ed << "]:\t";
-      for (int i = st; i < ed; ++i) {
-        if (i != st) {
-          os << "  ";
-        }
-        os << std::fixed << std::setprecision(4) << heap.heap[i].score;
+
+  constexpr int kNumScoresPerLine = 16;
+  std::ostringstream os;
+  int n = heap.heap.size();
+  for (int st = 0; st < n; st += kNumScoresPerLine) {
+    os << std::endl;
+    int ed = std::min(st + kNumScoresPerLine, n);
+    os << "[" << (st + 1) << " : " << ed << "]:\t";
+    for (int i = st; i < ed; ++i) {
+      if (i != st) {
+        os << "  ";
       }
+      os << std::fixed << std::setprecision(4) << heap.heap[i].score;
     }
-    LOG(INFO) << "Scores of the best " << n << " candidates:" << os.str();
-  */
+  }
+  LOG(INFO) << "Scores of the best " << n << " candidates:" << os.str();
   return results;
 }
 
-Array<tir::Trace> EvolutionarySearchNode::State::PickWithEpsGreedy(const Array<tir::Trace>& inits,
-                                                                   const Array<tir::Trace>& bests) {
-  int num_rands = self->num_trials_per_iter * self->eps_greedy;
-  int num_bests = self->num_trials_per_iter - num_rands;
+std::vector<CachedTrace> EvolutionarySearchNode::State::PickWithEpsGreedy(
+    const std::vector<CachedTrace>& unmeasured, const std::vector<CachedTrace>& bests, int num) {
+  int num_rands = num * self->eps_greedy;
+  int num_bests = num - num_rands;
   std::vector<int> rands =
-      tir::SampleWithoutReplacement(&self->rand_state_, inits.size(), inits.size());
-  Array<tir::Trace> results;
-  results.reserve(self->num_trials_per_iter);
-  for (int i = 0, i_bests = 0, i_rands = 0; i < self->num_trials_per_iter; ++i) {
+      tir::SampleWithoutReplacement(&self->rand_state_, unmeasured.size(), unmeasured.size());
+  std::vector<CachedTrace> results;
+  results.reserve(num);
+  for (int i = 0, i_bests = 0, i_rands = 0; i < num; ++i) {
     bool has_best = i_bests < static_cast<int>(bests.size());
     bool has_rand = i_rands < static_cast<int>(rands.size());
     // Pick a schedule
-    Optional<tir::Trace> trace{NullOpt};
+    CachedTrace ctrace;
     // If needs `bests`, then prefer `bests`
     if (i < num_bests) {
       if (has_best) {
-        trace = bests[i_bests++];
+        ctrace = bests[i_bests++];
       } else if (has_rand) {
-        trace = inits[rands[i_rands++]];
+        ctrace = unmeasured[rands[i_rands++]];
       } else {
         break;
       }
     } else {
       // Else prefer `rands`
       if (has_rand) {
-        trace = inits[rands[i_rands++]];
+        ctrace = unmeasured[rands[i_rands++]];
       } else if (has_best) {
-        trace = bests[i_bests++];
+        ctrace = bests[i_bests++];
       } else {
         break;
       }
     }
-    results.push_back(trace.value());
+    results.push_back(ctrace);
   }
   return results;
-}
-
-inline Array<MeasureCandidate> EvolutionarySearchNode::State::AssembleCandidates(
-    const Array<tir::Trace>& picks) {
-  Array<MeasureCandidate> measure_inputs;
-  measure_inputs.reserve(picks.size());
-  for (const tir::Trace& pick : picks) {
-    CachedTrace trace = self->_GetCachedTrace(pick);
-    measure_inputs.push_back(MeasureCandidate(trace.sch, self->args_info_));
-  }
-  return measure_inputs;
 }
 
 inline Optional<Array<MeasureCandidate>>
 EvolutionarySearchNode::State::GenerateMeasureCandidates() {
   if (st >= self->num_trials_total) {
-    self->candidates = Array<MeasureCandidate>(nullptr);
     return NullOpt;
   }
+  int sample_num = self->num_trials_per_iter;
   if (ed > self->num_trials_total) {
-    self->num_trials_per_iter += self->num_trials_total - ed;
+    sample_num += self->num_trials_total - ed;
     ed = self->num_trials_total;
   }
   ICHECK_LT(st, ed);
 
-  // new parts
-  Array<tir::Trace> inits = SampleInitPopulation();
-  Array<tir::Trace> bests = EvolveWithCostModel(inits);
-  Array<tir::Trace> picks = PickWithEpsGreedy(inits, bests);
-  self->candidates = AssembleCandidates(picks);
-  return self->candidates;
+  std::vector<CachedTrace> measured =
+      PickBestFromDatabase(self->population * self->init_measured_ratio);
+  std::vector<CachedTrace> unmeasured = SampleInitPopulation(self->population - measured.size());
+  std::vector<CachedTrace> inits = PruneAndMergeSamples(measured, unmeasured);
+  std::vector<CachedTrace> bests = EvolveWithCostModel(inits, sample_num);
+  std::vector<CachedTrace> picks = PickWithEpsGreedy(unmeasured, bests, sample_num);
+  return AssembleCandidates(picks, self->args_info_);
 }
 
 inline void EvolutionarySearchNode::State::NotifyRunnerResults(const Array<RunnerResult>& results) {
-  // We need to assume the candidates' order are not changed in runner.
-  ICHECK(self->candidates.defined() && self->candidates.size() == results.size());
   st += results.size();
   ed += results.size();
-  int i = 0;
-  for (const RunnerResult& result : results) {
-    // Todo: Update to database measure callback
-    if (result->error_msg.defined() || !result->run_secs.defined()) continue;
-    self->database->CommitTuningRecord(TuningRecord(
-        /*trace=*/self->candidates[i]->sch->trace().value(),         //
-        /*run_secs=*/result->run_secs.value(),                       //
-        /*workload=*/self->database->CommitWorkload(self->mod_[0]),  //
-        /*target=*/self->target_,                                    //
-        /*args_info=*/self->candidates[i]->args_info));
-    // Todo: Update to cost model measure callback
-    self->cost_model->Update(self->tune_context_, self->candidates, results);
-    i++;
-  }
+  // Measure Callbacks done in TaskScheduler
 }
 
-SearchStrategy SearchStrategy::EvolutionarySearch(int num_trials_per_iter,               //
-                                                  int num_trials_total,                  //
-                                                  int population,                        //
-                                                  double init_measured_ratio,            //
-                                                  int genetic_algo_iters,                //
-                                                  double p_mutate,                       //
-                                                  double eps_greedy,                     //
-                                                  Map<Mutator, FloatImm> mutator_probs,  //
-                                                  Database database,                     //
+SearchStrategy SearchStrategy::EvolutionarySearch(int num_trials_per_iter,     //
+                                                  int num_trials_total,        //
+                                                  int population,              //
+                                                  int max_replay_fail_cnt,     //
+                                                  double init_measured_ratio,  //
+                                                  int genetic_algo_iters,      //
+                                                  int max_evolve_fail_cnt,     //
+                                                  double p_mutate,             //
+                                                  double eps_greedy,           //
+                                                  Database database,           //
                                                   CostModel cost_model) {
   ObjectPtr<EvolutionarySearchNode> n = make_object<EvolutionarySearchNode>();
   n->num_trials_per_iter = num_trials_per_iter;
   n->num_trials_total = num_trials_total;
   n->population = population;
+  n->max_replay_fail_cnt = max_replay_fail_cnt;
+  TVM_META_SCHEDULE_CHECK_PROB_RANGE(init_measured_ratio, "Initial measured ratio");
   n->init_measured_ratio = init_measured_ratio;
   n->genetic_algo_iters = genetic_algo_iters;
+  n->max_evolve_fail_cnt = max_evolve_fail_cnt;
+  TVM_META_SCHEDULE_CHECK_PROB_RANGE(p_mutate, "Mutation probability");
   n->p_mutate = p_mutate;
+  TVM_META_SCHEDULE_CHECK_PROB_RANGE(eps_greedy, "Greedy pick probability");
   n->eps_greedy = eps_greedy;
-  n->mutator_probs = mutator_probs;
-  n->database = database;
-  n->cost_model = cost_model;
+  n->database_ = database;
+  n->cost_model_ = cost_model;
   return SearchStrategy(n);
 }
 

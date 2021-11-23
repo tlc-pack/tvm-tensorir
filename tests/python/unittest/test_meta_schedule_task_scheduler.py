@@ -138,6 +138,12 @@ class DummyDatabase(PyDatabase):
         self.records = []
         self.workload_reg = []
 
+    def has_workload(self, mod: IRModule) -> Workload:
+        for workload in self.workload_reg:
+            if tvm.ir.structural_equal(workload.mod, mod):
+                return True
+        return False
+
     def commit_tuning_record(self, record: TuningRecord) -> None:
         self.records.append(record)
 

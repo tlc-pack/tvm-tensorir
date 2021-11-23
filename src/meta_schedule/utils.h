@@ -37,7 +37,6 @@
 #include <tvm/meta_schedule/tune_context.h>
 #include <tvm/support/parallel_for.h>
 
-#include <random>
 #include <string>
 #include <vector>
 
@@ -251,8 +250,10 @@ inline int GetTargetNumCores(const Target& target) {
     ICHECK(f_cpu_count)
         << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
     num_cores = (*f_cpu_count)(false);
-    LOG(FATAL) << "Target does not have attribute \"num_cores\", pyhsical core number must be "
-                  "defined! Example: Local target ....";
+    LOG(FATAL)
+        << "Target does not have attribute \"num-cores\", pyhsical core number must be "
+           "defined! For example, on the local machine, the target must be \"llvm -num-cores "
+        << num_cores << "\"";
   }
   return num_cores;
 }
@@ -281,127 +282,6 @@ inline Optional<tir::Schedule> ApplyTrace(const IRModule& mod, const tir::Trace&
     }
   }
   return sch;
-}
-
-/*!
- * \brief Get the string representation for the given schedule's IRModule.
- * \param sch The given schedule.
- * \return The string representation created.
- */
-inline String Repr(const tir::Schedule& sch) { return tir::AsTVMScript(sch->mod()); }
-
-/*!
- * \brief Create a sampling function that does multinomial sampling.
- * \param rand_state The random state.
- * \param weights The weights for multinomial sampling.
- * \return The multinomial sampling function.
- */
-inline std::function<int()> MakeMultinomial(
-    support::LinearCongruentialEngine::TRandState& rand_state, const std::vector<double>& weights) {
-  std::vector<double> sums;
-  sums.reserve(weights.size());
-  double sum = 0.0;
-  for (double w : weights) {
-    sums.push_back(sum += w);
-  }
-  std::uniform_real_distribution<double> dist(0.0, sum);
-  auto sampler = [rand_state, dist = std::move(dist), sums = std::move(sums)]() mutable -> int {
-    support::LinearCongruentialEngine rand_(&rand_state);
-    double p = dist(rand_);
-    int idx = std::lower_bound(sums.begin(), sums.end(), p) - sums.begin();
-    int n = sums.size();
-    CHECK_LE(0, idx);
-    CHECK_LE(idx, n);
-    return (idx == n) ? (n - 1) : idx;
-  };
-  return sampler;
-}
-
-/*!
- * \brief Create a sampler function that picks mutators according to the mass function
- * \param rand_state The random state for sampling
- * \return The sampler created
- */
-inline std::function<Optional<Mutator>()> MakeMutatorSampler(
-    double p_mutate, const Map<Mutator, FloatImm>& mutator_probs,
-    support::LinearCongruentialEngine::TRandState& rand_state) {
-  CHECK(0.0 <= p_mutate && p_mutate <= 1.0)  //
-      << "ValueError: Probability should be within [0, 1], "
-      << "but get `p_mutate = " << p_mutate << '\'';
-  std::vector<Optional<Mutator>> mutators;
-  std::vector<double> masses;
-  mutators.push_back(NullOpt);
-  masses.push_back(1.0 - p_mutate);
-  double total_mass_mutator = 0.0;
-  for (const auto& kv : mutator_probs) {
-    const Mutator& mutator = kv.first;
-    double mass = kv.second->value;
-    CHECK_GE(mass, 0.0) << "ValueError: Probability of mutator '" << mutator
-                        << "' is ill-formed: " << mass;
-    total_mass_mutator += mass;
-    mutators.push_back(kv.first);
-    masses.push_back(mass * p_mutate);
-  }
-  // Normalize the sum to 1.0
-  if (total_mass_mutator == 0.0) {
-    masses[0] = 1.0;
-    for (int i = 1, n = masses.size(); i < n; ++i) {
-      masses[i] = 0.0;
-    }
-  } else if (total_mass_mutator != 1.0) {
-    for (int i = 1, n = masses.size(); i < n; ++i) {
-      masses[i] /= total_mass_mutator;
-    }
-  }
-  auto idx_sampler = MakeMultinomial(rand_state, masses);
-  return [idx_sampler = std::move(idx_sampler),
-          mutators = std::move(mutators)]() -> Optional<Mutator> {
-    int i = idx_sampler();
-    return mutators[i];
-  };
-}
-
-/*! \brief The postprocessed built of a trace */
-struct CachedTrace {
-  /*! \brief The trace */
-  const tir::TraceNode* trace;
-  /*! \brief The schedule the trace creates */
-  tir::Schedule sch;
-  /*! \brief The string representation of the schedule */
-  String repr;
-  // Todo: Challenges in deduplication: remove unit loop / simplify pass
-  /*! \brief The normalized score, the higher the better */
-  double score;
-
-  static bool Compare(const CachedTrace& lhs, const CachedTrace& rhs) {
-    return lhs.score > rhs.score;
-  }
-};
-
-/*!
- * \brief Predict the normalized score of each candidate.
- * \param candidates The candidates for prediction
- * \param task The search task
- * \param space The search space
- * \return The normalized score in the prediction
- */
-inline std::vector<double> PredictNormalizedScore(const std::vector<CachedTrace>& cached_traces,
-                                                  const TuneContext& tune_context,
-                                                  const CostModel& cost_model,
-                                                  Array<ArgInfo> args_info) {
-  Array<MeasureCandidate> measure_inputs;
-  measure_inputs.reserve(cached_traces.size());
-  for (const CachedTrace& cached_trace : cached_traces) {
-    measure_inputs.push_back(MeasureCandidate(cached_trace.sch, args_info));
-  }
-
-  std::vector<double> scores = cost_model->Predict(tune_context, measure_inputs);
-  // Normalize the score
-  // TODO(@junrushao1994): use softmax + temperature to replace simple normalization to [0.0, +oo)
-  for (double& score : scores) {
-    score = std::max(0.0, score);
-  }
-  return scores;
 }
 
 }  // namespace meta_schedule

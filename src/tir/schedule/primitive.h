@@ -22,10 +22,20 @@
 #include <tvm/support/random_engine.h>
 #include <tvm/tir/schedule/state.h>
 
+#include <random>
 #include <vector>
 
 namespace tvm {
 namespace tir {
+
+/*!
+ * \brief Create a sampling function that does multinomial sampling.
+ * \param rand_state The random state.
+ * \param weights The weights for multinomial sampling.
+ * \return The multinomial sampling function.
+ */
+TVM_DLL std::function<int32_t()> MakeMultinomialSampler(
+    support::LinearCongruentialEngine::TRandState* rand_state, const std::vector<double>& weights);
 
 /******** Schedule: Sampling ********/
 /*!

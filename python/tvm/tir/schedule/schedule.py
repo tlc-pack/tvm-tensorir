@@ -16,7 +16,6 @@
 # under the License.
 """The TensorIR schedule class"""
 from typing import Dict, List, Optional, Union
-from typing_extensions import Annotated
 
 from tvm._ffi import register_object as _register_object
 from tvm.error import TVMError, register_error
@@ -441,36 +440,6 @@ class Schedule(Object):
             A list of leaf blocks inside a specific block/loop
         """
         return _ffi_api.ScheduleGetChildBlocks(self, block_or_loop)  # type: ignore # pylint: disable=no-member
-
-    def get_producers(self, block: BlockRV) -> List[BlockRV]:
-        """Get the producers of a specific block
-
-        Parameters
-        ----------
-        block : BlockRV
-            The block in the query
-
-        Returns
-        -------
-        producers : List[BlockRV]
-            A list of producers of the given block
-        """
-        return _ffi_api.ScheduleGetProducers(self, block)  # type: ignore # pylint: disable=no-member
-
-    def get_consumers(self, block: BlockRV) -> List[BlockRV]:
-        """Get the consumers of a specific block
-
-        Parameters
-        ----------
-        block : BlockRV
-            The block in the query
-
-        Returns
-        -------
-        consumers : List[BlockRV]
-            A list of consumers of the given block
-        """
-        return _ffi_api.ScheduleGetConsumers(self, block)  # type: ignore # pylint: disable=no-member
 
     def get_producers(self, block: BlockRV) -> List[BlockRV]:
         """Get the producers of a specific block

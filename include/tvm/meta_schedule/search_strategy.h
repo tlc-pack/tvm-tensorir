@@ -20,10 +20,7 @@
 #define TVM_META_SCHEDULE_SEARCH_STRATEGY_H_
 
 #include <tvm/meta_schedule/arg_info.h>
-#include <tvm/meta_schedule/database.h>
-#include <tvm/meta_schedule/mutator.h>
 #include <tvm/meta_schedule/runner.h>
-#include <tvm/meta_schedule/space_generator.h>
 #include <tvm/tir/schedule/schedule.h>
 
 namespace tvm {
@@ -32,6 +29,7 @@ namespace meta_schedule {
 // Forward declaration
 class TuneContext;
 class CostModel;
+class Database;
 
 /*! \brief The schedule (with input shapes) to be measured. */
 class MeasureCandidateNode : public runtime::Object {
@@ -258,15 +256,30 @@ class SearchStrategy : public runtime::ObjectRef {
    */
   TVM_DLL static SearchStrategy ReplayFunc(int num_trials_per_iter, int num_trials_total);
 
-  TVM_DLL static SearchStrategy EvolutionarySearch(int num_trials_per_iter,               //
-                                                   int num_trials_total,                  //
-                                                   int population,                        //
-                                                   double init_measured_ratio,            //
-                                                   int genetic_algo_iters,                //
-                                                   double p_mutate,                       //
-                                                   double eps_greedy,                     //
-                                                   Map<Mutator, FloatImm> mutator_probs,  //
-                                                   Database database,                     //
+  /*!
+   * \brief Constructor of evolutionary search strategy.
+   * \param num_trials_per_iter The number of trials per iteration, i.e., the batch size.
+   * \param num_trials_total The total number of trials for evolutionary search.
+   * \param population The initial sample population.
+   * \param max_replay_fail_cnt The maximum number to fail trace replaying.
+   * \param init_measured_ratio The ratio of measures samples in initial population.
+   * \param genetic_algo_iters The iterations to run the genetic algorithm.
+   * \param max_evolve_fail_cnt The maximum number to try evolving the given trace.
+   * \param p_mutate The probability of mutation.
+   * \param eps_greedy The ratio to select samples in a greedy fashion via their predicted score.
+   * \param database The database to use.
+   * \param cost_model The cost model to use.
+   */
+  TVM_DLL static SearchStrategy EvolutionarySearch(int num_trials_per_iter,     //
+                                                   int num_trials_total,        //
+                                                   int population,              //
+                                                   int max_replay_fail_cnt,     //
+                                                   double init_measured_ratio,  //
+                                                   int genetic_algo_iters,      //
+                                                   int max_evolve_fail_cnt,     //
+                                                   double p_mutate,             //
+                                                   double eps_greedy,           //
+                                                   Database database,           //
                                                    CostModel cost_model);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);

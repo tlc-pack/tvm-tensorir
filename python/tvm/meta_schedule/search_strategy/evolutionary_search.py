@@ -19,7 +19,6 @@
 from typing import TYPE_CHECKING, Dict
 
 from tvm._ffi import register_object
-from ...tir import FloatImm
 
 from .search_strategy import SearchStrategy
 from ..mutator import Mutator
@@ -45,16 +44,18 @@ class EvolutionarySearch(SearchStrategy):
         Total number of trials.
     population : int
         The initial population of traces from measured samples and randomly generated samples.
+    max_replay_fail_cnt : int
+        The maximum number to fail trace replaying.
     init_measured_ratio : int
         The ratio of measured samples in the initial population.
     genetic_algo_iters : int
         The number of iterations for genetic algorithm.
+    max_evolve_fail_cnt : int
+        The maximum number to retry mutation.
     p_mutate : float
         The probability of mutation.
     eps_greedy : float
         The ratio of greedy selected samples in the final picks.
-    mutator_probs: Dict[Mutator, FloatImm]
-        The probability contribution of all mutators.
     database : Database
         The database used in the search.
     cost_model : CostModel
@@ -66,36 +67,40 @@ class EvolutionarySearch(SearchStrategy):
     population: int
     init_measured_ratio: int
     genetic_algo_iters: int
+    max_replay_fail_cnt: int
+    max_evolve_fail_cnt: int
     p_mutate: float
     eps_greedy: float
-    mutator_probs: Dict[Mutator, FloatImm]
     database: Database
     cost_model: "CostModel"
 
     def __init__(
         self,
+        *,
         num_trials_per_iter: int,
         num_trials_total: int,
-        population: int,
-        init_measured_ratio: float,
-        genetic_algo_iters: int,
-        p_mutate: float,
-        eps_greedy: float,
-        mutator_probs: Dict[Mutator, FloatImm],
         database: Database,
         cost_model: "CostModel",
+        population: int = 2048,
+        max_replay_fail_cnt: int = 64,
+        init_measured_ratio: float = 0.2,
+        genetic_algo_iters: int = 10,
+        max_evolve_fail_cnt: int = 10,
+        p_mutate: float = 0.85,
+        eps_greedy: float = 0.25,
     ):
         """Constructor"""
         self.__init_handle_by_constructor__(
-            _ffi_api.SearchStrategyEvolutionarySearch,  # pylint: disable=no-member
+            _ffi_api.SearchStrategyEvolutionarySearch,  # type: ignore # pylint: disable=no-member
             num_trials_per_iter,
             num_trials_total,
             population,
+            max_replay_fail_cnt,
             init_measured_ratio,
             genetic_algo_iters,
+            max_evolve_fail_cnt,
             p_mutate,
             eps_greedy,
-            mutator_probs,
             database,
             cost_model,
         )
