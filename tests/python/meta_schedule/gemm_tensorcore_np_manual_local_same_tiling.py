@@ -16,7 +16,7 @@ def tvm_callback_cuda_postproc(code):
         os.mkdir("perf")
     write_code(code, "perf/%s_generated.cu" % TASK)
     if USE_MANUAL_CODE:
-        code = open("perf/gemm_local_stage_double_buffer_same_tiling_epilogue.cu").read()
+        code = open("perf/gemm_local_stage_double_buffer_same_tiling_epilogue_same_cutlass.cu").read()
     return code
 M = N = K = 1024
 
