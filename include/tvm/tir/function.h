@@ -207,6 +207,13 @@ class IndexMapNode : public Object {
    */
   Array<PrimExpr> Apply(const Array<PrimExpr>& inputs) const;
 
+  /*!
+   * \brief Map a shape to the output space
+   * \param shape The shape in the source space
+   * \return The shape in the target space
+   */
+  Array<PrimExpr> MapShape(const Array<PrimExpr>& shape) const;
+
   static constexpr const char* _type_key = "tir.IndexMap";
   TVM_DECLARE_FINAL_OBJECT_INFO(IndexMapNode, Object);
 };

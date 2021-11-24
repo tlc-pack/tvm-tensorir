@@ -401,6 +401,23 @@ TVM_DLL void Tensorize(ScheduleState self, const StmtSRef& loop_sref,
  */
 TVM_DLL void Annotate(ScheduleState self, const StmtSRef& sref, const String& ann_key,
                       const ObjectRef& ann_val);
+
+/******** Schedule: Buffer transformation ********/
+/*!
+ * \brief Apply a transformation represented by IndexMap to buffer
+ * \details The indices and the access region to the target buffer is transformed by the given
+ * index_map. The index_map is also used to infer the new shape of the buffer. Buffer must be
+ * one of the parameter of the function, or allocated in some blocks (it cannot be a buffer
+ * subregion created via match_buffer).
+ * \param self The state of the schedule
+ * \param block_sref The block sref that accesses the target buffer.
+ * \param buffer_index The index of the buffer in block's read or write region.
+ * \param is_write_index Whether the buffer_index is the index of the block's write region.
+ * \param index_map The transformation to apply.
+ */
+TVM_DLL void BufferTransform(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
+                             bool is_write_index, const IndexMap& index_map);
+
 /*!
  * \brief Unannotate a block/loop's annotation with key ann_key
  * \param self The state of the schedule

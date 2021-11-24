@@ -227,6 +227,10 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnannotate")
                  << ". Its value is: " << rv;
       throw;
     });
+
+/******** (FFI) Buffer transformation ********/
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBufferTransform")
+    .set_body_method<Schedule>(&ScheduleNode::BufferTransform);
 /******** (FFI) Misc ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostproc")
     .set_body_method<Schedule>(&ScheduleNode::EnterPostproc);
