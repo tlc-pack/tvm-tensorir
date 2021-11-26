@@ -25,6 +25,25 @@
 
 #include "../utils.h"
 
+namespace std {
+
+std::ostream& operator<<(std::ostream& os, const std::vector<int64_t>& vec) {
+  tvm::tir::PrintVector(vec, os, [&os](int64_t i) { os << i; });
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const std::vector<tvm::PrimExpr>& vec) {
+  tvm::tir::PrintVector(vec, os, [&os](const tvm::PrimExpr& i) { os << i; });
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const std::vector<std::vector<tvm::PrimExpr>>& vec) {
+  tvm::tir::PrintVector(vec, os, [&os](const std::vector<tvm::PrimExpr>& i) { os << i; });
+  return os;
+}
+
+}  // namespace std
+
 namespace tvm {
 namespace tir {
 
@@ -379,7 +398,7 @@ struct Feature {
   int64_t threadIdx_z_len = 1;  // The length of threadIdx.z
   int64_t vthread_len = 1;      // The length of virtual thread
 
-  static constexpr int64_t kCount = ArithOps::kCount + ForKindFeature::kCount * 3 + 7;
+  static constexpr int64_t kCount = ArithOps::kCount + ForKindFeature::kCount * 3 + 8;
 
   explicit Feature(const BufferStoreNode* store, const LoopNest& loop_nest, bool is_gpu)
       : arith_ops(store, loop_nest.prod),
@@ -399,6 +418,10 @@ struct Feature {
   }
 
   void Export(std::vector<double>* v) const {
+    this->arith_ops.Export(v);
+    this->vectorize.Export(v);
+    this->unroll.Export(v);
+    this->parallel.Export(v);
     double vs[] = {
         static_cast<double>(is_gpu),  //
         slog(blockIdx_x_len),        slog(blockIdx_y_len),  slog(blockIdx_z_len),
@@ -599,9 +622,6 @@ struct Feature {
         SubFeature::Pad(v);
       }
     }
-    for (const SubFeature& sub_feature : sub_features) {
-      sub_feature.Export(v);
-    }
   }
 
   explicit Feature(const BufferStoreNode* store, const LoopNest& loop_nest,
@@ -623,7 +643,11 @@ void Feature::Init(const BufferStoreNode* store, int n_loops) {
     std::vector<MultiIndex> multi_indices;
   };
   std::unordered_map<const BufferNode*, Info> buffer_info;
-  buffer_info[store->buffer.get()].access_type = AccessType::kWrite;
+  {
+    Info& info = buffer_info[store->buffer.get()];
+    info.access_type = AccessType::kWrite;
+    info.multi_indices.push_back({store->indices.begin(), store->indices.end()});
+  }
   PostOrderVisit(store->value, [&buffer_info](const ObjectRef& obj) -> void {
     if (const BufferLoadNode* load = obj.as<BufferLoadNode>()) {
       const BufferNode* buffer = load->buffer.get();
@@ -1121,6 +1145,8 @@ class PerStoreFeatureNode : public FeatureExtractorNode {
   }
 
   void ExtractSingle(IRModule mod, bool is_gpu, std::vector<std::vector<double>>* results) {
+    static transform::Sequential passes = tir::transform::PassListForPerStoreFeature();
+    mod = passes(std::move(mod));
     std::vector<tir::Feature> features = tir::PerStoreFeatureCollector::Collect(
         is_gpu, this->cache_line_bytes, this->arith_intensity_curve_num_samples, mod);
     int n_features = features.size();
