@@ -32,6 +32,11 @@ std::ostream& operator<<(std::ostream& os, const std::vector<int64_t>& vec) {
   return os;
 }
 
+std::ostream& operator<<(std::ostream& os, const std::vector<double>& vec) {
+  tvm::tir::PrintVector(vec, os, [&os](double i) { os << i; });
+  return os;
+}
+
 std::ostream& operator<<(std::ostream& os, const std::vector<tvm::PrimExpr>& vec) {
   tvm::tir::PrintVector(vec, os, [&os](const tvm::PrimExpr& i) { os << i; });
   return os;
@@ -498,9 +503,6 @@ Feature::ArithOps::ArithOps(const BufferStoreNode* store, int64_t prod_loop_exte
   ArithOpCounter counter;
   counter.prod_loop_extent_ = prod_loop_extent;
   counter(store->value);
-  for (const PrimExpr& expr : store->indices) {
-    counter(expr);
-  }
   *this = counter.result_;
 }
 
@@ -698,14 +700,14 @@ void Feature::SetRegion(const LoopNest& loop_nest, IntVec* for_touched_bytes,
   }
   // Step 3. Gradually bind the loops from inner to outer,
   // calculate the area the loops touch on each buffer
-  for (int i = 0; i < n_loops; ++i) {
+  for (int i = n_loops - 1; i >= 0; --i) {
     const ForNode* loop = loops[i];
     analyzer->Bind(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent),
                    /*allow_override=*/true);
     int64_t& touched_bytes = (*for_touched_bytes)[i] = 0;
     for (SubFeature& feature : sub_features) {
       const BufferNode* buffer = feature.buffer;
-      // Note: `feature.access_shape` for `i == n_loops - 1` is the only one preserved,
+      // Note: `feature.access_shape` for `i == 0` is the only one preserved,
       // while others are discarded
       int64_t numel = 1;
       feature.access_shape = utils::UnionAndGetRelaxedSize(feature.multi_indices, &numel, analyzer);
@@ -748,18 +750,18 @@ void Feature::SubFeature::SetStride(const LoopNest& loop_nest) {
   int i = 0;
   // Calculate this->min_stride
   int64_t& stride = this->min_stride = 0;
-  for (; i < n_loops; ++i) {
+  for (i = n_loops - 1; i >= 0; --i) {
     stride = utils::GetVarStride(this->multi_indices, buffer_stride, loops[i]->loop_var);
     if (stride != 0) {
       break;
     }
   }
   // Calculate this->innermost_stride
-  this->innermost_stride = (i == 0) ? stride : 0;
+  this->innermost_stride = (i == n_loops - 1) ? stride : 0;
   // Calculate this->prod
   int64_t& prod = this->prod_non_strided_loop_extent = 1;
-  for (int j = 0; j < i; ++j) {
-    if (const int64_t* extent = GetLoopIntExtent(loops[j])) {
+  for (int j = n_loops - 1; j > i; --j) {
+    if (const int64_t* extent = GetLoopIntExtent(loops[n_loops - 1])) {  // TODO
       prod *= *extent;
     }
   }
@@ -788,7 +790,7 @@ void Feature::SubFeature::SetReuse(const LoopNest& loop_nest, int64_t top_loop_t
   // Step 3.2. Enumerate loops from inner to outer, find the first loop with reuse
   int n_loops = loop_nest.loops.size();
   const std::vector<const ForNode*>& loops = loop_nest.loops;
-  for (int i = 0; i < n_loops; ++i) {
+  for (int i = n_loops - 1; i >= 0; --i) {
     const ForNode* loop = loops[i];
     // Case 1. Find an invariant loop, i.e. reuse with kLoopMultipleRead
     if (!region_vars.count(loop->loop_var.get())) {
@@ -799,16 +801,16 @@ void Feature::SubFeature::SetReuse(const LoopNest& loop_nest, int64_t top_loop_t
         reuse_ct = 1;
       }
       reuse_dis_iter = 1;
-      for (int j = 0; j < i; ++j) {
+      for (int j = n_loops - 1; j > i; --j) {
         if (const int64_t* extent = GetLoopIntExtent(loops[j])) {
           reuse_dis_iter *= *extent;
         }
       }
       reuse_dis_bytes = 0.0;
-      if (i == 0) {
+      if (i == n_loops - 1) {
         reuse_dis_bytes = top_loop_touch_bytes;
       } else {
-        for (const auto& iter : buffer_touched_under_loop.at(loops[i - 1])) {
+        for (const auto& iter : buffer_touched_under_loop.at(loops[i + 1])) {
           const BufferNode* buffer = iter.first;
           const IntVec& numels = iter.second;
           int64_t numel = std::accumulate(numels.begin(), numels.end(), int64_t(0));
@@ -850,10 +852,9 @@ void Feature::SubFeature::SetFeature(const LoopNest& loop_nest, int64_t cache_li
     this->lines = 1;
     this->unique_lines = 1;
   } else {
-    this->unique_bytes = this->loop_accessed_numel.back().at(buffer) * dtype_bytes;
-    double m = static_cast<double>(this->min_stride) * dtype_bytes / cache_line_bytes;
-    this->lines =
-        static_cast<double>(loop_nest.prod) / this->prod_non_strided_loop_extent * std::min(1.0, m);
+    this->unique_bytes = this->loop_accessed_numel.front().at(buffer) * dtype_bytes;
+    this->lines = static_cast<double>(loop_nest.prod) / this->prod_non_strided_loop_extent *
+                  std::min(1.0, 1.0 * this->min_stride * dtype_bytes / cache_line_bytes);
     this->lines = std::max(1.0, this->lines);
     this->unique_lines = static_cast<double>(this->unique_bytes) /
                          std::min(cache_line_bytes, this->num_continuous_bytes);
@@ -925,8 +926,9 @@ struct Feature {
     int n_loops = loops.size();
     // Calculate `memory_bytes`
     std::vector<double> memory_bytes;
+    memory_bytes.resize(n_loops);
     for (int i = 0; i < n_loops; ++i) {
-      memory_bytes.push_back(std::log2(for_touched_bytes[i]));
+      memory_bytes[n_loops - 1 - i] = std::log2(for_touched_bytes[i]);
     }
     // Calculate `compute_ops` and `cur_compute_ops`
     std::vector<double> compute_ops;
@@ -934,7 +936,7 @@ struct Feature {
                                arith_ops.float_div_mod + arith_ops.float_cmp +
                                arith_ops.float_math_func + arith_ops.float_other_func;
     total_compute_ops /= loop_nest.prod;
-    for (int i = 0; i < n_loops; ++i) {
+    for (int i = n_loops - 1; i >= 0; --i) {
       if (const int64_t* extent = GetLoopIntExtent(loops[i])) {
         total_compute_ops *= *extent;
       }
@@ -1056,6 +1058,9 @@ class PerStoreFeatureCollector : private StmtVisitor {
     for (const auto& kv : mod->functions) {
       if (const PrimFuncNode* func = kv.second.as<PrimFuncNode>()) {
         collector(func->body);
+        for (const auto& it : func->buffer_map) {
+          collector.HandleBufferAlloc(it.second);
+        }
       }
     }
     std::vector<Feature> result;
@@ -1086,6 +1091,7 @@ class PerStoreFeatureCollector : private StmtVisitor {
   }
 
   void VisitStmt_(const BufferStoreNode* store) final {
+    LOG(INFO) << "Visit BufferStore:\n" << GetRef<BufferStore>(store);
     const BufferNode* buffer = store->buffer.get();
     Feature& feature = buffer_features_[buffer];
     if (feature.buffer == nullptr) {
@@ -1104,9 +1110,13 @@ class PerStoreFeatureCollector : private StmtVisitor {
   void VisitStmt_(const BlockNode* block) final {
     StmtVisitor::VisitStmt_(block);
     for (const Buffer& buffer : block->alloc_buffers) {
-      Feature& feature = buffer_features_[buffer.get()];
-      feature.group4 = std::make_unique<group4::Feature>(loop_nest_, buffer);
+      HandleBufferAlloc(buffer);
     }
+  }
+
+  void HandleBufferAlloc(const Buffer& buffer) {
+    Feature& feature = buffer_features_[buffer.get()];
+    feature.group4 = std::make_unique<group4::Feature>(loop_nest_, buffer);
   }
 
   explicit PerStoreFeatureCollector(bool is_gpu, int64_t cache_line_bytes,
@@ -1147,6 +1157,7 @@ class PerStoreFeatureNode : public FeatureExtractorNode {
   void ExtractSingle(IRModule mod, bool is_gpu, std::vector<std::vector<double>>* results) {
     static transform::Sequential passes = tir::transform::PassListForPerStoreFeature();
     mod = passes(std::move(mod));
+    LOG(INFO) << "mod =\n" << tir::AsTVMScript(mod, "T");
     std::vector<tir::Feature> features = tir::PerStoreFeatureCollector::Collect(
         is_gpu, this->cache_line_bytes, this->arith_intensity_curve_num_samples, mod);
     int n_features = features.size();
@@ -1161,7 +1172,18 @@ class PerStoreFeatureNode : public FeatureExtractorNode {
       feature.group4->Export(&result, feature.group5->outer_prod);
       feature.group5->Export(&result);
       ICHECK_EQ(static_cast<int>(result.size()), feature_vector_length);
+      DebugFeature(feature);
     }
+  }
+
+  void DebugFeature(const tir::Feature& feature) {
+    const tir::group2::Feature& f2 = *feature.group2;
+    std::ostringstream os;
+    os << "Feature(" << feature.buffer->name << "):";
+    for (const tir::group2::Feature::SubFeature& sub_f : f2.sub_features) {
+      os << " " << sub_f.buffer->name;
+    }
+    LOG(INFO) << os.str();
   }
 
   Array<runtime::NDArray> ExtractFrom(const TuneContext& tune_context,
