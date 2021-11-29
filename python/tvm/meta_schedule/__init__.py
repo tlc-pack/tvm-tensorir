@@ -36,3 +36,4 @@ from .search_strategy import (
 )
 from .tune import tune_te, tune_tir, tune_relay
 from .tune_context import TuneContext
+from .search_strategy import MeasureCandidate
