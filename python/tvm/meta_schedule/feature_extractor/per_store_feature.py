@@ -23,14 +23,39 @@ from .. import _ffi_api
 from .feature_extractor import FeatureExtractor
 
 
+# /*!
+#  * \brief Create a feature extractor that extracts features from each BufferStore
+#  * \param buffers_per_store The number of buffers in each BufferStore; Pad or truncate if
+#  * necessary.
+#  * \param arith_intensity_curve_num_samples The number of samples used in the arithmetic intensity
+#  * curve.
+#  * \param cache_line_bytes The number of bytes in a cache line.
+#  * \return The feature extractor created.
+#  */
+
+
 @register_object("meta_schedule.PerStoreFeature")
 class PerStoreFeature(FeatureExtractor):
-    """PerStoreFeature extracts one feature vector per BufferStoreNode"""
+    """PerStoreFeature extracts one feature vector per BufferStoreNode
+
+    Parameters
+    ----------
+    buffers_per_store : int
+        The number of buffers in each BufferStore; Pad or truncate if necessary.
+    arith_intensity_curve_num_samples : int
+        The number of samples used in the arithmetic intensity curve.
+    cache_line_bytes : int
+        The number of bytes in a cache line.
+    """
 
     buffers_per_store: int
+    """The number of buffers in each BufferStore; Pad or truncate if necessary."""
     arith_intensity_curve_num_samples: int  # pylint: disable=invalid-name
+    """The number of samples used in the arithmetic intensity curve."""
     cache_line_bytes: int
+    """The number of bytes in a cache line."""
     feature_vector_length: int
+    """Length of the feature vector."""
 
     def __init__(
         self,

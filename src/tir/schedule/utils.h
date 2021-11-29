@@ -105,19 +105,6 @@ namespace tir {
       << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
       << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
 
-template <class T, class FPrint>
-void PrintVector(const std::vector<T>& vec, std::ostream& os, FPrint print) {
-  int n = vec.size();
-  os << "[";
-  for (int i = 0; i < n; ++i) {
-    if (i != 0) {
-      os << ", ";
-    }
-    print(vec[i]);
-  }
-  os << "]";
-}
-
 /*!
  * \brief Convert an array of loop StmtSRefs to an array of loops
  * \param loop_srefs The loop StmtSRefs to be converted

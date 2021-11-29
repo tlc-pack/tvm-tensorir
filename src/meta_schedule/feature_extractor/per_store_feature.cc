@@ -18,6 +18,7 @@
  */
 #include <tvm/tir/transform.h>
 
+#include <cmath>
 #include <memory>
 #include <numeric>
 #include <unordered_map>
@@ -26,51 +27,35 @@
 
 #include "../utils.h"
 
-namespace std {
-
-std::ostream& operator<<(std::ostream& os, const std::vector<int64_t>& vec) {
-  tvm::tir::PrintVector(vec, os, [&os](int64_t i) { os << i; });
-  return os;
-}
-
-std::ostream& operator<<(std::ostream& os, const std::vector<double>& vec) {
-  tvm::tir::PrintVector(vec, os, [&os](double i) { os << i; });
-  return os;
-}
-
-std::ostream& operator<<(std::ostream& os, const std::vector<tvm::PrimExpr>& vec) {
-  tvm::tir::PrintVector(vec, os, [&os](const tvm::PrimExpr& i) { os << i; });
-  return os;
-}
-
-std::ostream& operator<<(std::ostream& os, const std::vector<std::vector<tvm::PrimExpr>>& vec) {
-  tvm::tir::PrintVector(vec, os, [&os](const std::vector<tvm::PrimExpr>& i) { os << i; });
-  return os;
-}
-
-}  // namespace std
-
 namespace tvm {
 namespace tir {
 
 using support::NDIntSet;
 
+/*! \brief Type for multi-dimensional index */
 using MultiIndex = std::vector<PrimExpr>;
+/*! \brief Vector of int64_t */
 using IntVec = std::vector<int64_t>;
+/*! \brief Vector of for loops */
 using ForVec = std::vector<const ForNode*>;
 
+/*!
+ * \brief An unordered_map for (for, buffer) => V
+ * \tparam V The value type
+ */
 template <class V>
 using ForBufferMap = std::unordered_map<const ForNode*, std::unordered_map<const BufferNode*, V>>;
 
-inline double slog(double x) {
-  if (x < 0) {
-    x = -x;
-  }
-  return std::log2(x + 1);
-}
+/*! \brief Given x, compute log2(|x| + 1) */
+inline double slog(double x) { return x >= 0 ? std::log2(x + 1) : std::log2(-x + 1); }
 
 namespace utils {
 
+/*!
+ * \brief Given a loop, return its `pragma_auto_unroll_max_step` annotation if it exists
+ * \param loop The loop to be checked
+ * \return The value of `pragma_auto_unroll_max_step` if it exists, or -1 if it does not exist
+ */
 int64_t GetPragmaAutoUnroll(const ForNode* loop) {
   if (Optional<IntImm> auto_unroll = GetAnn<IntImm>(loop, tir::attr::pragma_auto_unroll_max_step)) {
     return auto_unroll.value()->value;
@@ -78,16 +63,15 @@ int64_t GetPragmaAutoUnroll(const ForNode* loop) {
   return -1;
 }
 
-int64_t ProdLoopExtent(const ForVec& loops) {
-  int64_t prod = 1;
-  for (const ForNode* loop : loops) {
-    if (const int64_t* extent = GetLoopIntExtent(loop)) {
-      prod *= *extent;
-    }
-  }
-  return prod;
-}
-
+/*!
+ * \brief Given a list of loops, return the extent of the first loop if the list is not empty,
+ * and the first loop has constant extent. Otherwise returns the default value given
+ * \param loops The list of loops to be checked
+ * \param default_value The default value to be returned if the list is empty or the first loop
+ * does not have constant extent
+ * \return The extent of the first loop if the list is not empty, or the first loop has constant
+ * extent. Otherwise returns the default value
+ */
 int64_t FirstLoopExtent(const ForVec& loops, int64_t default_value) {
   if (!loops.empty()) {
     if (const int64_t* extent = GetLoopIntExtent(loops[0])) {
@@ -97,8 +81,16 @@ int64_t FirstLoopExtent(const ForVec& loops, int64_t default_value) {
   return default_value;
 }
 
-IntVec UnionAndGetRelaxedSize(const std::vector<MultiIndex>& multi_indices, int64_t* numel,
-                              arith::Analyzer* analyzer) {
+/*!
+ * \brief Relax each of the multi-indexing pattern according to the domains bound in the analyzer,
+ * and then union them into a single region
+ * \param multi_index_pattern A list of multi-index pattern to be relaxed
+ * \param numel The size of the single region after union
+ * \param analyzer The analyzer that contains the domain information
+ * \return The relaxed and unioned region
+ */
+IntVec RelaxAndUnion(const std::vector<MultiIndex>& multi_indices, int64_t* numel,
+                     arith::Analyzer* analyzer) {
   if (multi_indices.empty()) {
     return {};
   }
@@ -119,6 +111,13 @@ IntVec UnionAndGetRelaxedSize(const std::vector<MultiIndex>& multi_indices, int6
   return access_shape;
 }
 
+/*!
+ * \brief Given a list of multi-index pattern, return the minimal stride of a variable on it
+ * \param multi_indices The list of multi-index pattern
+ * \param buffer_stride The stride of the buffer
+ * \param var The variable to be checked
+ * \return The minimal stride of the variable on the multi-index pattern
+ */
 int64_t GetVarStride(const std::vector<MultiIndex>& multi_indices, const IntVec& buffer_stride,
                      const Var& var) {
   class CoefficientExtractor : private ExprVisitor {
@@ -188,13 +187,18 @@ int64_t GetVarStride(const std::vector<MultiIndex>& multi_indices, const IntVec&
   return (result == kNotFound) ? 0 : result;
 }
 
+/*!
+ * \brief Converts a 2-dimensional STL vector to a TVM NDArray
+ * \param src The source 2-dimensional STL vector
+ * \return The converted TVM NDArray
+ */
 runtime::NDArray AsNDArray(const std::vector<std::vector<double>>& src) {
   ICHECK(!src.empty());
   int n = src.size();
   int m = src[0].size();
   runtime::NDArray tgt = runtime::NDArray::Empty(
       /*shape=*/{n, m},
-      /*dtype=*/DLDataType{kDLFloat, 64, 1},  //
+      /*dtype=*/DLDataType{kDLFloat, 64, 1},
       /*ctx=*/DLDevice{kDLCPU, 0});
   double* data = static_cast<double*>(tgt->data);
   for (const std::vector<double>& row : src) {
@@ -209,6 +213,10 @@ runtime::NDArray AsNDArray(const std::vector<std::vector<double>>& src) {
 
 namespace transform {
 
+/*!
+ * \brief Create a pass that simplifies the IR for feature extraction
+ * \return The pass created
+ */
 Pass SimplifyForFeatureExtraction() {
   class Simplifier : private StmtExprMutator {
    public:
@@ -244,6 +252,10 @@ Pass SimplifyForFeatureExtraction() {
   return CreatePrimFuncPass(pass_func, 0, "tir.SimplifyConstMatrix", {});
 }
 
+/*!
+ * \brief Create a list of passes that preprocesses the IR for feature extraction
+ * \return The list of passes created
+ */
 Sequential PassListForPerStoreFeature() {
   return Sequential({
       tir::transform::SimplifyForFeatureExtraction(),
@@ -260,28 +272,35 @@ Sequential PassListForPerStoreFeature() {
 
 }  // namespace transform
 
+/*! \brief A data structure managing loop nests */
 struct LoopNest {
-  int64_t prod = 1;
-  ForVec loops;
-  IntVec auto_unroll;
-  ForVec parallel;
-  ForVec vectorize;
-  ForVec unroll;
-  ForVec blockIdx_x;
-  ForVec blockIdx_y;
-  ForVec blockIdx_z;
-  ForVec threadIdx_x;
-  ForVec threadIdx_y;
-  ForVec threadIdx_z;
-  ForVec vthread;
+  int64_t prod = 1;    // The product of the extents of all the loops
+  ForVec loops;        // All the loops
+  IntVec auto_unroll;  // The loops with auto unroll pragma
+  ForVec parallel;     // The loops whose ForKind are kParallel
+  ForVec vectorize;    // The loops whose ForKind are kVectorized
+  ForVec unroll;       // The loops whose ForKind are kUnrolled
+  ForVec blockIdx_x;   // The loops whose ForKind are kThreadBinding to blockIdx.x
+  ForVec blockIdx_y;   // The loops whose ForKind are kThreadBinding to blockIdx.y
+  ForVec blockIdx_z;   // The loops whose ForKind are kThreadBinding to blockIdx.z
+  ForVec threadIdx_x;  // The loops whose ForKind are kThreadBinding to threadIdx.x
+  ForVec threadIdx_y;  // The loops whose ForKind are kThreadBinding to threadIdx.y
+  ForVec threadIdx_z;  // The loops whose ForKind are kThreadBinding to threadIdx.z
+  ForVec vthread;      // The loops whose ForKind are kThreadBinding to vthread.*
 
-  ForVec* Push(const ForNode* loop, int64_t auto_unroll_attr) {
+  /*!
+   * \brief Push a new loop into the loop nest
+   * \param loop The loop to be pushed
+   * \param auto_unroll_attr The auto unroll attribute of the loop
+   * \return A list of for loops that the loop is bound to
+   */
+  ForVec* Push(const ForNode* loop, int64_t* auto_unroll_attr) {
     if (const int64_t* extent = GetLoopIntExtent(loop)) {
       this->prod *= *extent;
     }
     this->loops.push_back(loop);
-    if (auto_unroll_attr > 0) {
-      this->auto_unroll.push_back(auto_unroll_attr);
+    if ((*auto_unroll_attr = utils::GetPragmaAutoUnroll(loop)) > 0) {
+      this->auto_unroll.push_back(*auto_unroll_attr);
     }
     ForVec* ref_loops = nullptr;
     if (loop->kind == ForKind::kParallel) {
@@ -316,6 +335,12 @@ struct LoopNest {
     return ref_loops;
   }
 
+  /*!
+   * \brief Pop the last loop from the loop nest
+   * \param loop The loop to be popped
+   * \param ref_loops The list of for loops that the loop is bound to
+   * \param auto_unroll_attr The auto unroll attribute of the loop
+   */
   void Pop(const ForNode* loop, ForVec* ref_loops, int auto_unroll_attr) {
     if (ref_loops) {
       ref_loops->pop_back();
@@ -334,7 +359,9 @@ struct LoopNest {
 
 namespace group1 {
 
+/*! \brief Group 1 features */
 struct Feature {
+  /*! \brief Arithmetic features */
   struct ArithOps {
     // Float-point arithmetic features
     int64_t float_mad = 0;         // The number of float MAD (Multiply–add) ops
@@ -373,6 +400,7 @@ struct Feature {
     }
   };
 
+  /*! \brief Loop binding features */
   struct ForKindFeature {
     enum class Pos : int {
       kPosNone = 0,           // Does not have this kind of annotation
@@ -412,11 +440,11 @@ struct Feature {
     }
   };
 
-  ArithOps arith_ops;
-  ForKindFeature vectorize;
-  ForKindFeature unroll;
-  ForKindFeature parallel;
-  bool is_gpu = false;
+  ArithOps arith_ops;           // Arithmetic features
+  ForKindFeature vectorize;     // Loop binding features: kVectorize
+  ForKindFeature unroll;        // Loop binding features: kUnroll
+  ForKindFeature parallel;      // Loop binding features: kParallel
+  bool is_gpu = false;          // If the program is running on GPU
   int64_t blockIdx_x_len = 1;   // The length of blockIdx.x
   int64_t blockIdx_y_len = 1;   // The length of blockIdx.y
   int64_t blockIdx_z_len = 1;   // The length of blockIdx.z
@@ -537,9 +565,14 @@ Feature::ForKindFeature::ForKindFeature(const ForVec& loops) {
   } else {
     const int64_t* last_loop_extent = GetLoopIntExtent(loops.back());
     this->num = loops.size();
-    this->prod = utils::ProdLoopExtent(loops);
     this->len = last_loop_extent ? *last_loop_extent : 1;
     this->pos = ForKindFeature::Pos::kPosMixed;
+    int64_t& prod = this->prod = 1;
+    for (const ForNode* loop : loops) {
+      if (const int64_t* extent = GetLoopIntExtent(loop)) {
+        prod *= *extent;
+      }
+    }
   }
 }
 
@@ -547,6 +580,7 @@ Feature::ForKindFeature::ForKindFeature(const ForVec& loops) {
 
 namespace group2 {
 
+/*! \brief Group 2 features */
 struct Feature {
   enum class AccessType : int {
     kRead = 0,       // The buffer is read but not written
@@ -733,7 +767,7 @@ void Feature::SetRegion(const LoopNest& loop_nest, IntVec* for_touched_bytes,
       // Note: `feature.access_shape` for `i == 0` is the only one preserved,
       // while others are discarded
       int64_t numel = 1;
-      feature.access_shape = utils::UnionAndGetRelaxedSize(feature.multi_indices, &numel, analyzer);
+      feature.access_shape = utils::RelaxAndUnion(feature.multi_indices, &numel, analyzer);
       feature.loop_accessed_numel[i][buffer] = numel;
       touched_bytes += numel * buffer->dtype.bytes();
       (*buffer_touched_under_loop)[loop][buffer].push_back(numel);
@@ -934,6 +968,7 @@ Feature::Feature(const BufferStoreNode* store, const LoopNest& loop_nest, int64_
 
 namespace group3 {
 
+/*! \brief Group 3 feature */
 struct Feature {
   std::vector<double> arith_intensity_curve;
 
@@ -1001,6 +1036,7 @@ struct Feature {
 
 namespace group4 {
 
+/*! \brief Group 4 feature */
 struct Feature {
   int64_t alloc_size = 0;        // The size of allocated buffer in bytes
   int64_t alloc_prod = 0;        // alloc_outer_prod * alloc_inner_prod
@@ -1035,6 +1071,7 @@ struct Feature {
 
 namespace group5 {
 
+/*! \brief Group 5 feature */
 struct Feature {
   int64_t outer_prod;        // The product of lengths of outer loops
   int num_loops;             // The number of outer loops
@@ -1060,6 +1097,7 @@ struct Feature {
 
 }  // namespace group5
 
+/*! \brief The feature extracted */
 struct Feature {
   const BufferNode* buffer = nullptr;
   int buffer_order = -1;
@@ -1072,6 +1110,7 @@ struct Feature {
   bool operator<(const Feature& other) const { return buffer_order < other.buffer_order; }
 };
 
+/*! \brief The main feature extractor */
 class PerStoreFeatureCollector : private StmtVisitor {
  public:
   static std::vector<Feature> Collect(bool is_gpu, int64_t cache_line_bytes,
@@ -1107,8 +1146,8 @@ class PerStoreFeatureCollector : private StmtVisitor {
 
  private:
   void VisitStmt_(const ForNode* loop) final {
-    int64_t auto_unroll = utils::GetPragmaAutoUnroll(loop);
-    ForVec* for_vec = loop_nest_.Push(loop, auto_unroll);
+    int64_t auto_unroll;
+    ForVec* for_vec = loop_nest_.Push(loop, &auto_unroll);
     StmtVisitor::VisitStmt_(loop);
     loop_nest_.Pop(loop, for_vec, auto_unroll);
   }
@@ -1124,12 +1163,12 @@ class PerStoreFeatureCollector : private StmtVisitor {
       feature.buffer_order = buffer_features_.size();
     }
     feature.group1 = std::make_unique<group1::Feature>(store, loop_nest_, is_gpu_);
-    feature.group2 = std::make_unique<group2::Feature>(store, loop_nest_, cache_line_bytes_,
-                                                       &for_touched_bytes_,  //
-                                                       &buffer_touched_under_loop_, &analyzer_);
-    feature.group3 = std::make_unique<group3::Feature>(arith_intensity_curve_num_samples_,  //
-                                                       loop_nest_, for_touched_bytes_,
-                                                       feature.group1->arith_ops);
+    feature.group2 =
+        std::make_unique<group2::Feature>(store, loop_nest_, cache_line_bytes_, &for_touched_bytes_,
+                                          &buffer_touched_under_loop_, &analyzer_);
+    feature.group3 =
+        std::make_unique<group3::Feature>(arith_intensity_curve_num_samples_, loop_nest_,
+                                          for_touched_bytes_, feature.group1->arith_ops);
     feature.group5 = std::make_unique<group5::Feature>(loop_nest_);
   }
 
