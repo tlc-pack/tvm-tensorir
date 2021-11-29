@@ -307,22 +307,34 @@ inline Optional<Var> AnalyzeVarWithShift(const PrimExpr& expr, Optional<IntImm>*
  * \param ann_key The annotation key to be looked up
  * \return NullOpt if not found; otherwise the annotation value
  */
-template <class TObjectRef>
-inline Optional<TObjectRef> GetAnn(const StmtSRef& sref, const String& ann_key) {
-  const Map<String, ObjectRef>* annotations = nullptr;
-  if (const auto* loop = sref->StmtAs<ForNode>()) {
-    annotations = &loop->annotations;
-  } else if (const auto* block = sref->StmtAs<BlockNode>()) {
-    annotations = &block->annotations;
-  } else {
-    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
-  }
+template <class TObjectRef, class TStmtNode>
+inline Optional<TObjectRef> GetAnn(const TStmtNode* stmt, const String& ann_key) {
+  const Map<String, ObjectRef>* annotations = &stmt->annotations;
   for (const auto& ann : *annotations) {
     if (ann.first == ann_key) {
       return Downcast<TObjectRef>(ann.second);
     }
   }
   return NullOpt;
+}
+
+/*!
+ * \brief Get the annotation on a Block/For
+ * \tparam TObjectRef The type of the annotation value
+ * \param sref The sref to the block or the for loop
+ * \param ann_key The annotation key to be looked up
+ * \return NullOpt if not found; otherwise the annotation value
+ */
+template <class TObjectRef>
+inline Optional<TObjectRef> GetAnn(const StmtSRef& sref, const String& ann_key) {
+  if (const auto* loop = sref->StmtAs<ForNode>()) {
+    return GetAnn<TObjectRef, ForNode>(loop, ann_key);
+  } else if (const auto* block = sref->StmtAs<BlockNode>()) {
+    return GetAnn<TObjectRef, BlockNode>(block, ann_key);
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+    throw;
+  }
 }
 
 inline bool HasAnn(const tir::StmtSRef& sref, const String& ann_key, const String& ann_val) {

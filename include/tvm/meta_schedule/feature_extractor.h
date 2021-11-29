@@ -92,13 +92,25 @@ class PyFeatureExtractorNode : public FeatureExtractorNode {
 class FeatureExtractor : public runtime::ObjectRef {
  public:
   /*!
+   * \brief Create a feature extractor that extracts features from each BufferStore
+   * \param buffers_per_store The number of buffers in each BufferStore; Pad or truncate if
+   * necessary.
+   * \param arith_intensity_curve_num_samples The number of samples used in the arithmetic intensity
+   * curve.
+   * \param cache_line_bytes The number of bytes in a cache line.
+   * \return The feature extractor created.
+   */
+  TVM_DLL static FeatureExtractor PerStoreFeature(int buffers_per_store = 5,
+                                                  int arith_intensity_curve_num_samples = 10,
+                                                  int cache_line_bytes = 64);
+  /*!
    * \brief Create a feature extractor with customized methods on the python-side.
    * \param f_extract_from The packed function of `ExtractFrom`.
    * \param f_as_string The packed function of `AsString`.
    * \return The feature extractor created.
    */
   TVM_DLL static FeatureExtractor PyFeatureExtractor(
-      PyFeatureExtractorNode::FExtractFrom f_extract_from,  //
+      PyFeatureExtractorNode::FExtractFrom f_extract_from,
       PyFeatureExtractorNode::FAsString f_as_string);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(FeatureExtractor, ObjectRef, FeatureExtractorNode);
 };

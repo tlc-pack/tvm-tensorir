@@ -28,3 +28,4 @@ from . import integration
 from . import feature_extractor
 from . import cost_model
 from .tune_context import TuneContext
+from .search_strategy import MeasureCandidate
