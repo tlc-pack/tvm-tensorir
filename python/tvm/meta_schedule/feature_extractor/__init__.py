@@ -20,3 +20,4 @@ Meta Schedule feature extractors that extracts features from
 measure candidates for use in cost model.
 """
 from .feature_extractor import FeatureExtractor, PyFeatureExtractor
+from .per_store_feature import PerStoreFeature
