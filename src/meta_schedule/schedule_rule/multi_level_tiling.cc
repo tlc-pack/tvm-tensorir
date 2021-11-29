@@ -43,6 +43,68 @@ std::vector<int> GetReadBufferNDims(const StmtSRef& block_sref) {
   }
   return results;
 }
+
+Optional<LoopRV> TilingwithTensorIntrin(const tir::Schedule& sch, const tir::BlockRV& block_rv,
+                                        const String& intrin_name) {
+  Optional<tir::TensorizeInfo> opt_tensorize_info = GetTensorizeLoopMapping(
+      sch->state(), sch->GetSRef(block_rv), tir::TensorIntrin::Get(intrin_name)->description);
+  if (!opt_tensorize_info) return NullOpt;
+  const tir::TensorizeInfoNode* info = opt_tensorize_info.value().get();
+  // Construct a mapping from tir loops back to LoopRVs
+  Map<tir::StmtSRef, LoopRV> loop2rv;
+  {
+    Array<LoopRV> loop_rvs = sch->GetLoops(block_rv);
+    for (const LoopRV& loop_rv : loop_rvs) {
+      loop2rv.Set(sch->GetSRef(loop_rv), loop_rv);
+    }
+  }
+  // Split the loops
+  arith::Analyzer analyzer;
+  std::unordered_set<const tir::StmtSRefNode*> inner_loops;
+  std::vector<LoopRV> reorder_suffix;
+  reorder_suffix.resize(info->loop_map.size());
+  for (const auto& kv : info->loop_map) {
+    // Extract mapping (block_loop => desc_loop)
+    const tir::StmtSRef& block_loop_sref = kv.first;
+    const tir::ForNode* block_loop = block_loop_sref->StmtAs<tir::ForNode>();
+    const tir::ForNode* desc_loop = kv.second.get();
+    ICHECK(block_loop != nullptr && desc_loop != nullptr);
+    // Extract the loop extent
+    PrimExpr block_extent = analyzer.Simplify(block_loop->extent);
+    PrimExpr desc_extent = analyzer.Simplify(desc_loop->extent);
+    const auto* int_block_extent = block_extent.as<IntImmNode>();
+    const auto* int_desc_extent = desc_extent.as<IntImmNode>();
+    ICHECK(int_block_extent != nullptr && int_desc_extent != nullptr);
+    // Check divisibility
+    int64_t total = int_block_extent->value;
+    int64_t inner = int_desc_extent->value;
+    ICHECK_EQ(total % inner, 0);
+    int64_t outer = int_block_extent->value / int_desc_extent->value;
+    // Do the split
+    Array<LoopRV> split = sch->Split(loop2rv.at(block_loop_sref), {Integer(outer), Integer(inner)});
+    ICHECK_EQ(split.size(), 2);
+    inner_loops.insert(sch->GetSRef(split[1]).operator->());
+    // The inner split will be reordered to the loop domain that is tensorized
+    int desc_loop_index = info->desc_loop_indexer.at(GetRef<tir::For>(desc_loop));
+    reorder_suffix[desc_loop_index] = split[1];
+  }
+  // Reorder the loops
+  std::vector<LoopRV> reorder_list;
+  bool meet = false;
+  Array<LoopRV> all_loops = sch->GetLoops(block_rv);
+  for (const LoopRV& loop : all_loops) {
+    if (inner_loops.count(sch->GetSRef(loop).operator->())) {
+      meet = true;
+    } else if (meet) {
+      reorder_list.push_back(loop);
+    }
+  }
+  reorder_list.insert(reorder_list.end(), reorder_suffix.begin(), reorder_suffix.end());
+  sch->Reorder(reorder_list);
+  ICHECK(!reorder_suffix.empty());
+  return reorder_suffix[0];
+}
+
 }  // namespace tir
 }  // namespace tvm
 
@@ -118,15 +180,25 @@ struct State {
   bool write_cache_is_added;
   /*! \brief The loop tiles */
   Array<Array<LoopRV>> tiles;
+  /*! \brief Whether Tensor Core is used for the inner computation */
+  bool tensor_core_is_used;
+  /*! \brief The Tensor Core cache read block A for Tensor Core computation */
+  Optional<BlockRV> tensor_core_load_A;
+  /*! \brief The Tensor Core cache read block B for Tensor Core computation */
+  Optional<BlockRV> tensor_core_load_B;
+  /*! \brief The Tensor Core cache write block for Tensor Core computation */
+  Optional<BlockRV> tensor_core_store;
 
   /*! \brief Default constructor */
   explicit State(Schedule sch, BlockRV block_rv, Optional<BlockRV> write_cache = NullOpt,
-                 bool write_cache_is_added = false, Array<Array<LoopRV>> tiles = {})
+                 bool write_cache_is_added = false, Array<Array<LoopRV>> tiles = {},
+                 bool tensor_core_is_used = false)
       : sch(sch),
         block_rv(block_rv),
         write_cache(write_cache),
         write_cache_is_added(write_cache_is_added),
-        tiles(tiles) {}
+        tiles(tiles),
+        tensor_core_is_used(tensor_core_is_used) {}
 };
 
 /*!
@@ -152,6 +224,8 @@ std::vector<State> SubRule(std::vector<State> states, FLambda sub_rule) {
  */
 class MultiLevelTilingNode : public ScheduleRuleNode {
  public:
+  // SubRule 0. detect compute intrin
+  inline std::vector<State> DetectTensorCore(State state) const;
   // SubRule 1. add write cache
   inline std::vector<State> AddWriteReuse(State state) const;
   // SubRule 2. tile the loop nest
@@ -160,6 +234,58 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
   inline std::vector<State> AddReadReuse(State state) const;
   // SubRule 4. fuse write cache
   inline std::vector<State> FuseWriteReuse(State state) const;
+
+  State TensorCoreLoad(State state) const {
+    // Add the cache read stage for Tensor Core
+    state.tensor_core_load_A = state.sch->CacheRead(state.block_rv, 1, "wmma.matrix_a");
+    state.tensor_core_load_B = state.sch->CacheRead(state.block_rv, 2, "wmma.matrix_b");
+    const Array<LoopRV>& r_tiles = state.tiles[r_indices_.back()];
+    // Insert cache_read block to the proper place
+    ICHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
+    state.sch->ComputeAt(state.tensor_core_load_A.value(), r_tiles.back(), true);
+    state.sch->ComputeAt(state.tensor_core_load_B.value(), r_tiles.back(), true);
+    // Annotate the block
+    state.sch->Annotate(state.tensor_core_load_A.value(), tir::attr::meta_schedule_auto_tensorize,
+                        String("wmma_load_a"));
+    state.sch->Annotate(state.tensor_core_load_B.value(), tir::attr::meta_schedule_auto_tensorize,
+                        String("wmma_load_b"));
+    return state;
+  }
+
+  State TensorCoreStore(State state) const {
+    // Add the cache read stage for Tensor Core
+    state.tensor_core_store = state.sch->CacheWrite(state.block_rv, 0, "wmma.accumulator");
+    // Annotate the block
+    state.sch->Annotate(state.tensor_core_store.value(), tir::attr::meta_schedule_auto_tensorize,
+                        String("wmma_store"));
+    return state;
+  }
+
+  State TensorCoreStoreFusion(State state, int level) const {
+    const LoopRV& loop = state.tiles[level].back();
+    state.sch->ReverseComputeAt(state.tensor_core_store.value(), loop, true);
+    return state;
+  }
+
+  BlockRV GetRootBlockRV(const Schedule& sch, BlockRV block_rv) const {
+    const tir::StmtSRefNode* block = sch->GetSRef(block_rv).get();
+    for (; block->parent != nullptr; block = block->parent)
+      ;
+    for (const auto& kv : sch->mod()->functions) {
+      const GlobalVar& gv = kv.first;
+      const BaseFunc& base_func = kv.second;
+      if (const auto* func = base_func.as<tir::PrimFuncNode>()) {
+        const tir::BlockNode* root = func->body.as<tir::BlockRealizeNode>()->block.get();
+        if (root == block->StmtAs<tir::BlockNode>()) {
+          BlockRV root_rv = sch->GetBlock(root->name_hint, gv->name_hint);
+          return root_rv;
+        }
+      }
+    }
+    ICHECK(false) << "Ill schedule data structure";
+    throw;
+  }
+
   // Do nothing; Inherited from ScheduleRuleNode
   void InitializeWithTuneContext(const TuneContext& context) final {}
   // Entry of the mega rule; Inherited from ScheduleRuleNode
@@ -168,6 +294,7 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
       return {sch};
     }
     std::vector<State> states{State(sch, block_rv)};
+    states = SubRule(std::move(states), [&](State state) { return DetectTensorCore(state); });
     states = SubRule(std::move(states), [&](State state) { return AddWriteReuse(state); });
     states = SubRule(std::move(states), [&](State state) { return TileLoopNest(state); });
     states = SubRule(std::move(states), [&](State state) { return AddReadReuse(state); });
@@ -188,6 +315,8 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
   String structure;
   /*! \brief For each level of tiles, which thread axis it is bound to */
   Array<String> tile_binds;
+  /*! \brief Whether to use Tensor Core */
+  bool use_tensor_core;
   /*! \brief The maximum size of the innermost factor */
   int max_innermost_factor;
   /*! \brief The length of vector lane in vectorized cooperative fetching */
@@ -204,6 +333,7 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("structure", &structure);
     v->Visit("tile_binds", &tile_binds);
+    v->Visit("use_tensor_core", &use_tensor_core);
     v->Visit("max_innermost_factor", &max_innermost_factor);
     v->Visit("vector_load_max_len", &vector_load_max_len);
     // `reuse_read_` is not visited
@@ -216,9 +346,31 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(MultiLevelTilingNode, ScheduleRuleNode);
 };
 
+inline std::vector<State> MultiLevelTilingNode::DetectTensorCore(State state) const {
+  std::vector<State> result;
+  // If Tensor Core is not allowed, we skip this subrule
+  if (!use_tensor_core) return {state};
+  // Do tiling to match Tensor Core wmma sync intrin
+  BlockRV block_rv = state.block_rv;
+  Optional<LoopRV> tiled_loop_rv = TilingwithTensorIntrin(state.sch, block_rv, "wmma_sync");
+  if (!tiled_loop_rv.defined()) return {state};
+  // Do blockize
+  state.block_rv = state.sch->Blockize(tiled_loop_rv.value());
+  // Annotate the block
+  state.sch->Annotate(block_rv, tir::attr::meta_schedule_auto_tensorize, String("wmma_sync"));
+  state.sch->Annotate(state.block_rv, tir::attr::meta_schedule_auto_tensorize, String("wmma_fill"));
+  state.tensor_core_is_used = true;
+  // Annotate the root block to notify the following postprocessors
+  state.sch->Annotate(GetRootBlockRV(state.sch, state.block_rv),
+                      tir::attr::meta_schedule_tensor_core_enabled, String("1"));
+  result.push_back(state);
+  return result;
+}
+
 inline std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
   const ReuseConfig& config = this->reuse_write_;
   if (config.req == ReuseType::kNoReuse) {
+    if (state.tensor_core_is_used) state = TensorCoreStore(state);
     return {std::move(state)};
   }
   // Case 1. If the write cache is already there, we don't need to add another.
@@ -227,6 +379,7 @@ inline std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const
     if (consumer_rvs.size() == 1 && IsWriteCache(state.sch->GetSRef(consumer_rvs[0]))) {
       state.write_cache = consumer_rvs[0];
       state.write_cache_is_added = false;
+      if (state.tensor_core_is_used) state = TensorCoreStore(state);
       return {std::move(state)};
     }
   }
@@ -238,6 +391,7 @@ inline std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const
                     /*write_cache=*/NullOpt,
                     /*write_cache_is_added=*/false);
     new_state.sch->Seed(state.sch->ForkSeed());
+    if (new_state.tensor_core_is_used) new_state = TensorCoreStore(new_state);
     results.emplace_back(std::move(new_state));
   }
   // Case 3. Add one write cache
@@ -249,8 +403,8 @@ inline std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const
                   tir::attr::meta_schedule_cache_type,                  //
                   Integer(tir::attr::meta_schedule_cache_type_write));
   }
-
   state.write_cache_is_added = true;
+  if (state.tensor_core_is_used) state = TensorCoreStore(state);
   results.emplace_back(std::move(state));
   return results;
 }
@@ -303,6 +457,7 @@ inline std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const 
 inline std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const {
   const ReuseConfig& config = this->reuse_read_;
   if (config.req == ReuseType::kNoReuse) {
+    if (state.tensor_core_is_used) state = TensorCoreLoad(state);
     return {std::move(state)};
   }
   ICHECK(config.req != ReuseType::kMayReuse);
@@ -344,6 +499,7 @@ inline std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const 
     }
     State new_state = state;
     new_state.sch = sch;
+    if (new_state.tensor_core_is_used) new_state = TensorCoreLoad(new_state);
     results.push_back(std::move(new_state));
   }
   return results;
@@ -352,10 +508,12 @@ inline std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const 
 inline std::vector<State> MultiLevelTilingNode::FuseWriteReuse(State state) const {
   const ReuseConfig& config = this->reuse_write_;
   if (config.req == ReuseType::kNoReuse) {
+    if (state.tensor_core_is_used) state = TensorCoreStoreFusion(state, r_indices_.front() - 1);
     return {std::move(state)};
   }
   // If the only-consumer does not exist, or is not elementwise, then do not do fusion
   if (!state.write_cache.defined()) {
+    if (state.tensor_core_is_used) state = TensorCoreStoreFusion(state, r_indices_.front() - 1);
     return {std::move(state)};
   }
   std::vector<State> results;
@@ -369,12 +527,12 @@ inline std::vector<State> MultiLevelTilingNode::FuseWriteReuse(State state) cons
   BlockRV consumer = state.write_cache.value();
   // Enumerate the level of tile to be fused at
   for (int level : config.levels) {
-    Schedule sch = state.sch->Copy();
-    sch->Seed(state.sch->ForkSeed());
-    const LoopRV& loop_rv = state.tiles[level - 1].back();
-    sch->ReverseComputeAt(consumer, loop_rv, true);
     State new_state = state;
-    new_state.sch = sch;
+    new_state.sch = state.sch->Copy();
+    new_state.sch->Seed(state.sch->ForkSeed());
+    const LoopRV& loop_rv = new_state.tiles[level - 1].back();
+    if (new_state.tensor_core_is_used) new_state = TensorCoreStoreFusion(new_state, level - 1);
+    new_state.sch->ReverseComputeAt(consumer, loop_rv, true);
     results.push_back(std::move(new_state));
   }
   return results;
@@ -383,6 +541,7 @@ inline std::vector<State> MultiLevelTilingNode::FuseWriteReuse(State state) cons
 // Constructor
 
 ScheduleRule ScheduleRule::MultiLevelTiling(String structure, Optional<Array<String>> tile_binds,
+                                            bool use_tensor_core,
                                             Optional<Integer> max_innermost_factor,
                                             Optional<Integer> vector_load_max_len,
                                             Optional<Map<String, ObjectRef>> reuse_read,
@@ -390,6 +549,15 @@ ScheduleRule ScheduleRule::MultiLevelTiling(String structure, Optional<Array<Str
   ObjectPtr<MultiLevelTilingNode> n = make_object<MultiLevelTilingNode>();
   n->structure = structure;
   n->tile_binds = tile_binds.value_or({});
+  n->use_tensor_core = use_tensor_core;
+  if (use_tensor_core) {
+    // Check whether corresponding wmma intrinsics are registered
+    tir::TensorIntrin::Get("wmma_sync");
+    tir::TensorIntrin::Get("wmma_load_a");
+    tir::TensorIntrin::Get("wmma_load_b");
+    tir::TensorIntrin::Get("wmma_store");
+    tir::TensorIntrin::Get("wmma_fill");
+  }
   n->max_innermost_factor = max_innermost_factor.value_or(Integer(-1))->value;
   n->vector_load_max_len = vector_load_max_len.value_or(Integer(-1))->value;
   n->reuse_read_ = reuse_read.defined() ? ReuseConfig(reuse_read.value()) : ReuseConfig();

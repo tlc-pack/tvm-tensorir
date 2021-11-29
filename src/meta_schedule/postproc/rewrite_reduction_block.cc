@@ -132,7 +132,16 @@ bool RewriteReductionBlockNode::Apply(const tir::Schedule& sch) {
       }
       tir::BlockRV block_rv = GetRVFromSRef(sch, block_sref, global_var_name);
       Array<tir::LoopRV> loop_rvs = sch->GetLoops(block_rv);
-      sch->DecomposeReduction(block_rv, loop_rvs[decompose_point]);
+      tir::BlockRV init_block_rv = sch->DecomposeReduction(block_rv, loop_rvs[decompose_point]);
+      // If the block is the isolation block of tensor core,
+      // we mark the init block for later postprocessor to handle the tensorization step
+      if (HasAnn(block_sref, tir::attr::meta_schedule_auto_tensorize, "wmma_fill")) {
+        sch->Unannotate(block_rv, tir::attr::meta_schedule_auto_tensorize);
+        Array<tir::BlockRV> init_inner_block_rv = sch->GetChildBlocks(init_block_rv);
+        ICHECK_EQ(init_inner_block_rv.size(), 1);
+        sch->Annotate(init_inner_block_rv[0], tir::attr::meta_schedule_auto_tensorize,
+                      String("wmma_fill"));
+      }
       ++rewritten;
     }
     if (rewritten == 0) {

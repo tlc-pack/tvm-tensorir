@@ -148,6 +148,12 @@ class Postproc : public runtime::ObjectRef {
    */
   TVM_DLL static Postproc RewriteUnboundBlock();
   /*!
+   * \brief Create a postprocessor that tensorize Tensor Core related components
+   * \return The postprocessor created.
+   */
+  TVM_DLL static Postproc RewriteTensorCore();
+
+  /*!
    * \brief Creates a postprocessor that verifies if the GPU code is correct
    * \return The postprocessor created
    */
