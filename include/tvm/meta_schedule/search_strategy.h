@@ -20,6 +20,8 @@
 #define TVM_META_SCHEDULE_SEARCH_STRATEGY_H_
 
 #include <tvm/meta_schedule/arg_info.h>
+#include <tvm/meta_schedule/database.h>
+#include <tvm/meta_schedule/mutator.h>
 #include <tvm/meta_schedule/runner.h>
 #include <tvm/meta_schedule/space_generator.h>
 #include <tvm/tir/schedule/schedule.h>
@@ -29,6 +31,7 @@ namespace meta_schedule {
 
 // Forward declaration
 class TuneContext;
+class CostModel;
 
 /*! \brief The schedule (with input shapes) to be measured. */
 class MeasureCandidateNode : public runtime::Object {
@@ -254,6 +257,17 @@ class SearchStrategy : public runtime::ObjectRef {
    * \param num_trials_total The total number of trials for func replaying.
    */
   TVM_DLL static SearchStrategy ReplayFunc(int num_trials_per_iter, int num_trials_total);
+
+  TVM_DLL static SearchStrategy EvolutionarySearch(int num_trials_per_iter,               //
+                                                   int num_trials_total,                  //
+                                                   int population,                        //
+                                                   double init_measured_ratio,            //
+                                                   int genetic_algo_iters,                //
+                                                   double p_mutate,                       //
+                                                   double eps_greedy,                     //
+                                                   Map<Mutator, FloatImm> mutator_probs,  //
+                                                   Database database,                     //
+                                                   CostModel cost_model);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
 };

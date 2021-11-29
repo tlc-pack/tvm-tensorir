@@ -30,12 +30,22 @@ namespace tir {
 /******** Schedule: Sampling ********/
 /*!
  * \brief Sample a random integer from a given range.
+ * \param rand_state The pointer to schedule's random state
  * \param min_inclusive The minimum value of the range, inclusive.
  * \param max_exclusive The maximum value of the range, exclusive.
  * \return The random integer sampled in the given range.
  */
 TVM_DLL int32_t SampleInt(support::LinearCongruentialEngine::TRandState* rand_state,
                           int32_t min_inclusive, int32_t max_exclusive);
+/*!
+ * \brief Sample k random integers from given range without replacement, i.e, no duplication.
+ * \param rand_state The pointer to schedule's random state
+ * \param n The range is defined as 0 to n-1.
+ * \param k The total number of samples.
+ * \return The randomly selected samples from the n candidates.
+ */
+std::vector<int32_t> SampleWithoutReplacement(
+    support::LinearCongruentialEngine::TRandState* rand_state, int32_t n, int32_t k);
 /*!
  * \brief Sample once category from candidates according to the probability weights.
  * \param rand_state The pointer to schedule's random state

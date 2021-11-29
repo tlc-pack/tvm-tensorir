@@ -16,17 +16,28 @@
 # under the License.
 """ Test Meta Schedule SearchStrategy """
 # pylint: disable=missing-function-docstring
-from typing import List
+from typing import List, Tuple, Union, Optional
 
 import sys
-
+import numpy as np
 import pytest
 
 import tvm
+
+from tvm.ir import IRModule
 from tvm.meta_schedule import TuneContext
+from tvm.meta_schedule.mutator.mutator import PyMutator
 from tvm.meta_schedule.runner import RunnerResult
 from tvm.meta_schedule.space_generator import ScheduleFn
-from tvm.meta_schedule.search_strategy import SearchStrategy, ReplayTrace, ReplayFunc
+from tvm.meta_schedule.search_strategy import (
+    SearchStrategy,
+    ReplayTrace,
+    ReplayFunc,
+    EvolutionarySearch,
+    MeasureCandidate,
+)
+from tvm.meta_schedule.database import PyDatabase, Workload, TuningRecord
+from tvm.meta_schedule.cost_model import PyCostModel
 
 from tvm.script import tir as T
 from tvm.tir.schedule import Schedule, Trace
@@ -34,7 +45,7 @@ from tvm.tir.schedule import Schedule, Trace
 
 MATMUL_M = 32
 
-# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument, unbalanced-tuple-unpacking
+# pylint: disable=missing-class-docstring,invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument, unbalanced-tuple-unpacking
 # fmt: off
 
 @tvm.script.ir_module
@@ -53,7 +64,7 @@ class Matmul:
                 C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 # fmt: on
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
+# pylint: enable=missing-class-docstring,invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
 
 
 def _is_trace_equal(sch_1: Schedule, sch_2: Schedule, remove_decisions=True) -> bool:
@@ -77,7 +88,7 @@ def _schedule_matmul(sch: Schedule):
 
 
 @pytest.mark.parametrize("TestClass", [ReplayFunc, ReplayTrace])
-def test_meta_schedule_replay_func(TestClass: SearchStrategy):
+def test_meta_schedule_replay_func(TestClass: SearchStrategy):  # pylint: disable = invalid-name
     num_trials_per_iter = 7
     num_trials_total = 20
 
@@ -98,13 +109,151 @@ def test_meta_schedule_replay_func(TestClass: SearchStrategy):
             _is_trace_equal(
                 candidate.sch,
                 correct_sch,
-                remove_decisions=(type(strategy) == ReplayTrace),
+                remove_decisions=(isinstance(strategy, ReplayTrace)),
             )
             runner_results.append(RunnerResult(run_secs=[0.11, 0.41, 0.54], error_msg=None))
         strategy.notify_runner_results(runner_results)
         candidates = strategy.generate_measure_candidates()
     strategy.post_tuning()
     assert num_trials_each_iter == [7, 7, 6]
+
+
+def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
+    class DummyMutator(PyMutator):
+        """Dummy Mutator for testing"""
+
+        def initialize_with_tune_context(self, tune_context: "TuneContext") -> None:
+            pass
+
+        def apply(self, trace: Trace) -> Optional[Trace]:
+            return Trace(trace.insts, {})
+
+    class DummyDatabase(PyDatabase):
+        """Dummy Database for testing"""
+
+        def __init__(self):
+            super().__init__()
+            self.records = []
+            self.workload_reg = []
+
+        def commit_tuning_record(self, record: TuningRecord) -> None:
+            self.records.append(record)
+
+        def commit_workload(self, mod: IRModule) -> Workload:
+            for workload in self.workload_reg:
+                if tvm.ir.structural_equal(workload.mod, mod):
+                    return workload
+            workload = Workload(mod)
+            self.workload_reg.append(workload)
+            return workload
+
+        def get_top_k(self, workload: Workload, top_k: int) -> List[TuningRecord]:
+            return list(
+                filter(
+                    lambda x: x.workload == workload,
+                    sorted(self.records, key=lambda x: sum(x.run_secs) / len(x.run_secs)),
+                )
+            )[: int(top_k)]
+
+        def __len__(self) -> int:
+            return len(self.records)
+
+        def print_results(self) -> None:
+            print("\n".join([str(r) for r in self.records]))
+
+    class RandomModel(PyCostModel):
+        """Random cost model for testing"""
+
+        random_state: Union[Tuple[str, np.ndarray, int, int, float], dict]
+        path: Optional[str]
+
+        def __init__(
+            self,
+            *,
+            seed: Optional[int] = None,
+            path: Optional[str] = None,
+            max_range: Optional[int] = 100,
+        ):
+            super().__init__()
+            if path is not None:
+                self.load(path)
+            else:
+                np.random.seed(seed)
+                self.random_state = np.random.get_state()
+            self.max_range = max_range
+
+        def load(self, file_location: str) -> None:
+            self.random_state = tuple(np.load(file_location, allow_pickle=True))
+
+        def save(self, file_location: str) -> None:
+            np.save(file_location, np.array(self.random_state, dtype=object), allow_pickle=True)
+
+        def update(
+            self,
+            tune_context: TuneContext,
+            candidates: List[MeasureCandidate],
+            results: List[RunnerResult],
+        ) -> None:
+            pass
+
+        def predict(
+            self, tune_context: TuneContext, candidates: List[MeasureCandidate]
+        ) -> np.ndarray:
+            np.random.set_state(self.random_state)
+            result = np.random.rand(len(candidates)) * self.max_range
+            self.random_state = np.random.get_state()
+            return result
+
+    num_trials_per_iter = 10
+    num_trials_total = 100
+
+    mutator = DummyMutator()
+    database = DummyDatabase()
+    cost_model = RandomModel()
+    strategy = EvolutionarySearch(
+        num_trials_per_iter=num_trials_per_iter,
+        num_trials_total=num_trials_total,
+        population=5,
+        init_measured_ratio=0.1,
+        genetic_algo_iters=3,
+        p_mutate=0.5,
+        eps_greedy=0.9,
+        mutator_probs={mutator: 1.0},
+        database=database,
+        cost_model=cost_model,
+    )
+    tune_context = TuneContext(
+        mod=Matmul,
+        space_generator=ScheduleFn(sch_fn=_schedule_matmul),
+        mutators=[mutator],
+        target=tvm.target.Target("llvm"),
+    )
+    tune_context.space_generator.initialize_with_tune_context(tune_context)
+    spaces = tune_context.space_generator.generate_design_space(tune_context.mod)
+
+    strategy.initialize_with_tune_context(tune_context)
+    strategy.pre_tuning(spaces)
+    (correct_sch,) = ScheduleFn(sch_fn=_schedule_matmul).generate_design_space(Matmul)
+    num_trials_each_iter: List[int] = []
+    candidates = strategy.generate_measure_candidates()
+    while candidates is not None:
+        num_trials_each_iter.append(len(candidates))
+        runner_results: List[RunnerResult] = []
+        for candidate in candidates:
+            _is_trace_equal(
+                candidate.sch,
+                correct_sch,
+                remove_decisions=(isinstance(strategy, ReplayTrace)),
+            )
+            runner_results.append(RunnerResult(run_secs=[0.11, 0.41, 0.54], error_msg=None))
+        strategy.notify_runner_results(runner_results)
+        candidates = strategy.generate_measure_candidates()
+    strategy.post_tuning()
+    print(num_trials_each_iter)
+    correct_count = 6  # For each iteration except the last one
+    assert num_trials_each_iter == [correct_count] * (num_trials_total // correct_count) + [
+        num_trials_total % correct_count
+    ]
 
 
 if __name__ == "__main__":
