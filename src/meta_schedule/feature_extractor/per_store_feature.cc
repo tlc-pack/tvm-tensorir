@@ -21,6 +21,7 @@
 #include <memory>
 #include <numeric>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "../utils.h"
@@ -208,13 +209,32 @@ runtime::NDArray AsNDArray(const std::vector<std::vector<double>>& src) {
 
 namespace transform {
 
-Pass SimplifyConstMatrix() {
+Pass SimplifyForFeatureExtraction() {
   class Simplifier : private StmtExprMutator {
    public:
     static Stmt Run(Stmt stmt) { return Simplifier()(std::move(stmt)); }
 
    private:
-    PrimExpr VisitExpr_(const SelectNode* node) { return make_const(node->dtype, 1.0); }
+    PrimExpr VisitExpr_(const SelectNode* node) final { return make_const(node->dtype, 1.0); }
+
+    PrimExpr VisitExpr_(const VarNode* var) final {
+      if (unit_vars_.count(GetRef<Var>(var))) {
+        return make_const(var->dtype, 0.0);
+      }
+      return GetRef<Var>(var);
+    }
+
+    Stmt VisitStmt_(const ForNode* loop) final {
+      if (is_zero(loop->min) && is_one(loop->extent) && loop->kind == ForKind::kSerial &&
+          loop->annotations.empty()) {
+        unit_vars_.insert(loop->loop_var);
+        return VisitStmt(loop->body);
+      } else {
+        return StmtExprMutator::VisitStmt_(loop);
+      }
+    }
+
+    std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> unit_vars_;
   };
   auto pass_func = [](PrimFunc f, IRModule m, PassContext ctx) {
     PrimFuncNode* n = f.CopyOnWrite();
@@ -226,7 +246,7 @@ Pass SimplifyConstMatrix() {
 
 Sequential PassListForPerStoreFeature() {
   return Sequential({
-      tir::transform::SimplifyConstMatrix(),
+      tir::transform::SimplifyForFeatureExtraction(),
       tir::transform::LowerCrossThreadReduction(),
       tir::transform::LowerInitBlock(),
       tir::transform::PlanAndUpdateBufferAllocationLocation(),
@@ -234,6 +254,7 @@ Sequential PassListForPerStoreFeature() {
       tir::transform::UnifyThreadBinding(),
       tir::transform::CompactBufferAllocation(),
       tir::transform::LowerMatchBuffer(),
+      tir::transform::Simplify(),
   });
 }
 
@@ -305,6 +326,7 @@ struct LoopNest {
     if (const int64_t* extent = GetLoopIntExtent(loop)) {
       this->prod /= *extent;
     }
+    this->loops.pop_back();
   }
 };
 
@@ -509,7 +531,7 @@ Feature::ArithOps::ArithOps(const BufferStoreNode* store, int64_t prod_loop_exte
 Feature::ForKindFeature::ForKindFeature(const ForVec& loops) {
   if (loops.empty()) {
     this->num = 0;
-    this->prod = 1;
+    this->prod = 0;
     this->len = 0;
     this->pos = ForKindFeature::Pos::kPosNone;
   } else {
@@ -627,7 +649,8 @@ struct Feature {
   }
 
   explicit Feature(const BufferStoreNode* store, const LoopNest& loop_nest,
-                   int64_t cache_line_bytes, IntVec* for_touched_bytes, arith::Analyzer* analyzer);
+                   int64_t cache_line_bytes, IntVec* for_touched_bytes,
+                   ForBufferMap<IntVec>* buffer_touched_under_loop, arith::Analyzer* analyzer);
 
   void Init(const BufferStoreNode* store, int n_loops);
 
@@ -868,13 +891,13 @@ void Feature::SubFeature::SetFeature(const LoopNest& loop_nest, int64_t cache_li
 }
 
 Feature::Feature(const BufferStoreNode* store, const LoopNest& loop_nest, int64_t cache_line_bytes,
-                 IntVec* for_touched_bytes, arith::Analyzer* analyzer) {
+                 IntVec* for_touched_bytes, ForBufferMap<IntVec>* buffer_touched_under_loop,
+                 arith::Analyzer* analyzer) {
   int n_loops = loop_nest.loops.size();
   // Step 0. Initialize data structures
   this->Init(store, n_loops);
   // Step 1. Calculate region-related feature
-  ForBufferMap<IntVec> buffer_touched_under_loop;
-  this->SetRegion(loop_nest, for_touched_bytes, &buffer_touched_under_loop, analyzer);
+  this->SetRegion(loop_nest, for_touched_bytes, buffer_touched_under_loop, analyzer);
   // Step 2. Calculate stride-related feature
   for (auto& feature : sub_features) {
     feature.SetStride(loop_nest);
@@ -889,7 +912,7 @@ Feature::Feature(const BufferStoreNode* store, const LoopNest& loop_nest, int64_
     }
   }
   for (auto& feature : sub_features) {
-    feature.SetReuse(loop_nest, top_loop_touch_bytes, buffer_touched_under_loop);
+    feature.SetReuse(loop_nest, top_loop_touch_bytes, *buffer_touched_under_loop);
   }
   // Step 4. Calculate rest of the features
   for (auto& feature : sub_features) {
@@ -1091,7 +1114,9 @@ class PerStoreFeatureCollector : private StmtVisitor {
   }
 
   void VisitStmt_(const BufferStoreNode* store) final {
-    LOG(INFO) << "Visit BufferStore:\n" << GetRef<BufferStore>(store);
+    if (store->value->IsInstance<IntImmNode>() || store->value->IsInstance<FloatImmNode>()) {
+      return;
+    }
     const BufferNode* buffer = store->buffer.get();
     Feature& feature = buffer_features_[buffer];
     if (feature.buffer == nullptr) {
@@ -1100,7 +1125,8 @@ class PerStoreFeatureCollector : private StmtVisitor {
     }
     feature.group1 = std::make_unique<group1::Feature>(store, loop_nest_, is_gpu_);
     feature.group2 = std::make_unique<group2::Feature>(store, loop_nest_, cache_line_bytes_,
-                                                       &for_touched_bytes_, &analyzer_);
+                                                       &for_touched_bytes_,  //
+                                                       &buffer_touched_under_loop_, &analyzer_);
     feature.group3 = std::make_unique<group3::Feature>(arith_intensity_curve_num_samples_,  //
                                                        loop_nest_, for_touched_bytes_,
                                                        feature.group1->arith_ops);
@@ -1131,6 +1157,7 @@ class PerStoreFeatureCollector : private StmtVisitor {
   arith::Analyzer analyzer_;
   LoopNest loop_nest_ = {};
   IntVec for_touched_bytes_ = {};
+  ForBufferMap<IntVec> buffer_touched_under_loop_ = {};
   std::unordered_map<const BufferNode*, Feature> buffer_features_ = {};
 };
 
@@ -1157,7 +1184,6 @@ class PerStoreFeatureNode : public FeatureExtractorNode {
   void ExtractSingle(IRModule mod, bool is_gpu, std::vector<std::vector<double>>* results) {
     static transform::Sequential passes = tir::transform::PassListForPerStoreFeature();
     mod = passes(std::move(mod));
-    LOG(INFO) << "mod =\n" << tir::AsTVMScript(mod, "T");
     std::vector<tir::Feature> features = tir::PerStoreFeatureCollector::Collect(
         is_gpu, this->cache_line_bytes, this->arith_intensity_curve_num_samples, mod);
     int n_features = features.size();
@@ -1172,18 +1198,7 @@ class PerStoreFeatureNode : public FeatureExtractorNode {
       feature.group4->Export(&result, feature.group5->outer_prod);
       feature.group5->Export(&result);
       ICHECK_EQ(static_cast<int>(result.size()), feature_vector_length);
-      DebugFeature(feature);
     }
-  }
-
-  void DebugFeature(const tir::Feature& feature) {
-    const tir::group2::Feature& f2 = *feature.group2;
-    std::ostringstream os;
-    os << "Feature(" << feature.buffer->name << "):";
-    for (const tir::group2::Feature::SubFeature& sub_f : f2.sub_features) {
-      os << " " << sub_f.buffer->name;
-    }
-    LOG(INFO) << os.str();
   }
 
   Array<runtime::NDArray> ExtractFrom(const TuneContext& tune_context,
