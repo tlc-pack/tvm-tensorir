@@ -314,13 +314,24 @@ class XGBModel(PyCostModel):
         Since XGBoost model trains from scratch, each time we can only load the model without the
         previous cached features / results so any call of update won't use previous training data.
         """
+        # pylint: disable=import-outside-toplevel
+        import tempfile
+        from tvm.contrib.tar import untar
+
+        # pylint: enable=import-outside-toplevel
+
         if path is None:
             path = self.path
 
-        import _pickle as cpickle  # pylint: disable=import-outside-toplevel
-
-        with open(path, "rb") as handle:
-            self.booster, self.cached_features, self.cached_mean_costs = cpickle.load(handle)
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            untar(path, tmpdirname)
+            self.booster.load_model(tmpdirname + "/model.bin")
+            self.cached_features = list(
+                np.load(tmpdirname + "/cached_features.npy", allow_pickle=True)
+            )
+            self.cached_mean_costs = np.load(
+                tmpdirname + "/cached_mean_costs.npy", allow_pickle=True
+            )
 
     def save(self, path: str = None) -> None:
         """Save the cost model to given file location.
@@ -335,17 +346,34 @@ class XGBModel(PyCostModel):
         Since XGBoost model trains from scratch, each time we can only save the model without the
         previous cached features / results so any call of update won't use previous training data.
         """
+
+        # pylint: disable=import-outside-toplevel
+        import xgboost as xgb
+        import tempfile
+        from tvm.contrib.tar import tar
+
+        # pylint: enable=import-outside-toplevel
+
         if path is None:
             path = self.path
-
-        import xgboost as xgb  # pylint: disable=import-outside-toplevel
-        import _pickle as cpickle  # pylint: disable=import-outside-toplevel
 
         if self.booster is None:
             # save all the paramaters
             self.booster = xgb.Booster(self._xgb_params)
-        with open(path, "wb") as handle:
-            cpickle.dump((self.booster, self.cached_features, self.cached_mean_costs), handle)
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            self.booster.save_model(tmpdirname + "/model.bin")
+            np.save(
+                tmpdirname + "/cached_features.npy", np.array(self.cached_features, dtype=object)
+            )
+            np.save(tmpdirname + "/cached_mean_costs.npy", self.cached_mean_costs)
+            tar(
+                path,
+                [
+                    tmpdirname + "/model.bin",
+                    tmpdirname + "/cached_features.npy",
+                    tmpdirname + "/cached_mean_costs.npy",
+                ],
+            )
 
     def update(
         self,
