@@ -18,3 +18,6 @@
 The tvm.meta_schedule.measure_callback package.
 """
 from .measure_callback import MeasureCallback, PyMeasureCallback
+from .add_to_database import AddToDatabase
+from .echo_statistics import EchoStatistics
+from .remove_build_artifact import RemoveBuildArtifact

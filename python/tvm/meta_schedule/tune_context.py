@@ -83,7 +83,7 @@ class TuneContext(Object):
     sch_rules: Optional[List["ScheduleRule"]]
     postprocs: Optional[List["Postproc"]]
     mutators: Optional[List["Mutator"]]
-    task_name: Optional[str]
+    task_name: str
     rand_state: int
     num_threads: int
 
@@ -96,7 +96,7 @@ class TuneContext(Object):
         sch_rules: Optional[List["ScheduleRule"]] = None,
         postprocs: Optional[List["Postproc"]] = None,
         mutators: Optional[List["Mutator"]] = None,
-        task_name: Optional[str] = None,
+        task_name: str = "main",
         rand_state: int = -1,
         num_threads: Optional[int] = None,
     ):
@@ -118,7 +118,7 @@ class TuneContext(Object):
             The postprocessors.
         mutators : List[Mutator] = []
             The mutators.
-        task_name : Optional[str] = None
+        task_name : str = "main"
             The name of the tuning task.
         rand_state : int = -1
             The random state.

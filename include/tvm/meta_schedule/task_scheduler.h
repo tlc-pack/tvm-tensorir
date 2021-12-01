@@ -75,9 +75,9 @@ class TaskSchedulerNode : public runtime::Object {
   /*! \brief The database of the scheduler. */
   Database database{nullptr};
   /*! \brief The list of measure callbacks of the scheduler. */
-  Optional<Array<MeasureCallback>> measure_callbacks;
+  Array<MeasureCallback> measure_callbacks;
 
-  /*! \brief The default desctructor. */
+  /*! \brief The default destructor. */
   virtual ~TaskSchedulerNode() = default;
 
   void VisitAttrs(tvm::AttrVisitor* v) {

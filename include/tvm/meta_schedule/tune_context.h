@@ -20,8 +20,10 @@
 #define TVM_META_SCHEDULE_TUNE_CONTEXT_H_
 
 #include <tvm/ir/module.h>
+#include <tvm/meta_schedule/builder.h>
 #include <tvm/meta_schedule/mutator.h>
 #include <tvm/meta_schedule/postproc.h>
+#include <tvm/meta_schedule/runner.h>
 #include <tvm/meta_schedule/schedule_rule.h>
 #include <tvm/meta_schedule/search_strategy.h>
 #include <tvm/meta_schedule/space_generator.h>
@@ -49,7 +51,7 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The mutators. */
   Optional<Array<Mutator>> mutators;
   /*! \brief The name of the tuning task. */
-  Optional<String> task_name;
+  String task_name;
   /*! \brief The random state. */
   support::LinearCongruentialEngine::TRandState rand_state;
   /*! \brief The number of threads to be used. */
@@ -57,10 +59,12 @@ class TuneContextNode : public runtime::Object {
 
   /*! \brief Whether the tuning task has been stopped or finished. */
   bool is_stopped;
-  /*! \brief Packed functions to fetch the runner results asynchronously. */
-  Optional<Array<RunnerFuture>> runner_futures;
   /*! \brief The measure candidates. */
   Optional<Array<MeasureCandidate>> measure_candidates;
+  /*! \brief The building results. */
+  Optional<Array<BuilderResult>> builder_results;
+  /*! \brief Packed functions to fetch the runner results asynchronously. */
+  Optional<Array<RunnerFuture>> runner_futures;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("mod", &mod);
@@ -74,6 +78,7 @@ class TuneContextNode : public runtime::Object {
     v->Visit("rand_state", &rand_state);
     v->Visit("num_threads", &num_threads);
     v->Visit("is_stopped", &is_stopped);
+    v->Visit("builder_results", &builder_results);
     v->Visit("runner_futures", &runner_futures);
     v->Visit("measure_candidates", &measure_candidates);
   }

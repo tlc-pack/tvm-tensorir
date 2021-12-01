@@ -42,7 +42,11 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   n->sch_rules = sch_rules;
   n->postprocs = postprocs;
   n->mutators = mutators;
-  n->task_name = task_name;
+  if (task_name.defined()) {
+    n->task_name = task_name.value();
+  } else {
+    n->task_name = "main";
+  }
   if (rand_state == -1) {
     rand_state = std::random_device()();
   }

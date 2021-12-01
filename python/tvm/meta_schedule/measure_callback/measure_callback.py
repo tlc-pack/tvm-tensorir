@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, List
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from ..tune_context import TuneContext
 from ..search_strategy import MeasureCandidate
 from ..builder import BuilderResult
 from ..runner import RunnerResult
@@ -40,33 +39,33 @@ class MeasureCallback(Object):
     def apply(
         self,
         task_scheduler: "TaskScheduler",
-        tasks: List["TuneContext"],
+        task_id: int,
         measure_candidates: List[MeasureCandidate],
-        builds: List[BuilderResult],
-        results: List[RunnerResult],
-    ) -> bool:
+        builder_results: List[BuilderResult],
+        runner_results: List[RunnerResult],
+    ) -> None:
         """Apply a measure callback to the given schedule.
 
         Parameters
         ----------
         task_scheduler: TaskScheduler
             The task scheduler.
-        tasks: List[TuneContext]
-            The list of tune context to process.
-        measure_candidats: List[MeasureCandidate]
+        task_id: int
+            The task id.
+        measure_candidates: List[MeasureCandidate]
             The measure candidates.
-        builds: List[BuilderResult]
+        builder_results: List[BuilderResult]
             The builder results by building the measure candidates.
-        results: List[RunnerResult]
+        runner_results: List[RunnerResult]
             The runner results by running the built measure candidates.
-
-        Returns
-        -------
-        result : bool
-            Whether the measure callback was successfully applied.
         """
-        return _ffi_api.MeasureCallbackApply(
-            self, task_scheduler, tasks, measure_candidates, builds, results
+        return _ffi_api.MeasureCallbackApply(  # type: ignore # pylint: disable=no-member
+            self,
+            task_scheduler,
+            task_id,
+            measure_candidates,
+            builder_results,
+            runner_results,
         )
 
 
@@ -80,12 +79,18 @@ class PyMeasureCallback(MeasureCallback):
         @check_override(self.__class__, MeasureCallback)
         def f_apply(
             task_scheduler: "TaskScheduler",
-            tasks: List[TuneContext],
+            task_id: int,
             measure_candidates: List[MeasureCandidate],
-            builds: List[BuilderResult],
-            results: List[RunnerResult],
-        ) -> bool:
-            return self.apply(task_scheduler, tasks, measure_candidates, builds, results)
+            builder_results: List[BuilderResult],
+            runner_results: List[RunnerResult],
+        ) -> None:
+            return self.apply(
+                task_scheduler,
+                task_id,
+                measure_candidates,
+                builder_results,
+                runner_results,
+            )
 
         def f_as_string() -> str:
             return str(self)
