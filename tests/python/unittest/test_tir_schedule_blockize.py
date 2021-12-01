@@ -3,6 +3,8 @@ import pytest
 import tvm
 from tvm import tir, te
 from tvm.script import tir as T
+from tvm.tir.schedule.testing import verify_trace_roundtrip
+
 
 @T.prim_func
 def elementwise(a: T.handle, c: T.handle) -> None:
@@ -157,6 +159,7 @@ def test_blockize():
     s.reorder(xo, yo, xi, yi)
     s.blockize(xi)
     tvm.ir.assert_structural_equal(blockize, s.mod["main"])
+    verify_trace_roundtrip(sch=s, mod=func)
 
 
 def test_blockize_schedule():
@@ -173,6 +176,7 @@ def test_blockize_schedule():
     s.reverse_compute_at(C, yo)
     s.blockize(s.get_loops(C)[-2])
     tvm.ir.assert_structural_equal(s.mod["main"], blockize_schedule_1)
+    verify_trace_roundtrip(sch=s, mod=func)
     # test 2
     s = tir.Schedule(func, debug_mask='all')
     B = s.get_block("B")
@@ -185,6 +189,7 @@ def test_blockize_schedule():
     s.compute_at(B, yo)
     s.blockize(s.get_loops(B)[-2])
     tvm.ir.assert_structural_equal(s.mod["main"], blockize_schedule_1)
+    verify_trace_roundtrip(sch=s, mod=func)
     # test 3
     s = tir.Schedule(func, debug_mask='all')
     B = s.get_block("B")
@@ -200,6 +205,7 @@ def test_blockize_schedule():
     s.reorder(xCo, yCo, xCi, yCi)
     s.compute_at(b_outer, yCo)
     tvm.ir.assert_structural_equal(s.mod["main"], blockize_schedule_2)
+    verify_trace_roundtrip(sch=s, mod=func)
 
 
 def test_blockize_init_loops():
@@ -207,6 +213,7 @@ def test_blockize_init_loops():
     k, _ = s.get_loops(s.get_block("B"))
     s.blockize(k)
     tvm.ir.assert_structural_equal(s.mod["main"], rowsum_blockized)
+    verify_trace_roundtrip(sch=s, mod=rowsum)
 
 
 if __name__ == "__main__":
