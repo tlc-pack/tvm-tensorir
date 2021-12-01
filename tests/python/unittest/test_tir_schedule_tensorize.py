@@ -21,6 +21,7 @@ import tvm
 import tvm.testing
 from tvm import tir
 from tvm.script import tir as T
+from tvm.tir.schedule.testing import verify_trace_roundtrip
 
 # fmt: off
 # pylint: disable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name,redundant-keyword-arg
@@ -303,9 +304,13 @@ def dot_product_impl(a: T.handle, b: T.handle, c: T.handle) -> None:
 # pylint: disable=invalid-name
 
 
+tir.TensorIntrin.register('test_identity_intrin', desc_func, intrin_func)
+tir.TensorIntrin.register('test_mma_intrin', desc_func, lower_intrin_func)
+tir.TensorIntrin.register('test_dot_product_intrin', dot_product_desc, dot_product_impl)
+
+
 def test_tensorize_gemm():
     func = matmul
-    tensor_intrin = tvm.tir.TensorIntrin(desc_func, intrin_func)
     # schedule
     s = tir.Schedule(func, debug_mask="all")
     update = s.get_block("update")
@@ -315,8 +320,7 @@ def test_tensorize_gemm():
     ko, ki = s.split(k, factors=[None, 16])
     s.reorder(io, jo, ko, ii, ji, ki)
     s.decompose_reduction(update, ko)
-    print(s.mod.script())
-    s.tensorize(ii, tensor_intrin)
+    s.tensorize(ii, 'test_identity_intrin')
 
     func = tvm.build(s.mod["main"])
     a_np = np.random.uniform(size=(128, 128)).astype("float32")
@@ -339,33 +343,33 @@ def test_tensorize_buffer_bind():
     ko, ki = s.split(k, factors=[None, 16])
     s.reorder(io, jo, ko, ii, ji, ki)
     s.decompose_reduction(update, ko)
-    tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
-    s.tensorize(ii, tensor_intrin)
+    s.tensorize(ii, 'test_mma_intrin')
     tvm.ir.assert_structural_equal(tensorized_func, s.mod["main"])
+    verify_trace_roundtrip(sch=s, mod=func)
 
 
 def test_high_dim_tensorize():
-    s = tir.Schedule(batch_matmul, debug_mask="all")
+    func = batch_matmul
+    s = tir.Schedule(func, debug_mask="all")
     update = s.get_block("update")
     _, i, j, k = s.get_loops(update)
     io, ii = s.split(i, factors=[None, 16])
     jo, ji = s.split(j, factors=[None, 16])
     ko, ki = s.split(k, factors=[None, 16])
     s.reorder(io, jo, ko, ii, ji, ki)
-    tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
-    s.tensorize(ii, tensor_intrin)
-    print(s.mod.script())
+    s.tensorize(ii, 'test_mma_intrin')
     tvm.ir.assert_structural_equal(tensorized_batch_matmul, s.mod["main"])
+    verify_trace_roundtrip(sch=s, mod=batch_matmul)
 
 
 @pytest.mark.skip("failed")
 def test_tensorize_dot_product():
-    dot_prod = tvm.tir.TensorIntrin(dot_product_desc, dot_product_impl)
-    s = tir.Schedule(batch_matmul_dot_product, debug_mask="all")
+    func = batch_matmul_dot_productt
+    s = tir.Schedule(func, debug_mask="all")
     C = s.get_block("update")
     _, _, _, k = s.get_loops(C)
     _, ki = s.split(k, factors=[None, 4])
-    s.tensorize(ki, dot_prod)
+    s.tensorize(ki, 'test_dot_product_intrin')
     target = "llvm"
     ctx = tvm.device(target, 0)
     a_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
@@ -380,6 +384,7 @@ def test_tensorize_dot_product():
         np.matmul(a.numpy(), b.numpy().transpose(0, 2, 1)),
         rtol=1e-5,
     )
+    verify_trace_roundtrip(sch=s, mod=func)
 
 
 if __name__ == "__main__":
