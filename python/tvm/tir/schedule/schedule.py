@@ -366,7 +366,7 @@ class Schedule(Object):
         decision: Optional[int] = None,
     ) -> LoopRV:
         """Sample a compute-at location on a BlockRV so that its producer can compute at that loop
-        
+
         Parameters
         ----------
         block : BlockRV

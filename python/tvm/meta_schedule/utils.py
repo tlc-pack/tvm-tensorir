@@ -15,13 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 """Utilities for meta schedule"""
+from typing import Any, Callable, List, Optional, Union
+
 import ctypes
 import json
 import os
 import shutil
-from typing import Any, Callable, List, Optional, Union
-
 import psutil  # type: ignore
+
 import tvm
 from tvm._ffi import get_global_func, register_func
 from tvm.error import TVMError
@@ -32,7 +33,7 @@ from tvm.tir import FloatImm, IntImm
 
 
 @register_func("meta_schedule.cpu_count")
-def cpu_count(logical: bool = True) -> int:
+def _cpu_count_impl(logical: bool = True) -> int:
     """Return the number of logical or physical CPUs in the system
 
     Parameters
@@ -58,6 +59,22 @@ def cpu_count(logical: bool = True) -> int:
     when measuring locally.
     """
     return psutil.cpu_count(logical=logical) or 1
+
+
+def cpu_count(logical: bool = True) -> int:
+    """Return the number of logical or physical CPUs in the system
+
+    Parameters
+    ----------
+    logical : bool = True
+        If True, return the number of logical CPUs, otherwise return the number of physical CPUs
+
+    Returns
+    -------
+    cpu_count : int
+        The number of logical or physical CPUs in the system
+    """
+    return _cpu_count_impl(logical)
 
 
 def get_global_func_with_default_on_worker(

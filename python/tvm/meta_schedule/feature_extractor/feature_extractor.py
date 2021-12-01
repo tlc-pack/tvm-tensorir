@@ -15,11 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 """Meta Schedule FeatureExtractor."""
-
 from typing import List
 
 from tvm._ffi import register_object
-from tvm.runtime import Object, NDArray
+from tvm.runtime import Object
+from tvm.runtime.ndarray import NDArray
 
 from .. import _ffi_api
 from ..utils import _get_hex_address, check_override
@@ -46,11 +46,12 @@ class FeatureExtractor(Object):
         Returns
         -------
         features : List[NDArray]
-            The feature ndarray extracted.
+            The feature numpy ndarray extracted.
         """
-        return _ffi_api.FeatureExtractorExtractFrom(  # type: ignore # pylint: disable=no-member
+        result = _ffi_api.FeatureExtractorExtractFrom(  # type: ignore # pylint: disable=no-member
             self, tune_context, candidates
         )
+        return result
 
 
 @register_object("meta_schedule.PyFeatureExtractor")
@@ -64,7 +65,8 @@ class PyFeatureExtractor(FeatureExtractor):
         def f_extract_from(
             tune_context: TuneContext, candidates: List[MeasureCandidate]
         ) -> List[NDArray]:
-            return self.extract_from(tune_context, candidates)
+            features = self.extract_from(tune_context, candidates)
+            return features
 
         def f_as_string() -> str:
             return str(self)
