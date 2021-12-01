@@ -214,6 +214,12 @@ class IndexMapNode : public Object {
    */
   Array<PrimExpr> MapShape(const Array<PrimExpr>& shape) const;
 
+  /*!
+   * \brief Convert to string representation in Python.
+   * \return The stringified lambda expression in Python.
+   */
+  String ToPythonString() const;
+
   static constexpr const char* _type_key = "tir.IndexMap";
   TVM_DECLARE_FINAL_OBJECT_INFO(IndexMapNode, Object);
 };

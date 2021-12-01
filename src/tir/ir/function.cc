@@ -103,6 +103,46 @@ Array<PrimExpr> IndexMapNode::MapShape(const Array<PrimExpr>& shape) const {
   return new_shape;
 }
 
+String IndexMapNode::ToPythonString() const {
+  std::unordered_set<std::string> used_names;
+  Map<Var, PrimExpr> var_remap;
+  for (const Var& src_iter : src_iters) {
+    if (used_names.count(src_iter->name_hint)) {
+      std::string new_name = src_iter->name_hint + std::to_string(used_names.size());
+      used_names.insert(new_name);
+      var_remap.Set(src_iter, Var(new_name));
+    } else {
+      used_names.insert(src_iter->name_hint);
+    }
+  }
+  std::ostringstream oss;
+  oss << "lambda ";
+  for (size_t i = 0; i < src_iters.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    auto it = var_remap.find(src_iters[i]);
+    if (it != var_remap.end()) {
+      oss << (*it).second;
+    } else {
+      oss << src_iters[i];
+    }
+  }
+  oss << ": (";
+  for (size_t i = 0; i < tgt_iters.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    oss << Substitute(tgt_iters[i], var_remap);
+  }
+  if (tgt_iters.size() == 1) {
+    oss << ",";
+  }
+  oss << ")";
+  return String(oss.str());
+}
+
+
 IndexMap::IndexMap(Array<Var> src_iters, Array<PrimExpr> tgt_iters) {
   ObjectPtr<IndexMapNode> n = make_object<IndexMapNode>();
   n->src_iters = std::move(src_iters);

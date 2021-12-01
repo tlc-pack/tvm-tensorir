@@ -27,12 +27,16 @@ class BufferTransformRewriter : private StmtExprMutator {
    * \brief Rewrite the AST and add a cache_read stage with the information provided
    * \param scope_sref The parent scope of this mutation
    * \param info The cache stage information
-   * \return The new AST rooting at the original parent scope
+   * \return The new AST rooting at the original parent scope and the map from the old block to the
+   * new block
    */
-  static Stmt Rewrite(const Stmt& scope_stmt, const Buffer& old_buffer, const Buffer& new_buffer,
-                      const IndexMap& index_map) {
+  static std::pair<Stmt, Map<Block, Block>> Rewrite(const Stmt& scope_stmt,
+                                                    const Buffer& old_buffer,
+                                                    const Buffer& new_buffer,
+                                                    const IndexMap& index_map) {
     BufferTransformRewriter rewriter(old_buffer, new_buffer, index_map);
-    return rewriter(scope_stmt);
+    Stmt result = rewriter(scope_stmt);
+    return {result, rewriter.block_sref_reuse_};
   }
 
  private:
@@ -84,6 +88,7 @@ class BufferTransformRewriter : private StmtExprMutator {
     auto* n = block.CopyOnWrite();
     RewriteAccessRegion(&n->reads, infered_access_regions[0]);
     RewriteAccessRegion(&n->writes, infered_access_regions[1]);
+    block_sref_reuse_.Set(GetRef<Block>(op), block);
     return std::move(block);
   }
 
@@ -91,6 +96,7 @@ class BufferTransformRewriter : private StmtExprMutator {
   const Buffer& new_buffer_;
   const IndexMap& index_map_;
   Map<Var, Buffer> buffer_data_to_buffer_;
+  Map<Block, Block> block_sref_reuse_;
 };
 
 class BufferIsSubregionError : public ScheduleError {
@@ -141,8 +147,11 @@ void BufferTransform(ScheduleState self, const StmtSRef& block_sref, int buffer_
   Buffer new_buffer{new_buffer_node};
 
   // Step 2: Rewrite access indices and regions of the buffer
-  Block new_scope_block = Downcast<Block>(BufferTransformRewriter::Rewrite(
-      GetRef<Block>(scope_block), old_buffer, new_buffer, index_map));
+  Stmt new_stmt;
+  Map<Block, Block> block_sref_reuse;
+  std::tie(new_stmt, block_sref_reuse) = BufferTransformRewriter::Rewrite(
+      GetRef<Block>(scope_block), old_buffer, new_buffer, index_map);
+  Block new_scope_block = Downcast<Block>(new_stmt);
 
   // Step 3: Rewrite alloc_buffer of the block or buffer_map of the PrimFunc.
   if (defining_site_sref.defined()) {
@@ -153,6 +162,7 @@ void BufferTransform(ScheduleState self, const StmtSRef& block_sref, int buffer_
       }
       return buffer;
     });
+    block_sref_reuse.Set(GetRef<Block>(scope_block), new_scope_block);
   } else {
     GlobalVar g_var;
     GetRootPrimFunc(self->mod, scope_block, &g_var);
@@ -170,7 +180,7 @@ void BufferTransform(ScheduleState self, const StmtSRef& block_sref, int buffer_
   }
 
   // Step 4: Replace the scope block with the new block
-  self->Replace(scope_sref, new_scope_block, {{GetRef<Block>(scope_block), new_scope_block}});
+  self->Replace(scope_sref, new_scope_block, block_sref_reuse);
 }
 
 /******** InstructionKind Registration ********/
@@ -195,8 +205,27 @@ struct BufferTransformTraits : public UnpackedInstTraits<BufferTransformTraits> 
     py.Input("block", block_rv);
     py.Input("buffer_index", buffer_index);
     py.Input("is_write_index", is_write_index);
-    py.Input("index_map", index_map);
+    py.Input("index_map", index_map->ToPythonString());
     return py.Str();
+  }
+
+ public:
+  static ObjectRef AttrsAsJSON(const Array<ObjectRef>& attrs) {
+    Array<ObjectRef> attrs_record;
+    attrs_record.reserve(kNumAttrs);
+    attrs_record.push_back(attrs[0]);
+    attrs_record.push_back(attrs[1]);
+    attrs_record.push_back(String(::tvm::SaveJSON(attrs[2])));
+    return std::move(attrs_record);
+  }
+
+  static Array<ObjectRef> AttrsFromJSON(const ObjectRef& attrs_record_) {
+    Array<ObjectRef> attrs_record = Downcast<Array<ObjectRef>>(attrs_record_);
+    Array<ObjectRef> attrs;
+    attrs.push_back(attrs_record[0]);
+    attrs.push_back(attrs_record[1]);
+    attrs.push_back(::tvm::LoadJSON(Downcast<String>(attrs_record[2])));
+    return attrs;
   }
 
   template <typename>
