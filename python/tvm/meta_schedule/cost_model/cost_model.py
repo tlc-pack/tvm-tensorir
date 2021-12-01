@@ -35,35 +35,25 @@ from ..utils import _get_hex_address, check_override
 class CostModel(Object):
     """Cost model."""
 
-    def load(self, file_location: str) -> bool:
+    def load(self, path: str) -> None:
         """Load the cost model from given file location.
 
         Parameters
         ----------
-        file_location : str
-            The file location.
-
-        Return
-        ------
-        result : bool
-            Whether cost model was loaded successfully.
+        path : str
+            The file path.
         """
-        return bool(_ffi_api.CostModelLoad(self, file_location))  # type: ignore # pylint: disable=no-member
+        _ffi_api.CostModelLoad(self, path)  # type: ignore # pylint: disable=no-member
 
-    def save(self, file_location: str) -> bool:
+    def save(self, path: str) -> None:
         """Save the cost model to given file location.
 
         Parameters
         ----------
-        file_location : str
-            The file location.
-
-        Return
-        ------
-        result : bool
-            Whether cost model was saved successfully.
+        path : str
+            The file path.
         """
-        return bool(_ffi_api.CostModelSave(self, file_location))  # type: ignore # pylint: disable=no-member
+        _ffi_api.CostModelSave(self, path)  # type: ignore # pylint: disable=no-member
 
     def update(
         self,
@@ -96,7 +86,7 @@ class CostModel(Object):
 
         Return
         ------
-        result : bool
+        result : np.ndarray
             The predicted running results.
         """
         n = len(candidates)
@@ -118,12 +108,12 @@ class PyCostModel(CostModel):
         """Constructor."""
 
         @check_override(self.__class__, CostModel)
-        def f_load(file_location: str) -> bool:
-            return self.load(file_location)
+        def f_load(path: str) -> None:
+            self.load(path)
 
         @check_override(self.__class__, CostModel)
-        def f_save(file_location: str) -> bool:
-            return self.save(file_location)
+        def f_save(path: str) -> None:
+            self.save(path)
 
         @check_override(self.__class__, CostModel)
         def f_update(
@@ -131,7 +121,7 @@ class PyCostModel(CostModel):
             tune_context: TuneContext,
             candidates: List[MeasureCandidate],
             results: List[RunnerResult],
-        ) -> bool:
+        ) -> None:
             self.update(tune_context, candidates, results)
 
         @check_override(self.__class__, CostModel)

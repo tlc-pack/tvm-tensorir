@@ -46,9 +46,6 @@ class Move_PUV:
                     B[vi, vj, vk] = A[vi, vj, vk]
 
 
-# fmt: on
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument,not-callable
-
 
 @T.prim_func
 def Move_PUV0(a: T.handle, b: T.handle) -> None:
@@ -73,6 +70,9 @@ def Move_PUV0(a: T.handle, b: T.handle) -> None:
                         T.reads([A[vi, vj, vk]])
                         T.writes([B[vi, vj, vk]])
                         B[vi, vj, vk] = A[vi, vj, vk]
+
+# fmt: on
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument,not-callable
 
 
 def test_meta_schedule_postproc_rewrite_parallel_unroll_vectorize():

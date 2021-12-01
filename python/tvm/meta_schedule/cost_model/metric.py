@@ -14,11 +14,27 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""
-The tvm.meta_schedule.feature_extractor package.
-Meta Schedule feature extractors that extracts features from
-measure candidates for use in cost model.
-"""
-from .feature_extractor import FeatureExtractor, PyFeatureExtractor
-from .per_store_feature import PerStoreFeature
-from .random_feature_extractor import RandomFeatureExtractor
+"""Cost model metrics for meta schedule"""
+from typing import List
+import numpy as np
+
+
+def max_curve(trial_scores: np.ndarray) -> List[float]:
+    """f(n) = max([s[i] fo i < n])
+
+    Parameters
+    ----------
+    trial_scores : List[float]
+        the score of i-th trial
+
+    Returns
+    -------
+    curve : List[float]
+        function values
+    """
+    ret = np.empty(len(trial_scores))
+    keep = -1e9
+    for i, score in enumerate(trial_scores):
+        keep = max(keep, score)
+        ret[i] = keep
+    return ret

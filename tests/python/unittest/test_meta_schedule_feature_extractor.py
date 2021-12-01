@@ -17,10 +17,9 @@
 # pylint: disable=missing-module-docstring,missing-function-docstring,missing-class-docstring
 from typing import List
 
-import numpy as np
 import re
+import numpy as np
 
-from tvm.runtime import NDArray
 from tvm.meta_schedule import TuneContext
 from tvm.meta_schedule.search_strategy import MeasureCandidate
 from tvm.meta_schedule.feature_extractor import PyFeatureExtractor
@@ -29,8 +28,10 @@ from tvm.meta_schedule.feature_extractor import PyFeatureExtractor
 def test_meta_schedule_feature_extractor():
     class FancyFeatureExtractor(PyFeatureExtractor):
         def extract_from(
-            self, tune_context: TuneContext, candidates: List[MeasureCandidate]
-        ) -> List[NDArray]:
+            self,
+            tune_context: TuneContext,  # pylint: disable = unused-argument
+            candidates: List[MeasureCandidate],  # pylint: disable = unused-argument
+        ) -> List[np.ndarray]:
             return [np.random.rand(4, 5)]
 
     extractor = FancyFeatureExtractor()
@@ -42,9 +43,11 @@ def test_meta_schedule_feature_extractor():
 def test_meta_schedule_feature_extractor_as_string():
     class NotSoFancyFeatureExtractor(PyFeatureExtractor):
         def extract_from(
-            self, tune_context: TuneContext, candidates: List[MeasureCandidate]
-        ) -> List[NDArray]:
-            return None
+            self,
+            tune_context: TuneContext,  # pylint: disable = unused-argument
+            candidates: List[MeasureCandidate],  # pylint: disable = unused-argument
+        ) -> List[np.ndarray]:
+            return []
 
     feature_extractor = NotSoFancyFeatureExtractor()
     pattern = re.compile(r"NotSoFancyFeatureExtractor\(0x[a-f|0-9]*\)")

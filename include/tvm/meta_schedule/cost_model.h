@@ -39,17 +39,15 @@ class CostModelNode : public runtime::Object {
 
   /*!
    * \brief Load the cost model from given file location.
-   * \param file_location The file location.
-   * \return Whether cost model was loaded successfully.
+   * \param path The file path.
    */
-  virtual bool Load(const String& file_location) = 0;
+  virtual void Load(const String& path) = 0;
 
   /*!
    * \brief Save the cost model to given file location.
-   * \param file_location The file location.
-   * \return Whether cost model was saved successfully.
+   * \param path The file path.
    */
-  virtual bool Save(const String& file_location) = 0;
+  virtual void Save(const String& path) = 0;
 
   /*!
    * \brief Update the cost model given running results.
@@ -78,16 +76,14 @@ class PyCostModelNode : public CostModelNode {
  public:
   /*!
    * \brief Load the cost model from given file location.
-   * \param file_location The file location.
-   * \return Whether cost model was loaded successfully.
+   * \param path The file path.
    */
-  using FLoad = runtime::TypedPackedFunc<bool(String)>;
+  using FLoad = runtime::TypedPackedFunc<void(String)>;
   /*!
    * \brief Save the cost model to given file location.
-   * \param file_location The file location.
-   * \return Whether cost model was saved successfully.
+   * \param path The file path.
    */
-  using FSave = runtime::TypedPackedFunc<bool(String)>;
+  using FSave = runtime::TypedPackedFunc<void(String)>;
   /*!
    * \brief Update the cost model given running results.
    * \param tune_context The tuning context.
@@ -130,16 +126,15 @@ class PyCostModelNode : public CostModelNode {
     // `f_as_string` is not visited
   }
 
-  bool Load(const String& file_location) {
+  void Load(const String& path) {
     ICHECK(f_load != nullptr) << "PyCostModel's Load method not implemented!";
-    return f_load(file_location);
+    f_load(path);
   }
 
-  bool Save(const String& file_location) {
+  void Save(const String& path) {
     ICHECK(f_save != nullptr) << "PyCostModel's Save method not implemented!";
-    return f_save(file_location);
+    f_save(path);
   }
-
   void Update(const TuneContext& tune_context, const Array<MeasureCandidate>& candidates,
               const Array<RunnerResult>& results) {
     ICHECK(f_update != nullptr) << "PyCostModel's Update method not implemented!";
