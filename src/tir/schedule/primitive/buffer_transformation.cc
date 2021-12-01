@@ -24,9 +24,11 @@ namespace tir {
 class BufferTransformRewriter : private StmtExprMutator {
  public:
   /*!
-   * \brief Rewrite the AST and add a cache_read stage with the information provided
-   * \param scope_sref The parent scope of this mutation
-   * \param info The cache stage information
+   * \brief Rewrite the access to the buffer after the transformation
+   * \param scope_stmt The parent statement that contains all accesses to the target buffer
+   * \param old_buffer The target buffer before transformation
+   * \param new_buffer The new buffer after transformation
+   * \param index_map The transformation applied to the buffer
    * \return The new AST rooting at the original parent scope and the map from the old block to the
    * new block
    */

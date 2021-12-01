@@ -26,8 +26,8 @@
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
-#include "../../support/nd_int_set.h"
 
+#include "../../support/nd_int_set.h"
 
 namespace tvm {
 namespace tir {
@@ -100,6 +100,14 @@ Array<PrimExpr> IndexMapNode::MapShape(const Array<PrimExpr>& shape) const {
     ICHECK(is_zero(int_set.min()));
     new_shape.push_back(int_set.max() + 1);
   }
+  auto fmul = [](PrimExpr a, PrimExpr b, Span span) { return a * b; };
+  PrimExpr old_size = foldl(fmul, Integer(1), shape);
+  PrimExpr new_size = foldl(fmul, Integer(1), new_shape);
+
+  arith::Analyzer analyzer;
+  CHECK(analyzer.CanProveEqual(old_size, new_size))
+      << "ValueError: The size of the new shape after IndexMap " << new_shape
+      << " doesn't match the size of the original shape " << shape;
   return new_shape;
 }
 
@@ -141,7 +149,6 @@ String IndexMapNode::ToPythonString() const {
   oss << ")";
   return String(oss.str());
 }
-
 
 IndexMap::IndexMap(Array<Var> src_iters, Array<PrimExpr> tgt_iters) {
   ObjectPtr<IndexMapNode> n = make_object<IndexMapNode>();
