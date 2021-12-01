@@ -17,11 +17,9 @@
 """Meta Schedule FeatureExtractor."""
 from typing import List
 
-import numpy as np
-
 from tvm._ffi import register_object
 from tvm.runtime import Object
-from tvm.runtime.ndarray import NDArray, array
+from tvm.runtime.ndarray import NDArray
 
 from .. import _ffi_api
 from ..utils import _get_hex_address, check_override
@@ -35,7 +33,7 @@ class FeatureExtractor(Object):
 
     def extract_from(
         self, tune_context: TuneContext, candidates: List[MeasureCandidate]
-    ) -> List[np.ndarray]:
+    ) -> List[NDArray]:
         """Extract features from the given measure candidate.
 
         Parameters
@@ -47,13 +45,13 @@ class FeatureExtractor(Object):
 
         Returns
         -------
-        features : List[np.ndarray]
+        features : List[NDArray]
             The feature numpy ndarray extracted.
         """
         result = _ffi_api.FeatureExtractorExtractFrom(  # type: ignore # pylint: disable=no-member
             self, tune_context, candidates
         )
-        return [x.numpy() for x in result]
+        return result
 
 
 @register_object("meta_schedule.PyFeatureExtractor")
@@ -68,7 +66,7 @@ class PyFeatureExtractor(FeatureExtractor):
             tune_context: TuneContext, candidates: List[MeasureCandidate]
         ) -> List[NDArray]:
             features = self.extract_from(tune_context, candidates)
-            return [array(x) for x in features]
+            return features
 
         def f_as_string() -> str:
             return str(self)

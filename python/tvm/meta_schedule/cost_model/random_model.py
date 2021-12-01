@@ -116,6 +116,8 @@ class RandomModel(PyCostModel):
             The predicted running results.
         """
         np.random.set_state(self.random_state)
+        # todo(@zxybazh): Use numpy's RandState object:
+        # https://numpy.org/doc/1.16/reference/generated/numpy.random.RandomState.html#numpy.random.RandomState
         result = np.random.rand(len(candidates)) * self.max_range
         self.random_state = np.random.get_state()
         return result

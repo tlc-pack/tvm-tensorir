@@ -17,10 +17,11 @@
 """
 XGBoost-based cost model
 """
-from typing import Optional, Tuple, Callable, List, TYPE_CHECKING
+from typing import NamedTuple, Optional, Tuple, Callable, List, TYPE_CHECKING
 
-
+import os
 import logging
+import tempfile
 from itertools import chain as itertools_chain
 import numpy as np
 
@@ -30,6 +31,7 @@ from ..feature_extractor import FeatureExtractor
 from ..cost_model import PyCostModel
 from ..utils import cpu_count
 from .metric import max_curve
+from ...contrib.tar import tar, untar
 
 if TYPE_CHECKING:
     from ..tune_context import TuneContext
@@ -68,7 +70,7 @@ class PackSum:
         indicating which the index of a sample that a block belongs to
     """
 
-    dmatrix: "xgb.DMatrix"  # pylint: disable=invalid-name
+    dmatrix: "xgb.DMatrix"  # type: ignore # pylint: disable=invalid-name
     ids: np.ndarray
 
     def __init__(
@@ -85,7 +87,7 @@ class PackSum:
         ys : Optional[List[float]]
             A batch of labels. None means no lables available.
         """
-        import xgboost as xgb  # pylint: disable=import-outside-toplevel
+        import xgboost as xgb  # type: ignore # pylint: disable=import-outside-toplevel
 
         repeats = [x.shape[0] for x in xs]
         xs = np.concatenate(xs, axis=0)
@@ -98,6 +100,18 @@ class PackSum:
             self.dmatrix.set_weight(ys)
 
     def predict_with_score(self, pred: np.ndarray) -> np.ndarray:
+        """Predict the labels given the block level prediction scores.
+
+        Parameters
+        ----------
+        pred : np.ndarray
+            The block level predictions
+
+        Returns
+        -------
+        result : np.ndarray
+            The predictions for each candidate.
+        """
         return np.bincount(self.ids, weights=pred)
 
     def obj_square_error(self, ys_pred: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -121,7 +135,7 @@ class PackSum:
         # Propagate prediction to each block
         ys_pred = ys_pred[self.ids]
         # The gradient and hessian
-        ys = self.dmatrix.get_label()  # pylint: disable=invalid-name
+        ys = self.dmatrix.get_label()  # type: ignore # pylint: disable=invalid-name
         gradient = ys_pred - ys
         hessian = np.ones_like(gradient)
         return gradient * ys, hessian * ys
@@ -146,7 +160,7 @@ class PackSum:
         # Propagate prediction to each block
         ys_pred = ys_pred[self.ids]
         # The RMSE
-        ys = self.dmatrix.get_label()  # pylint: disable=invalid-name
+        ys = self.dmatrix.get_label()  # type: ignore # pylint: disable=invalid-name
         square_error = np.square(ys_pred - ys)
         rmse = np.sqrt(square_error.mean())
         return "p-rmse", rmse
@@ -155,7 +169,7 @@ class PackSum:
         self,
         ys_pred: np.ndarray,
         n: int,
-    ) -> Tuple[str, float]:  # pylint: disable=invalid-name
+    ) -> Tuple[str, float]:
         """Evaluate average-peak-score@N in the pack-sum format
 
         Parameters
@@ -172,15 +186,54 @@ class PackSum:
         score: float
             The score of the metric
         """
-        ys = self.dmatrix.get_label()  # pylint: disable=invalid-name
-        ys = self.predict_with_score(ys)  # pylint: disable=invalid-name
-        ys = ys / np.unique(self.ids, return_counts=True)[1]  # pylint: disable=invalid-name
+        ys = self.dmatrix.get_label()  # type: ignore # pylint: disable=invalid-name
+        ys = self.predict_with_score(ys)  # type: ignore # pylint: disable=invalid-name
+        ys = ys / np.unique(self.ids, return_counts=True)[1]  # type: ignore # pylint: disable=invalid-name
         ys_pred = self.predict_with_score(ys_pred)
         trials = np.argsort(ys_pred)[::-1][:n]
         trial_scores = ys[trials]
         curve = max_curve(trial_scores) / np.max(ys)
         score = np.mean(curve)
         return f"a-peak@{n}", score
+
+
+class XGBConfig(NamedTuple):
+    """XGBoost model configuration
+
+    Parameters
+    ----------
+    max_depth : int
+        The maximum depth.
+    gamma : float
+        The gamma.
+    min_child_weight : float
+        The minimum child weight.
+    eta : float
+        The eta, learning rate.
+    seed : int
+        The random seed.
+    nthread : Optional[int],
+        The number of threads to use.
+        Default is None, which means to use physical number of cores.
+    """
+
+    def to_dict(self):
+        xgb_params = {
+            "max_depth": self.max_depth,
+            "gamma": self.gamma,
+            "min_child_weight": self.min_child_weight,
+            "eta": self.eta,
+            "seed": self.seed,
+            "nthread": self.nthread,
+        }
+        return xgb_params
+
+    max_depth: int = 10
+    gamma: float = 0.001
+    min_child_weight: float = 0
+    eta: float = 0.2
+    seed: int = 43
+    nthread: Optional[int] = None
 
 
 class XGBModel(PyCostModel):
@@ -190,21 +243,8 @@ class XGBModel(PyCostModel):
     ----------
     extractor : FeatureExtractor
         The feature extractor for the model.
-    xgb_max_depth : int
-        XGBoost model param, the maximum depth.
-    xgb_gamma : float
-        XGBoost model param, the gamma.
-    xgb_min_child_weight : float
-        XGBoost model param, the minimum child weight.
-    xgb_eta : float
-        XGBoost model param, the eta, learning rate.
-    xgb_seed : int
-        XGBoost model param, the random seed.
-    xgb_nthread : Optional[int],
-        XGBoost model param, the number of threads to use.
-        Default is None, which means to use physical number of cores.
-    path : Optional[str]
-        The path to save the model.
+    config : XGBConfig
+        The XGBoost model config.
     num_warmup_samples : int
         The number of samples that are used for warmup, i.e., the first few samples are predicted
         with random results.
@@ -216,29 +256,10 @@ class XGBModel(PyCostModel):
         The number to calculate average peak score.
     """
 
-    # model-related params
-    _xgb_params: dict
-    """The parameters for xgboost model
-
-    Parameters
-    ----------
-    max_depth : int
-        XGBoost model param, the maximum depth.
-    gamma : float
-        XGBoost model param, the gamma.
-    min_child_weight : float
-        XGBoost model param, the minimum child weight.
-    eta : float
-        XGBoost model param, the eta, learning rate.
-    seed : int
-        XGBoost model param, the random seed.
-    nthread : int
-        XGBoost model param, the number of threads to use.
-    """
-    # serialization-related
-    path: Optional[str]
     # feature extractor
     extractor: FeatureExtractor
+    # xgboost model config
+    config: XGBConfig
     # behavior of randomness
     num_warmup_samples: int
     # evaluation
@@ -256,13 +277,8 @@ class XGBModel(PyCostModel):
         *,
         # feature extractor
         extractor: FeatureExtractor,
-        # model-related
-        xgb_max_depth: int = 10,
-        xgb_gamma: float = 0.001,
-        xgb_min_child_weight: float = 0,
-        xgb_eta: float = 0.2,
-        xgb_seed: int = 43,
-        xgb_nthread: Optional[int] = None,
+        # xgboost model config
+        config: XGBConfig = XGBConfig(),
         # load from disk
         path: Optional[str] = None,
         # behavior of randomness
@@ -276,19 +292,13 @@ class XGBModel(PyCostModel):
         # feature extractor
         self.extractor = extractor
         # model-related
-        if xgb_nthread is None:
+        if config.nthread is None:
             # use physical core number
-            xgb_nthread = cpu_count(False)
-        self._xgb_params = {
-            "max_depth": xgb_max_depth,
-            "gamma": xgb_gamma,
-            "min_child_weight": xgb_min_child_weight,
-            "eta": xgb_eta,
-            "seed": xgb_seed,
-            "nthread": xgb_nthread,
-        }
+            config._replace(nthread=cpu_count(logical=False))
+        self.config = config
         # serialization-related
-        self.path = path
+        if path is not None:
+            self.load(path)
         # behavior of randomness
         self.num_warmup_samples = num_warmup_samples
         # evaluation
@@ -301,7 +311,7 @@ class XGBModel(PyCostModel):
         self.cached_normalizer = None
         self.booster = None
 
-    def load(self, path: str = None) -> None:
+    def load(self, path: str) -> None:
         """Load the cost model from given file location.
 
         Parameters
@@ -314,26 +324,20 @@ class XGBModel(PyCostModel):
         Since XGBoost model trains from scratch, each time we can only load the model without the
         previous cached features / results so any call of update won't use previous training data.
         """
-        # pylint: disable=import-outside-toplevel
-        import tempfile
-        from tvm.contrib.tar import untar
-
-        # pylint: enable=import-outside-toplevel
-
-        if path is None:
-            path = self.path
-
         with tempfile.TemporaryDirectory() as tmpdirname:
             untar(path, tmpdirname)
-            self.booster.load_model(tmpdirname + "/model.bin")
+            self.booster.load_model(os.path.join(tmpdirname, "model.bin"))
             self.cached_features = list(
-                np.load(tmpdirname + "/cached_features.npy", allow_pickle=True)
+                np.load(os.path.join(tmpdirname, "cached_features.npy"), allow_pickle=True)
             )
             self.cached_mean_costs = np.load(
-                tmpdirname + "/cached_mean_costs.npy", allow_pickle=True
+                os.path.join(tmpdirname, "cached_mean_costs.npy"), allow_pickle=True
             )
+            self.cached_normalizer = np.min(self.cached_mean_costs)
+            if self.cached_normalizer <= 0:
+                raise ValueError("The minimum mean cost must be greater than 0!")
 
-    def save(self, path: str = None) -> None:
+    def save(self, path: str) -> None:
         """Save the cost model to given file location.
 
         Parameters
@@ -346,32 +350,24 @@ class XGBModel(PyCostModel):
         Since XGBoost model trains from scratch, each time we can only save the model without the
         previous cached features / results so any call of update won't use previous training data.
         """
-
-        # pylint: disable=import-outside-toplevel
-        import xgboost as xgb
-        import tempfile
-        from tvm.contrib.tar import tar
-
-        # pylint: enable=import-outside-toplevel
-
-        if path is None:
-            path = self.path
+        import xgboost as xgb  # pylint: disable=import-outside-toplevel
 
         if self.booster is None:
             # save all the paramaters
-            self.booster = xgb.Booster(self._xgb_params)
+            self.booster = xgb.Booster(self.config.to_dict())
         with tempfile.TemporaryDirectory() as tmpdirname:
-            self.booster.save_model(tmpdirname + "/model.bin")
+            self.booster.save_model(os.path.join(tmpdirname, "model.bin"))
             np.save(
-                tmpdirname + "/cached_features.npy", np.array(self.cached_features, dtype=object)
+                os.path.join(tmpdirname, "cached_features.npy"),
+                np.array(self.cached_features, dtype=object),
             )
-            np.save(tmpdirname + "/cached_mean_costs.npy", self.cached_mean_costs)
+            np.save(os.path.join(tmpdirname, "cached_mean_costs.npy"), self.cached_mean_costs)
             tar(
                 path,
                 [
-                    tmpdirname + "/model.bin",
-                    tmpdirname + "/cached_features.npy",
-                    tmpdirname + "/cached_mean_costs.npy",
+                    os.path.join(tmpdirname, "model.bin"),
+                    os.path.join(tmpdirname, "cached_features.npy"),
+                    os.path.join(tmpdirname, "cached_mean_costs.npy"),
                 ],
             )
 
@@ -396,7 +392,10 @@ class XGBModel(PyCostModel):
         if len(candidates) == 0:
             return
         # extract feature and do validation
-        new_features = self.extractor.extract_from(tune_context, candidates)
+        new_features = [
+            x.numpy().astype("float32")
+            for x in self.extractor.extract_from(tune_context, candidates)
+        ]
         new_mean_costs = [float(sum(x.run_secs) / len(x.run_secs)) for x in results]
         if self.booster is not None and self.cached_normalizer is not None:
             logger.debug(
@@ -413,7 +412,8 @@ class XGBModel(PyCostModel):
         self.cached_features.extend(new_features)
         self.cached_mean_costs = np.append(self.cached_mean_costs, new_mean_costs)
         self.cached_normalizer = np.min(self.cached_mean_costs)
-        assert self.cached_normalizer > 0, "The minimum mean cost must be greater than 0!"
+        if self.cached_normalizer <= 0:
+            raise ValueError("The minimum mean cost must be greater than 0!")
         # train xgb model
         self._train(
             xs=self.cached_features,
@@ -439,40 +439,41 @@ class XGBModel(PyCostModel):
         """
         n_measured = len(self.cached_features)
         if self.booster is not None and n_measured >= self.num_warmup_samples:
-            ret = self._predict(xs=self.extractor.extract_from(tune_context, candidates))
+            features = self.extractor.extract_from(tune_context, candidates)
+            ret = self._predict(xs=[x.numpy().astype("float32") for x in features])
         else:
             ret = np.random.uniform(
                 low=0,
                 high=1,
                 size=(len(candidates),),
-            ).astype("float64")
-        return ret
+            )
+        return ret.astype("float64")
 
-    def _train(  # pylint: disable=invalid-name
+    def _train(  # type: ignore # pylint: disable=invalid-name
         self,
         xs: List[np.ndarray],
         ys: List[float],
     ) -> None:
-        import xgboost as xgb  # pylint: disable=import-outside-toplevel
+        import xgboost as xgb  # type: ignore # pylint: disable=import-outside-toplevel
 
         self.d_train = PackSum(
             xs=xs,
             ys=self.cached_normalizer / ys,
         )
 
-        def obj(ys_pred: np.ndarray, d_train: "xgb.DMatrix"):  # pylint: disable = unused-argument
+        def obj(ys_pred: np.ndarray, d_train: "xgb.DMatrix"):  # type: ignore # pylint: disable = unused-argument
             return self.d_train.obj_square_error(ys_pred)
 
-        def rmse(ys_pred: np.ndarray, d_train: "xgb.DMatrix"):  # pylint: disable = unused-argument
+        def rmse(ys_pred: np.ndarray, d_train: "xgb.DMatrix"):  # type: ignore # pylint: disable = unused-argument
             return self.d_train.rmse(ys_pred)
 
         def average_peak_score(
-            ys_pred: np.ndarray, d_train: "xgb.DMatrix"  # pylint: disable = unused-argument
+            ys_pred: np.ndarray, d_train: "xgb.DMatrix"  # type: ignore # pylint: disable = unused-argument
         ):
             return self.d_train.average_peak_score(ys_pred, self.average_peak_n)
 
         self.booster = xgb.train(
-            self._xgb_params,
+            self.config.to_dict(),
             self.d_train.dmatrix,
             num_boost_round=10000,
             obj=obj,
@@ -490,21 +491,18 @@ class XGBModel(PyCostModel):
         )
 
         del self.d_train
+        # todo(zxybazh): measure callback to save the model
 
-        # Update the model file if it has been set
-        if self.path:
-            self.save(self.path)
-
-    def _predict(  # pylint: disable=invalid-name
+    def _predict(  # type: ignore # pylint: disable=invalid-name
         self,
         xs: List[np.ndarray],
     ) -> np.ndarray:
         d_test = PackSum(xs=xs, ys=None)
         pred = self.booster.predict(d_test.dmatrix)
         ret = d_test.predict_with_score(pred)
-        return ret.astype("float64")
+        return ret
 
-    def _validate(  # pylint: disable=invalid-name
+    def _validate(  # type: ignore # pylint: disable=invalid-name
         self,
         xs: List[np.ndarray],
         ys: List[float],

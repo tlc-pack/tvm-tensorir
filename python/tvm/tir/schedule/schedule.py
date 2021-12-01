@@ -16,7 +16,6 @@
 # under the License.
 """The TensorIR schedule class"""
 from typing import Dict, List, Optional, Union
-from typing_extensions import Annotated
 
 from tvm._ffi import register_object as _register_object
 from tvm.error import TVMError, register_error
@@ -366,7 +365,7 @@ class Schedule(Object):
         decision: Optional[int] = None,
     ) -> LoopRV:
         """Sample a compute-at location on a BlockRV so that its producer can compute at that loop
-        
+
         Parameters
         ----------
         block : BlockRV

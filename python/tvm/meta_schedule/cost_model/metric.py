@@ -15,20 +15,21 @@
 # specific language governing permissions and limitations
 # under the License.
 """Cost model metrics for meta schedule"""
+from typing import List
 import numpy as np
 
 
-def max_curve(trial_scores: np.ndarray):
+def max_curve(trial_scores: np.ndarray) -> List[float]:
     """f(n) = max([s[i] fo i < n])
 
     Parameters
     ----------
-    trial_scores: Array of float
-        the score of i th trial
+    trial_scores : List[float]
+        the score of i-th trial
 
     Returns
     -------
-    curve: Array of float
+    curve : List[float]
         function values
     """
     ret = np.empty(len(trial_scores))

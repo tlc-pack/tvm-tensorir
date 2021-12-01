@@ -174,6 +174,7 @@ def test_cpu_matmul():
         _make_context(tvm.target.Target("llvm")),
         candidates=[_make_candidate(_create_schedule)],
     )
+    feature = feature.numpy()
     assert feature.shape == (1, N_FEATURES)
     f = feature[0]
     # Group 1.1: arith
@@ -377,6 +378,7 @@ def test_cpu_fusion():
         _make_context(tvm.target.Target("llvm")),
         candidates=[_make_candidate(_create_schedule)],
     )
+    feature = feature.numpy()
     assert feature.shape == (2, N_FEATURES)
     ## Features for BufferStore(B)
     f = feature[0]
@@ -706,6 +708,7 @@ def test_gpu():
         _make_context(tvm.target.Target("cuda")),
         candidates=[_make_candidate(_create_schedule)],
     )
+    feature = feature.numpy()
     assert feature.shape == (4, N_FEATURES)
     ### Check feature[0]: BufferStore(A_shared) <= A[...]
     f = feature[0]
