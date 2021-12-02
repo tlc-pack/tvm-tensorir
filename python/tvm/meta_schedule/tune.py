@@ -29,9 +29,9 @@ from tvm.tir import PrimFunc, Schedule
 from . import schedule_rule
 from . import measure_callback
 from . import postproc
-from .measure_callback import MeasureCallback
 from .builder import Builder, LocalBuilder
 from .database import Database, JSONDatabase, TuningRecord
+from .measure_callback import MeasureCallback
 from .runner import LocalRunner, Runner
 from .search_strategy import ReplayFuncConfig, ReplayTraceConfig
 from .space_generator import PostOrderApply
@@ -39,13 +39,34 @@ from .task_scheduler import RoundRobin, TaskScheduler
 from .tune_context import TuneContext
 
 
+logger = logging.getLogger(__name__)
+
+
 SearchStrategyConfig = Union[
     ReplayFuncConfig,
     ReplayTraceConfig,
 ]
 
+TYPE_F_TUNE_CONTEXT = Callable[  # pylint: disable=invalid-name
+    [
+        IRModule,
+        Target,
+        SearchStrategyConfig,
+        str,
+    ],
+    TuneContext,
+]
 
-logger = logging.getLogger(__name__)
+TYPE_F_TASK_SCHEDULER = Callable[  # pylint: disable=invalid-name
+    [
+        List[TuneContext],
+        Builder,
+        Runner,
+        Database,
+        List[MeasureCallback],
+    ],
+    TaskScheduler,
+]
 
 
 def _parse_mod(mod: Union[PrimFunc, IRModule]) -> IRModule:
@@ -131,17 +152,6 @@ def _parse_measure_callbacks(
                 f"but measure_callbacks[{i}] is: {callback}"
             )
     return measure_callbacks
-
-
-TYPE_F_TUNE_CONTEXT = Callable[  # pylint: disable=invalid-name
-    [
-        IRModule,
-        Target,
-        SearchStrategyConfig,
-        str,
-    ],
-    TuneContext,
-]
 
 
 def _parse_f_tune_context(f_tune_context: Optional[TYPE_F_TUNE_CONTEXT]) -> TYPE_F_TUNE_CONTEXT:
@@ -269,18 +279,6 @@ def _parse_f_tune_context(f_tune_context: Optional[TYPE_F_TUNE_CONTEXT]) -> TYPE
     return f_tune_context
 
 
-TYPE_F_TASK_SCHEDULER = Callable[  # pylint: disable=invalid-name
-    [
-        List[TuneContext],
-        Builder,
-        Runner,
-        Database,
-        List[MeasureCallback],
-    ],
-    TaskScheduler,
-]
-
-
 def _parse_f_task_scheduler(
     f_task_scheduler: Optional[TYPE_F_TASK_SCHEDULER],
 ) -> TYPE_F_TASK_SCHEDULER:
@@ -347,8 +345,8 @@ def tune_tir(
 
     Returns
     -------
-    mod : IRModule
-        The tuned module.
+    sch : Optional[Schedule]
+        The tuned schedule.
     """
 
     with _work_dir_context(work_dir) as path:

@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""A callback that adds the measurement results into the database"""
 from tvm._ffi import register_object
 
 from .. import _ffi_api
@@ -23,6 +24,7 @@ from .measure_callback import MeasureCallback
 @register_object("meta_schedule.AddToDatabase")
 class AddToDatabase(MeasureCallback):
     def __init__(self) -> None:
+        """A callback that adds the measurement results into the database"""
         self.__init_handle_by_constructor__(
             _ffi_api.MeasureCallbackAddToDatabase,  # type: ignore # pylint: disable=no-member
         )

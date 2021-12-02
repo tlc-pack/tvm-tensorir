@@ -17,7 +17,6 @@
  * under the License.
  */
 #include "../utils.h"
-#include "tvm/meta_schedule/postproc.h"
 
 namespace tvm {
 namespace meta_schedule {

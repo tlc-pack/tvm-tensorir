@@ -19,7 +19,7 @@ import logging
 
 import pytest
 from tvm.meta_schedule import tune_tir
-from tvm.meta_schedule.search_strategy import ReplayFuncConfig
+from tvm.meta_schedule.search_strategy import ReplayTraceConfig
 from tvm.script import tir as T
 from tvm.target.target import Target
 from tvm.tir import Schedule
@@ -53,9 +53,9 @@ def test_tune_matmul():
     sch: Schedule = tune_tir(
         mod=matmul,
         target=Target("llvm --num-cores=16"),
-        config=ReplayFuncConfig(
+        config=ReplayTraceConfig(
             num_trials_per_iter=32,
-            num_trials_total=1024,
+            num_trials_total=32,
         ),
     )
     if sch is None:

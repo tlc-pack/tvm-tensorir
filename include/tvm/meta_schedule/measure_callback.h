@@ -115,13 +115,12 @@ class MeasureCallback : public runtime::ObjectRef {
    */
   TVM_DLL static MeasureCallback AddToDatabase();
   /*!
-   * \brief Create a measure callback that adds the measurement results into the database
+   * \brief Create a measure callback that removes the build artifacts from the disk
    * \return The measure callback created.
    */
   TVM_DLL static MeasureCallback RemoveBuildArtifact();
   /*!
    * \brief Create a measure callback that echos the statistics of the tuning process to the console
-   * \param f_count_flops The function to count FLOPs
    * \return The measure callback created.
    */
   TVM_DLL static MeasureCallback EchoStatistics();

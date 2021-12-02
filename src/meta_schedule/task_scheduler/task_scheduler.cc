@@ -28,8 +28,7 @@ namespace meta_schedule {
  * \param candidates The measure candidates.
  * \return An array of the builder results.
  */
-Array<BuilderResult> SendToBuilder(const Builder& builder,  //
-                                   const TuneContext& context,
+Array<BuilderResult> SendToBuilder(const Builder& builder, const TuneContext& context,
                                    const Array<MeasureCandidate>& candidates) {
   LOG(INFO) << "Sending " << candidates.size() << " sample(s) to builder";
   Target target = context->target.value();

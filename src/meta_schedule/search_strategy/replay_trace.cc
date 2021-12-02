@@ -30,13 +30,13 @@ class ReplayTraceNode : public SearchStrategyNode {
     /*! \brief The search strategy itself */
     ReplayTraceNode* self;
     /*! \brief The design spaces. */
-    Array<tir::Schedule> design_spaces;
+    Array<tir::Trace> design_spaces;
     /*! \brief `[st, ed)` are the indices of the next batch of candidates. */
     int st;
     /*! \brief `[st, ed)` are the indices of the next batch of candidates. */
     int ed;
 
-    explicit State(ReplayTraceNode* self, Array<tir::Schedule> design_spaces)
+    explicit State(ReplayTraceNode* self, Array<tir::Trace> design_spaces)
         : self(self), design_spaces(design_spaces), st(0), ed(self->num_trials_per_iter) {}
 
     inline Optional<Array<MeasureCandidate>> GenerateMeasureCandidates();
@@ -93,7 +93,12 @@ class ReplayTraceNode : public SearchStrategyNode {
   void PreTuning(const Array<tir::Schedule>& design_spaces) final {
     ICHECK(!design_spaces.empty());
     ICHECK(this->state_ == nullptr);
-    this->state_ = std::make_unique<State>(this, design_spaces);
+    Array<tir::Trace> design_space_traces;
+    design_space_traces.reserve(design_spaces.size());
+    for (const tir::Schedule& space : design_spaces) {
+      design_space_traces.push_back(space->trace().value()->Simplified(true));
+    }
+    this->state_ = std::make_unique<State>(this, design_space_traces);
   }
 
   void PostTuning() final {
@@ -126,7 +131,7 @@ inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasure
     IRModule mod = self->per_thread_mod_[thread_id];
     for (;;) {
       int design_space_index = tir::SampleInt(&rand_state, 0, design_spaces.size());
-      tir::Trace trace = design_spaces[design_space_index]->trace().value();
+      tir::Trace trace = design_spaces[design_space_index];
       tir::Trace new_trace = tir::Trace(trace->insts, {});
       if (Optional<tir::Schedule> sch = ApplyTrace(mod, new_trace, &rand_state, self->postprocs_)) {
         per_task_result.Set(task_id, MeasureCandidate(sch.value(), self->args_info_));
