@@ -17,6 +17,7 @@
  * under the License.
  */
 #include "../utils.h"
+#include "tvm/tir/schedule/schedule.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -24,8 +25,6 @@ namespace meta_schedule {
 /*! \brief A search strategy that generates measure candidates using trace and random decisions. */
 class ReplayTraceNode : public SearchStrategyNode {
  public:
-  using TRandState = support::LinearCongruentialEngine::TRandState;
-
   /*! \brief The state of the search strategy. */
   struct State {
     /*! \brief The search strategy itself */
@@ -50,9 +49,11 @@ class ReplayTraceNode : public SearchStrategyNode {
   int num_trials_total;
 
   /*! \brief The module to be tuned. */
-  Array<IRModule> mod_{nullptr};
+  Array<IRModule> per_thread_mod_{nullptr};
   /*! \brief The metadata of the function arguments. */
   Array<ArgInfo> args_info_{nullptr};
+  /*! \brief The post processors */
+  Array<Postproc> postprocs_{nullptr};
   /*! \brief The number of threads to use. -1 means using logical cpu number. */
   int num_threads_ = -1;
   /*! \brief The random state. -1 means using random number. */
@@ -63,8 +64,9 @@ class ReplayTraceNode : public SearchStrategyNode {
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("num_trials_per_iter", &num_trials_per_iter);
     v->Visit("num_trials_total", &num_trials_total);
-    // `mod_` is not visited
+    // `per_thread_mod_` is not visited
     // `args_info_` is not visited
+    // `postprocs_` is not visited
     // `num_threads_` is not visited
     // `rand_state_` is not visited
     // `state_` is not visited
@@ -77,12 +79,13 @@ class ReplayTraceNode : public SearchStrategyNode {
     CHECK(tune_context->num_threads > 0) << "Number of threads has to be larger than 0.";
     this->num_threads_ = tune_context->num_threads;
 
-    this->mod_.reserve(this->num_threads_);
+    this->per_thread_mod_.reserve(this->num_threads_);
     for (int i = 0; i < this->num_threads_; i++) {
-      this->mod_.push_back(DeepCopyIRModule(tune_context->mod.value()));
+      this->per_thread_mod_.push_back(DeepCopyIRModule(tune_context->mod.value()));
     }
 
     this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(tune_context->mod.value()));
+    this->postprocs_ = tune_context->postprocs;
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
     this->state_.reset();
   }
@@ -120,16 +123,16 @@ inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasure
   auto f_worker = [this, &per_thread_rand_state, &per_task_result](int thread_id,
                                                                    int task_id) -> void {
     TRandState& rand_state = per_thread_rand_state[thread_id];
-    int design_space_index = tir::SampleInt(&rand_state, 0, design_spaces.size());
-    tir::Trace trace = design_spaces[design_space_index]->trace().value();
-    tir::Trace new_trace = tir::Trace(trace->insts, {});
-    tir::Schedule sch = tir::Schedule::Traced(  //
-        self->mod_[thread_id],                  //
-        /*rand_state=*/ForkSeed(&rand_state),   //
-        /*debug_mode=*/0,                       //
-        /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
-    new_trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
-    per_task_result.Set(task_id, MeasureCandidate(sch, self->args_info_));
+    IRModule mod = self->per_thread_mod_[thread_id];
+    for (;;) {
+      int design_space_index = tir::SampleInt(&rand_state, 0, design_spaces.size());
+      tir::Trace trace = design_spaces[design_space_index]->trace().value();
+      tir::Trace new_trace = tir::Trace(trace->insts, {});
+      if (Optional<tir::Schedule> sch = ApplyTrace(mod, new_trace, &rand_state, self->postprocs_)) {
+        per_task_result.Set(task_id, MeasureCandidate(sch.value(), self->args_info_));
+        break;
+      }
+    }
   };
   support::parallel_for_dynamic(0, ed - st, self->num_threads_, f_worker);
   return per_task_result;

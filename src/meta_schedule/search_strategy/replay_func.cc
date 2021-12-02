@@ -17,6 +17,7 @@
  * under the License.
  */
 #include "../utils.h"
+#include "tvm/meta_schedule/postproc.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -24,8 +25,6 @@ namespace meta_schedule {
 /*! \brief A search strategy that generates measure candidates using space generator. */
 class ReplayFuncNode : public SearchStrategyNode {
  public:
-  using TRandState = support::LinearCongruentialEngine::TRandState;
-
   /*! \brief The state of the search strategy. */
   struct State {
     /*! \brief The search strategy itself */
@@ -50,6 +49,8 @@ class ReplayFuncNode : public SearchStrategyNode {
   IRModule mod_{nullptr};
   /*! \brief The metadata of the function arguments. */
   Array<ArgInfo> args_info_{nullptr};
+  /*! \brief The post processors */
+  Array<Postproc> postprocs_{nullptr};
   /*! \brief The space generator for measure candidates generation. */
   SpaceGenerator space_generator_{nullptr};
   /*! \brief The random state. -1 means using random number. */
@@ -75,6 +76,7 @@ class ReplayFuncNode : public SearchStrategyNode {
     this->space_generator_ = tune_context->space_generator.value();
     this->mod_ = tune_context->mod.value();
     this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(tune_context->mod.value()));
+    this->postprocs_ = tune_context->postprocs;
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
     this->state_.reset();
   }
@@ -107,9 +109,23 @@ inline Optional<Array<MeasureCandidate>> ReplayFuncNode::State::GenerateMeasureC
   ed = std::min(ed, self->num_trials_total);
   Array<MeasureCandidate> result;
   for (int i = st; i < ed; i++) {
-    Array<tir::Schedule> schs = self->space_generator_->GenerateDesignSpace(self->mod_);
-    result.push_back(MeasureCandidate(schs[tir::SampleInt(&self->rand_state_, 0, schs.size())],
-                                      self->args_info_));
+    for (;;) {
+      Array<tir::Schedule> schs = self->space_generator_->GenerateDesignSpace(self->mod_);
+      int design_space_index = tir::SampleInt(&self->rand_state_, 0, schs.size());
+      tir::Schedule sch = schs[design_space_index];
+      sch->EnterPostproc();
+      bool failed = false;
+      for (const Postproc& proc : self->postprocs_) {
+        if (!proc->Apply(sch)) {
+          failed = true;
+          break;
+        }
+      }
+      if (!failed) {
+        result.push_back(MeasureCandidate(sch, self->args_info_));
+        break;
+      }
+    }
   }
   return result;
 }

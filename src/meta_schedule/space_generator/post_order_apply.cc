@@ -81,8 +81,6 @@ class BlockCollector : public tir::StmtVisitor {
  * */
 class PostOrderApplyNode : public SpaceGeneratorNode {
  public:
-  using TRandState = support::LinearCongruentialEngine::TRandState;
-
   /*! \brief The random state. -1 means using random number. */
   TRandState rand_state_ = -1;
   /*! \brief The schedule rules to be applied in order. */
@@ -97,7 +95,7 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
     CHECK(tune_context->sch_rules.defined())
         << "ValueError: Schedules rules not given in PostOrderApply!";
-    this->sch_rules_ = tune_context->sch_rules.value();
+    this->sch_rules_ = tune_context->sch_rules;
   }
 
   Array<tir::Schedule> GenerateDesignSpace(const IRModule& mod_) final {

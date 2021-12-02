@@ -18,19 +18,16 @@
 import re
 from typing import List
 
+import pytest
 import tvm
 from tvm.ir.base import assert_structural_equal
-from tvm.meta_schedule.runner.runner import Runner
-from tvm.meta_schedule.task_scheduler.task_scheduler import TaskScheduler
-from tvm.meta_schedule.tune_context import TuneContext
-from tvm.script import tir as T
-
-from tvm.meta_schedule.measure_callback import PyMeasureCallback
-from tvm.meta_schedule.search_strategy import MeasureCandidate
 from tvm.meta_schedule.builder import BuilderResult
+from tvm.meta_schedule.measure_callback import PyMeasureCallback
 from tvm.meta_schedule.runner import RunnerResult
+from tvm.meta_schedule.search_strategy import MeasureCandidate
+from tvm.meta_schedule.task_scheduler.task_scheduler import TaskScheduler
 from tvm.meta_schedule.utils import _get_hex_address
-
+from tvm.script import tir as T
 from tvm.tir.schedule import Schedule
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument,
@@ -60,11 +57,11 @@ def test_meta_schedule_measure_callback():
         def apply(
             self,
             task_scheduler: TaskScheduler,
-            tasks: List[TuneContext],
+            task_id: int,
             measure_candidates: List[MeasureCandidate],
             builds: List[BuilderResult],
             results: List[RunnerResult],
-        ) -> bool:
+        ) -> None:
             assert len(measure_candidates) == 1
             assert_structural_equal(measure_candidates[0].sch.mod, Matmul)
             assert (
@@ -75,12 +72,11 @@ def test_meta_schedule_measure_callback():
             assert (
                 len(results) == 1 and results[0].error_msg is None and len(results[0].run_secs) == 2
             )
-            return True
 
     measure_callback = FancyMeasureCallback()
-    assert measure_callback.apply(
+    measure_callback.apply(
         TaskScheduler(),
-        [],
+        0,
         [MeasureCandidate(Schedule(Matmul), None)],
         [BuilderResult("test_build", None)],
         [RunnerResult([1.0, 2.1], None)],
@@ -92,21 +88,22 @@ def test_meta_schedule_measure_callback_fail():
         def apply(
             self,
             task_scheduler: TaskScheduler,
-            tasks: List[TuneContext],
+            task_id: int,
             measure_candidates: List[MeasureCandidate],
             builds: List[BuilderResult],
             results: List[RunnerResult],
-        ) -> bool:
-            return False
+        ) -> None:
+            raise ValueError("test")
 
     measure_callback = FailingMeasureCallback()
-    assert not measure_callback.apply(
-        TaskScheduler(),
-        [],
-        [MeasureCandidate(None, None)],
-        [BuilderResult(None, None)],
-        [RunnerResult(None, None)],
-    )
+    with pytest.raises(ValueError, match="test"):
+        measure_callback.apply(
+            TaskScheduler(),
+            0,
+            [MeasureCandidate(Schedule(Matmul), None)],
+            [BuilderResult("test_build", None)],
+            [RunnerResult([1.0, 2.1], None)],
+        )
 
 
 def test_meta_schedule_measure_callback_as_string():
@@ -114,11 +111,11 @@ def test_meta_schedule_measure_callback_as_string():
         def apply(
             self,
             task_scheduler: "TaskScheduler",
-            tasks: List["TuneContext"],
+            task_id: int,
             measure_candidates: List[MeasureCandidate],
             builds: List[BuilderResult],
             results: List[RunnerResult],
-        ) -> bool:
+        ) -> None:
             pass
 
         def __str__(self) -> str:
