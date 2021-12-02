@@ -200,7 +200,7 @@ double CountFlop(const IRModule& mod) {
   for (const auto& kv : mod->functions) {
     const BaseFunc& base_func = kv.second;
     if (const auto* prim_func = base_func.as<PrimFuncNode>()) {
-      result += counter(prim_func->body);
+      result += counter.VisitStmt(prim_func->body);
     }
   }
   double cnt = 0.0;
@@ -265,7 +265,7 @@ struct TaskInfo {
     ++error_count;
     LOG(INFO) << "[" << name            //
               << "] Trial #" << trials  //
-              << "Error in building: " << err;
+              << ": Error in building: " << err;
   }
 };
 

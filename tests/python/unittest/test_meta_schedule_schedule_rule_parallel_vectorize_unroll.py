@@ -85,12 +85,12 @@ def test_parallel_vectorize_unroll():
             'b0 = sch.get_block(name="root", func_name="main")',
             'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.parallel", ann_val=512)',
             'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.vectorize", ann_val=32)',
-            'v1 = sch.sample_categorical(candidates=[0, 16, 64, 512], probs=[0.25, 0.25, 0.25, 0.25])',
+            "v1 = sch.sample_categorical(candidates=[0, 16, 64, 512], probs=[0.25, 0.25, 0.25, 0.25])",
             'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.unroll_explicit", ann_val=v1)',
         ]
     ]
     mod = Matmul
-    target = Target("llvm")
+    target = Target("llvm --num-cores=32")
     ctx = _create_context(
         mod=mod,
         target=target,
