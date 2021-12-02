@@ -33,7 +33,7 @@
 #include <unordered_set>
 
 #include "../runtime/object_internal.h"
-
+#include "../printer/text_printer.h"
 namespace tvm {
 namespace transform {
 
@@ -619,7 +619,7 @@ TVM_REGISTER_GLOBAL("transform.OverrideInstruments")
 
 Pass PrintIR(String header, bool show_meta_data) {
   auto pass_func = [header, show_meta_data](IRModule mod, const PassContext& ctx) {
-    LOG(INFO) << "PrintIR(" << header << "):\n" << AsText(mod, show_meta_data);
+    LOG(INFO) << "PrintIR(" << header << "):\n" << tir::AsTVMScript(mod, "T", show_meta_data);
     return mod;
   };
   return CreateModulePass(pass_func, 0, "PrintIR", {});

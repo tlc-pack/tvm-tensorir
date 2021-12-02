@@ -580,6 +580,60 @@ TVM_DLL const Op& tvm_fill_fragment();
  */
 TVM_DLL const Op& tvm_store_matrix_sync();
 
+/*!
+ * \brief tvm intrinsic for creating CUDA pipeline object.
+ *
+ * cuda::pipeline<cuda::thread_scope_thread> tvm_create_pipeline() {
+ *   return cuda::make_pipeline();
+ * }
+ */
+TVM_DLL const Op& tvm_create_pipeline();
+
+/*!
+ * \brief tvm intrinsic to get the CUDA pipeline object from current context.
+ * \note This intrinsic can only be called inside a for-loop annotated as the pipeline scope.
+ */
+TVM_DLL const Op& tvm_get_pipeline();
+
+/*!
+ * \brief tvm intrinsic for producer_acquire operation of the pipeline.
+ *
+ * void tvm_pipeline_producer_acquire(handle pipeline) {
+ *   pipeline.producer_acquire();
+ * }
+ */
+TVM_DLL const Op& tvm_pipeline_producer_acquire();
+
+/*!
+ * \brief tvm intrinsic for producer_commit operation of the pipeline.
+ *
+ * void tvm_pipeline_producer_commit(handle pipeline) {
+ *   pipeline.producer_commit();
+ * }
+ */
+TVM_DLL const Op& tvm_pipeline_producer_commit();
+
+/*!
+ * \brief tvm intrinsic for consumer_wait operation of the pipeline.
+ *
+ * void tvm_pipeline_consumer_wait(handle pipeline) {
+ *   pipeline.consumer_wait();
+ *
+ * \note This intrinsic is a thread-level barrier and does not perform synchronizatons
+ * across threads.
+ * }
+ */
+TVM_DLL const Op& tvm_pipeline_consumer_wait();
+
+/*!
+ * \brief tvm intrinsic for consumer_release operation of the pipeline.
+ *
+ * void tvm_pipeline_consumer_release(handle pipeline) {
+ *   pipeline.consumer_release();
+ * }
+ */
+TVM_DLL const Op& tvm_pipeline_consumer_release();
+
 // TODO(tvm-team) replace the usage of the vector operations by Shuffle.
 /*!
  * \brief Get the high level half of the vector

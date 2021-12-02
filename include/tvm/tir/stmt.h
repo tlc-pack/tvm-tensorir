@@ -1402,6 +1402,19 @@ constexpr const char* pragma_auto_unroll_max_step = "pragma_auto_unroll_max_step
 
 /*! \brief Pragma: unroll explicit */
 constexpr const char* pragma_unroll_explicit = "pragma_unroll_explicit";
+
+/*! \brief Mark the scope of the software pipeline */
+constexpr const char* pipeline_scope = "pipeline_scope";
+
+/*! \brief Mark the prologue part of the software pipeline */
+constexpr const char* pipeline_prologue_scope = "pipeline_prologue_scope";
+
+/*! \brief Mark the epilogue part of the software pipeline */
+constexpr const char* pipeline_epilogue_scope = "pipeline_epilogue_scope";
+
+/*! \brief Mark the main body part of the software pipeline */
+constexpr const char* pipeline_body_scope = "pipeline_body_scope";
+
 /*!
  * \brief Check if attr_key is a pragma key extension
  * \param attr_key The attr key to be compared
