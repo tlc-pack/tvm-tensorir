@@ -49,6 +49,7 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*! \brief The type of the random state */
 using TRandState = support::LinearCongruentialEngine::TRandState;
 
 /*!
@@ -258,6 +259,14 @@ inline int GetTargetNumCores(const Target& target) {
   return num_cores;
 }
 
+/*!
+ * \brief Apply the trace and postprocessors to an IRModule
+ * \param mod The IRModule to be applied
+ * \param trace The trace to apply to the IRModule
+ * \param rand_state The random seed
+ * \param postprocs The postprocessors to apply to the IRModule
+ * \return The schedule created, or NullOpt if any postprocessor fails
+ */
 inline Optional<tir::Schedule> ApplyTrace(const IRModule& mod, const tir::Trace& trace,
                                           TRandState* rand_state,
                                           const Array<Postproc>& postprocs) {

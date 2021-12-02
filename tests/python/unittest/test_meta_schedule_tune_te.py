@@ -18,8 +18,8 @@
 import logging
 
 import pytest
-from tvm.meta_schedule import tune_tir, ReplayTraceConfig
-from tvm.script import tir as T
+from tvm.meta_schedule import tune_te, ReplayTraceConfig
+from tvm.meta_schedule.testing import te_workload
 from tvm.target.target import Target
 from tvm.tir import Schedule
 
@@ -28,29 +28,10 @@ logging.basicConfig()
 logging.getLogger("tvm.meta_schedule").setLevel(logging.DEBUG)
 
 
-# pylint: disable=no-member,invalid-name,unused-variable
-
-
-@T.prim_func
-def matmul(a: T.handle, b: T.handle, c: T.handle) -> None:
-    A = T.match_buffer(a, [1024, 1024])
-    B = T.match_buffer(b, [1024, 1024])
-    C = T.match_buffer(c, [1024, 1024])
-    for i, j, k in T.grid(1024, 1024, 1024):
-        with T.block("update"):
-            vi, vj, vk = T.axis.remap("SSR", [i, j, k])
-            with T.init():
-                C[vi, vj] = 0.0
-            C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
-
-
-# pylint: enable=no-member,invalid-name,unused-variable
-
-
 @pytest.mark.skip("Integration test")
 def test_tune_matmul():
-    sch: Schedule = tune_tir(
-        mod=matmul,
+    sch: Schedule = tune_te(
+        tensors=te_workload.batch_matmul_nkkm(B=1, N=128, M=128, K=128),
         target=Target("llvm --num-cores=16"),
         config=ReplayTraceConfig(
             num_trials_per_iter=32,
