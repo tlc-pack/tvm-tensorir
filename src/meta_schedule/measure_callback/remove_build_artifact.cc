@@ -29,7 +29,9 @@ class RemoveBuildArtifactNode : public MeasureCallbackNode {
              const Array<RunnerResult>& runner_results) final {
     static const PackedFunc* f_rm = runtime::Registry::Get("meta_schedule.remove_build_dir");
     for (const BuilderResult& build_result : builder_results) {
-      (*f_rm)(build_result->artifact_path);
+      if (Optional<String> path = build_result->artifact_path) {
+        (*f_rm)(path.value());
+      }
     }
   }
 
