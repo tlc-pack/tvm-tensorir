@@ -261,11 +261,13 @@ struct TaskInfo {
               << ". Best GFLOPs: " << best_gflops;
   }
 
-  void UpdateError(const String& err) {
+  void UpdateError(const String& err, const MeasureCandidate& candidate) {
     ++error_count;
     LOG(INFO) << "[" << name            //
               << "] Trial #" << trials  //
-              << ": Error in building: " << err;
+              << ": Error in building: " << err << "\n"
+              << tir::AsTVMScript(candidate->sch->mod()) << "\n"
+              << Concat(candidate->sch->trace().value()->AsPython(false), "\n");
   }
 };
 
@@ -289,9 +291,9 @@ class EchoStatisticsNode : public MeasureCallbackNode {
       BuilderResult builder_result = builder_results[i];
       RunnerResult runner_result = runner_results[i];
       if (Optional<String> err = builder_result->error_msg) {
-        info.UpdateError(err.value());
+        info.UpdateError(err.value(), candidate);
       } else if (Optional<String> err = runner_result->error_msg) {
-        info.UpdateError(err.value());
+        info.UpdateError(err.value(), candidate);
       } else {
         ICHECK(runner_result->run_secs.defined());
         info.Update(GetRunMs(runner_result->run_secs.value()));
