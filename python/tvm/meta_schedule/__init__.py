@@ -38,4 +38,4 @@ from .tune import tune_te, tune_tir, tune_relay
 from .tune_context import TuneContext
 from .search_strategy import MeasureCandidate
 from .tune_context import TuneContext
-from .tune import tune_tir
+from .tune import tune_tir, tune_te
