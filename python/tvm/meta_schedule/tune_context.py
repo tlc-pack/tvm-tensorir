@@ -80,9 +80,9 @@ class TuneContext(Object):
     target: Optional[Target]
     space_generator: Optional["SpaceGenerator"]
     search_strategy: Optional["SearchStrategy"]
-    sch_rules: Optional[List["ScheduleRule"]]
-    postprocs: Optional[List["Postproc"]]
-    mutators: Optional[List["Mutator"]]
+    sch_rules: List["ScheduleRule"]
+    postprocs: List["Postproc"]
+    mutators: List["Mutator"]
     task_name: str
     rand_state: int
     num_threads: int

@@ -16,11 +16,13 @@
 # under the License.
 # pylint: disable=missing-docstring
 import logging
+
+import pytest
 from tvm.meta_schedule import tune_tir
-from tvm.meta_schedule.search_strategy import ReplayTraceConfig
+from tvm.meta_schedule.search_strategy import ReplayFuncConfig
 from tvm.script import tir as T
 from tvm.target.target import Target
-import pytest
+from tvm.tir import Schedule
 
 
 logging.basicConfig()
@@ -32,10 +34,10 @@ logging.getLogger("tvm.meta_schedule").setLevel(logging.DEBUG)
 
 @T.prim_func
 def matmul(a: T.handle, b: T.handle, c: T.handle) -> None:
-    A = T.match_buffer(a, [128, 128])
-    B = T.match_buffer(b, [128, 128])
-    C = T.match_buffer(c, [128, 128])
-    for i, j, k in T.grid(128, 128, 128):
+    A = T.match_buffer(a, [1024, 1024])
+    B = T.match_buffer(b, [1024, 1024])
+    C = T.match_buffer(c, [1024, 1024])
+    for i, j, k in T.grid(1024, 1024, 1024):
         with T.block("update"):
             vi, vj, vk = T.axis.remap("SSR", [i, j, k])
             with T.init():
@@ -48,18 +50,19 @@ def matmul(a: T.handle, b: T.handle, c: T.handle) -> None:
 
 @pytest.mark.skip("Integration test")
 def test_tune_matmul():
-    tuned = tune_tir(
+    sch: Schedule = tune_tir(
         mod=matmul,
-        target=Target("llvm"),
-        config=ReplayTraceConfig(
+        target=Target("llvm --num-cores=16"),
+        config=ReplayFuncConfig(
             num_trials_per_iter=32,
-            num_trials_total=128,
+            num_trials_total=1024,
         ),
     )
-    if tuned is None:
+    if sch is None:
         print("No valid schedule found!")
     else:
-        print(tuned.script())
+        print(sch.mod.script())
+        print(sch.trace)
 
 
 if __name__ == """__main__""":

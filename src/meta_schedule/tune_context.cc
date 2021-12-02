@@ -39,14 +39,10 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   n->target = target;
   n->space_generator = space_generator;
   n->search_strategy = search_strategy;
-  n->sch_rules = sch_rules;
-  n->postprocs = postprocs;
-  n->mutators = mutators;
-  if (task_name.defined()) {
-    n->task_name = task_name.value();
-  } else {
-    n->task_name = "main";
-  }
+  n->sch_rules = sch_rules.value_or({});
+  n->postprocs = postprocs.value_or({});
+  n->mutators = mutators.value_or({});
+  n->task_name = task_name.value_or("main");
   if (rand_state == -1) {
     rand_state = std::random_device()();
   }
@@ -65,20 +61,14 @@ void TuneContextNode::Initialize() {
   if (this->search_strategy.defined()) {
     this->search_strategy.value()->InitializeWithTuneContext(GetRef<TuneContext>(this));
   }
-  if (this->sch_rules.defined()) {
-    for (const ScheduleRule& sch_rule : sch_rules.value()) {
-      sch_rule->InitializeWithTuneContext(GetRef<TuneContext>(this));
-    }
+  for (const ScheduleRule& sch_rule : sch_rules) {
+    sch_rule->InitializeWithTuneContext(GetRef<TuneContext>(this));
   }
-  if (this->postprocs.defined()) {
-    for (const Postproc& postproc : postprocs.value()) {
-      postproc->InitializeWithTuneContext(GetRef<TuneContext>(this));
-    }
+  for (const Postproc& postproc : postprocs) {
+    postproc->InitializeWithTuneContext(GetRef<TuneContext>(this));
   }
-  if (this->mutators.defined()) {
-    for (const Mutator& mutator : mutators.value()) {
-      mutator->InitializeWithTuneContext(GetRef<TuneContext>(this));
-    }
+  for (const Mutator& mutator : mutators) {
+    mutator->InitializeWithTuneContext(GetRef<TuneContext>(this));
   }
 }
 

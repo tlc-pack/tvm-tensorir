@@ -45,11 +45,11 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The search strategy. */
   Optional<SearchStrategy> search_strategy;
   /*! \brief The schedule rules. */
-  Optional<Array<ScheduleRule>> sch_rules;
+  Array<ScheduleRule> sch_rules;
   /*! \brief The postprocessors. */
-  Optional<Array<Postproc>> postprocs;
+  Array<Postproc> postprocs;
   /*! \brief The mutators. */
-  Optional<Array<Mutator>> mutators;
+  Array<Mutator> mutators;
   /*! \brief The name of the tuning task. */
   String task_name;
   /*! \brief The random state. */

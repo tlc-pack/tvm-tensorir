@@ -28,6 +28,7 @@ from tvm.tir import PrimFunc, Schedule
 
 from . import schedule_rule
 from . import measure_callback
+from . import postproc
 from .measure_callback import MeasureCallback
 from .builder import Builder, LocalBuilder
 from .database import Database, JSONDatabase, TuningRecord
@@ -178,8 +179,17 @@ def _parse_f_tune_context(f_tune_context: Optional[TYPE_F_TUNE_CONTEXT]) -> TYPE
                         scope="global",
                     ),
                 ),
+                schedule_rule.ParallelizeVectorizeUnroll(
+                    max_jobs_per_core=16,
+                    max_vectorize_extent=32,
+                    unroll_max_steps=[0, 16, 64, 512],
+                    unroll_explicit=True,
+                ),
             ],
-            postprocs=[],
+            postprocs=[
+                postproc.RewriteParallelVectorizeUnroll(),
+                postproc.RewriteReductionBlock(),
+            ],
             mutators=[],
             task_name=task_name,
             rand_state=-1,
@@ -307,7 +317,7 @@ def tune_tir(
     measure_callbacks: Optional[List[MeasureCallback]] = None,
     f_tune_context: Optional[TYPE_F_TUNE_CONTEXT] = None,
     f_task_scheduler: Optional[TYPE_F_TASK_SCHEDULER] = None,
-) -> Optional[IRModule]:
+) -> Optional[Schedule]:
     """Tune a module with a given target.
 
     Parameters
@@ -365,4 +375,4 @@ def tune_tir(
         assert len(bests) == 1
         sch = Schedule(mod)
         bests[0].trace.apply_to_schedule(sch, remove_postproc=False)
-        return sch.mod
+        return sch
