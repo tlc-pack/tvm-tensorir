@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Local builder that compile on the local host"""
+import logging
 import os
 import tempfile
 from typing import Callable, List, Optional, Union
@@ -27,6 +28,8 @@ from tvm.target import Target
 from ...contrib.popen_pool import MapResult, PopenPoolExecutor, StatusKind
 from ..utils import cpu_count, get_global_func_with_default_on_worker
 from .builder import BuilderInput, BuilderResult, PyBuilder
+
+logger = logging.getLogger(__name__)
 
 
 class LocalBuilder(PyBuilder):
@@ -109,7 +112,8 @@ class LocalBuilder(PyBuilder):
         super().__init__()
 
         if max_workers is None:
-            max_workers = cpu_count()
+            max_workers = cpu_count(logical=True)
+        logger.info("LocalBuilder: max_workers = %d", max_workers)
 
         self.pool = PopenPoolExecutor(
             max_workers=max_workers,
