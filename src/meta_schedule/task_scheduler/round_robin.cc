@@ -62,7 +62,11 @@ TaskScheduler TaskScheduler::RoundRobin(Array<TuneContext> tasks,  //
   n->builder = builder;
   n->runner = runner;
   n->database = database;
-  n->measure_callbacks = measure_callbacks;
+  if (measure_callbacks.defined()) {
+    n->measure_callbacks = measure_callbacks.value();
+  } else {
+    n->measure_callbacks = {};
+  }
   n->task_id = -1;
   return TaskScheduler(n);
 }

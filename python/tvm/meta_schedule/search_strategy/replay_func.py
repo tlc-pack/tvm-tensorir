@@ -15,10 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 """Replay Trace Search Strategy"""
+from typing import NamedTuple
 
 from tvm._ffi import register_object
-from .search_strategy import SearchStrategy
+
 from .. import _ffi_api
+from .search_strategy import SearchStrategy
 
 
 @register_object("meta_schedule.ReplayFunc")
@@ -49,3 +51,13 @@ class ReplayFunc(SearchStrategy):
             num_trials_per_iter,
             num_trials_total,
         )
+
+
+class ReplayFuncConfig(NamedTuple):
+    """Configuration for ReplayFunc"""
+
+    num_trials_per_iter: int
+    num_trials_total: int
+
+    def create_strategy(self) -> ReplayFunc:
+        return ReplayFunc(self.num_trials_per_iter, self.num_trials_total)

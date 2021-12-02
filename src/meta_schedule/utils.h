@@ -49,6 +49,8 @@
 namespace tvm {
 namespace meta_schedule {
 
+using TRandState = support::LinearCongruentialEngine::TRandState;
+
 /*!
  * \brief Read lines from a json file.
  * \param path The path to the json file.
@@ -241,19 +243,37 @@ inline tir::BlockRV GetRVFromSRef(const tir::Schedule& sch, const tir::StmtSRef&
  * \param
  */
 inline int GetTargetNumCores(const Target& target) {
-  int num_cores = target->GetAttr<Integer>("num_cores").value_or(-1);
+  int num_cores = target->GetAttr<Integer>("num-cores").value_or(-1);
   if (num_cores == -1) {
     static const auto* f_cpu_count = runtime::Registry::Get("meta_schedule.cpu_count");
     ICHECK(f_cpu_count)
         << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
     num_cores = (*f_cpu_count)(false);
-    LOG(WARNING) << "Warning: Target does not have attribute \"num_cores\", falling back the "
+    LOG(WARNING) << "Warning: Target does not have attribute \"num-cores\", falling back the "
                     "number of CPU cores on the local machine. The inaccuracy in number of "
                     "cores may lead to dramatically inferior performance. Falling back to "
                     "assuming "
                  << num_cores << " CPU core(s)";
   }
   return num_cores;
+}
+
+inline Optional<tir::Schedule> ApplyTrace(const IRModule& mod, const tir::Trace& trace,
+                                          TRandState* rand_state,
+                                          const Array<Postproc>& postprocs) {
+  tir::Schedule sch =
+      tir::Schedule::Traced(mod,
+                            /*rand_state=*/ForkSeed(rand_state),
+                            /*debug_mode=*/0,
+                            /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
+  trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
+  sch->EnterPostproc();
+  for (const Postproc& proc : postprocs) {
+    if (!proc->Apply(sch)) {
+      return NullOpt;
+    }
+  }
+  return sch;
 }
 
 }  // namespace meta_schedule

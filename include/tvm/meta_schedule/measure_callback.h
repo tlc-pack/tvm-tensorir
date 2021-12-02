@@ -43,15 +43,14 @@ class MeasureCallbackNode : public runtime::Object {
    * \param task_scheduler The task scheduler.
    * \param tasks The list of tune context to process.
    * \param measure_candidates The measure candidates.
-   * \param builds The builder results by building the measure candidates.
-   * \param results The runner results by running the built measure candidates.
-   * \return Whether the measure callback was successfully applied.
+   * \param builder_results The builder results by building the measure candidates.
+   * \param runner_results The runner results by running the built measure candidates.
    */
-  virtual bool Apply(const TaskScheduler& task_scheduler,                //
-                     const Array<TuneContext> tasks,                     //
+  virtual void Apply(const TaskScheduler& task_scheduler,                //
+                     int task_id,                                        //
                      const Array<MeasureCandidate>& measure_candidates,  //
-                     const Array<BuilderResult>& builds,                 //
-                     const Array<RunnerResult>& results) = 0;
+                     const Array<BuilderResult>& builder_results,        //
+                     const Array<RunnerResult>& runner_results) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.MeasureCallback";
   TVM_DECLARE_BASE_OBJECT_INFO(MeasureCallbackNode, Object);
@@ -70,8 +69,8 @@ class PyMeasureCallbackNode : public MeasureCallbackNode {
    * \return Whether the measure callback was successfully applied.
    */
   using FApply =
-      runtime::TypedPackedFunc<bool(const TaskScheduler& task_scheduler,                //
-                                    const Array<TuneContext> tasks,                     //
+      runtime::TypedPackedFunc<void(const TaskScheduler& task_scheduler,                //
+                                    int task_id,                                        //
                                     const Array<MeasureCandidate>& measure_candidates,  //
                                     const Array<BuilderResult>& builds,                 //
                                     const Array<RunnerResult>& results)>;
@@ -91,13 +90,13 @@ class PyMeasureCallbackNode : public MeasureCallbackNode {
     // `f_as_string` is not visited
   }
 
-  bool Apply(const TaskScheduler& task_scheduler,                //
-             const Array<TuneContext> tasks,                     //
+  void Apply(const TaskScheduler& task_scheduler,                //
+             int task_id,                                        //
              const Array<MeasureCandidate>& measure_candidates,  //
              const Array<BuilderResult>& builds,                 //
              const Array<RunnerResult>& results) final {
     ICHECK(f_apply != nullptr) << "PyMeasureCallback's Apply method not implemented!";
-    return this->f_apply(task_scheduler, tasks, measure_candidates, builds, results);
+    return this->f_apply(task_scheduler, task_id, measure_candidates, builds, results);
   }
 
   static constexpr const char* _type_key = "meta_schedule.PyMeasureCallback";
@@ -111,11 +110,27 @@ class PyMeasureCallbackNode : public MeasureCallbackNode {
 class MeasureCallback : public runtime::ObjectRef {
  public:
   /*!
+   * \brief Create a measure callback that adds the measurement results into the database
+   * \return The measure callback created.
+   */
+  TVM_DLL static MeasureCallback AddToDatabase();
+  /*!
+   * \brief Create a measure callback that adds the measurement results into the database
+   * \return The measure callback created.
+   */
+  TVM_DLL static MeasureCallback RemoveBuildArtifact();
+  /*!
+   * \brief Create a measure callback that echos the statistics of the tuning process to the console
+   * \param f_count_flops The function to count FLOPs
+   * \return The measure callback created.
+   */
+  TVM_DLL static MeasureCallback EchoStatistics();
+  /*!
    * \brief Create a measure callback with customized methods on the python-side.
    * \param f_apply The packed function of `Apply`.
    * \return The measure callback created.
    */
-  TVM_DLL static MeasureCallback PyMeasureCallback(PyMeasureCallbackNode::FApply f_apply,  //
+  TVM_DLL static MeasureCallback PyMeasureCallback(PyMeasureCallbackNode::FApply f_apply,
                                                    PyMeasureCallbackNode::FAsString f_as_string);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(MeasureCallback, ObjectRef, MeasureCallbackNode);
 };

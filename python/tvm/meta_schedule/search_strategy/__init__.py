@@ -21,5 +21,5 @@ to generate measure candidates.
 """
 
 from .search_strategy import SearchStrategy, PySearchStrategy, MeasureCandidate
-from .replay_trace import ReplayTrace
-from .replay_func import ReplayFunc
+from .replay_trace import ReplayTrace, ReplayTraceConfig
+from .replay_func import ReplayFunc, ReplayFuncConfig

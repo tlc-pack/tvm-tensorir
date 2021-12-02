@@ -63,7 +63,7 @@ class TaskScheduler(Object):
 
         Returns
         -------
-        int
+        next_task_id : int
             The next task id.
         """
         return _ffi_api.TaskSchedulerNextTaskId(self)  # type: ignore # pylint: disable=no-member
@@ -98,7 +98,7 @@ class TaskScheduler(Object):
 
         Returns
         -------
-        bool
+        running : bool
             Whether the task is running.
         """
         return _ffi_api.TaskSchedulerIsTaskRunning(self, task_id)  # type: ignore # pylint: disable=no-member

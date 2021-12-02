@@ -14,19 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Package `tvm.meta_schedule`. The meta schedule infrastructure."""
-from . import arg_info
-from . import database
-from . import builder
-from . import runner
-from . import mutator
-from . import postproc
-from . import schedule_rule
-from . import space_generator
-from . import search_strategy
-from . import integration
-from . import feature_extractor
-from . import cost_model
-from .search_strategy import MeasureCandidate
-from .tune_context import TuneContext
-from .tune import tune_tir
+from tvm._ffi import register_object
+
+from .. import _ffi_api
+from .measure_callback import MeasureCallback
+
+
+@register_object("meta_schedule.EchoStatistics")
+class EchoStatistics(MeasureCallback):
+    def __init__(self) -> None:
+        self.__init_handle_by_constructor__(
+            _ffi_api.MeasureCallbackEchoStatistics,  # type: ignore # pylint: disable=no-member
+        )
