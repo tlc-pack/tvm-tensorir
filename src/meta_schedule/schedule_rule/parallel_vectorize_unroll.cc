@@ -37,7 +37,9 @@ class ParallelizeVectorizeUnrollNode : public ScheduleRuleNode {
   void InitializeWithTuneContext(const TuneContext& context) final {
     ICHECK(context->target.defined());
     Target target = context->target.value();
-    num_cores = GetTargetNumCores(target);
+    if (this->max_jobs_per_core != -1) {
+      num_cores = GetTargetNumCores(target);
+    }
   }
 
   // Inherited from ScheduleRuleNode

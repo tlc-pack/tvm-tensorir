@@ -24,8 +24,8 @@ from typing import Callable, Generator, List, Optional, Union
 
 from tvm.ir.module import IRModule
 from tvm.target.target import Target
-from tvm.tir import PrimFunc, Schedule
 from tvm.te import Tensor, create_prim_func
+from tvm.tir import PrimFunc, Schedule
 
 from . import schedule_rule
 from . import measure_callback
@@ -255,8 +255,20 @@ def _parse_f_tune_context(f_tune_context: Optional[TYPE_F_TUNE_CONTEXT]) -> TYPE
                     require_ordered=False,
                     disallow_op=None,
                 ),
+                schedule_rule.ParallelizeVectorizeUnroll(
+                    max_jobs_per_core=-1,  # disable parallelize
+                    max_vectorize_extent=-1,  # disable vectorize
+                    unroll_max_steps=[0, 16, 64, 512, 1024],
+                    unroll_explicit=True,
+                ),
             ],
-            postprocs=[],
+            postprocs=[
+                postproc.RewriteCooperativeFetch(),
+                postproc.RewriteUnboundBlock(),
+                postproc.RewriteParallelVectorizeUnroll(),
+                postproc.RewriteReductionBlock(),
+                postproc.VerifyGPUCode(),
+            ],
             mutators=[],
             task_name=task_name,
             rand_state=-1,

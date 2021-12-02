@@ -18,11 +18,10 @@
 import logging
 
 import pytest
-from tvm.meta_schedule import tune_tir, ReplayTraceConfig
+from tvm.meta_schedule import ReplayTraceConfig, tune_tir
 from tvm.script import tir as T
 from tvm.target.target import Target
 from tvm.tir import Schedule
-
 
 logging.basicConfig()
 logging.getLogger("tvm.meta_schedule").setLevel(logging.DEBUG)
@@ -48,7 +47,7 @@ def matmul(a: T.handle, b: T.handle, c: T.handle) -> None:
 
 
 @pytest.mark.skip("Integration test")
-def test_tune_matmul():
+def test_tune_matmul_cpu():
     sch: Schedule = tune_tir(
         mod=matmul,
         target=Target("llvm --num-cores=16"),
@@ -64,5 +63,23 @@ def test_tune_matmul():
         print(sch.trace)
 
 
+@pytest.mark.skip("Integration test")
+def test_tune_matmul_cuda():
+    sch: Schedule = tune_tir(
+        mod=matmul,
+        target=Target("nvidia/geforce-rtx-3070"),
+        config=ReplayTraceConfig(
+            num_trials_per_iter=32,
+            num_trials_total=32,
+        ),
+    )
+    if sch is None:
+        print("No valid schedule found!")
+    else:
+        print(sch.mod.script())
+        print(sch.trace)
+
+
 if __name__ == """__main__""":
-    test_tune_matmul()
+    test_tune_matmul_cpu()
+    test_tune_matmul_cuda()

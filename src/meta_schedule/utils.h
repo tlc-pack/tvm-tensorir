@@ -37,6 +37,7 @@
 #include <tvm/meta_schedule/tune_context.h>
 #include <tvm/support/parallel_for.h>
 
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -223,6 +224,24 @@ inline std::vector<support::LinearCongruentialEngine::TRandState> ForkSeed(
  */
 inline IRModule DeepCopyIRModule(IRModule mod) {
   return Downcast<IRModule>(LoadJSON(SaveJSON(mod)));
+}
+
+/*!
+ * \brief Concatenate strings
+ * \param strs The strings to concatenate
+ * \param delim The delimiter
+ * \return The concatenated string
+ */
+inline std::string Concat(const Array<String>& strs, const std::string& delim) {
+  if (strs.empty()) {
+    return "";
+  }
+  std::ostringstream os;
+  os << strs[0];
+  for (int i = 1, n = strs.size(); i < n; ++i) {
+    os << delim << strs[i];
+  }
+  return os.str();
 }
 
 /*!
