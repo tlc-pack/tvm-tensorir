@@ -152,6 +152,30 @@ class ScheduleRule : public runtime::ObjectRef {
                                                Optional<Integer> vector_load_max_len,        //
                                                Optional<Map<String, ObjectRef>> reuse_read,  //
                                                Optional<Map<String, ObjectRef>> reuse_write);
+  
+  /*!
+   * \brief Create a mega rule: multi-level tiling with data reuse
+   * \param structure The tiling structure. Recommended:
+   * - 'SSRSRS' on CPU
+   * - 'SSSRRSRS' on GPU
+   * \param tile_bind For each level of tiles, which thread axis it is bound to. Recommended:
+   * - NullOpt on CPU
+   * - [blockIdx.x, vthread.x, threadIdx.x] on GPU
+   * \param max_innermost_factor The maximum size of the innermost factor. NullOpt means no limit
+   * \param vector_load_max_len The length of vector lane in vectorized cooperative fetching.
+   * NullOpt means disable vectorization
+   * \param reuse_read Data reuse configuration for reading. NullOpt means no reuse.
+   * \param reuse_write Data reuse configuration for writing. NullOpt means no reuse.
+   * \return The schedule rule created
+   */
+  TVM_DLL static ScheduleRule MultiLevelTilingAutoMovement(String structure,
+                                                         //
+                                               Optional<Array<String>> tile_binds,           //
+                                               Optional<Integer> max_innermost_factor,       //
+                                               Optional<Integer> vector_load_max_len,        //
+                                               Optional<Map<String, ObjectRef>> reuse_read,  //
+                                               Optional<Map<String, ObjectRef>> reuse_write,
+                                                           Optional<String> compute_intrin);
   /*!
    * \brief A rule that randomly select a compute-at location for a free block
    * \return The rule created
@@ -173,6 +197,8 @@ class ScheduleRule : public runtime::ObjectRef {
                                                          int max_vectorize_extent,         //
                                                          Array<Integer> unroll_max_steps,  //
                                                          bool unroll_explicit);
+  
+  TVM_DLL static ScheduleRule AddConstraintsAutoMovement();
   /*!
    * \brief Create a schedule rule with customized methods on the python-side.
    * \param f_initialize_with_tune_context The packed function of `InitializeWithTuneContext`.

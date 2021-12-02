@@ -14,13 +14,16 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""The tvm.meta_schedule.postproc package."""
-from .postproc import Postproc, PyPostproc
-from .disallow_dynamic_loop import DisallowDynamicLoop
-from .rewrite_cooperative_fetch import RewriteCooperativeFetch
-from .rewrite_parallel_vectorize_unroll import RewriteParallelVectorizeUnroll
-from .rewrite_reduction_block import RewriteReductionBlock
-from .rewrite_reduction_block_auto_movement import RewriteReductionBlockAutoMovement
-from .rewrite_unbound_block import RewriteUnboundBlock
-from .rewrite_tensorize import RewriteTensorize
-from .verify_gpu_code import VerifyGPUCode
+from tvm._ffi import register_object
+
+from .. import _ffi_api
+from .schedule_rule import ScheduleRule
+
+
+@register_object("meta_schedule.AddConstraintsAutoMovement")
+class AddConstraintsAutoMovement(ScheduleRule):
+
+    def __init__(self) -> None:
+        self.__init_handle_by_constructor__(
+            _ffi_api.ScheduleRuleAddConstraintsAutoMovement,  # type: ignore # pylint: disable=no-member
+        )

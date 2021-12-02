@@ -1031,30 +1031,6 @@ class Schedule(Object):
             self, block, write_buffer_index, storage_scope
         )
 
-    ########## Schedule: Data movement ##########
-
-    def read_at(
-        self,
-        loop: LoopRV,
-        block: BlockRV,
-        read_buffer_index: int,
-        storage_scope: str,
-    ) -> BlockRV:
-        return _ffi_api.ScheduleReadAt(  # type: ignore # pylint: disable=no-member
-            self, loop, block, read_buffer_index, storage_scope
-        )
-
-    def write_at(
-        self,
-        loop: LoopRV,
-        block: BlockRV,
-        write_buffer_index: int,
-        storage_scope: str,
-    ) -> BlockRV:
-        return _ffi_api.ScheduleWriteAt(  # type: ignore # pylint: disable=no-member
-            self, loop, block, write_buffer_index, storage_scope
-        )
-
     ########## Schedule: Compute location ##########
 
     def compute_at(

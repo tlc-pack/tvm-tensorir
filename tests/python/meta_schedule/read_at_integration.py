@@ -24,27 +24,27 @@ N=M=K=1024
 #             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 
-@T.prim_func
-def cuda_matmul(a: T.handle, b: T.handle, c: T.handle) -> None:  # pylint: disable=undefined-loop-variable
-    A = T.match_buffer(a, [1024, 1024], "float32")
-    B = T.match_buffer(b, [1024, 1024], "float32")
-    C = T.match_buffer(c, [1024, 1024], "float32")
-
-    for bx in T.thread_binding(0, 8, thread="blockIdx.x"):
-        for by in T.thread_binding(0, 8, thread="blockIdx.y"):
-            for ty in T.thread_binding(0, 8, thread="threadIdx.y"):
-                for tx in T.thread_binding(0, 32, thread="threadIdx.x"):
-                    for k0 in T.serial(0, 32):
-                        for k1 in T.serial(0, 2):
-                            for i0, j0 in T.grid(4, 2):
-                                for i1, j1, k2 in T.grid(16, 16, 16):
-                                    with T.block([1024, 1024, T.reduce_axis(0, 1024)], "C") as [vi,vj,vk]:
-                                        T.bind(vi, bx*128 + T.floordiv(ty, 4)*64+i0*16+i1 )
-                                        T.bind(vj, by*128+T.floormod(ty, 4)*32+j0*16+j1)
-                                        T.bind(vk, k0*32+k1*16+k2)
-                                        with T.init():
-                                            C[vi, vj] = 0.0
-                                        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+# @T.prim_func
+# def cuda_matmul(a: T.handle, b: T.handle, c: T.handle) -> None:  # pylint: disable=undefined-loop-variable
+#     A = T.match_buffer(a, [1024, 1024], "float32")
+#     B = T.match_buffer(b, [1024, 1024], "float32")
+#     C = T.match_buffer(c, [1024, 1024], "float32")
+#
+#     for bx in T.thread_binding(0, 8, thread="blockIdx.x"):
+#         for by in T.thread_binding(0, 8, thread="blockIdx.y"):
+#             for ty in T.thread_binding(0, 8, thread="threadIdx.y"):
+#                 for tx in T.thread_binding(0, 32, thread="threadIdx.x"):
+#                     for k0 in T.serial(0, 32):
+#                         for k1 in T.serial(0, 2):
+#                             for i0, j0 in T.grid(4, 2):
+#                                 for i1, j1, k2 in T.grid(16, 16, 16):
+#                                     with T.block([1024, 1024, T.reduce_axis(0, 1024)], "C") as [vi,vj,vk]:
+#                                         T.bind(vi, bx*128 + T.floordiv(ty, 4)*64+i0*16+i1 )
+#                                         T.bind(vj, by*128+T.floormod(ty, 4)*32+j0*16+j1)
+#                                         T.bind(vk, k0*32+k1*16+k2)
+#                                         with T.init():
+#                                             C[vi, vj] = 0.0
+#                                         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 
 def test():

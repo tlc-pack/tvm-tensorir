@@ -43,9 +43,6 @@ void RelaxBufferRegions(const Array<BufferRegion>& buffer_regions,
                        std::vector<NDIntSet>* relaxed_regions) {
  for (const BufferRegion& buffer_region : buffer_regions) {
    if (buffer_region->buffer.same_as(buffer)) {
-     LOG(INFO)<<var_dom;
-     LOG(INFO)<<full_var_dom;
-     LOG(INFO)<<Substitute(buffer_region->region, bindings);
      arith::Analyzer analyzer;
      analyzer.Bind(full_var_dom);
      Array<Range> simplified_region;
@@ -53,10 +50,8 @@ void RelaxBufferRegions(const Array<BufferRegion>& buffer_regions,
        simplified_region.push_back(Range::FromMinExtent(analyzer.Simplify(range->min),
                                                         analyzer.Simplify(range->extent)));
      }
-     LOG(INFO)<<simplified_region;
      Array<arith::IntSet> relaxed_region =
          arith::EvalSet(simplified_region, AsIntSet(var_dom));
-     LOG(INFO)<<relaxed_region;
      relaxed_regions->push_back({relaxed_region.begin(), relaxed_region.end()});
    }
  }
@@ -156,7 +151,6 @@ Region RewriteRegion(const Region& region, const Array<Array<PrimExpr>>& new_sha
     offset+=new_shape[i].size();
   }
   if (!rank_promotion_success_) {
-    LOG(INFO)<<"fail";
     return {};
   }
   Region new_region;
@@ -340,7 +334,6 @@ struct ReadWriteAtImpl {
        indices.push_back(Substitute(range->min, binding));
      }
      Array<Array<PrimExpr>> new_shape = PatternExtractor::getRankPromotedShape(indices, var_range);
-     LOG(INFO)<<"new_shape: "<<new_shape;
      Buffer dst_buffer = WithScope(src, storage_scope);
      auto dst =  dst_buffer.CopyOnWrite();
      dst->shape.clear();
@@ -403,7 +396,6 @@ private:
  std::pair<For, BlockRealize> MakeLoopAndBlock(const String& new_block_name_hint) {
    Array<Stmt> subtrees = AsArray(loop_->body);
    int n_subtrees = subtrees.size();
-   LOG(INFO)<<n_subtrees;
    runtime::StorageScope scope = runtime::StorageScope::Create(dst_.scope());
    std::vector<NDIntSet> relaxed_regions;
    std::vector<int> r_pos;
@@ -428,7 +420,6 @@ private:
        w_visited = w_visited || has_w;
        if (is_read ? has_r : has_w) {
          if(!new_shape_.empty()) {
-           LOG(INFO)<<RewriteBufferRegions_(block->reads, src_, dst_, new_shape_);
            RelaxBufferRegions(
                /*buffer_regions=*/
                    is_read ? RewriteBufferRegions_(block->reads, src_, dst_, new_shape_)
@@ -536,10 +527,8 @@ private:
    }
    Stmt stmt;
    Array<PrimExpr> rewrite_back_index;
-   LOG(INFO)<<indices;
    if (!new_shape_.empty()) {
      rewrite_back_index = RewriteBackIndex(indices, new_shape_);
-     LOG(INFO)<<rewrite_back_index;
      if (is_read) {
        stmt = BufferStore(copy_to, /*value=*/BufferLoad(copy_from, rewrite_back_index),
                           /*indices=*/indices);

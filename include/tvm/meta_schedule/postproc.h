@@ -143,6 +143,11 @@ class Postproc : public runtime::ObjectRef {
    */
   TVM_DLL static Postproc RewriteReductionBlock();
   /*!
+   * \brief Create a postprocessor that rewrites reduction block by moving the init block out.
+   * \return The postprocessor created.
+   */
+  TVM_DLL static Postproc RewriteReductionBlockAutoMovement();
+  /*!
    * \brief Create a postprocessor that adds thread binding to unbound blocks
    * \return The postprocessor created.
    */
@@ -152,6 +157,20 @@ class Postproc : public runtime::ObjectRef {
    * \return The postprocessor created
    */
   TVM_DLL static Postproc VerifyGPUCode();
+  /*!
+ * \brief Creates a postprocessor that matches the region that is marked as auto tensorized
+ * \param compute_intrin The tensor intrinsinc for doing computation
+ * \param load_intrin_A The corresponding data load intrinsic for compute_intrin
+ * \param load_intrin_B The corresponding data load intrinsic for compute_intrin
+ * \param store_intrin The corresponing data store instrinsic for compute_intrin
+ * \param init_intrin The intrinsic for tensor core computation
+ * \return The postprocessor created
+   */
+  TVM_DLL static Postproc RewriteTensorize(const String& compute_intrin,
+                                              const String& load_intrin_A,
+                                              const String& load_intrin_B, const String& store_intrin,
+                                              const String& init_intrin);
+  
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Postproc, ObjectRef, PostprocNode);
 };
 

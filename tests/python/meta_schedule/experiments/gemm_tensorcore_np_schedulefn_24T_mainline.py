@@ -67,8 +67,8 @@ def test_integration_matmul():
         block_outer, block_inner = block_inner, block
         del block
         # Step 2. Rule-Multi-Level-Tiling
-        i_factors = [8, 1, 2, 1, 4]
-        j_factors = [1, 8, 4, 1, 2]
+        i_factors = [8, 1, 4, 1, 2]
+        j_factors = [1, 8, 2, 1, 4]
         i0, i1, i2, i3, i4 = sch.split(i, factors=i_factors)
         j0, j1, j2, j3, j4 = sch.split(j, factors=j_factors)
         k_factors = [32, 2, 1]

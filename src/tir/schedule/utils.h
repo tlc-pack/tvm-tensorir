@@ -325,6 +325,11 @@ inline Optional<TObjectRef> GetAnn(const StmtSRef& sref, const String& ann_key) 
   return NullOpt;
 }
 
+inline bool HasAnn(const tir::StmtSRef& sref, const String& ann_key, const String& ann_val) {
+  Optional<String> result = tir::GetAnn<String>(sref, ann_key);
+  return result.defined() && result.value() == ann_val;
+}
+
 /*!
  * \brief Substitute the var in current block scope specified in key->var to be value.
  * \param stmt The source stmt to be substituted

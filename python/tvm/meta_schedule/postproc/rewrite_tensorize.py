@@ -14,13 +14,19 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""The tvm.meta_schedule.postproc package."""
-from .postproc import Postproc, PyPostproc
-from .disallow_dynamic_loop import DisallowDynamicLoop
-from .rewrite_cooperative_fetch import RewriteCooperativeFetch
-from .rewrite_parallel_vectorize_unroll import RewriteParallelVectorizeUnroll
-from .rewrite_reduction_block import RewriteReductionBlock
-from .rewrite_reduction_block_auto_movement import RewriteReductionBlockAutoMovement
-from .rewrite_unbound_block import RewriteUnboundBlock
-from .rewrite_tensorize import RewriteTensorize
-from .verify_gpu_code import VerifyGPUCode
+"""A postprocessor that rewrites tensorize primitives"""
+
+from tvm._ffi.registry import register_object
+from .. import _ffi_api
+from .postproc import Postproc
+
+
+@register_object("meta_schedule.RewriteTensorize")
+class RewriteTensorize(Postproc):
+    """A postprocessor that arewrites tensorize primitives"""
+
+    def __init__(self, compute_intrin, load_intrin_A, load_intrin_B, store_intrin, init_intrin) -> None:
+        self.__init_handle_by_constructor__(
+            _ffi_api.PostprocRewriteTensorize,  # type: ignore # pylint: disable=no-member
+            compute_intrin, load_intrin_A, load_intrin_B, store_intrin, init_intrin
+        )

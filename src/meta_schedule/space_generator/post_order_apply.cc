@@ -51,7 +51,7 @@ class BlockCollector : public tir::StmtVisitor {
   explicit BlockCollector(const tir::Schedule& sch) : sch_(sch) {}
   /*! \brief Override the Stmt visiting behaviour */
   void VisitStmt_(const tir::BlockNode* block) override {
-    tir::StmtVisitor::VisitStmt_(block);
+    this->VisitStmt(block->body);
     if (block != root_block_) {
       CHECK(block_names_.count(block->name_hint) == 0)
           << "Duplicated block name " << block->name_hint << " in function " << func_name_
@@ -112,10 +112,9 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
     Array<tir::Schedule> result{sch};
     // Enumerate the schedule rules first because you can
     // always concat multiple schedule rules as one
-    Array<tir::BlockRV> all_blocks = BlockCollector::Collect(sch);
     for (ScheduleRule sch_rule : sch_rules_) {
       for (const tir::Schedule& sch : result) {
-        stack.emplace_back(sch, all_blocks);
+        stack.emplace_back(sch, BlockCollector::Collect(sch));
       }
       result.clear();
 

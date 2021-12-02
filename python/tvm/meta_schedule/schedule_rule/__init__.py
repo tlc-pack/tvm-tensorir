@@ -18,6 +18,8 @@ blocks in a schedule. See also PostOrderApply.
 """
 from .auto_inline import AutoInline
 from .multi_level_tiling import MultiLevelTiling, ReuseType
+from .multi_level_tiling_auto_movement import MultiLevelTilingAutoMovement
+from .add_constraints_auto_movement import AddConstraintsAutoMovement
 from .parallel_vectorize_unroll import ParallelizeVectorizeUnroll
 from .random_compute_location import RandomComputeLocation
 from .schedule_rule import PyScheduleRule, ScheduleRule

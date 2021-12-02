@@ -211,8 +211,8 @@ class AutoCopyMutator : public StmtExprMutator {
     for (const ForNode* loop : outer_loops_) {
       if (loop->kind == ForKind::kThreadBinding) {
         const String& thread_tag = loop->thread_binding.value()->thread_tag;
-        if (CanRelaxStorageUndereThread(src_scope_, runtime::ThreadScope::Create(thread_tag)) &&
-            CanRelaxStorageUndereThread(tgt_scope_, runtime::ThreadScope::Create(thread_tag))) {
+        if (CanRelaxStorageUnderThread(src_scope_, runtime::ThreadScope::Create(thread_tag)) &&
+            CanRelaxStorageUnderThread(tgt_scope_, runtime::ThreadScope::Create(thread_tag))) {
           var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
         }
       }
@@ -783,7 +783,7 @@ class AutoCopyMutator : public StmtExprMutator {
     for (const ForNode* loop : outer_loops_) {
       if (loop->kind == ForKind::kThreadBinding) {
         const String& thread_tag = loop->thread_binding.value()->thread_tag;
-        if (CanRelaxStorageUndereThread(runtime::StorageScope::Create(storage_scope),
+        if (CanRelaxStorageUnderThread(runtime::StorageScope::Create(storage_scope),
                                         runtime::ThreadScope::Create
                                         (thread_tag))) {
           relax_var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));

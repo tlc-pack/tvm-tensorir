@@ -1412,6 +1412,10 @@ constexpr const char* pragma_auto_unroll_max_step = "pragma_auto_unroll_max_step
 
 /*! \brief Pragma: unroll explicit */
 constexpr const char* pragma_unroll_explicit = "pragma_unroll_explicit";
+
+/*! \brief Mark auto-tensor-core setting on the block. */
+constexpr const char* auto_tensor_core = "auto_tensor_core";
+
 /*!
  * \brief Check if attr_key is a pragma key extension
  * \param attr_key The attr key to be compared
