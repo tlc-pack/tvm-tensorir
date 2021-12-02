@@ -24,6 +24,7 @@ from tvm.ir.module import IRModule
 from tvm.target.target import Target
 from tvm.te import Tensor, create_prim_func
 from tvm.tir import PrimFunc, Schedule
+from tvm.te import Tensor, create_prim_func
 
 from .builder import Builder, LocalBuilder
 from .cost_model import CostModel, XGBModel
@@ -67,6 +68,15 @@ TypeTaskScheduler = Callable[
     TaskScheduler,
 ]
 
+TYPE_F_TUNE_CONTEXT = Callable[  # pylint: disable=invalid-name
+    [
+        IRModule,
+        Target,
+        SearchStrategyConfig,
+        str,
+    ],
+    TuneContext,
+]
 
 class DefaultLLVM:
     """Default tuning configuration for LLVM."""
