@@ -321,6 +321,23 @@ def test_tune_matmul_cuda_tensor_core():
             )
 
 
+@pytest.mark.skip("Integration test")
+def test_tune_matmul_cuda():
+    sch: Schedule = tune_tir(
+        mod=matmul,
+        target=Target("nvidia/geforce-rtx-3070"),
+        config=ReplayTraceConfig(
+            num_trials_per_iter=32,
+            num_trials_total=32,
+        ),
+    )
+    if sch is None:
+        print("No valid schedule found!")
+    else:
+        print(sch.mod.script())
+        print(sch.trace)
+
+
 if __name__ == """__main__""":
     test_tune_matmul_cpu()
     test_tune_matmul_cuda()
