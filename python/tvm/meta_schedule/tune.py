@@ -25,6 +25,7 @@ from typing import Callable, Generator, List, Optional, Union
 from tvm.ir.module import IRModule
 from tvm.target.target import Target
 from tvm.tir import PrimFunc, Schedule
+from tvm.te import Tensor, create_prim_func
 
 from . import schedule_rule
 from . import measure_callback
@@ -316,7 +317,7 @@ def tune_tir(
     f_tune_context: Optional[TYPE_F_TUNE_CONTEXT] = None,
     f_task_scheduler: Optional[TYPE_F_TASK_SCHEDULER] = None,
 ) -> Optional[Schedule]:
-    """Tune a module with a given target.
+    """Tune a TIR IRModule with a given target.
 
     Parameters
     ----------
@@ -374,3 +375,64 @@ def tune_tir(
         sch = Schedule(mod)
         bests[0].trace.apply_to_schedule(sch, remove_postproc=False)
         return sch
+
+
+def tune_te(
+    tensors: List[Tensor],
+    target: Union[str, Target],
+    config: SearchStrategyConfig,
+    *,
+    task_name: str = "main",
+    work_dir: Optional[str] = None,
+    builder: Optional[Builder] = None,
+    runner: Optional[Runner] = None,
+    database: Optional[Database] = None,
+    measure_callbacks: Optional[List[MeasureCallback]] = None,
+    f_tune_context: Optional[TYPE_F_TUNE_CONTEXT] = None,
+    f_task_scheduler: Optional[TYPE_F_TASK_SCHEDULER] = None,
+) -> Optional[Schedule]:
+    """Tune a TE compute DAG with a given target.
+
+    Parameters
+    ----------
+    tensor : List[Tensor]
+        The list of input/output tensors of the TE compute DAG.
+    target : Union[str, Target]
+        The target to tune for.
+    config : SearchStrategyConfig
+        The search strategy config.
+    task_name : str
+        The name of the task.
+    work_dir : Optional[str]
+        The working directory to save intermediate results.
+    builder : Optional[Builder]
+        The builder to use.
+    runner : Optional[Runner]
+        The runner to use.
+    database : Optional[Database]
+        The database to use.
+    measure_callbacks : Optional[List[MeasureCallback]]
+        The callbacks used during tuning.
+    f_tune_context : Optional[TYPE_F_TUNE_CONTEXT]
+        The function to create TuneContext.
+    f_task_scheduler : Optional[TYPE_F_TASK_SCHEDULER]
+        The function to create TaskScheduler.
+
+    Returns
+    -------
+    sch : Optional[Schedule]
+        The tuned schedule.
+    """
+    return tune_tir(
+        mod=create_prim_func(tensors),
+        target=target,
+        config=config,
+        task_name=task_name,
+        work_dir=work_dir,
+        builder=builder,
+        runner=runner,
+        database=database,
+        measure_callbacks=measure_callbacks,
+        f_tune_context=f_tune_context,
+        f_task_scheduler=f_task_scheduler,
+    )

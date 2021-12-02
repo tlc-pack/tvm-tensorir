@@ -27,6 +27,6 @@ from . import search_strategy
 from . import integration
 from . import feature_extractor
 from . import cost_model
-from .search_strategy import MeasureCandidate
+from .search_strategy import MeasureCandidate, ReplayFuncConfig, ReplayTraceConfig
 from .tune_context import TuneContext
-from .tune import tune_tir
+from .tune import tune_tir, tune_te
