@@ -45,7 +45,12 @@ class BuilderInput(Object):
     target: Target
     params: Optional[Dict[str, NDArray]]
 
-    def __init__(self, mod: IRModule, target: Target, params: Optional[Dict[str, NDArray]]) -> None:
+    def __init__(
+        self,
+        mod: IRModule,
+        target: Target,
+        params: Optional[Dict[str, NDArray]] = None,
+    ) -> None:
         """Constructor.
 
         Parameters
