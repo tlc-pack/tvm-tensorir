@@ -25,9 +25,11 @@ from tvm.runtime import Object
 from ..runner import Runner
 from ..builder import Builder
 from ..database import Database
+from ..cost_model import CostModel
 from ..tune_context import TuneContext
 from .. import _ffi_api
 from ..utils import check_override
+from tvm.meta_schedule import cost_model
 
 
 @register_object("meta_schedule.TaskScheduler")
@@ -52,6 +54,7 @@ class TaskScheduler(Object):
     builder: Builder
     runner: Runner
     database: Database
+    cost_model: Optional[CostModel]
     measure_callbacks: List[MeasureCallback]
 
     def tune(self) -> None:
@@ -124,6 +127,7 @@ class PyTaskScheduler(TaskScheduler):
         builder: Builder,
         runner: Runner,
         database: Database,
+        cost_model: Optional[CostModel] = None,
         measure_callbacks: Optional[List[MeasureCallback]] = None,
     ):
         """Constructor.
@@ -138,6 +142,8 @@ class PyTaskScheduler(TaskScheduler):
             The runner of the scheduler.
         database: Database
             The database of the scheduler.
+        cost_model: Optional[CostModel]
+            The cost model of the scheduler.
         measure_callbacks: List[MeasureCallback]
             The list of measure callbacks of the scheduler.
         """
@@ -180,6 +186,7 @@ class PyTaskScheduler(TaskScheduler):
             builder,
             runner,
             database,
+            cost_model,
             measure_callbacks,
             f_tune,
             f_initialize_task,

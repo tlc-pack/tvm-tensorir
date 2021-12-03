@@ -74,6 +74,8 @@ class TaskSchedulerNode : public runtime::Object {
   Runner runner{nullptr};
   /*! \brief The database of the scheduler. */
   Database database{nullptr};
+  /*! \brief The cost model of the scheduler. */
+  Optional<CostModel> cost_model;
   /*! \brief The list of measure callbacks of the scheduler. */
   Array<MeasureCallback> measure_callbacks;
 
@@ -85,6 +87,7 @@ class TaskSchedulerNode : public runtime::Object {
     v->Visit("builder", &builder);
     v->Visit("runner", &runner);
     v->Visit("database", &database);
+    v->Visit("cost_model", &cost_model);
     v->Visit("measure_callbacks", &measure_callbacks);
   }
 
@@ -246,16 +249,18 @@ class TaskScheduler : public runtime::ObjectRef {
    * \param runner The runner of the scheduler.
    * \param database The database of the scheduler.
    */
-  TVM_DLL static TaskScheduler RoundRobin(Array<TuneContext> tasks,  //
-                                          Builder builder,           //
-                                          Runner runner,             //
-                                          Database database,         //
+  TVM_DLL static TaskScheduler RoundRobin(Array<TuneContext> tasks,        //
+                                          Builder builder,                 //
+                                          Runner runner,                   //
+                                          Database database,               //
+                                          Optional<CostModel> cost_model,  //
                                           Optional<Array<MeasureCallback>> measure_callbacks);
   TVM_DLL static TaskScheduler PyTaskScheduler(
       Array<TuneContext> tasks,                                   //
       Builder builder,                                            //
       Runner runner,                                              //
       Database database,                                          //
+      Optional<CostModel> cost_model,                             //
       Optional<Array<MeasureCallback>> measure_callbacks,         //
       PyTaskSchedulerNode::FTune f_tune,                          //
       PyTaskSchedulerNode::FInitializeTask f_initialize_task,     //
