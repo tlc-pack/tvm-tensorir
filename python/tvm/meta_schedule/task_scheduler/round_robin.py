@@ -24,6 +24,7 @@ from tvm.meta_schedule.measure_callback.measure_callback import MeasureCallback
 from ..builder import Builder
 from ..runner import Runner
 from ..database import Database
+from ..cost_model import CostModel
 from .task_scheduler import TaskScheduler
 
 from .. import _ffi_api
@@ -56,6 +57,7 @@ class RoundRobin(TaskScheduler):
         builder: Builder,
         runner: Runner,
         database: Database,
+        cost_model: Optional[CostModel] = None,
         measure_callbacks: Optional[List[MeasureCallback]] = None,
     ) -> None:
         """Constructor.
@@ -79,5 +81,6 @@ class RoundRobin(TaskScheduler):
             builder,
             runner,
             database,
+            cost_model,
             measure_callbacks,
         )

@@ -125,6 +125,11 @@ class MeasureCallback : public runtime::ObjectRef {
    */
   TVM_DLL static MeasureCallback EchoStatistics();
   /*!
+   * \brief Create a measure callback that updates the cost model with measurement result.
+   * \return The measure callback created.
+   */
+  TVM_DLL static MeasureCallback UpdateCostModel();
+  /*!
    * \brief Create a measure callback with customized methods on the python-side.
    * \param f_apply The packed function of `Apply`.
    * \return The measure callback created.

@@ -190,6 +190,7 @@ TaskScheduler TaskScheduler::PyTaskScheduler(
     Builder builder,                                            //
     Runner runner,                                              //
     Database database,                                          //
+    Optional<CostModel> cost_model,                             //
     Optional<Array<MeasureCallback>> measure_callbacks,         //
     PyTaskSchedulerNode::FTune f_tune,                          //
     PyTaskSchedulerNode::FInitializeTask f_initialize_task,     //
@@ -202,6 +203,7 @@ TaskScheduler TaskScheduler::PyTaskScheduler(
   n->builder = builder;
   n->runner = runner;
   n->database = database;
+  n->cost_model = cost_model;
   if (measure_callbacks.defined()) {
     n->measure_callbacks = measure_callbacks.value();
   } else {
