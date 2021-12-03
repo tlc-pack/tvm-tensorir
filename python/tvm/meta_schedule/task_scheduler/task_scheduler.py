@@ -29,7 +29,6 @@ from ..cost_model import CostModel
 from ..tune_context import TuneContext
 from .. import _ffi_api
 from ..utils import check_override
-from tvm.meta_schedule import cost_model
 
 
 @register_object("meta_schedule.TaskScheduler")
