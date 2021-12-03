@@ -1,33 +1,127 @@
-def build_with_tensorrt(mod, target, params):
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+"""TensorRT-MetaSchedule integration"""
+# pylint: disable=import-outside-toplevel
+
+from typing import Dict, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tvm.ir import IRModule
+    from tvm.target import Target
+    from tvm.runtime import NDArray, Module, Device
+    from tvm.meta_schedule.runner import EvaluatorConfig
+
+
+def build_relay(
+    mod: "IRModule",
+    target: "Target",
+    params: Dict[str, "NDArray"],
+) -> "Module":
+    """Build a Relay IRModule
+
+    Parameters
+    ----------
+    mod : IRModule
+        The Relay IRModule to build.
+    target : Target
+        The target to build the module for.
+    params : Dict[str, NDArray]
+        The parameter dict to build the module with.
+
+    Returns
+    -------
+    mod : runtime.Module
+        The built module.
+    """
+    from tvm.relay.build_module import _build_module_no_factory as relay_build
+    from tvm.runtime import Module
+
+    result = relay_build(mod, target=target, target_host=None, params=params)
+    assert isinstance(result, Module)
+    return result
+
+
+def build_relay_with_tensorrt(
+    mod: "IRModule",
+    target: "Target",
+    params: Dict[str, "NDArray"],
+) -> "Module":
+    """Build a Relay IRModule with TensorRT BYOC
+
+    Parameters
+    ----------
+    mod : IRModule
+        The Relay IRModule to build.
+
+    target : Target
+        The target to build the module for.
+
+    params : Dict[str, NDArray]
+        The parameter dict to build the module with.
+
+    Returns
+    -------
+    mod : runtime.Module
+        The built module.
+    """
     from tvm.ir.transform import PassContext
     from tvm.relay.op.contrib import tensorrt
-    from tvm.relay.build_module import (  # pylint: disable=import-outside-toplevel
-        _build_module_no_factory as relay_build,
-    )
+    from tvm.relay.build_module import _build_module_no_factory as relay_build
+    from tvm.runtime import Module
 
     mod, config = tensorrt.partition_for_tensorrt(mod, params)
     with PassContext(
         opt_level=3,
         config={"relay.ext.tensorrt.options": config},
     ):
-        return relay_build(mod, target=target, target_host=None, params=params)
+        result = relay_build(mod, target=target, target_host=None, params=params)
+    assert isinstance(result, Module)
+    return result
 
 
-def build_without_tensorrt(mod, target, params):
-    from tvm.relay.build_module import (  # pylint: disable=import-outside-toplevel
-        _build_module_no_factory as relay_build,
-    )
+def run_with_graph_executor(
+    rt_mod: "Module",
+    device: "Device",
+    evaluator_config: "EvaluatorConfig",
+    repeated_args: List["NDArray"],
+) -> List[float]:
+    """Run a Relay module with GraphExecutor
 
-    return relay_build(mod, target=target, target_host=None, params=params)
+    Parameters
+    ----------
+    rt_mod : Module
+        The Relay module to run.
+    device : Device
+        The device to run the module on.
+    evaluator_config : EvaluatorConfig
+        The evaluator configuration to run the module with.
+    repeated_args : List[NDArray]
+        The list of repeated arguments to run the module with.
 
-
-def run_with_graph_executor(rt_mod, device, evaluator_config, repeated_args):
+    Returns
+    -------
+    results : List[float]
+        The list of results.
+    """
     import itertools
     from tvm.contrib.graph_executor import GraphModule
 
-    rt_mod = GraphModule(rt_mod["default"](device))
-
-    evaluator = rt_mod.module.time_evaluator(
+    graph_mod = GraphModule(rt_mod["default"](device))
+    evaluator = graph_mod.module.time_evaluator(
         func_name="run",
         dev=device,
         number=evaluator_config.number,
@@ -41,6 +135,5 @@ def run_with_graph_executor(rt_mod, device, evaluator_config, repeated_args):
     for args in repeated_args:
         profile_result = evaluator(*args)
         repeated_costs.append(profile_result.results)
-
     costs = [float(cost) for cost in itertools.chain.from_iterable(repeated_costs)]
     return costs

@@ -27,8 +27,8 @@ from tvm.meta_schedule.builder import BuilderInput, LocalBuilder
 from tvm.meta_schedule.runner import EvaluatorConfig, LocalRunner, RunnerInput
 from tvm.meta_schedule.testing import get_network
 from tvm.meta_schedule.testing.byoc_trt import (
-    build_with_tensorrt,
-    build_without_tensorrt,
+    build_relay,
+    build_relay_with_tensorrt,
     run_with_graph_executor,
 )
 from tvm.relay import testing
@@ -92,7 +92,7 @@ def verify_meta_schedule_with_tensorrt(
         dev = "nvidia/geforce-rtx-2080"
         # Build
         builder = LocalBuilder(
-            f_build=build_with_tensorrt if use_trt else build_without_tensorrt,
+            f_build=build_relay_with_tensorrt if use_trt else build_relay,
             timeout_sec=1000,
         )
         builder_input = BuilderInput(mod, Target(dev, host="llvm"), params)
@@ -192,7 +192,5 @@ def test_relay_model(model_name: str, batch_size: int, use_meta_sched: bool, use
     )
 
 
-# TODO(@sunggg): memory verification error at:
-#   test_relay_model("resnet-50", 1, use_meta_sched=False, use_trt=True)
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__] + sys.argv[1:]))
