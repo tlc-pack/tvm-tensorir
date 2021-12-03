@@ -32,10 +32,10 @@ logging.getLogger("tvm.meta_schedule").setLevel(logging.DEBUG)
 
 @T.prim_func
 def matmul(a: T.handle, b: T.handle, c: T.handle) -> None:
-    A = T.match_buffer(a, [1024, 1024])
-    B = T.match_buffer(b, [1024, 1024])
-    C = T.match_buffer(c, [1024, 1024])
-    for i, j, k in T.grid(1024, 1024, 1024):
+    A = T.match_buffer(a, [128, 128])
+    B = T.match_buffer(b, [128, 128])
+    C = T.match_buffer(c, [128, 128])
+    for i, j, k in T.grid(128, 128, 128):
         with T.block("update"):
             vi, vj, vk = T.axis.remap("SSR", [i, j, k])
             with T.init():
