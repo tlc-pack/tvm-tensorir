@@ -1332,15 +1332,15 @@ generate_body,loops[i]->thread_binding, loops[i]->annotations);
           std::vector<std::vector<Pattern>> patterns =
               PatternCollector::CollectPattern(substitued_indices, var_range);
           self->patterns_[op->buffer.get()].push_back(patterns);
-          LOG(INFO)<<op->buffer->name;
-          for (const auto& pattern_single_dim : patterns) {
-            std::cerr << "{";
-            for (const auto& pattern : pattern_single_dim) {
-              std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
-            }
-            std::cerr << "}, ";
-          }
-          std::cerr << std::endl;
+//          LOG(INFO)<<op->buffer->name;
+//          for (const auto& pattern_single_dim : patterns) {
+//            std::cerr << "{";
+//            for (const auto& pattern : pattern_single_dim) {
+//              std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
+//            }
+//            std::cerr << "}, ";
+//          }
+//          std::cerr << std::endl;
         }
         StmtExprVisitor::VisitStmt_(op);
       }
@@ -1354,15 +1354,15 @@ generate_body,loops[i]->thread_binding, loops[i]->annotations);
           std::vector<std::vector<Pattern>> patterns =
               PatternCollector::CollectPattern(substitued_indices, var_range);
           self->patterns_[op->buffer.get()].push_back(patterns);
-          LOG(INFO)<<op->buffer->name;
-          for (const auto& pattern_single_dim : patterns) {
-            std::cerr << "{";
-            for (const auto& pattern : pattern_single_dim) {
-              std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
-            }
-            std::cerr << "}, ";
-          }
-          std::cerr << std::endl;
+//          LOG(INFO)<<op->buffer->name;
+//          for (const auto& pattern_single_dim : patterns) {
+//            std::cerr << "{";
+//            for (const auto& pattern : pattern_single_dim) {
+//              std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
+//            }
+//            std::cerr << "}, ";
+//          }
+//          std::cerr << std::endl;
         }
         StmtExprVisitor::VisitExpr_(op);
       }
@@ -1389,15 +1389,15 @@ generate_body,loops[i]->thread_binding, loops[i]->annotations);
                   std::vector<std::vector<Pattern>> patterns =
                       PatternCollector::CollectPattern(substitued_indices, var_range);
                   self->patterns_[src_buffer.get()].push_back(patterns);
-                  LOG(INFO)<<src_buffer->name;
-                  for (const auto& pattern_single_dim : patterns) {
-                    std::cerr << "{";
-                    for (const auto& pattern : pattern_single_dim) {
-                      std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
-                    }
-                    std::cerr << "}, ";
-                  }
-                  std::cerr << std::endl;
+//                  LOG(INFO)<<src_buffer->name;
+//                  for (const auto& pattern_single_dim : patterns) {
+//                    std::cerr << "{";
+//                    for (const auto& pattern : pattern_single_dim) {
+//                      std::cerr << "{" << pattern.extent << "," << pattern.scale << "}";
+//                    }
+//                    std::cerr << "}, ";
+//                  }
+//                  std::cerr << std::endl;
                 }
               }
             }

@@ -30,7 +30,6 @@ class AddConstraintsAutoMovementNode : public ScheduleRuleNode{
   // Inherited from ScheduleRuleNode
   Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block_rv) final {
     tir::Block block = sch->Get(block_rv);
-    LOG(INFO)<<block;
     if (block->annotations.count("auto_copy") && tir::is_one
         (Downcast<PrimExpr>(block->annotations["auto_copy"]))) {
       ICHECK_EQ(block->reads.size(),1);
@@ -44,6 +43,7 @@ class AddConstraintsAutoMovementNode : public ScheduleRuleNode{
           write_scope.rank == runtime::StorageRank::kShared) {
         PrimExpr ann_val = sch->SampleCategorical({0,1}, probs);
         sch->Annotate(block_rv, "local_stage", ann_val);
+        sch->Annotate(block_rv, "vector_bytes", Integer(16));
       }
     }
     return {sch};

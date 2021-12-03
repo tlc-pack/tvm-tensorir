@@ -287,7 +287,7 @@ inline std::vector<StateAutoMovement> MultiLevelTilingAutoMovementNode::TileLoop
  // Step 3. Reorder to organize the tiles
  sch->Reorder(support::ConcatArrayList<LoopRV>(tiles.begin(), tiles.end()));
  sch->Annotate(tiles[r_indices_.front()].back(), tir::attr::pipeline_scope, Integer(2));
- sch->Annotate(tiles[r_indices_[1]].back(), tir::attr::pipeline_scope, Integer(2));
+ sch->Annotate(tiles[r_indices_.back()].back(), tir::attr::pipeline_scope, Integer(2));
  // Step 4. Bind the tiles to threads
  int n_binds = std::min(tile_binds.size(), tiles.size());
  for (int i = 0; i < n_binds; ++i) {
@@ -387,7 +387,7 @@ std::vector<StateAutoMovement> MultiLevelTilingAutoMovementNode::DetectTensorCor
     return {state};
   }
   std::vector<StateAutoMovement> result;
-  result.push_back(state);
+//  result.push_back(state);
   Schedule sch = state.sch->Copy();
   sch->Seed(state.sch->ForkSeed());
   state.sch = sch;

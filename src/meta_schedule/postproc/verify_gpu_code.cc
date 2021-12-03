@@ -70,7 +70,7 @@ class VerifyGPUCodeNode : public PostprocNode {
         } catch (const dmlc::Error& e) {
           return false;
         }
-        if (!Verify(mod)) {
+        if (!Verify(lowered)) {
           return false;
         }
       }

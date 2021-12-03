@@ -1110,7 +1110,6 @@ class PipelineInjector : private StmtExprMutator {
       const auto& block = realize->block;
       for (const auto& buffer : block->alloc_buffers) {
         ICHECK(buffer->IsInstance<BufferNode>());
-        LOG(INFO) << "Push " << buffer->data;
         buffer_data_to_buffer_.Set(buffer->data, buffer);
       }
       pipeline_body = block->body;

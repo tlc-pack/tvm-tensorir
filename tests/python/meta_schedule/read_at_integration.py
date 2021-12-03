@@ -73,7 +73,7 @@ def test():
     j_factors = [1, 8, 2, 1, 4]
     i0, i1, i2, i3, i4 = sch.split(i, factors=i_factors)
     j0, j1, j2, j3, j4 = sch.split(j, factors=j_factors)
-    k_factors = [32, 2, 1]
+    k_factors = [32, 1, 2]
     k0, k1, k2 = sch.split(k, factors=k_factors)
     # pylint: enable=invalid-name
     sch.reorder(
@@ -93,19 +93,17 @@ def test():
     )
     block_idx = sch.fuse(i0, j0)
     block_idy = sch.fuse(i1, j1)
-    sch.reorder(j2, i2)
-    thread_idy = sch.fuse(j2, i2)
+    thread_idy = sch.fuse(i2, j2)
     sch.bind(block_idx, "blockIdx.x")
     sch.bind(block_idy, "blockIdx.y")
     sch.bind(thread_idy, "threadIdx.y")
 
-    by, _bx, ty,  k0, k1,_,_,_, _i, _j, = sch.get_loops(block_outer)
-    sch.reorder(_j, _i)
+    by, _bx, ty,  k0, k1,_,_,k2, _i, _j, = sch.get_loops(block_outer)
     print(sch.mod["main"].script())
     sch.annotate(k0, "pipeline_scope", 2)
-    sch.annotate(k1, "pipeline_scope", 2)
-    block_wmma_a = sch.read_at(k1, block_outer, 1, "wmma.matrix_a", False)
-    block_wmma_b = sch.read_at(k1, block_outer, 2, "wmma.matrix_b", False)
+    sch.annotate(k2, "pipeline_scope", 2)
+    block_wmma_a = sch.read_at(k2, block_outer, 1, "wmma.matrix_a", False)
+    block_wmma_b = sch.read_at(k2, block_outer, 2, "wmma.matrix_b", False)
     block_shared_a = sch.read_at(k0, block_wmma_a, 0, "shared.dyn", False)
     sch.annotate(block_shared_a, "local_stage", True)
     sch.annotate(block_shared_a,"vector_bytes", 16)
@@ -139,11 +137,11 @@ def test():
 
     print('Script')
     mod = sch.mod['main']
-    # # print(mod.script())
+    print(mod.script())
     # # print('Text')
     # # print(mod)
-    print('Lower')
-    print(tvm.lower(mod, None, simple_mode=True))
+    # print('Lower')
+    # print(tvm.lower(mod, None, simple_mode=True))
     #
     dev = tvm.device("cuda", 0)
     a_np = np.random.uniform(size=(N, K)).astype("float16")
@@ -153,7 +151,7 @@ def test():
     b = tvm.nd.array(b_np, dev)
     c = tvm.nd.array(np.zeros((N, M), dtype="float32"), dev)
     f = tvm.build(mod, target="cuda", name="dense")
-    print(f.imported_modules[0].get_source())
+    # print(f.imported_modules[0].get_source())
     f(a, b, c)
     tvm.testing.assert_allclose(c.numpy(), c_np, rtol=1e-3)
 

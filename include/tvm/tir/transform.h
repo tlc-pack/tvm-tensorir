@@ -492,6 +492,8 @@ TVM_DLL Pass InjectSoftwarePipeline();
  */
 TVM_DLL Pass ConvertForLoopsToSerial();
 
+TVM_DLL Pass RemoveUnitLoop();
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm
