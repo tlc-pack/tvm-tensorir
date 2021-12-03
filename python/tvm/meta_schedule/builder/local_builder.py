@@ -18,13 +18,12 @@
 import logging
 import os
 import tempfile
-from typing import Callable, List, Optional, Union, Dict
-from numpy import byte
-from tvm.runtime import NDArray
+from typing import Callable, Dict, List, Optional, Union
 
 from tvm._ffi import register_func
 from tvm.ir import IRModule
-from tvm.runtime import Module, save_param_dict, load_param_dict
+from tvm.runtime import NDArray
+from tvm.runtime import Module, load_param_dict, save_param_dict
 from tvm.target import Target
 
 from ...contrib.popen_pool import MapResult, PopenPoolExecutor, StatusKind
@@ -69,7 +68,11 @@ class LocalBuilder(PyBuilder):
 
         .. code-block:: python
 
-        def default_build(mod: IRModule, target: Target) -> Module:
+        def default_build(
+            mod: IRModule,
+            target: Target,
+            params: Optional[Dict[str, NDArray]]
+        ) -> Module:
             ...
 
     T_EXPORT : typing._GenericAlias
@@ -88,7 +91,7 @@ class LocalBuilder(PyBuilder):
     please send the registration logic via initializer.
     """
 
-    T_BUILD = Callable[[IRModule, Target], Module]
+    T_BUILD = Callable[[IRModule, Target, Optional[Dict[str, NDArray]]], Module]
     T_EXPORT = Callable[[Module], str]
 
     pool: PopenPoolExecutor
@@ -210,7 +213,7 @@ class LocalBuilder(PyBuilder):
 
 
 @register_func("meta_schedule.builder.default_build")
-def default_build(mod: IRModule, target: Target) -> Module:
+def default_build(mod: IRModule, target: Target, params: Optional[Dict[str, NDArray]]) -> Module:
     """Default build function.
 
     Parameters
@@ -219,6 +222,8 @@ def default_build(mod: IRModule, target: Target) -> Module:
         The IRModule to be built.
     target : Target
         The target to be built.
+    params : Optional[Dict[str, NDArray]]
+        The parameters to be used for the build. Must be None.
 
     Returns
     -------
@@ -231,6 +236,7 @@ def default_build(mod: IRModule, target: Target) -> Module:
 
     # pylint: enable=import-outside-toplevel
 
+    assert params is None
     if target.kind.name == "cuda":
         set_cuda_target_arch(target.attrs["arch"])
 
