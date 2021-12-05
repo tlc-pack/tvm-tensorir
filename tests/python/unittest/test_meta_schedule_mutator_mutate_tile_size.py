@@ -15,10 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 # pylint: disable=missing-module-docstring,missing-function-docstring,missing-class-docstring
+import math
 from typing import List
 
 from tvm.meta_schedule import TuneContext
-from tvm.meta_schedule.mutator import MutateParallel, Mutator
+from tvm.meta_schedule.mutator import MutateTileSize, Mutator
 from tvm.script import tir as T
 from tvm.target import Target
 from tvm.tir import Schedule
@@ -42,12 +43,11 @@ def matmul(a: T.handle, b: T.handle, c: T.handle) -> None:
 # pylint: enable=invalid-name, no-member
 
 
-def _sch(decisions: List[List[int]], ann_val: int) -> Schedule:
+def _sch(decisions: List[List[int]]) -> Schedule:
     sch = Schedule(matmul, debug_mask="all")
     # pylint: disable=invalid-name
-    d0, d1, d2 = decisions
+    (d0,) = decisions
     b0 = sch.get_block(name="C", func_name="main")
-    root = sch.get_block(name="root", func_name="main")
     sch.get_consumers(block=b0)
     b1 = sch.cache_write(block=b0, write_buffer_index=0, storage_scope="global")
     l2, l3, l4 = sch.get_loops(block=b0)
@@ -58,56 +58,35 @@ def _sch(decisions: List[List[int]], ann_val: int) -> Schedule:
         decision=d0,
     )
     l9, l10, l11, l12 = sch.split(loop=l2, factors=[v5, v6, v7, v8])
-    v13, v14, v15, v16 = sch.sample_perfect_tile(
-        loop=l3,
-        n=4,
-        max_innermost_factor=64,
-        decision=d1,
-    )
-    l17, l18, l19, l20 = sch.split(loop=l3, factors=[v13, v14, v15, v16])
-    v21, v22 = sch.sample_perfect_tile(
-        loop=l4,
-        n=2,
-        max_innermost_factor=64,
-        decision=d2,
-    )
-    l23, l24 = sch.split(loop=l4, factors=[v21, v22])
+    l17, l18, l19, l20 = sch.split(loop=l3, factors=[8, 4, 8, 2])
+    l23, l24 = sch.split(loop=l4, factors=[512, 1])
     sch.reorder(l9, l17, l10, l18, l23, l11, l19, l24, l12, l20)
     sch.reverse_compute_at(block=b1, loop=l18, preserve_unit_loops=1)
-    sch.annotate(block_or_loop=root, ann_key="meta_schedule.parallel", ann_val=ann_val)
     # pylint: enable=invalid-name
     return sch
 
 
-def _make_mutator(target: Target, max_jobs_per_core: int) -> Mutator:
-    mutator = MutateParallel(max_jobs_per_core)
+def _make_mutator(target: Target) -> Mutator:
+    mutator = MutateTileSize()
     mutator.initialize_with_tune_context(TuneContext(mod=matmul, target=target))
     return mutator
 
 
-def test_mutate_parallel_matmul():
+def test_mutate_tile_size_matmul():
     mutator = _make_mutator(
         target=Target("llvm --num-cores=16"),
-        max_jobs_per_core=256,
     )
-    sch = _sch(
-        decisions=[
-            [4, 32, 4, 1],
-            [8, 4, 8, 2],
-            [512, 1],
-        ],
-        ann_val=64,
-    )
-    results = set()
+    results = {}
+    sch = _sch(decisions=[[4, 32, 4, 1]])
     for _ in range(100):
         trace = mutator.apply(sch.trace)
-        ann_val = int(trace.insts[-1].inputs[1])
-        results.add(ann_val)
-        if len(results) == 3:
-            break
-    assert len(results) == 3
-    assert results == {4, 32, 4096}
+        assert trace.insts[4].kind.name == "SamplePerfectTile"
+        decision = trace.decisions[trace.insts[4]]
+        decision = [int(x) for x in decision]
+        results[str(decision)] = decision
+        assert math.prod(decision) == 512
+    assert len(results) > 15
 
 
 if __name__ == """__main__""":
-    test_mutate_parallel_matmul()
+    test_mutate_tile_size_matmul()

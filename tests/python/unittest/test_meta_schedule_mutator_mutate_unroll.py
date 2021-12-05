@@ -92,15 +92,15 @@ def _make_mutator(target: Target) -> Mutator:
 
 def test_mutate_unroll_matmul():
     mutator = _make_mutator(target=Target("llvm --num-cores=16"))
+    sch = _sch(
+        decisions=[
+            [4, 32, 4, 1],
+            [8, 4, 8, 2],
+            [512, 1],
+        ],
+    )
     results = set()
     for _ in range(100):
-        sch = _sch(
-            decisions=[
-                [4, 32, 4, 1],
-                [8, 4, 8, 2],
-                [512, 1],
-            ],
-        )
         trace = mutator.apply(sch.trace)
         decision = trace.decisions[trace.insts[-2]]
         results.add(decision)

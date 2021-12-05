@@ -137,7 +137,7 @@ Optional<Trace> MutateTileSizeNode::Apply(const Trace& trace, TRandState* rand_s
   if (y != n_splits - 1) {
     // Case 1. None of x and y are innermost loop
     do {
-      std::vector<int64_t> result = tir::SamplePerfectTile(rand_state, 2, tiles[x] * tiles[y]);
+      std::vector<int64_t> result = tir::SamplePerfectTile(rand_state, tiles[x] * tiles[y], 2);
       len_x = result[0];
       len_y = result[1];
     } while (len_y == tiles[y]);
