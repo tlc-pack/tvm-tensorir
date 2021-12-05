@@ -26,6 +26,15 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*!
+ * \brief Create a sampler function that picks mutators according to the mass function
+ * \param rand_state The random state for sampling
+ * \return The sampler created
+ */
+inline std::function<Optional<Mutator>()> MakeMutatorSampler(
+    double p_mutate, const Map<Mutator, FloatImm>& mutator_probs,
+    support::LinearCongruentialEngine::TRandState* rand_state);
+
 /**************** Data Structure ****************/
 
 /*! \brief The postprocessed built of a trace */
@@ -41,8 +50,21 @@ struct CachedTrace {
   /*! \brief The normalized score, the higher the better */
   double score;
 
+  /*!
+   * \brief Get the structural hash for the given schedule's IRModule.
+   * \param sch The given schedule.
+   * \return The structural hash of the schedule's IRModule.
+   */
+  inline CachedTrace::THashCode StructuralHash(const tir::Schedule& sch) {
+    return tvm::StructuralHash()(sch->mod());
+  }
+
+  CachedTrace() = default;
+  explicit CachedTrace(const tir::Trace& trace, const tir::Schedule& sch, double score)
+      : trace(trace), sch(sch), shash(StructuralHash(sch)), score(score) {}
+
   inline bool defined() const { return trace.defined(); }
-  friend bool operator<(const CachedTrace& lhs, const CachedTrace& rhs) {
+  friend inline bool operator<(const CachedTrace& lhs, const CachedTrace& rhs) {
     return lhs.score > rhs.score;
   }
 };
@@ -55,6 +77,20 @@ struct CachedTrace {
  */
 class SizedHeap {
  public:
+  struct IRModuleSHash {
+    IRModule mod;
+    CachedTrace::THashCode shash;
+  };
+
+  struct IRModuleSHashHash {
+    size_t operator()(const IRModuleSHash& hash) const { return hash.shash; }
+  };
+
+  struct IRModuleSHashEqual {
+    bool operator()(const IRModuleSHash& lhs, const IRModuleSHash& rhs) const {
+      return StructuralEqual()(lhs.mod, rhs.mod);
+    }
+  };
   /*!
    * \brief Constructor
    * \param size_limit The up-limit of the heap size
@@ -66,7 +102,7 @@ class SizedHeap {
    * \param item The item to be pushed
    */
   void Push(const CachedTrace& item) {
-    if (!in_heap.insert(item.shash).second) {
+    if (!in_heap.insert(IRModuleSHash{item.sch->mod(), item.shash}).second) {
       return;
     }
     int size = heap.size();
@@ -88,7 +124,7 @@ class SizedHeap {
   /*! \brief The heap, the worse the topper */
   std::vector<CachedTrace> heap;
   /*! \brief The traces that are in the heap */
-  std::unordered_set<CachedTrace::THashCode> in_heap;
+  std::unordered_set<IRModuleSHash, IRModuleSHashHash, IRModuleSHashEqual> in_heap;
 };
 
 struct PerThreadData {
@@ -101,41 +137,54 @@ struct PerThreadDataEx {
   TRandState rand_state;
   std::function<int32_t()> trace_sampler;
   std::function<Optional<Mutator>()> mutator_sampler;
-  explicit PerThreadDataEx() {}
-  explicit PerThreadDataEx(PerThreadData* data, const std::vector<double>& scores, double p_mutate,
-                           const Map<Mutator, FloatImm>& mutator_probs);
+
+  /*! \brief Default constructor. */
+  PerThreadDataEx() = default;
+
+  /*!
+   * \brief Set the value for the trace and mutator samplers per thread.
+   * \param scores The predicted score for the given samples.
+   * \param p_mutate The probability of mutation.
+   * \param mutator_probs The probability of each mutator as a dict.
+   */
+  void Set(const std::vector<double>& scores, double p_mutate,
+           const Map<Mutator, FloatImm>& mutator_probs) {
+    trace_sampler = tir::MakeMultinomialSampler(&rand_state, scores);
+    mutator_sampler = MakeMutatorSampler(p_mutate, mutator_probs, &rand_state);
+  }
 };
 
 struct ConcurrentBitmask {
   /*! The bit width. */
-  const static int bitw = 64;
+  static constexpr const int kBitWidth = 64;
   /*!
    * \brief Constructor
    * \param size The size of the concurrent bitmask.
    */
   explicit ConcurrentBitmask(int size) : size(size) {
-    bitmask.assign((size + bitw - 1) / bitw, 0);
-    std::vector<std::mutex> list((size + bitw - 1) / bitw);
-    trace_used_mutex.swap(list);
+    bitmask.assign((size + kBitWidth - 1) / kBitWidth, 0);
+    std::vector<std::mutex> list((size + kBitWidth - 1) / kBitWidth);
+    mutexes.swap(list);
   }
   /*! \brief The size of the concurrent bitmask. */
   int size;
   /*! \brief The bitmasks. */
   std::vector<uint64_t> bitmask;
-  /*! \brief The mutexes, one per bitw(64 here) bitmasks. */
-  std::vector<std::mutex> trace_used_mutex;
+  /*! \brief The mutexes, one per kBitWidth(64 here) bitmasks. */
+  std::vector<std::mutex> mutexes;
   /*!
    * \brief Query and mark the given index if not visted before.
    * \param x The index to concurrently check if used. If not, mark as used.
    * \return Whether the index has been used before.
    */
-  bool query_and_mark(int x) {
+  bool QueryAndMark(int x) {
     if (x < 0 || x >= size) return false;
-    std::unique_lock<std::mutex> lock(trace_used_mutex[x / bitw]);
-    if (bitmask[x / bitw] & ((uint64_t)1 << (x % bitw))) {
+    std::unique_lock<std::mutex> lock(mutexes[x / kBitWidth]);
+    constexpr uint64_t one = 1;
+    if (bitmask[x / kBitWidth] & (one << (x % kBitWidth))) {
       return false;
     } else {
-      bitmask[x / bitw] |= (uint64_t)1 << (x % bitw);
+      bitmask[x / kBitWidth] |= one << (x % kBitWidth);
       return true;
     }
   }
@@ -181,11 +230,6 @@ inline std::vector<double> PredictNormalizedScore(const std::vector<CachedTrace>
   return scores;
 }
 
-/*!
- * \brief Create a sampler function that picks mutators according to the mass function
- * \param rand_state The random state for sampling
- * \return The sampler created
- */
 inline std::function<Optional<Mutator>()> MakeMutatorSampler(
     double p_mutate, const Map<Mutator, FloatImm>& mutator_probs,
     support::LinearCongruentialEngine::TRandState* rand_state) {
@@ -221,30 +265,6 @@ inline std::function<Optional<Mutator>()> MakeMutatorSampler(
     int i = idx_sampler();
     return mutators[i];
   };
-}
-
-/*!
- * \brief Get the structural hash for the given schedule's IRModule.
- * \param sch The given schedule.
- * \return The structural hash of the schedule's IRModule.
- */
-inline CachedTrace::THashCode StructuralHash(const tir::Schedule& sch) {
-  return tvm::StructuralHash()(sch->mod());
-}
-
-/*!
- * \brief Constructor to create a more extensive per-thread data pack from original per-thread one.
- * \param data The pointer to original per-thread data pack.
- * \param scores The predicted score for the given samples.
- * \param p_mutate The probability of mutation.
- * \param mutator_probs The probability of each mutator as a dict.
- */
-PerThreadDataEx::PerThreadDataEx(PerThreadData* data, const std::vector<double>& scores,
-                                 double p_mutate, const Map<Mutator, FloatImm>& mutator_probs) {
-  rand_state = ForkSeed(&data->rand_state);
-  mod = data->mod;
-  trace_sampler = tir::MakeMultinomialSampler(&rand_state, scores);
-  mutator_sampler = MakeMutatorSampler(p_mutate, mutator_probs, &rand_state);
 }
 
 /**************** Evolutionary Search ****************/
@@ -419,7 +439,7 @@ class EvolutionarySearchNode : public SearchStrategyNode {
     this->tune_context_ = tune_context;
     this->target_ = tune_context->target.value();
     this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(tune_context->mod.value()));
-    if (p_mutate > 0) this->mutator_probs_ = tune_context->mutator_probs.value();
+    this->mutator_probs_ = tune_context->mutator_probs;
     this->postprocs_ = tune_context->postprocs;
     this->num_threads_ = tune_context->num_threads;
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
@@ -476,7 +496,7 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::PickBestFromDatab
     if (Optional<tir::Schedule> opt_sch =
             meta_schedule::ApplyTrace(mod, trace, &rand_state, self->postprocs_)) {
       tir::Schedule sch = opt_sch.value();
-      results[trace_id] = CachedTrace{trace, sch, StructuralHash(sch), -1.0};
+      results[trace_id] = CachedTrace(trace, sch, -1.0);
     } else {
       LOG(FATAL) << "ValueError: Cannot postprocess the trace:\n" << trace;
       throw;
@@ -493,7 +513,7 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::SampleInitPopulat
     TRandState& rand_state = self->per_thread_data_[thread_id].rand_state;
     const IRModule& mod = self->per_thread_data_[thread_id].mod;
     CachedTrace& result = results[trace_id];
-    for (int fail_ct = 0; fail_ct <= self->max_replay_fail_cnt; fail_ct++) {
+    for (int fail_ct = 0; fail_ct < self->max_replay_fail_cnt; fail_ct++) {
       int design_space_index = tir::SampleInt(&rand_state, 0, design_spaces.size());
       tir::Trace trace = design_spaces[design_space_index];
       if (Optional<tir::Schedule> opt_sch =
@@ -501,7 +521,7 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::SampleInitPopulat
           ApplyTrace(mod, tir::Trace(trace->insts, {}), &rand_state, self->postprocs_)) {
         tir::Schedule sch = opt_sch.value();
         tir::Trace trace = sch->trace().value();
-        result = CachedTrace{trace, sch, StructuralHash(sch), -1.0};
+        result = CachedTrace(trace, sch, -1.0);
         break;
       }
     }
@@ -534,6 +554,10 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::PruneAndMergeSamp
 std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
     const std::vector<CachedTrace>& inits, int num) {
   std::vector<PerThreadDataEx> per_thread_data_ex(self->num_threads_);
+  for (int i = 0; i < self->num_threads_; i++) {
+    per_thread_data_ex[i].mod = self->per_thread_data_[i].mod;
+    per_thread_data_ex[i].rand_state = ForkSeed(&self->per_thread_data_[i].rand_state);
+  }
   // The heap to record best schedule, we do not consider schedules that are already measured
   // Also we use `in_heap` to make sure items in the heap are de-duplicated
   SizedHeap heap(num);
@@ -551,23 +575,20 @@ std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
     // Predict normalized score with the cost model,
     std::vector<double> scores =
         PredictNormalizedScore(sch_curr, self->tune_context_, self->cost_model_, self->args_info_);
-    for (int i = 0, n = sch_curr.size(); i < n; ++i)
-      if (sch_curr[i].defined()) {
-        CachedTrace& entry = sch_curr[i];
-        entry.score = scores[i];
-        Workload token = self->database_->CommitWorkload(entry.sch->mod());
-        if (!self->database_->GetTopK(token, 1).size()) {
-          heap.Push(entry);
-        }
+    for (int i = 0, n = sch_curr.size(); i < n; ++i) {
+      CachedTrace& entry = sch_curr[i];
+      entry.score = scores[i];
+      if (!self->database_->HasWorkload(entry.sch->mod())) {
+        heap.Push(entry);
       }
+    }
     // Discontinue once it reaches end of search
     if (iter == self->genetic_algo_iters) {
       break;
     }
     // Set threaded samplers, with probability from predicated normalized throughputs
     for (int i = 0; i < self->num_threads_; ++i) {
-      per_thread_data_ex[i] =
-          PerThreadDataEx(&self->per_thread_data_[i], scores, self->p_mutate, self->mutator_probs_);
+      per_thread_data_ex[i].Set(scores, self->p_mutate, self->mutator_probs_);
     }
     ConcurrentBitmask cbmask(scores.size());
     // The worker function
@@ -579,12 +600,11 @@ std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
       const std::function<int()>& trace_sampler = per_thread_data_ex[thread_id].trace_sampler;
       const std::function<Optional<Mutator>()>& mutator_sampler =
           per_thread_data_ex[thread_id].mutator_sampler;
+      CachedTrace& result = sch_next[trace_id];
       // Loop until success
-      for (int retry_cnt = 0; retry_cnt <= self->max_evolve_fail_cnt; retry_cnt++) {
+      for (int retry_cnt = 0; retry_cnt < self->max_evolve_fail_cnt; retry_cnt++) {
         int sampled_trace_id = trace_sampler();
         const CachedTrace& ctrace = sch_curr[sampled_trace_id];
-        // skip undefined cached trace
-        if (!ctrace.defined()) continue;
         if (Optional<Mutator> opt_mutator = mutator_sampler()) {
           // Decision: mutate
           Mutator mutator = opt_mutator.value();
@@ -593,20 +613,23 @@ std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
             if (Optional<tir::Schedule> opt_sch =
                     ApplyTrace(mod, new_trace, &rand_state, self->postprocs_)) {
               tir::Schedule sch = opt_sch.value();
-              CachedTrace new_ctrace{new_trace, sch, StructuralHash(sch), -1.0};
-              sch_next[trace_id] = new_ctrace;
+              // note that sch's trace is different from new_trace
+              // beacuase it contains post-processing infomation
+              CachedTrace new_ctrace(sch->trace().value(), sch, -1.0);
+              result = new_ctrace;
               break;
             }
           }
-        } else {
+        } else if (cbmask.QueryAndMark(sampled_trace_id)) {
           // Decision: do not mutate
-          if (cbmask.query_and_mark(sampled_trace_id)) {
-            sch_next[trace_id] = ctrace;
-            break;
-          }
+          result = ctrace;
+          break;
+        }
+        // if retry count exceeds the limit, the result should be just ctrace
+        if (retry_cnt + 1 == self->max_evolve_fail_cnt) {
+          sch_next[trace_id] = ctrace;
         }
       }
-      // if retry count exceeds the limit, the result remain undefined and will not be used
     };
     sch_next.clear();
     sch_next.resize(self->population, CachedTrace());
@@ -684,7 +707,7 @@ EvolutionarySearchNode::State::GenerateMeasureCandidates() {
   }
   int sample_num = self->num_trials_per_iter;
   if (ed > self->num_trials_total) {
-    sample_num += self->num_trials_total - ed;
+    sample_num = self->num_trials_total - st;
     ed = self->num_trials_total;
   }
   ICHECK_LT(st, ed);
