@@ -57,7 +57,8 @@ class BuilderInput : public runtime::ObjectRef {
    * \param target The target to be built for.
    * \param params Parameters for Relay build module.
    */
-  TVM_DLL explicit BuilderInput(IRModule mod, Target target, Optional<Map<String, runtime::NDArray>> params = NullOpt);
+  TVM_DLL explicit BuilderInput(IRModule mod, Target target,
+                                Optional<Map<String, runtime::NDArray>> params = NullOpt);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BuilderInput, runtime::ObjectRef, BuilderInputNode);
 };
 

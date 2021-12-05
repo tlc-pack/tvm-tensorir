@@ -21,8 +21,8 @@ from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.tir.schedule import Trace
 
-from ..utils import _get_hex_address, check_override
 from .. import _ffi_api
+from ..utils import _get_hex_address, check_override
 
 if TYPE_CHECKING:
     from ..tune_context import TuneContext
@@ -56,7 +56,7 @@ class Mutator(Object):
         trace : Optional[Trace]
             None if mutator failed, otherwise return the mutated trace.
         """
-        return _ffi_api.MutatorApply(self, trace)
+        return _ffi_api.MutatorApply(self, trace, -1)  # type: ignore # pylint: disable=no-member
 
 
 @register_object("meta_schedule.PyMutator")

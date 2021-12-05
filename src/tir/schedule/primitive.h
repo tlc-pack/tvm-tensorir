@@ -48,6 +48,14 @@ TVM_DLL int64_t SampleCategorical(support::LinearCongruentialEngine::TRandState*
                                   const Array<Integer>& candidates, const Array<FloatImm>& probs,
                                   Optional<Integer>* decision);
 /*!
+ * \brief Create a sampling function that does multinomial sampling.
+ * \param rand_state The random state.
+ * \param weights The weights for multinomial sampling.
+ * \return The multinomial sampling function.
+ */
+TVM_DLL std::function<int32_t()> MakeMultinomialSampler(
+    support::LinearCongruentialEngine::TRandState* rand_state, const std::vector<double>& weights);
+/*!
  * \brief Sample the factors to perfect tile a specific loop
  * \param rand_state The random state
  * \param extent The loop extent to be tiled

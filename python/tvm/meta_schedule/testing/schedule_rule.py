@@ -34,12 +34,14 @@ def get(target: Target) -> List[ScheduleRule]:
         return [
             auto_inline(target),
             multi_level_tiling(target),
+            parallel_vectorize_unroll(target),
         ]
     if target.kind.name == "cuda":
         return [
             auto_inline(target),
             multi_level_tiling(target),
             auto_inline_after_tiling(target),
+            parallel_vectorize_unroll(target),
         ]
     raise NotImplementedError(f"{target.kind.name} is not supported")
 
@@ -135,11 +137,18 @@ def multi_level_tiling(target: Target) -> ScheduleRule:
 
 def parallel_vectorize_unroll(target: Target) -> ScheduleRule:
     """Default schedule rules for with parallel-vectorize-unroll"""
-    if target.kind.name == "llvm" or target.kind.name == "cuda":
+    if target.kind.name == "llvm":
         return ParallelizeVectorizeUnroll(
             max_jobs_per_core=16,
             max_vectorize_extent=32,
             unroll_max_steps=[0, 16, 64, 512],
+            unroll_explicit=True,
+        )
+    if target.kind.name == "cuda":
+        return ParallelizeVectorizeUnroll(
+            max_jobs_per_core=-1,
+            max_vectorize_extent=-1,
+            unroll_max_steps=[0, 16, 64, 512, 1024],
             unroll_explicit=True,
         )
     raise NotImplementedError(f"{target.kind.name} is not supported")
