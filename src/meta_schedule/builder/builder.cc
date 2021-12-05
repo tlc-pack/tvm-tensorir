@@ -23,7 +23,8 @@ namespace meta_schedule {
 
 /******** Constructors ********/
 
-BuilderInput::BuilderInput(IRModule mod, Target target, Optional<Map<String, runtime::NDArray>> params) {
+BuilderInput::BuilderInput(IRModule mod, Target target,
+                           Optional<Map<String, runtime::NDArray>> params) {
   ObjectPtr<BuilderInputNode> n = make_object<BuilderInputNode>();
   n->mod = std::move(mod);
   n->target = std::move(target);
@@ -52,7 +53,8 @@ TVM_REGISTER_OBJECT_TYPE(BuilderNode);
 TVM_REGISTER_NODE_TYPE(PyBuilderNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.BuilderInput")
-    .set_body_typed([](IRModule mod, Target target, Optional<Map<String, runtime::NDArray>> params) -> BuilderInput {
+    .set_body_typed([](IRModule mod, Target target,
+                       Optional<Map<String, runtime::NDArray>> params) -> BuilderInput {
       return BuilderInput(mod, target, params);
     });
 
