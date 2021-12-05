@@ -24,6 +24,9 @@ namespace meta_schedule {
 class RandomComputeLocationNode : public ScheduleRuleNode {
  public:
   bool IsFreeBlock(const tir::Schedule sch, const tir::StmtSRef& block_sref) const {
+    if (block_sref->parent == nullptr) {
+      return false;
+    }
     if (!tir::IsSubrootBlock(sch->state(), block_sref)) {
       return false;
     }

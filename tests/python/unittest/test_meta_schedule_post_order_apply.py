@@ -16,24 +16,19 @@
 # under the License.
 # pylint: disable=missing-module-docstring,missing-function-docstring,missing-class-docstring
 
-from typing import List
-import pytest
 import math
 import sys
+from typing import List
 
+import pytest
 import tvm
-from tvm._ffi.base import TVMError, py2cerror
-from tvm.ir.base import assert_structural_equal
-from tvm.script import tir as T
-from tvm.tir.schedule import Schedule, BlockRV, block_scope
-from tvm.target import Target
-
+from tvm.error import TVMError
 from tvm.meta_schedule import TuneContext
-from tvm.meta_schedule.space_generator import PostOrderApply
 from tvm.meta_schedule.schedule_rule import PyScheduleRule
-from tvm.meta_schedule.utils import _get_hex_address
-from tvm.tir.schedule import trace
-from tvm.tir.schedule.trace import Trace
+from tvm.meta_schedule.space_generator import PostOrderApply
+from tvm.script import tir as T
+from tvm.target import Target
+from tvm.tir.schedule import BlockRV, Schedule
 
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument,
@@ -129,6 +124,10 @@ class TrinityMatmulProcessedForReference:
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,no-self-argument
 
 
+def _is_root(sch: Schedule, block: BlockRV) -> bool:
+    return sch.get_sref(block).parent is None
+
+
 def _check_correct(schedule: Schedule):
     trace = schedule.trace
     for inst in trace.decisions:
@@ -140,6 +139,8 @@ class WowSoFancyScheduleRule(PyScheduleRule):
         pass
 
     def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
+        if _is_root(sch, block):
+            return [sch]
         new_sch = sch.copy()
         i, j, k = new_sch.get_loops(block=block)
         i_0, i_1, i_2, i_3 = new_sch.split(loop=i, factors=[2, 4, 64, 2])
@@ -154,6 +155,8 @@ class DoubleScheduleRule(PyScheduleRule):
         pass
 
     def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
+        if _is_root(sch, block):
+            return [sch]
         new_sch = sch.copy()
         i, j, k = new_sch.get_loops(block=block)
         i_0, i_1, i_2, i_3 = new_sch.split(loop=i, factors=[4, 64, 2, 2])
@@ -176,6 +179,8 @@ class ReorderScheduleRule(PyScheduleRule):
         pass
 
     def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
+        if _is_root(sch, block):
+            return [sch]
         new_sch = sch.copy()
         i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = new_sch.get_loops(block=block)
         new_sch.reorder(i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3, i_0, j_0)
@@ -190,17 +195,17 @@ class ReorderScheduleRule(PyScheduleRule):
 def test_meta_schedule_post_order_apply():
     mod = Matmul
     context = TuneContext(
-        mod=mod, target=Target("llvm"), task_name="Test Task", sch_rules=[WowSoFancyScheduleRule()]
+        mod=mod,
+        target=Target("llvm"),
+        task_name="Test Task",
+        sch_rules=[WowSoFancyScheduleRule()],
     )
     post_order_apply = PostOrderApply()
     post_order_apply.initialize_with_tune_context(context)
     schs = post_order_apply.generate_design_space(mod)
     assert len(schs) == 1
-    try:
-        tvm.ir.assert_structural_equal(mod, schs[0].mod)
-        raise Exception("The schedule rule did not change the schedule.")
-    except (ValueError):
-        _check_correct(schs[0])
+    assert not tvm.ir.structural_equal(schs[0].mod, mod)
+    _check_correct(schs[0])
 
 
 def test_meta_schedule_post_order_apply_double():
@@ -216,11 +221,8 @@ def test_meta_schedule_post_order_apply_double():
     schs = post_order_apply.generate_design_space(mod)
     assert len(schs) == 2
     for sch in schs:
-        try:
-            tvm.ir.assert_structural_equal(mod, sch.mod)
-            raise Exception("The schedule rule did not change the schedule.")
-        except (ValueError):
-            _check_correct(sch)
+        assert not tvm.ir.structural_equal(sch.mod, mod)
+        _check_correct(sch)
 
 
 def test_meta_schedule_post_order_apply_multiple():
@@ -236,11 +238,8 @@ def test_meta_schedule_post_order_apply_multiple():
     schs = post_order_apply.generate_design_space(mod)
     assert len(schs) == 4
     for sch in schs:
-        try:
-            tvm.ir.assert_structural_equal(mod, sch.mod)
-            raise Exception("The schedule rule did not change the schedule.")
-        except (ValueError):
-            _check_correct(sch)
+        assert not tvm.ir.structural_equal(sch.mod, mod)
+        _check_correct(sch)
 
 
 def test_meta_schedule_post_order_apply_duplicate_matmul():
@@ -267,6 +266,8 @@ def test_meta_schedule_post_order_apply_remove_block():
             pass
 
         def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
+            if _is_root(sch, block):
+                return [sch]
             new_sch = sch.copy()
             i, j = new_sch.get_loops(block=block)
             i_0, i_1 = new_sch.split(loop=i, factors=[16, 64])
@@ -286,6 +287,8 @@ def test_meta_schedule_post_order_apply_remove_block():
             pass
 
         def apply(self, sch: Schedule, block: BlockRV) -> List[Schedule]:
+            if _is_root(sch, block):
+                return [sch]
             sch = sch.copy()
             if sch.get(block).name_hint == "B":
                 sch.compute_inline(block)
@@ -326,11 +329,12 @@ def test_meta_schedule_post_order_apply_remove_block():
             match="ScheduleError: An error occurred in the schedule primitive 'get-block'.",
         ):
             sch.get_block("B", "main")
+        sch_trace = sch.trace.simplified(True)
         assert (
-            str(sch.trace) == correct_trace([16, 64], [64, 16], [2, 512], [2, 512])
-            or str(sch.trace) == correct_trace([2, 512], [2, 512], [2, 512], [2, 512])
-            or str(sch.trace) == correct_trace([16, 64], [64, 16], [16, 64], [64, 16])
-            or str(sch.trace) == correct_trace([2, 512], [2, 512], [16, 64], [64, 16])
+            str(sch_trace) == correct_trace([16, 64], [64, 16], [2, 512], [2, 512])
+            or str(sch_trace) == correct_trace([2, 512], [2, 512], [2, 512], [2, 512])
+            or str(sch_trace) == correct_trace([16, 64], [64, 16], [16, 64], [64, 16])
+            or str(sch_trace) == correct_trace([2, 512], [2, 512], [16, 64], [64, 16])
         )
 
 

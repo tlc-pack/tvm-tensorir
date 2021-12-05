@@ -38,7 +38,6 @@ class BlockCollector : public tir::StmtVisitor {
         func_name_ = gv->name_hint;
         block_names_.clear();
         blocks_to_collect_.clear();
-        root_block_ = func->body.as<tir::BlockRealizeNode>()->block.get();
         VisitStmt(func->body);
         for (const String& block_name : blocks_to_collect_) {
           results_.push_back(sch_->GetBlock(block_name, func_name_));
@@ -52,13 +51,11 @@ class BlockCollector : public tir::StmtVisitor {
   /*! \brief Override the Stmt visiting behaviour */
   void VisitStmt_(const tir::BlockNode* block) override {
     tir::StmtVisitor::VisitStmt_(block);
-    if (block != root_block_) {
-      CHECK(block_names_.count(block->name_hint) == 0)
-          << "Duplicated block name " << block->name_hint << " in function " << func_name_
-          << " not supported!";
-      block_names_.insert(block->name_hint);
-      blocks_to_collect_.push_back(block->name_hint);
-    }
+    CHECK(block_names_.count(block->name_hint) == 0)
+        << "Duplicated block name " << block->name_hint << " in function " << func_name_
+        << " not supported!";
+    block_names_.insert(block->name_hint);
+    blocks_to_collect_.push_back(block->name_hint);
   }
 
   /*! \brief The schedule to be collected */
@@ -69,8 +66,6 @@ class BlockCollector : public tir::StmtVisitor {
   Array<String> blocks_to_collect_;
   /*! \brief Function name & blocks of collection */
   Array<tir::BlockRV> results_;
-  /*! \brief The root block of the PrimFunc */
-  const tir::BlockNode* root_block_;
   /*! \brief Name of the current PrimFunc */
   String func_name_;
 };
