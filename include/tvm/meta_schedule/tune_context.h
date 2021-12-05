@@ -49,7 +49,7 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The postprocessors. */
   Array<Postproc> postprocs;
   /*! \brief The probability of using certain mutator. */
-  Optional<Map<Mutator, FloatImm>> mutator_probs;
+  Map<Mutator, FloatImm> mutator_probs;
   /*! \brief The name of the tuning task. */
   String task_name;
   /*! \brief The random state. */
