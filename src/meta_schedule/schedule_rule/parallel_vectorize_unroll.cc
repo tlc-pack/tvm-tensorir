@@ -19,39 +19,43 @@
 #include "../utils.h"
 
 namespace tvm {
-namespace meta_schedule {
+namespace tir {
 
-inline bool HasAnyAnn(const tir::StmtSRef& sref) {
-  if (const auto* loop = sref->StmtAs<tir::ForNode>()) {
-    return !loop->annotations.empty();
-  } else if (const auto* block = sref->StmtAs<tir::BlockNode>()) {
-    return !block->annotations.empty();
+bool IsRootWithNoAnnotation(const Schedule& sch, const BlockRV& block_rv) {
+  StmtSRef block_sref = sch->GetSRef(block_rv);
+  if (block_sref->parent != nullptr) {
+    return false;
   }
-  LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
-  throw;
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  return block->annotations.empty();
 }
+
+}  // namespace tir
+}  // namespace tvm
+
+namespace tvm {
+namespace meta_schedule {
 
 class ParallelizeVectorizeUnrollNode : public ScheduleRuleNode {
  public:
   // Inherited from ScheduleRuleNode
   void InitializeWithTuneContext(const TuneContext& context) final {
     ICHECK(context->target.defined());
-    Target target = context->target.value();
     if (this->max_jobs_per_core != -1) {
-      num_cores = GetTargetNumCores(target);
+      Target target = context->target.value();
+      this->max_parallel_extent_ = GetTargetNumCores(target) * max_jobs_per_core;
     }
   }
 
   // Inherited from ScheduleRuleNode
-  Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block) {
-    tir::BlockRV root_rv = sch->GetBlock("root");
-    if (!sch->GetSRef(root_rv)->StmtAs<tir::BlockNode>()->annotations.empty()) {
+  Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& root_rv) {
+    if (!tir::IsRootWithNoAnnotation(sch, root_rv)) {
       return {sch};
     }
     // Parallelization
     if (max_jobs_per_core != -1) {
       sch->Annotate(root_rv, tir::attr::meta_schedule_parallel,
-                    Integer(num_cores * max_jobs_per_core));
+                    Integer(this->max_parallel_extent_));
     }
     // Vectorization
     if (max_vectorize_extent != -1) {
@@ -78,7 +82,7 @@ class ParallelizeVectorizeUnrollNode : public ScheduleRuleNode {
    * It sets the uplimit of CPU parallelism, i.e. `num_cores * max_jobs_per_core`.
    * Use -1 to disable parallelism.
    */
-  int max_jobs_per_core;
+  int64_t max_jobs_per_core;
   /*!
    * \brief The maximum extent to be vectorized. It sets the uplimit of the CPU vectorization.
    * Use -1 to disable vectorization.
@@ -92,13 +96,14 @@ class ParallelizeVectorizeUnrollNode : public ScheduleRuleNode {
   /*! \brief Whether to explicitly unroll the loop, or just add a unroll pragma. */
   bool unroll_explicit;
   /*! \brief The number of cores in CPU. */
-  int num_cores;
+  int64_t max_parallel_extent_;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("max_jobs_per_core", &max_jobs_per_core);
     v->Visit("max_vectorize_extent", &max_vectorize_extent);
     v->Visit("unroll_max_steps", &unroll_max_steps);
     v->Visit("unroll_explicit", &unroll_explicit);
+    // `max_parallel_extent_` is not visited
   }
 
   static constexpr const char* _type_key = "meta_schedule.ParallelizeVectorizeUnroll";
@@ -114,6 +119,7 @@ ScheduleRule ScheduleRule::ParallelizeVectorizeUnroll(int max_jobs_per_core,
   n->max_vectorize_extent = max_vectorize_extent;
   n->unroll_max_steps = unroll_max_steps;
   n->unroll_explicit = unroll_explicit;
+  n->max_parallel_extent_ = -1;
   return ScheduleRule(n);
 }
 

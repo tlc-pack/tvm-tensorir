@@ -45,9 +45,11 @@ class MutatorNode : public runtime::Object {
   /*!
    * \brief Apply the mutator function to the given trace.
    * \param trace The given trace for mutation.
+   * \param rand_state The random state for mutation.
    * \return None if mutator failed, otherwise return the mutated trace.
    */
-  virtual Optional<tir::Trace> Apply(const tir::Trace& trace) = 0;
+  virtual Optional<tir::Trace> Apply(const tir::Trace& trace,
+                                     support::LinearCongruentialEngine::TRandState* rand_state) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.Mutator";
   TVM_DECLARE_BASE_OBJECT_INFO(MutatorNode, Object);
@@ -66,7 +68,8 @@ class PyMutatorNode : public MutatorNode {
    * \param trace The given trace for mutation.
    * \return None if mutator failed, otherwise return the mutated trace.
    */
-  using FApply = runtime::TypedPackedFunc<Optional<tir::Trace>(const tir::Trace&)>;
+  using FApply = runtime::TypedPackedFunc<Optional<tir::Trace>(
+      const tir::Trace&, support::LinearCongruentialEngine::TRandState rand_state)>;
   /*!
    * \brief Get the mutator as string with name.
    * \return The string of the mutator.
@@ -92,9 +95,10 @@ class PyMutatorNode : public MutatorNode {
     this->f_initialize_with_tune_context(context);
   }
 
-  Optional<tir::Trace> Apply(const tir::Trace& trace) final {
+  Optional<tir::Trace> Apply(const tir::Trace& trace,
+                             support::LinearCongruentialEngine::TRandState* rand_state) final {
     ICHECK(f_apply != nullptr) << "PyMutator's Apply method not implemented!";
-    return this->f_apply(trace);
+    return this->f_apply(trace, *rand_state);
   }
 
   static constexpr const char* _type_key = "meta_schedule.PyMutator";
@@ -107,6 +111,16 @@ class PyMutatorNode : public MutatorNode {
  */
 class Mutator : public runtime::ObjectRef {
  public:
+  /*! \brief Create a Mutator that mutates the tile size. */
+  TVM_DLL static Mutator MutateTileSize();
+  /*!
+   * \brief Create a Mutator that mutates the parallel extent
+   * \param max_jobs_per_core The maximum number of parallel jobs per core.
+   * \return The created mutator.
+   */
+  TVM_DLL static Mutator MutateParallel(int64_t max_jobs_per_core);
+  /*! \brief Create a Mutator that mutates auto unroll step */
+  TVM_DLL static Mutator MutateUnroll();
   /*!
    * \brief Create a mutator with customized methods on the python-side.
    * \param f_initialize_with_tune_context The packed function of `InitializeWithTuneContext`.

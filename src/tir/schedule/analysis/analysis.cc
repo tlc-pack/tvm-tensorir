@@ -49,6 +49,37 @@ const PrimFuncNode* GetRootPrimFunc(const IRModule& mod, const StmtNode* root_bl
 
 /******** Scope ********/
 
+ScopeBlockLoopInfo GetScopeBlockLoopInfo(const Block& scope_block) {
+  struct Collector : public StmtVisitor {
+    void VisitStmt_(const BlockRealizeNode* realize) final {
+      result.realizes.push_back(GetRef<BlockRealize>(realize));
+      const Array<IterVar>& iter_vars = realize->block->iter_vars;
+      const Array<PrimExpr>& iter_values = realize->iter_values;
+      ICHECK_EQ(iter_vars.size(), iter_values.size());
+      int n = realize->iter_values.size();
+      for (int i = 0; i < n; ++i) {
+        const IterVar& iter_var = iter_vars[i];
+        const PrimExpr& iter_value = iter_values[i];
+        std::unordered_set<const VarNode*>* vars = nullptr;
+        if (iter_var->iter_type == IterVarType::kDataPar) {
+          vars = &result.spatial_vars;
+        } else {
+          vars = &result.non_spatial_vars;
+        }
+        PostOrderVisit(iter_value, [vars](const ObjectRef& obj) {
+          if (const VarNode* var = obj.as<VarNode>()) {
+            vars->insert(var);
+          }
+        });
+      }
+    }
+
+    ScopeBlockLoopInfo result;
+  } visitor;
+  visitor(scope_block->body);
+  return std::move(visitor.result);
+}
+
 StmtSRef GetScopeRoot(const ScheduleState& self, const StmtSRef& sref,  //
                       bool require_stage_pipeline,                      //
                       bool require_subtree_compact_dataflow) {
