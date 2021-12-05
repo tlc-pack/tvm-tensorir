@@ -267,7 +267,7 @@ Optional<Trace> MutateParallelNode::Apply(const Trace& trace, TRandState* rand_s
   }
   // Step 4. Remove the original plan and remove it
   std::vector<int> original_plan =
-      tir::GetNumFusedLoops(loop_extent_prods, this->max_parallel_extent_);
+      tir::GetNumFusedLoops(loop_extent_prods, candidate.parallel_extent);
   auto it = plan2limit.find(original_plan);
   if (it != plan2limit.end()) {
     plan2limit.erase(it);
