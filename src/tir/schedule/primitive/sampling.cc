@@ -196,10 +196,10 @@ std::function<int32_t()> MakeMultinomialSampler(
   for (double w : weights) {
     sums.push_back(sum += w);
   }
-  return [rand_state = support::LinearCongruentialEngine(rand_state).ForkSeed(),
+  return [rng = support::LinearCongruentialEngine(rand_state).ForkSeed(),
           dist = std::uniform_real_distribution<double>(0.0, sum),
           sums = std::move(sums)]() mutable -> int32_t {
-    support::LinearCongruentialEngine rand_(&rand_state);
+    support::LinearCongruentialEngine rand_(&rng);
     double p = dist(rand_);
     int32_t idx = std::lower_bound(sums.begin(), sums.end(), p) - sums.begin();
     int32_t n = sums.size();

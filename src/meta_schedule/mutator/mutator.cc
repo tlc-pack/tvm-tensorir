@@ -49,11 +49,9 @@ TVM_REGISTER_NODE_TYPE(PyMutatorNode);
 TVM_REGISTER_GLOBAL("meta_schedule.MutatorInitializeWithTuneContext")
     .set_body_method<Mutator>(&MutatorNode::InitializeWithTuneContext);
 TVM_REGISTER_GLOBAL("meta_schedule.MutatorApply")
-    .set_body_typed([](Mutator self, tir::Trace trace, int64_t seed) -> Optional<tir::Trace> {
-      if (seed == -1) {
-        seed = std::random_device()();
-      }
-      return self->Apply(trace, &seed);
+    .set_body_typed([](Mutator self, tir::Trace trace, TRandState seed) -> Optional<tir::Trace> {
+      TRandState seed_ = (seed != -1) ? seed : support::LinearCongruentialEngine::DeviceRandom();
+      return self->Apply(trace, &seed_);
     });
 TVM_REGISTER_GLOBAL("meta_schedule.MutatorPyMutator").set_body_typed(Mutator::PyMutator);
 

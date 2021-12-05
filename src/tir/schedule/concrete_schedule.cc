@@ -214,7 +214,7 @@ Schedule ConcreteScheduleNode::Copy() const {
 
 void ConcreteScheduleNode::Seed(support::LinearCongruentialEngine::TRandState seed) {
   if (seed == -1) {
-    seed = std::random_device()();
+    seed = support::LinearCongruentialEngine::DeviceRandom();
   }
   support::LinearCongruentialEngine(&rand_state_).Seed(seed);
 }

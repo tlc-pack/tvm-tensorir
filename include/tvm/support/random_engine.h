@@ -29,6 +29,7 @@
 #include <tvm/runtime/logging.h>
 
 #include <cstdint>  // for uint64_t
+#include <random>
 
 namespace tvm {
 namespace support {
@@ -72,6 +73,12 @@ class LinearCongruentialEngine {
    * \note The function name is uncapilized because it is used in STL's distribution inferface.
    */
   static constexpr result_type max() { return modulus - 1; }
+
+  /*!
+   * \brief Get a device random state
+   * \return The random state
+   */
+  static TRandState DeviceRandom() { return (std::random_device()()) % modulus; }
 
   /*!
    * \brief Operator to move the random state to the next and return the new random state. According

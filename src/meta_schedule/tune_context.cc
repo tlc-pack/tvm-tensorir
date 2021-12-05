@@ -44,7 +44,7 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   n->mutators = mutators.value_or({});
   n->task_name = task_name.value_or("main");
   if (rand_state == -1) {
-    rand_state = std::random_device()();
+    rand_state = support::LinearCongruentialEngine::DeviceRandom();
   }
   support::LinearCongruentialEngine(&n->rand_state).Seed(rand_state);
   n->num_threads = num_threads;

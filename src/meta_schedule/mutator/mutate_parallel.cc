@@ -178,6 +178,7 @@ class MutateParallelNode : public MutatorNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(MutateParallelNode, MutatorNode);
 
  public:
+  struct Candidate;
   // Inherit from `MutatorNode`
   void InitializeWithTuneContext(const TuneContext& context) final {
     Target target = context->target.value();
@@ -189,8 +190,8 @@ class MutateParallelNode : public MutatorNode {
 };
 
 /*! \brief The candidate to be mutated */
-struct Candidate {
-  /*! \brief The annotation instrution */
+struct MutateParallelNode::Candidate {
+  /*! \brief The annotation instruction */
   Instruction inst;
   /*! \brief The current parallel extent */
   int64_t parallel_extent;
@@ -207,7 +208,8 @@ struct Candidate {
  * \param candidate The candidate to be mutated
  * \return Whether a decision is found
  */
-bool FindParallelDecision(const Trace& trace, TRandState* rand_state, Candidate* candidate) {
+bool FindParallelDecision(const Trace& trace, TRandState* rand_state,
+                          MutateParallelNode::Candidate* candidate) {
   using tir::BlockRVNode;
   using tir::InstructionNode;
   std::unordered_map<const BlockRVNode*, const InstructionNode*> get_block_insts;

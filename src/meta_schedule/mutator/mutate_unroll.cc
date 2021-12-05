@@ -55,6 +55,7 @@ class MutateUnrollNode : public MutatorNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(MutateUnrollNode, MutatorNode);
 
  public:
+  struct Candidate;
   // Inherit from `MutatorNode`
   void InitializeWithTuneContext(const TuneContext& context) final {}
   // Inherit from `MutatorNode`
@@ -62,7 +63,7 @@ class MutateUnrollNode : public MutatorNode {
 };
 
 /*! \brief A candidate to be mutated */
-struct Candidate {
+struct MutateUnrollNode::Candidate {
   /*! \brief The sampling instruction to be mutated */
   Instruction inst;
   /*! \brief The probability */
@@ -78,7 +79,8 @@ struct Candidate {
  * \param candidates The mutation candidate
  * \return Whether a decision is found
  */
-bool FindUnrollDecision(const Trace& trace, TRandState* rand_state, Candidate* candidate) {
+bool FindUnrollDecision(const Trace& trace, TRandState* rand_state,
+                        MutateUnrollNode::Candidate* candidate) {
   using tir::InstructionKind;
   using tir::InstructionNode;
   static const InstructionKind& inst_sample_categorical = InstructionKind::Get("SampleCategorical");
