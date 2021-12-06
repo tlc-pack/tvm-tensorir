@@ -26,15 +26,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-/*!
- * \brief Create a sampler function that picks mutators according to the mass function
- * \param rand_state The random state for sampling
- * \return The sampler created
- */
-inline std::function<Optional<Mutator>()> MakeMutatorSampler(
-    double p_mutate, const Map<Mutator, FloatImm>& mutator_probs,
-    support::LinearCongruentialEngine::TRandState* rand_state);
-
 /**************** Data Structure ****************/
 
 /*!
@@ -60,16 +51,6 @@ struct CachedTrace {
    * \return Whether the cached trace is defined.
    */
   inline bool Defined() const { return sch.defined(); }
-  /*!
-   * \brief Get trace from a cached trace.
-   * \return The trace.
-   */
-  inline tir::Trace GetTrace() const {
-    Optional<tir::Trace> trace;
-    ICHECK(sch.defined() && (trace = sch->trace()))
-        << "Schedule or trace is not defined when getting trace!";
-    return trace.value();
-  }
   /*! \brief Reload the operator < for CachedTrace. */
   friend inline bool operator<(const CachedTrace& lhs, const CachedTrace& rhs) {
     return lhs.score > rhs.score;
@@ -149,6 +130,48 @@ struct PerThreadDataEx {
   PerThreadDataEx() = default;
 
   /*!
+   * \brief Create a sampler function that picks mutators according to the mass function
+   * \param rand_state The random state for sampling
+   * \return The sampler created
+   */
+  inline std::function<Optional<Mutator>()> MakeMutatorSampler(
+      double p_mutate, const Map<Mutator, FloatImm>& mutator_probs,
+      support::LinearCongruentialEngine::TRandState* rand_state) {
+    std::vector<Optional<Mutator>> mutators;
+    std::vector<double> masses;
+    mutators.push_back(NullOpt);
+    masses.push_back(1.0 - p_mutate);
+    double total_mass_mutator = 0.0;
+    if (p_mutate > 0) {
+      for (const auto& kv : mutator_probs) {
+        const Mutator& mutator = kv.first;
+        double mass = kv.second->value;
+        CHECK_GE(mass, 0.0) << "ValueError: Probability of mutator '" << mutator
+                            << "' is ill-formed: " << mass;
+        total_mass_mutator += mass;
+        mutators.push_back(kv.first);
+        masses.push_back(mass * p_mutate);
+      }
+    }
+    // Normalize the sum to 1.0
+    if (total_mass_mutator == 0.0) {
+      masses[0] = 1.0;
+      for (int i = 1, n = masses.size(); i < n; ++i) {
+        masses[i] = 0.0;
+      }
+    } else if (total_mass_mutator != 1.0) {
+      for (int i = 1, n = masses.size(); i < n; ++i) {
+        masses[i] /= total_mass_mutator;
+      }
+    }
+    return [idx_sampler = tir::MakeMultinomialSampler(rand_state, masses),
+            mutators = std::move(mutators)]() -> Optional<Mutator> {
+      int i = idx_sampler();
+      return mutators[i];
+    };
+  }
+
+  /*!
    * \brief Set the value for the trace and mutator samplers per thread.
    * \param scores The predicted score for the given samples.
    * \param p_mutate The probability of mutation.
@@ -164,21 +187,19 @@ struct PerThreadDataEx {
 struct ConcurrentBitmask {
   /*! The bit width. */
   static constexpr const int kBitWidth = 64;
-  /*!
-   * \brief Constructor
-   * \param size The size of the concurrent bitmask.
-   */
-  explicit ConcurrentBitmask(int size) : size(size) {
-    bitmask.assign((size + kBitWidth - 1) / kBitWidth, 0);
-    std::vector<std::mutex> list((size + kBitWidth - 1) / kBitWidth);
-    mutexes.swap(list);
-  }
   /*! \brief The size of the concurrent bitmask. */
   int size;
   /*! \brief The bitmasks. */
   std::vector<uint64_t> bitmask;
   /*! \brief The mutexes, one per kBitWidth(64 here) bitmasks. */
   std::vector<std::mutex> mutexes;
+
+  /*!
+   * \brief Constructor
+   * \param n The total slots managed by the concurrent bitmask.
+   */
+  explicit ConcurrentBitmask(int n)
+      : size((n + kBitWidth - 1) / kBitWidth), bitmask(size, 0), mutexes(size) {}
   /*!
    * \brief Query and mark the given index if not visted before.
    * \param x The index to concurrently check if used. If not, mark as used.
@@ -237,43 +258,6 @@ inline std::vector<double> PredictNormalizedScore(const std::vector<CachedTrace>
   return scores;
 }
 
-inline std::function<Optional<Mutator>()> MakeMutatorSampler(
-    double p_mutate, const Map<Mutator, FloatImm>& mutator_probs,
-    support::LinearCongruentialEngine::TRandState* rand_state) {
-  std::vector<Optional<Mutator>> mutators;
-  std::vector<double> masses;
-  mutators.push_back(NullOpt);
-  masses.push_back(1.0 - p_mutate);
-  double total_mass_mutator = 0.0;
-  if (p_mutate > 0) {
-    for (const auto& kv : mutator_probs) {
-      const Mutator& mutator = kv.first;
-      double mass = kv.second->value;
-      CHECK_GE(mass, 0.0) << "ValueError: Probability of mutator '" << mutator
-                          << "' is ill-formed: " << mass;
-      total_mass_mutator += mass;
-      mutators.push_back(kv.first);
-      masses.push_back(mass * p_mutate);
-    }
-  }
-  // Normalize the sum to 1.0
-  if (total_mass_mutator == 0.0) {
-    masses[0] = 1.0;
-    for (int i = 1, n = masses.size(); i < n; ++i) {
-      masses[i] = 0.0;
-    }
-  } else if (total_mass_mutator != 1.0) {
-    for (int i = 1, n = masses.size(); i < n; ++i) {
-      masses[i] /= total_mass_mutator;
-    }
-  }
-  return [idx_sampler = tir::MakeMultinomialSampler(rand_state, masses),
-          mutators = std::move(mutators)]() -> Optional<Mutator> {
-    int i = idx_sampler();
-    return mutators[i];
-  };
-}
-
 /**************** Evolutionary Search ****************/
 
 /*!
@@ -297,8 +281,6 @@ inline std::function<Optional<Mutator>()> MakeMutatorSampler(
  */
 class EvolutionarySearchNode : public SearchStrategyNode {
  public:
-  using TRandState = support::LinearCongruentialEngine::TRandState;
-
   /*! \brief The state of the search strategy. */
   struct State {
     /*! \brief The search strategy itself */
@@ -441,8 +423,6 @@ class EvolutionarySearchNode : public SearchStrategyNode {
   void InitializeWithTuneContext(const TuneContext& tune_context) final {
     CHECK(tune_context.defined()) << "TuneContext must be defined!";
     CHECK(tune_context->num_threads > 0) << "Number of threads has to be larger than 0.";
-    CHECK(p_mutate == 0 || tune_context->mutator_probs.defined())
-        << "Mutators and their probabilities must be defined given mutation probability is not 0!";
     CHECK(tune_context->target.defined()) << "Target must be defined!";
 
     this->tune_context_ = tune_context;
@@ -616,7 +596,7 @@ std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
         if (Optional<Mutator> opt_mutator = mutator_sampler()) {
           // Decision: mutate
           Mutator mutator = opt_mutator.value();
-          if (Optional<tir::Trace> opt_new_trace = mutator->Apply(ctrace.GetTrace())) {
+          if (Optional<tir::Trace> opt_new_trace = mutator->Apply(ctrace.sch->trace().value())) {
             tir::Trace new_trace = opt_new_trace.value();
             if (Optional<tir::Schedule> opt_sch =
                     ApplyTrace(mod, new_trace, &rand_state, self->postprocs_)) {
