@@ -206,7 +206,6 @@ struct ConcurrentBitmask {
    * \return Whether the index has been used before.
    */
   bool QueryAndMark(int x) {
-    if (x < 0 || x >= size) return false;
     std::unique_lock<std::mutex> lock(mutexes[x / kBitWidth]);
     constexpr uint64_t one = 1;
     if (bitmask[x / kBitWidth] & (one << (x % kBitWidth))) {
