@@ -46,11 +46,6 @@ struct CachedTrace {
    * \param score The predicted normalized score, -1.0 if score is not assigned yet.
    */
   explicit CachedTrace(const tir::Schedule& sch, double score) : sch(sch), score(score) {}
-  /*!
-   * \brief Check if the cached trace is defined.
-   * \return Whether the cached trace is defined.
-   */
-  inline bool Defined() const { return sch.defined(); }
   /*! \brief Reload the operator < for CachedTrace. */
   friend inline bool operator<(const CachedTrace& lhs, const CachedTrace& rhs) {
     return lhs.score > rhs.score;
@@ -118,16 +113,13 @@ class SizedHeap {
 struct PerThreadData {
   IRModule mod;
   TRandState rand_state;
-};
-
-struct PerThreadDataEx {
-  IRModule mod;
-  TRandState rand_state;
   std::function<int32_t()> trace_sampler;
   std::function<Optional<Mutator>()> mutator_sampler;
 
   /*! \brief Default constructor. */
-  PerThreadDataEx() = default;
+  PerThreadData() = default;
+  explicit PerThreadData(const IRModule& mod, TRandState* rand_state)
+      : mod(mod), rand_state(ForkSeed(rand_state)) {}
 
   /*!
    * \brief Create a sampler function that picks mutators according to the mass function
@@ -313,8 +305,8 @@ class EvolutionarySearchNode : public SearchStrategyNode {
      * \param unmeasured Unmeasured samples from replaying traces from design space.
      * \return The merged results, excluding undefined samples.
      */
-    inline std::vector<CachedTrace> PruneAndMergeSamples(
-        const std::vector<CachedTrace>& measured, const std::vector<CachedTrace>& unmeasured);
+    inline std::vector<CachedTrace> MergeSamples(const std::vector<CachedTrace>& measured,
+                                                 const std::vector<CachedTrace>& unmeasured);
     /*!
      * \brief Evolve the initial population using mutators and samplers.
      * \param inits The initial population of traces sampled.
@@ -435,7 +427,7 @@ class EvolutionarySearchNode : public SearchStrategyNode {
     this->per_thread_data_.reserve(this->num_threads_);
     for (int i = 0; i < this->num_threads_; i++) {
       this->per_thread_data_.push_back(
-          PerThreadData{DeepCopyIRModule(tune_context->mod.value()), ForkSeed(&this->rand_state_)});
+          PerThreadData(DeepCopyIRModule(tune_context->mod.value()), &this->rand_state_));
     }
     this->state_.reset();
   }
@@ -471,12 +463,12 @@ class EvolutionarySearchNode : public SearchStrategyNode {
 inline std::vector<CachedTrace> EvolutionarySearchNode::State::PickBestFromDatabase(int num) {
   std::vector<tir::Trace> measured_traces;
   measured_traces.reserve(num);
-  std::vector<CachedTrace> results(num, CachedTrace());
-
-  for (TuningRecord record : self->database_->GetTopK(self->token_, num)) {
+  Array<TuningRecord> top_records = self->database_->GetTopK(self->token_, num);
+  for (TuningRecord record : top_records) {
     measured_traces.push_back(record->trace);
   }
-
+  int acutal_num = measured_traces.size();
+  std::vector<CachedTrace> results(acutal_num);
   auto f_proc_measured = [this, &measured_traces, &results](int thread_id, int trace_id) -> void {
     TRandState& rand_state = self->per_thread_data_[thread_id].rand_state;
     const IRModule& mod = self->per_thread_data_[thread_id].mod;
@@ -490,13 +482,13 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::PickBestFromDatab
       throw;
     }
   };
-  support::parallel_for_dynamic(0, measured_traces.size(), self->num_threads_, f_proc_measured);
+  support::parallel_for_dynamic(0, acutal_num, self->num_threads_, f_proc_measured);
   return results;
 }
 
 inline std::vector<CachedTrace> EvolutionarySearchNode::State::SampleInitPopulation(int num) {
   // Pick unmeasured states
-  std::vector<CachedTrace> results;
+  std::vector<CachedTrace> results(num);
   auto f_proc_unmeasured = [this, &results, &num](int thread_id, int trace_id) -> void {
     TRandState& rand_state = self->per_thread_data_[thread_id].rand_state;
     const IRModule& mod = self->per_thread_data_[thread_id].mod;
@@ -512,39 +504,27 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::SampleInitPopulat
         break;
       }
     }
-    if (!result.Defined()) {
+    if (!result.sch.defined()) {
       LOG(FATAL) << "Sample-Init-Population failed over the maximum limit!";
     }
   };
-  results.resize(num, CachedTrace());
   support::parallel_for_dynamic(0, num, self->num_threads_, f_proc_unmeasured);
   return results;
 }
 
-inline std::vector<CachedTrace> EvolutionarySearchNode::State::PruneAndMergeSamples(
+inline std::vector<CachedTrace> EvolutionarySearchNode::State::MergeSamples(
     const std::vector<CachedTrace>& measured, const std::vector<CachedTrace>& unmeasured) {
-  std::vector<CachedTrace> pruned;
-  pruned.reserve(measured.size() + unmeasured.size());
-  for (const CachedTrace& entry : measured) {
-    if (entry.Defined()) {
-      pruned.push_back(entry);
-    }
-  }
-  for (const CachedTrace& entry : unmeasured) {
-    if (entry.Defined()) {
-      pruned.push_back(entry);
-    }
-  }
-  return pruned;
+  ICHECK(measured.size() + unmeasured.size() == self->population)
+      << "Num of total init samples does not equal to population size!";
+  std::vector<CachedTrace> inits;
+  inits.reserve(self->population);
+  inits.insert(inits.end(), measured.begin(), measured.end());
+  inits.insert(inits.end(), unmeasured.begin(), unmeasured.end());
+  return inits;
 }
 
 std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
     const std::vector<CachedTrace>& inits, int num) {
-  std::vector<PerThreadDataEx> per_thread_data_ex(self->num_threads_);
-  for (int i = 0; i < self->num_threads_; i++) {
-    per_thread_data_ex[i].mod = self->per_thread_data_[i].mod;
-    per_thread_data_ex[i].rand_state = ForkSeed(&self->per_thread_data_[i].rand_state);
-  }
   // The heap to record best schedule, we do not consider schedules that are already measured
   // Also we use `in_heap` to make sure items in the heap are de-duplicated
   SizedHeap heap(num);
@@ -575,18 +555,17 @@ std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
     }
     // Set threaded samplers, with probability from predicated normalized throughputs
     for (int i = 0; i < self->num_threads_; ++i) {
-      per_thread_data_ex[i].Set(scores, self->p_mutate, self->mutator_probs_);
+      self->per_thread_data_[i].Set(scores, self->p_mutate, self->mutator_probs_);
     }
     ConcurrentBitmask cbmask(scores.size());
     // The worker function
-    auto f_find_candidate = [&per_thread_data_ex, &cbmask, &sch_curr, &sch_next, this](
-                                int thread_id, int trace_id) {
+    auto f_find_candidate = [&cbmask, &sch_curr, &sch_next, this](int thread_id, int trace_id) {
       // Prepare samplers
-      TRandState& rand_state = per_thread_data_ex[thread_id].rand_state;
-      const IRModule& mod = per_thread_data_ex[thread_id].mod;
-      const std::function<int()>& trace_sampler = per_thread_data_ex[thread_id].trace_sampler;
+      TRandState& rand_state = self->per_thread_data_[thread_id].rand_state;
+      const IRModule& mod = self->per_thread_data_[thread_id].mod;
+      const std::function<int()>& trace_sampler = self->per_thread_data_[thread_id].trace_sampler;
       const std::function<Optional<Mutator>()>& mutator_sampler =
-          per_thread_data_ex[thread_id].mutator_sampler;
+          self->per_thread_data_[thread_id].mutator_sampler;
       CachedTrace& result = sch_next[trace_id];
       // Loop until success
       for (int retry_cnt = 0; retry_cnt < self->max_evolve_fail_cnt; retry_cnt++) {
@@ -599,11 +578,9 @@ std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
             tir::Trace new_trace = opt_new_trace.value();
             if (Optional<tir::Schedule> opt_sch =
                     ApplyTrace(mod, new_trace, &rand_state, self->postprocs_)) {
-              tir::Schedule sch = opt_sch.value();
               // note that sch's trace is different from new_trace
               // beacuase it contains post-processing infomation
-              CachedTrace new_ctrace(sch, -1.0);
-              result = new_ctrace;
+              result = CachedTrace(opt_sch.value(), -1.0);
               break;
             }
           }
@@ -619,7 +596,7 @@ std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
       }
     };
     sch_next.clear();
-    sch_next.resize(self->population, CachedTrace());
+    sch_next.resize(self->population);
     support::parallel_for_dynamic(0, self->population, self->num_threads_, f_find_candidate);
     sch_curr.clear();
     sch_curr.swap(sch_next);
@@ -702,7 +679,7 @@ EvolutionarySearchNode::State::GenerateMeasureCandidates() {
   std::vector<CachedTrace> measured =
       PickBestFromDatabase(self->population * self->init_measured_ratio);
   std::vector<CachedTrace> unmeasured = SampleInitPopulation(self->population - measured.size());
-  std::vector<CachedTrace> inits = PruneAndMergeSamples(measured, unmeasured);
+  std::vector<CachedTrace> inits = MergeSamples(measured, unmeasured);
   std::vector<CachedTrace> bests = EvolveWithCostModel(inits, sample_num);
   std::vector<CachedTrace> picks = PickWithEpsGreedy(unmeasured, bests, sample_num);
   return AssembleCandidates(picks, self->args_info_);
