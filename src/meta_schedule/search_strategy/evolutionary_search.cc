@@ -37,22 +37,40 @@ inline std::function<Optional<Mutator>()> MakeMutatorSampler(
 
 /**************** Data Structure ****************/
 
-/*! \brief The postprocessed built of a trace */
+/*!
+ * \brief The struct to store schedule, trace and its score.
+ * \note The trace is available by visiting the schedule's trace method.
+ */
 struct CachedTrace {
-  /*! \brief The type of structural hash */
-  using THashCode = size_t;
-  /*! \brief The trace */
-  tir::Trace trace{nullptr};
-  /*! \brief The schedule the trace creates */
+  /*! \brief The schedule the trace creates. */
   tir::Schedule sch{nullptr};
-  /*! \brief The normalized score, the higher the better */
+  /*! \brief The normalized score, the higher the better. */
   double score;
 
+  /*! \brief Default constructor. */
   CachedTrace() = default;
-  explicit CachedTrace(const tir::Trace& trace, const tir::Schedule& sch, double score)
-      : trace(trace), sch(sch), score(score) {}
-
-  inline bool defined() const { return trace.defined(); }
+  /*!
+   * \brief Constructor from Schedule and score.
+   * \param sch The given Schedule, which can be used to obtain the trace.
+   * \param score The predicted normalized score, -1.0 if score is not assigned yet.
+   */
+  explicit CachedTrace(const tir::Schedule& sch, double score) : sch(sch), score(score) {}
+  /*!
+   * \brief Check if the cached trace is defined.
+   * \return Whether the cached trace is defined.
+   */
+  inline bool Defined() const { return sch.defined(); }
+  /*!
+   * \brief Get trace from a cached trace.
+   * \return The trace.
+   */
+  inline tir::Trace GetTrace() const {
+    Optional<tir::Trace> trace;
+    ICHECK(sch.defined() && (trace = sch->trace()))
+        << "Schedule or trace is not defined when getting trace!";
+    return trace.value();
+  }
+  /*! \brief Reload the operator < for CachedTrace. */
   friend inline bool operator<(const CachedTrace& lhs, const CachedTrace& rhs) {
     return lhs.score > rhs.score;
   }
@@ -68,7 +86,7 @@ class SizedHeap {
  public:
   struct IRModuleSHash {
     IRModule mod;
-    CachedTrace::THashCode shash;
+    size_t shash;
   };
 
   struct IRModuleSHashHash {
@@ -487,7 +505,7 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::PickBestFromDatab
     if (Optional<tir::Schedule> opt_sch =
             meta_schedule::ApplyTrace(mod, trace, &rand_state, self->postprocs_)) {
       tir::Schedule sch = opt_sch.value();
-      results[trace_id] = CachedTrace(trace, sch, -1.0);
+      results[trace_id] = CachedTrace(sch, -1.0);
     } else {
       LOG(FATAL) << "ValueError: Cannot postprocess the trace:\n" << trace;
       throw;
@@ -511,12 +529,11 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::SampleInitPopulat
               // replay trace, i.e., remove decisions
           ApplyTrace(mod, tir::Trace(trace->insts, {}), &rand_state, self->postprocs_)) {
         tir::Schedule sch = opt_sch.value();
-        tir::Trace trace = sch->trace().value();
-        result = CachedTrace(trace, sch, -1.0);
+        result = CachedTrace(sch, -1.0);
         break;
       }
     }
-    if (!result.defined()) {
+    if (!result.Defined()) {
       LOG(FATAL) << "Sample-Init-Population failed over the maximum limit!";
     }
   };
@@ -530,12 +547,12 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::PruneAndMergeSamp
   std::vector<CachedTrace> pruned;
   pruned.reserve(measured.size() + unmeasured.size());
   for (const CachedTrace& entry : measured) {
-    if (entry.defined()) {
+    if (entry.Defined()) {
       pruned.push_back(entry);
     }
   }
   for (const CachedTrace& entry : unmeasured) {
-    if (entry.defined()) {
+    if (entry.Defined()) {
       pruned.push_back(entry);
     }
   }
@@ -599,14 +616,14 @@ std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
         if (Optional<Mutator> opt_mutator = mutator_sampler()) {
           // Decision: mutate
           Mutator mutator = opt_mutator.value();
-          if (Optional<tir::Trace> opt_new_trace = mutator->Apply(ctrace.trace)) {
+          if (Optional<tir::Trace> opt_new_trace = mutator->Apply(ctrace.GetTrace())) {
             tir::Trace new_trace = opt_new_trace.value();
             if (Optional<tir::Schedule> opt_sch =
                     ApplyTrace(mod, new_trace, &rand_state, self->postprocs_)) {
               tir::Schedule sch = opt_sch.value();
               // note that sch's trace is different from new_trace
               // beacuase it contains post-processing infomation
-              CachedTrace new_ctrace(sch->trace().value(), sch, -1.0);
+              CachedTrace new_ctrace(sch, -1.0);
               result = new_ctrace;
               break;
             }
