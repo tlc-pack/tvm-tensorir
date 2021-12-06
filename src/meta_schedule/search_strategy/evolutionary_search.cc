@@ -45,23 +45,12 @@ struct CachedTrace {
   tir::Trace trace{nullptr};
   /*! \brief The schedule the trace creates */
   tir::Schedule sch{nullptr};
-  /*! \brief The structural hash of the schedule */
-  THashCode shash;  // todo(@zxybazh): deduplication
   /*! \brief The normalized score, the higher the better */
   double score;
 
-  /*!
-   * \brief Get the structural hash for the given schedule's IRModule.
-   * \param sch The given schedule.
-   * \return The structural hash of the schedule's IRModule.
-   */
-  inline CachedTrace::THashCode StructuralHash(const tir::Schedule& sch) {
-    return tvm::StructuralHash()(sch->mod());
-  }
-
   CachedTrace() = default;
   explicit CachedTrace(const tir::Trace& trace, const tir::Schedule& sch, double score)
-      : trace(trace), sch(sch), shash(StructuralHash(sch)), score(score) {}
+      : trace(trace), sch(sch), score(score) {}
 
   inline bool defined() const { return trace.defined(); }
   friend inline bool operator<(const CachedTrace& lhs, const CachedTrace& rhs) {
@@ -88,7 +77,7 @@ class SizedHeap {
 
   struct IRModuleSHashEqual {
     bool operator()(const IRModuleSHash& lhs, const IRModuleSHash& rhs) const {
-      return StructuralEqual()(lhs.mod, rhs.mod);
+      return lhs.shash == rhs.shash && StructuralEqual()(lhs.mod, rhs.mod);
     }
   };
   /*!
@@ -102,7 +91,7 @@ class SizedHeap {
    * \param item The item to be pushed
    */
   void Push(const CachedTrace& item) {
-    if (!in_heap.insert(IRModuleSHash{item.sch->mod(), item.shash}).second) {
+    if (!in_heap.insert(IRModuleSHash{item.sch->mod(), StructuralHash()(item.sch->mod())}).second) {
       return;
     }
     int size = heap.size();
@@ -285,6 +274,8 @@ inline std::function<Optional<Mutator>()> MakeMutatorSampler(
  *   chosen = pick top `k = num_measures_per_iter * (1 - eps_greedy)` from `best`
  *            pick     `k = num_measures_per_iter *      eps_greedy ` from `init`
  *   do the measurement on `chosen` & update the cost model
+ *
+ *  Todo: (@zxybazh): Early stopping for small search space, including deduplication.
  */
 class EvolutionarySearchNode : public SearchStrategyNode {
  public:
