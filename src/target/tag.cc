@@ -70,6 +70,20 @@ Target TargetTag::AddTag(String name, Map<String, ObjectRef> config, bool overri
 
 /**********  Register Target tags  **********/
 
+TVM_REGISTER_TARGET_TAG("raspberry-pi/4b-64")
+    .set_config({{"kind", String("llvm")},
+                 {"mtriple", String("aarch64-linux-gnu")},
+                 {"mcpu", String("cortex-a72")},
+                 {"mattr", Array<String>{"+neon"}},
+                 {"num-cores", Integer(4)},
+                 {"host", Map<String, ObjectRef>{
+                              {"kind", String("llvm")},
+                              {"mtriple", String("aarch64-linux-gnu")},
+                              {"mcpu", String("cortex-a72")},
+                              {"mattr", Array<String>{"+neon"}},
+                              {"num-cores", Integer(4)},
+                          }}});
+
 #define TVM_REGISTER_CUDA_TAG(Name, Arch, SharedMem, RegPerBlock) \
   TVM_REGISTER_TARGET_TAG(Name).set_config({                      \
       {"kind", String("cuda")},                                   \

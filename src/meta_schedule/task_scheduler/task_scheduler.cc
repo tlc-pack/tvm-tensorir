@@ -108,8 +108,13 @@ void TaskSchedulerNode::Tune() {
     CHECK(task->search_strategy.defined())
         << "ValueError: Require `context.search_strategy`, but it is not defined";
     InitializeTask(i);
-    task->search_strategy.value()->PreTuning(
-        task->space_generator.value()->GenerateDesignSpace(task->mod.value()));
+    Array<tir::Schedule> design_space =
+        task->space_generator.value()->GenerateDesignSpace(task->mod.value());
+    LOG(INFO) << "Total " << design_space.size() << " design space(s) generated";
+    for (int i = 0, n = design_space.size(); i < n; ++i) {
+      //
+    }
+    task->search_strategy.value()->PreTuning(design_space);
   }
 
   int running_tasks = tasks.size();
