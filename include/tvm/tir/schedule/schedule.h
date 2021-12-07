@@ -516,7 +516,7 @@ class ScheduleNode : public runtime::Object {
    */
   virtual void Unannotate(const BlockRV& block_rv, const String& ann_key) = 0;
 
-  /******** Schedule: Buffer transformation ********/
+  /******** Schedule: Layout transformation ********/
   /*!
    * \brief Apply a transformation represented by IndexMap to buffer
    * \details The indices and the access region to the target buffer is transformed by the given
@@ -528,7 +528,7 @@ class ScheduleNode : public runtime::Object {
    * \param is_write_index Whether the buffer_index is the index of the block's write region.
    * \param index_map The transformation to apply.
    */
-  virtual void BufferTransform(const BlockRV& block_rv, int buffer_index, bool is_write_index,
+  virtual void TransformLayout(const BlockRV& block_rv, int buffer_index, bool is_write_index,
                                const IndexMap& index_map) = 0;
 
   /******** Schedule: Misc ********/

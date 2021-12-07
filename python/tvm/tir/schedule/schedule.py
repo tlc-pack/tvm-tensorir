@@ -1761,9 +1761,9 @@ class Schedule(Object):
         """
         _ffi_api.ScheduleUnannotate(self, block_or_loop, ann_key)  # pylint: disable=no-member
 
-    ########## Schedule: Buffer transformation ##########
+    ########## Schedule: Layout transformation ##########
 
-    def buffer_transform(self, block: BlockRV, buffer_index: int, is_write_index: bool,
+    def transform_layout(self, block: BlockRV, buffer_index: int, is_write_index: bool,
                          index_map : Union[IndexMap, Callable]) -> None:
         """Apply a transformation represented by IndexMap to buffer
 
@@ -1781,12 +1781,12 @@ class Schedule(Object):
         Examples
         --------
 
-        Before buffer_transform, in TensorIR, the IR is:
+        Before transform_layout, in TensorIR, the IR is:
 
         .. code-block:: python
 
             @T.prim_func
-            def before_buffer_transform(a: T.handle, c: T.handle) -> None:
+            def before_transform_layout(a: T.handle, c: T.handle) -> None:
                 A = T.match_buffer(a, (128, 128), "float32")
                 B = T.alloc_buffer((128, 128), "float32")
                 C = T.match_buffer(c, (128, 128), "float32")
@@ -1799,16 +1799,16 @@ class Schedule(Object):
                         vi, vj = T.axis.remap("SS", [i, j])
                         C[vi, vj] = B[vi, vj] + 1.0
 
-        Create the schedule and do buffer_transform:
+        Create the schedule and do transform_layout:
 
         .. code-block:: python
 
             sch = tir.Schedule(before_storage_align)
-            sch.buffer_transform(sch.get_block("B"), buffer_index=0, is_write_index=True,
+            sch.transform_layout(sch.get_block("B"), buffer_index=0, is_write_index=True,
                                  index_map=lambda m, n: (m // 16, n // 16, m % 16, n % 16))
             print(sch.mod["main"].script())
 
-        After applying buffer_transform, the IR becomes:
+        After applying transform_layout, the IR becomes:
 
         .. code-block:: python
 
@@ -1828,7 +1828,7 @@ class Schedule(Object):
         """
         if callable(index_map):
             index_map = IndexMap.from_func(index_map)
-        _ffi_api.ScheduleBufferTransform(  # type: ignore # pylint: disable=no-member
+        _ffi_api.ScheduleTransformLayout(  # type: ignore # pylint: disable=no-member
             self, block, buffer_index, is_write_index, index_map
         )
 

@@ -21,7 +21,7 @@
 namespace tvm {
 namespace tir {
 
-class BufferTransformRewriter : private StmtExprMutator {
+class TransformLayoutRewriter : private StmtExprMutator {
  public:
   /*!
    * \brief Rewrite the access to the buffer after the transformation
@@ -36,13 +36,13 @@ class BufferTransformRewriter : private StmtExprMutator {
                                                     const Buffer& old_buffer,
                                                     const Buffer& new_buffer,
                                                     const IndexMap& index_map) {
-    BufferTransformRewriter rewriter(old_buffer, new_buffer, index_map);
+    TransformLayoutRewriter rewriter(old_buffer, new_buffer, index_map);
     Stmt result = rewriter(scope_stmt);
     return {result, rewriter.block_sref_reuse_};
   }
 
  private:
-  BufferTransformRewriter(const Buffer& old_buffer, const Buffer& new_buffer,
+  TransformLayoutRewriter(const Buffer& old_buffer, const Buffer& new_buffer,
                           const IndexMap& index_map)
       : old_buffer_(old_buffer),
         new_buffer_(new_buffer),
@@ -125,7 +125,7 @@ class BufferIsSubregionError : public ScheduleError {
   Buffer buffer_;
 };
 
-void BufferTransform(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
+void TransformLayout(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
                      bool is_write_index, const IndexMap& index_map) {
   const BlockNode* block_ptr = TVM_SREF_TO_BLOCK(block_ptr, block_sref);
   Buffer old_buffer = GetNthAccessBuffer(self, GetRef<Block>(block_ptr), buffer_index,
@@ -151,7 +151,7 @@ void BufferTransform(ScheduleState self, const StmtSRef& block_sref, int buffer_
   // Step 2: Rewrite access indices and regions of the buffer
   Stmt new_stmt;
   Map<Block, Block> block_sref_reuse;
-  std::tie(new_stmt, block_sref_reuse) = BufferTransformRewriter::Rewrite(
+  std::tie(new_stmt, block_sref_reuse) = TransformLayoutRewriter::Rewrite(
       GetRef<Block>(scope_block), old_buffer, new_buffer, index_map);
   Block new_scope_block = Downcast<Block>(new_stmt);
 
@@ -187,8 +187,8 @@ void BufferTransform(ScheduleState self, const StmtSRef& block_sref, int buffer_
 
 /******** InstructionKind Registration ********/
 
-struct BufferTransformTraits : public UnpackedInstTraits<BufferTransformTraits> {
-  static constexpr const char* kName = "BufferTransform";
+struct TransformLayoutTraits : public UnpackedInstTraits<TransformLayoutTraits> {
+  static constexpr const char* kName = "TransformLayout";
   static constexpr bool kIsPure = false;
 
  private:
@@ -198,12 +198,12 @@ struct BufferTransformTraits : public UnpackedInstTraits<BufferTransformTraits> 
 
   static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, Integer buffer_index,
                                       Bool is_write_index, IndexMap index_map) {
-    return sch->BufferTransform(block_rv, buffer_index, is_write_index, index_map);
+    return sch->TransformLayout(block_rv, buffer_index, is_write_index, index_map);
   }
 
   static String UnpackedAsPython(Array<String> outputs, String block_rv, Integer buffer_index,
                                  Bool is_write_index, IndexMap index_map) {
-    PythonAPICall py("buffer_transform");
+    PythonAPICall py("transform_layout");
     py.Input("block", block_rv);
     py.Input("buffer_index", buffer_index);
     py.Input("is_write_index", is_write_index);
@@ -234,7 +234,7 @@ struct BufferTransformTraits : public UnpackedInstTraits<BufferTransformTraits> 
   friend struct ::tvm::tir::UnpackedInstTraits;
 };
 
-TVM_REGISTER_INST_KIND_TRAITS(BufferTransformTraits);
+TVM_REGISTER_INST_KIND_TRAITS(TransformLayoutTraits);
 
 }  // namespace tir
 }  // namespace tvm

@@ -668,13 +668,13 @@ void ConcreteScheduleNode::Unannotate(const BlockRV& loop_rv, const String& ann_
   TVM_TIR_SCHEDULE_END("unannotate", this->error_render_level_);
 }
 
-/******** Schedule: Buffer transformation ********/
-void ConcreteScheduleNode::BufferTransform(const BlockRV& block_rv, int buffer_index,
+/******** Schedule: Layout transformation ********/
+void ConcreteScheduleNode::TransformLayout(const BlockRV& block_rv, int buffer_index,
                                            bool is_write_index, const IndexMap& index_map) {
   TVM_TIR_SCHEDULE_BEGIN();
-  tir::BufferTransform(state_, this->GetSRef(block_rv), buffer_index, is_write_index, index_map);
+  tir::TransformLayout(state_, this->GetSRef(block_rv), buffer_index, is_write_index, index_map);
   this->state_->DebugVerify();
-  TVM_TIR_SCHEDULE_END("buffer_transform", this->error_render_level_);
+  TVM_TIR_SCHEDULE_END("transform_layout", this->error_render_level_);
 }
 
 /******** Schedule: Misc ********/

@@ -431,12 +431,12 @@ void TracedScheduleNode::Unannotate(const BlockRV& block_rv, const String& ann_k
                                       /*outputs=*/{}));
 }
 
-/******** Schedule: Buffer transformation ********/
+/******** Schedule: Layout transformation ********/
 
-void TracedScheduleNode::BufferTransform(const BlockRV& block_rv, int buffer_index,
+void TracedScheduleNode::TransformLayout(const BlockRV& block_rv, int buffer_index,
                                          bool is_write_index, const IndexMap& index_map) {
-  ConcreteScheduleNode::BufferTransform(block_rv, buffer_index, is_write_index, index_map);
-  static const InstructionKind& kind = InstructionKind::Get("BufferTransform");
+  ConcreteScheduleNode::TransformLayout(block_rv, buffer_index, is_write_index, index_map);
+  static const InstructionKind& kind = InstructionKind::Get("TransformLayout");
   trace_->Append(
       /*inst=*/Instruction(/*kind=*/kind,
                            /*inputs=*/{block_rv},

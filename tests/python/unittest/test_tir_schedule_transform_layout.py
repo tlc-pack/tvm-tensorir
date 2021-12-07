@@ -134,7 +134,7 @@ def permuted_shared_memory_transformed(a: T.handle, c: T.handle) -> None:
 def test_two_elementwise_transform_intermediate_buffer():
     sch = tir.Schedule(two_elementwise, debug_mask="all")
     block = sch.get_block("B")
-    sch.buffer_transform(block, 0, False, packed_index_map_func)
+    sch.transform_layout(block, 0, False, packed_index_map_func)
     tvm.ir.assert_structural_equal(two_elementwise_transformed_intermediate_buffer, sch.mod["main"])
     verify_trace_roundtrip(sch=sch, mod=two_elementwise)
 
@@ -142,7 +142,7 @@ def test_two_elementwise_transform_intermediate_buffer():
 def test_two_elementwise_transform_input_buffer():
     sch = tir.Schedule(two_elementwise, debug_mask="all")
     block = sch.get_block("B")
-    sch.buffer_transform(block, 0, True, packed_index_map_func)
+    sch.transform_layout(block, 0, True, packed_index_map_func)
     print(sch.mod['main'].script())
     tvm.ir.assert_structural_equal(two_elementwise_transformed_input_buffer, sch.mod["main"])
     verify_trace_roundtrip(sch=sch, mod=two_elementwise)
@@ -151,7 +151,7 @@ def test_two_elementwise_transform_input_buffer():
 def test_two_elementwise_transform_output_buffer():
     sch = tir.Schedule(two_elementwise, debug_mask="all")
     block = sch.get_block("C")
-    sch.buffer_transform(block, 0, False, packed_index_map_func)
+    sch.transform_layout(block, 0, False, packed_index_map_func)
     tvm.ir.assert_structural_equal(two_elementwise_transformed_output_buffer, sch.mod["main"])
     verify_trace_roundtrip(sch=sch, mod=two_elementwise)
 
@@ -160,7 +160,7 @@ def test_two_elementwise_transform_output_buffer():
 def test_permuted_layout():
     sch = tir.Schedule(permuted_shared_memory, debug_mask="all")
     block = sch.get_block("A_shared")
-    sch.buffer_transform(block, 0, False,
+    sch.transform_layout(block, 0, False,
             lambda i, j: (i // 4, j // 32, i % 4, (((j % 32) // 8) ^ (i % 4)) + j % 8))
     tvm.ir.assert_structural_equal(permuted_shared_memory_transformed, sch.mod['main'])
     verify_trace_roundtrip(sch=sch, mod=permuted_shared_memory)

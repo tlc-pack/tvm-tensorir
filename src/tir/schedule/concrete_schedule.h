@@ -137,8 +137,8 @@ class ConcreteScheduleNode : public ScheduleNode {
   void Annotate(const BlockRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
   void Unannotate(const BlockRV& loop_rv, const String& ann_key) override;
 
-  /******** Schedule: Buffer transformation ********/
-  void BufferTransform(const BlockRV& block_rv, int buffer_index, bool is_write_index,
+  /******** Schedule: Layout transformation ********/
+  void TransformLayout(const BlockRV& block_rv, int buffer_index, bool is_write_index,
                        const IndexMap& index_map) override;
   /******** Schedule: Misc ********/
   void EnterPostproc() override {}

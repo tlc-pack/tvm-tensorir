@@ -402,7 +402,7 @@ TVM_DLL void Tensorize(ScheduleState self, const StmtSRef& loop_sref,
 TVM_DLL void Annotate(ScheduleState self, const StmtSRef& sref, const String& ann_key,
                       const ObjectRef& ann_val);
 
-/******** Schedule: Buffer transformation ********/
+/******** Schedule: Layout transformation ********/
 /*!
  * \brief Apply a transformation represented by IndexMap to buffer
  * \details The indices and the access region to the target buffer is transformed by the given
@@ -415,7 +415,7 @@ TVM_DLL void Annotate(ScheduleState self, const StmtSRef& sref, const String& an
  * \param is_write_index Whether the buffer_index is the index of the block's write region.
  * \param index_map The transformation to apply.
  */
-TVM_DLL void BufferTransform(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
+TVM_DLL void TransformLayout(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
                              bool is_write_index, const IndexMap& index_map);
 
 /*!

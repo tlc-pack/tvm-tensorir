@@ -228,9 +228,9 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnannotate")
       throw;
     });
 
-/******** (FFI) Buffer transformation ********/
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBufferTransform")
-    .set_body_method<Schedule>(&ScheduleNode::BufferTransform);
+/******** (FFI) Layout transformation ********/
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTransformLayout")
+    .set_body_method<Schedule>(&ScheduleNode::TransformLayout);
 /******** (FFI) Misc ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostproc")
     .set_body_method<Schedule>(&ScheduleNode::EnterPostproc);
