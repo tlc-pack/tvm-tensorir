@@ -43,109 +43,18 @@ Block MakeBlock(const Stmt& body, const Map<Var, Buffer>& buffer_data_to_buffer)
   return block;
 }
 
-bool FindInAST(const Stmt& stmt, std::function<bool(const ObjectRef&)> pred) {
-  bool result = false;
-  PreOrderVisit(stmt, [&](const ObjectRef& obj) {
-    if (pred(obj)) {
-      result = true;
-      return false;
-    }
-    return true;
-  });
-  return result;
-}
-
-struct PipelineInfo {
+struct PipelineStageOrder {
   int stage;
   int order;
-  PipelineInfo(int stage, int order) : stage(stage), order(order) {}
+  PipelineStageOrder(int stage, int order) : stage(stage), order(order) {}
 };
 
-/*!
- * \brief Annotate statements for software pipeline rewriting.
- * This function adds `pipeline_stage` and `pipeline_order` to block annotations which will be
- * used for software pipeline rewriting.
- * The value of these annotations are determined by a few heuristic-based rules.
- */
-std::unordered_map<Block, PipelineInfo, ObjectPtrHash, ObjectPtrEqual> AnnotatePipelineBody(const Array<Block>& stmts) {
-  Array<Block> new_stmts;
+using PipelineInfo = std::unordered_map<Block, PipelineStageOrder, ObjectPtrHash, ObjectPtrEqual>;
 
-  std::unordered_map<Stmt, int, ObjectPtrHash, ObjectPtrEqual> stmt_stages;
-  std::unordered_map<Stmt, int, ObjectPtrHash, ObjectPtrEqual> stmt_orders;
-  std::unordered_map<Block, PipelineInfo, ObjectPtrHash, ObjectPtrEqual> pipeline_info;
-  int first_stage = 0;
-  int last_stage = 1;
-
-  std::map<int, Array<Stmt>> priority_groups;
-  for (size_t i = 0; i < stmts.size(); i++) {
-    const Block& block = stmts[i];
-
-    if (FindInAST(block, [](const ObjectRef& obj) {
-          if (const BufferLoadNode* buffer_load = obj.as<BufferLoadNode>()) {
-            return buffer_load->buffer.scope() == "global";
-          }
-          return false;
-        })) {
-      stmt_stages.emplace(block, first_stage);
-      priority_groups[0].push_back(block);
-      continue;
-    }
-    if (block->annotations.count(attr::pipeline_prologue_scope)) {
-      stmt_stages.emplace(block, first_stage);
-      priority_groups[3].push_back(block);
-      continue;
-    }
-    if (block->annotations.count(attr::pipeline_body_scope)) {
-      stmt_stages.emplace(block, last_stage);
-      priority_groups[1].push_back(block);
-      continue;
-    }
-    if (block->annotations.count(attr::pipeline_epilogue_scope)) {
-      stmt_stages.emplace(block, last_stage);
-      priority_groups[3].push_back(block);
-      continue;
-    }
-    if (FindInAST(block, [](const ObjectRef& obj) {
-          if (const BufferStoreNode* buffer_store = obj.as<BufferStoreNode>()) {
-            auto scope = buffer_store->buffer.scope();
-            return support::StartsWith(scope, "shared");
-          }
-          return false;
-        })) {
-      stmt_stages.emplace(block, first_stage);
-      priority_groups[2].push_back(block);
-      continue;
-    }
-    // default rule
-    if (i + 1 < stmts.size()) {
-      stmt_stages.emplace(block, first_stage);
-      priority_groups[1].push_back(block);
-    } else {
-      stmt_stages.emplace(block, last_stage);
-      priority_groups[1].push_back(block);
-    }
-  }
-  int i = 0;
-  for (const auto& pair : priority_groups) {
-    const auto& ordered_subset = pair.second;
-    for (const auto& stmt : ordered_subset) {
-      stmt_orders.emplace(stmt, i++);
-    }
-  }
-
-  for (Block block : stmts) {
-    int stage = stmt_stages.at(block);
-    int order = stmt_orders.at(block);
-    LOG(INFO) << block << " stage " << stage << " order " << order;
-    pipeline_info.emplace(block, PipelineInfo(stage, order));
-  }
-  return pipeline_info;
-}
-
-struct BufferInfo {
+struct BufferAccessInfo {
   int def;  // the defining stage of the buffer
   int use;  // the last using stage of the buffer
-  BufferInfo(int def = -1, int use = -1) : def(def), use(use){};
+  BufferAccessInfo(int def = -1, int use = -1) : def(def), use(use){};
 };
 
 /*!
@@ -309,38 +218,55 @@ class PipelineBodyRewriter : public StmtExprMutator {
 
 class PipelineRewriter : public StmtExprMutator {
  public:
+  static Stmt Rewrite(
+      Map<Var, Buffer> buffer_data_to_buffer,
+      const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& double_buffers,
+      const Array<Buffer> pipeline_allocs, const For& pipeline_loop,
+      const PipelineInfo& pipeline_info) {
+    PipelineRewriter rewriter(buffer_data_to_buffer, double_buffers, pipeline_allocs, pipeline_loop,
+                              pipeline_info);
+    return rewriter.BuildPipeline();
+  }
+
+ private:
   PipelineRewriter(Map<Var, Buffer> buffer_data_to_buffer,
-                   const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& double_buffers)
-      : buffer_data_to_buffer_(std::move(buffer_data_to_buffer)), double_buffers_(double_buffers) {}
+                   const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& double_buffers,
+                   const Array<Buffer>& pipeline_allocs, const For& pipeline_loop,
+                   const PipelineInfo& pipeline_info)
 
-  Stmt BuildPipeline(const Array<Block>& blocks, Array<Buffer> pipeline_allocs, For pipeline_loop, std::unordered_map<Block, PipelineInfo, ObjectPtrHash, ObjectPtrEqual> pipeline_info) {
-    pipeline_loop_ = pipeline_loop;
-    pipeline_info_ = pipeline_info;
+      : buffer_data_to_buffer_(std::move(buffer_data_to_buffer)),
+        double_buffers_(double_buffers),
+        pipeline_allocs_(pipeline_allocs),
+        pipeline_loop_(pipeline_loop),
+        pipeline_info_(pipeline_info) {}
 
+  Stmt BuildPipeline() {
     // Step 1: Analyze accesses to the buffers in the pipeline and compute the number of versions
     // need to maintain for each buffer.
-    RemapPipelineBuffers(blocks, pipeline_allocs);
+    RemapPipelineBuffers(pipeline_allocs_);
 
-    ordered_stmts_.resize(blocks.size());
-    for (const Block& block : blocks) {
-      int order = pipeline_info_.at(block).order;
+    ordered_stmts_.resize(pipeline_info_.size());
+    for (const auto& pair : pipeline_info_) {
+      const Block& block = pair.first;
+      int order = pair.second.order;
       ordered_stmts_.Set(order, block);
     }
 
     // Step 2: Emit the pipeline prologue, body and epilogue.
-    Stmt prologue =
-        EmitImpl(pipeline_loop_->min, pipeline_loop_->min + max_stage_, true, attr::pipeline_prologue_scope);
+    Stmt prologue = EmitImpl(pipeline_loop_->min, pipeline_loop_->min + max_stage_, true);
     Stmt body = EmitImpl(pipeline_loop_->min + max_stage_,
-                         pipeline_loop_->min + pipeline_loop_->extent, false, attr::pipeline_body_scope);
+                         pipeline_loop_->min + pipeline_loop_->extent, false);
     Stmt epilogue = EmitImpl(pipeline_loop_->min + pipeline_loop_->extent,
-                             pipeline_loop_->min + pipeline_loop_->extent + max_stage_, true,
-                             attr::pipeline_epilogue_scope);
+                             pipeline_loop_->min + pipeline_loop_->extent + max_stage_, true);
 
-    Stmt stmt = SeqStmt({prologue, body, epilogue});
+    SeqStmt stmt = SeqStmt({prologue, body, epilogue});
 
-    // Step 3: Make a new block that contains new buffer allocations after pipeline rewriting.
+    // Step 3: Add annotations of nested software pipeline (if appliable)
+    stmt = AnnotateNestedPipeline(stmt);
+
+    // Step 4: Make a new block that contains new buffer allocations after pipeline rewriting.
     Array<Buffer> alloc_buffers;
-    for (const auto& alloc : pipeline_allocs) {
+    for (const auto& alloc : pipeline_allocs_) {
       auto it = buffer_remap_.find(alloc);
       if (it != buffer_remap_.end()) {
         alloc_buffers.push_back((*it).second);
@@ -352,21 +278,46 @@ class PipelineRewriter : public StmtExprMutator {
     Block block = MakeBlock(stmt, buffer_data_to_buffer_);
     auto* n = block.CopyOnWrite();
     n->alloc_buffers = std::move(alloc_buffers);
-
     return BlockRealize({}, Bool(true), block);
   }
 
  private:
-  std::unordered_map<Buffer, BufferInfo, ObjectPtrHash, ObjectPtrEqual> GetBufferInfo(
-      const Array<Block>& blocks) {
-    std::unordered_map<Buffer, BufferInfo, ObjectPtrHash, ObjectPtrEqual> infos;
-    for (const Block& block : blocks) {
-      int stage = pipeline_info_.at(block).stage;
+  SeqStmt AnnotateNestedPipeline(const SeqStmt& pipeline_seq) {
+    auto it = pipeline_loop_->annotations.find(attr::nested_software_pipeline_stage);
+    if (it == pipeline_loop_->annotations.end()) {
+      return pipeline_seq;
+    }
+    Array<Integer> nested_stage = Downcast<Array<Integer>>((*it).second);
+    CHECK(pipeline_loop_->annotations.count(attr::nested_software_pipeline_order))
+        << "ValueError: Annotation for the order of the nested software pipeline is missing.";
+    Array<Integer> nested_order = Downcast<Array<Integer>>(
+        pipeline_loop_->annotations.at(attr::nested_software_pipeline_order));
+    CHECK_EQ(nested_stage.size(), 3) << "ValueError: Annotation for the stage of the nested "
+                                        "software pipeline should be a 3-tuple";
+    CHECK_EQ(nested_order.size(), 3) << "ValueError: Annotation for the order of the nested "
+                                        "software pipeline should be a 3-tuple";
+    Array<Stmt> new_seq;
+    new_seq.reserve(pipeline_seq->seq.size());
+    for (size_t i = 0; i < pipeline_seq->seq.size(); i++) {
+      BlockRealize block_realize = Downcast<BlockRealize>(pipeline_seq->seq[i]);
+      auto* block = block_realize.CopyOnWrite()->block.CopyOnWrite();
+      block->annotations.Set(attr::software_pipeline_stage, nested_stage[i]);
+      block->annotations.Set(attr::software_pipeline_order, nested_order[i]);
+      new_seq.push_back(std::move(block_realize));
+    }
+    return SeqStmt(std::move(new_seq));
+  }
+
+  std::unordered_map<Buffer, BufferAccessInfo, ObjectPtrHash, ObjectPtrEqual> GetBufferAccessInfo() {
+    std::unordered_map<Buffer, BufferAccessInfo, ObjectPtrHash, ObjectPtrEqual> infos;
+    for (const auto& pair : pipeline_info_) {
+      const Block& block = pair.first;
+      int stage = pair.second.stage;
       max_stage_ = std::max(max_stage_, stage);
 
       for (const BufferRegion& write : block->writes) {
         if (!infos.count(write->buffer)) {
-          infos.emplace(write->buffer, BufferInfo{});
+          infos.emplace(write->buffer, BufferAccessInfo{});
         }
         auto& info = infos.at(write->buffer);
         if (info.def == -1) {
@@ -376,7 +327,7 @@ class PipelineRewriter : public StmtExprMutator {
 
       for (const BufferRegion& read : block->reads) {
         if (!infos.count(read->buffer)) {
-          infos.emplace(read->buffer, BufferInfo{});
+          infos.emplace(read->buffer, BufferAccessInfo{});
         }
         auto& info = infos.at(read->buffer);
         info.use = std::max(info.use, stage);
@@ -405,8 +356,7 @@ class PipelineRewriter : public StmtExprMutator {
     return true;
   }
 
-  int ComputeBufferVersions(const Array<Block>& blocks, const Buffer& buffer,
-                            const BufferInfo& buffer_info) {
+  int ComputeBufferVersions(const Buffer& buffer, const BufferAccessInfo& buffer_info) {
     if (buffer_info.def == -1) {
       // Keep the original number of versions as buffers defined outside the software pipeline
       // should not be mutated.
@@ -422,7 +372,10 @@ class PipelineRewriter : public StmtExprMutator {
       // order(block_i) < order(block_j) and stage(block_i) < stage(block_j) and the access regions
       // of block_i and block_j overlap.
       bool need_multi_version = false;
-      for (const Block& writer_block : blocks) {
+      for (const auto& pair1 : pipeline_info_) {
+        const Block& writer_block = pair1.first;
+        const auto& writer_info = pair1.second;
+
         auto it1 = std::find_if(writer_block->writes.begin(), writer_block->writes.end(),
                                 [&](const BufferRegion& buffer_region) {
                                   return buffer_region->buffer.same_as(buffer);
@@ -430,9 +383,10 @@ class PipelineRewriter : public StmtExprMutator {
         if (it1 == writer_block->writes.end()) {
           continue;
         }
-        const auto& writer_info = pipeline_info_.at(writer_block);
 
-        for (const Block& reader_block : blocks) {
+        for (const auto& pair2 : pipeline_info_) {
+          const Block& reader_block = pair2.first;
+          const auto& reader_info = pair2.second;
           auto it2 = std::find_if(reader_block->reads.begin(), reader_block->reads.end(),
                                   [&](const BufferRegion& buffer_region) {
                                     return buffer_region->buffer.same_as(buffer);
@@ -440,7 +394,6 @@ class PipelineRewriter : public StmtExprMutator {
           if (it2 == reader_block->reads.end()) {
             continue;
           }
-          const auto& reader_info = pipeline_info_.at(reader_block);
           if (writer_info.order < reader_info.order && writer_info.stage < reader_info.stage &&
               MayConflict((*it1)->region, (*it2)->region)) {
             need_multi_version = true;
@@ -458,14 +411,13 @@ class PipelineRewriter : public StmtExprMutator {
     return num_versions;
   }
 
-  void RemapPipelineBuffers(const Array<Block>& blocks, Array<Buffer> pipeline_allocs) {
-    std::unordered_map<Buffer, BufferInfo, ObjectPtrHash, ObjectPtrEqual> infos =
-        GetBufferInfo(blocks);
-    LOG(INFO) << "Pipeline allocs " << pipeline_allocs;
+  void RemapPipelineBuffers(Array<Buffer> pipeline_allocs) {
+    std::unordered_map<Buffer, BufferAccessInfo, ObjectPtrHash, ObjectPtrEqual> infos =
+        GetBufferAccessInfo();
     for (const auto& pair : infos) {
       const Buffer& buffer = pair.first;
-      const BufferInfo& buffer_info = pair.second;
-      int num_versions = ComputeBufferVersions(blocks, buffer, buffer_info);
+      const BufferAccessInfo& buffer_info = pair.second;
+      int num_versions = ComputeBufferVersions(buffer, buffer_info);
       if (num_versions > 1) {
         Buffer new_buffer = RewriteAllocBuffer(buffer, num_versions);
         CHECK(std::find(pipeline_allocs.begin(), pipeline_allocs.end(), buffer) !=
@@ -493,7 +445,7 @@ class PipelineRewriter : public StmtExprMutator {
     return Buffer(new_buffer);
   }
 
-  Stmt EmitImpl(PrimExpr start, PrimExpr end, bool unroll_loop, const String& tag) {
+  Stmt EmitImpl(PrimExpr start, PrimExpr end, bool unroll_loop) {
     Array<Stmt> stmts;
     PrimExpr new_loop_var;
     bool is_unit_loop = analyzer_.CanProveEqual(start + 1, end);
@@ -534,24 +486,20 @@ class PipelineRewriter : public StmtExprMutator {
                  unroll_loop ? ForKind::kUnrolled : pipeline_loop_->kind, SeqStmt(stmts));
     }
     if (stmt->IsInstance<BlockRealizeNode>()) {
-      BlockRealize block_realize = Downcast<BlockRealize>(stmt);
-      block_realize.CopyOnWrite()->block.CopyOnWrite()->annotations.Set(tag, Bool(1));
-      return std::move(block_realize);
-    } else {
-      Block block = MakeBlock(stmt, buffer_data_to_buffer_);
-      block.CopyOnWrite()->annotations.Set(tag, Bool(1));
-      return BlockRealize({}, Bool(true), block);
+      return stmt;
     }
+    return BlockRealize({}, Bool(true), MakeBlock(stmt, buffer_data_to_buffer_));
   }
 
   arith::Analyzer analyzer_;
-  For pipeline_loop_;
-  int max_stage_ = -1;
   Map<Var, Buffer> buffer_data_to_buffer_;
+  const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& double_buffers_;
+  Array<Buffer> pipeline_allocs_;
+  For pipeline_loop_;
+  PipelineInfo pipeline_info_;
+  int max_stage_ = -1;
   Map<Buffer, Buffer> buffer_remap_;
   Array<Block> ordered_stmts_;
-  const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& double_buffers_;
-  std::unordered_map<Block, PipelineInfo, ObjectPtrHash, ObjectPtrEqual> pipeline_info_;
 };
 
 class PipelineInjector : private StmtExprMutator {
@@ -568,27 +516,75 @@ class PipelineInjector : private StmtExprMutator {
  private:
   PipelineInjector() = default;
 
-  Array<Block> BlockizePipelineBody(const Array<Stmt>& stmts) {
-    Array<Block> blocks;
+  PipelineStageOrder CheckAndRemovePipelineAnnotation(Map<String, ObjectRef>* annotations) const {
+    CHECK(annotations->count(attr::software_pipeline_stage))
+        << "ValueError: Stage of the statement in the software pipeline is not defined.";
+    CHECK(annotations->count(attr::software_pipeline_order))
+        << "ValueError: Order of the statement in the software pipeline is not defined.";
+    Integer stage = Downcast<Integer>(annotations->at(attr::software_pipeline_stage));
+    Integer order = Downcast<Integer>(annotations->at(attr::software_pipeline_order));
+    annotations->erase(attr::software_pipeline_stage);
+    annotations->erase(attr::software_pipeline_order);
+    return {static_cast<int>(stage->value), static_cast<int>(order->value)};
+  }
+
+  /*!
+   * \brief Check the pipeline satisfies the following conditions:
+   * 1) No conflicting order: The order of each statement should be unique.
+   * 2) No reordering with the same stage: Statements in the same stage are not allowed to be
+   * reordered.
+   */
+  void ValidatePipelineBody(const PipelineInfo& pipeline_info, const Array<Block>& original_order) {
+    std::unordered_set<int> used_orders;
+    std::unordered_map<int, int> stage_max_order;
+    for (const Block& block : original_order) {
+      const auto& stmt_info = pipeline_info.at(block);
+      int stage = stmt_info.stage;
+      int order = stmt_info.order;
+      CHECK(!used_orders.count(order))
+          << "ValueError: Two statements in the software pipeline cannot have the same order";
+      used_orders.insert(order);
+      CHECK(!stage_max_order.count(stage) || stage_max_order[stage] < order)
+          << "ValueError: Statements in the same stage of the software pipeline must have "
+             "increasing order.";
+      stage_max_order[stage] = order;
+    }
+  }
+
+  PipelineInfo BlockizePipelineBody(const Array<Stmt>& stmts) {
+    PipelineInfo pipeline_info;
+    Array<Block> original_order;
     for (const Stmt& stmt : stmts) {
       const auto* block_realize = stmt.as<BlockRealizeNode>();
+      Block block;
       if (block_realize && is_one(block_realize->predicate)) {
-        blocks.push_back(block_realize->block);
+        block = block_realize->block;
+        auto pipeline_stmt_info =
+            CheckAndRemovePipelineAnnotation(&block.CopyOnWrite()->annotations);
+        original_order.push_back(block);
+        pipeline_info.emplace(block, pipeline_stmt_info);
       } else {
-        blocks.push_back(MakeBlock(stmt, buffer_data_to_buffer_));
+        CHECK(stmt->IsInstance<ForNode>()) << "ValueError: Statements in the software pipeline must"
+                                           << " be either Block or For";
+        For for_stmt = Downcast<For>(stmt);
+        auto pipeline_stmt_info =
+            CheckAndRemovePipelineAnnotation(&for_stmt.CopyOnWrite()->annotations);
+        block = MakeBlock(for_stmt, buffer_data_to_buffer_);
+        original_order.push_back(block);
+        pipeline_info.emplace(block, pipeline_stmt_info);
       }
     }
-    return blocks;
+    ValidatePipelineBody(pipeline_info, original_order);
+    return pipeline_info;
   }
 
   Stmt VisitStmt_(const ForNode* op) final {
     // Step 1: Recursively rewrite the children first.
     For for_node = Downcast<For>(StmtExprMutator::VisitStmt_(op));
-    auto it = for_node->annotations.find(attr::pipeline_scope);
+    auto it = for_node->annotations.find(attr::software_pipeline_scope);
     if (it == for_node->annotations.end()) {
       return std::move(for_node);
     }
-    LOG(INFO) << "Rewrite pipeline:\n" << for_node;
     // Step 2: Find the body of the pipeline. It can be direct child of the for-loop. If the
     // for-loop as BlockRealize as its child, the pipeline body will be the child of the block.
     Stmt pipeline_body;
@@ -609,12 +605,10 @@ class PipelineInjector : private StmtExprMutator {
         << pipeline_body->GetTypeKey();
     // Step 3: Blockize the components of the pipeline. Each child of the pipelined loop should
     // be converted into a block.
-    Array<Block> blocks = BlockizePipelineBody(pipeline_body.as<SeqStmtNode>()->seq);
-    // Step 4: Analyze the dependencies of the blocks and add annotations for rewriting.
-    auto pipeline_info = AnnotatePipelineBody(blocks);
-    // Step 5: Rewrite the pipeline body.
-    PipelineRewriter rewriter(buffer_data_to_buffer_, double_buffers);
-    Stmt pipeline = rewriter.BuildPipeline(blocks, pipeline_allocs, GetRef<For>(op), pipeline_info);
+    PipelineInfo pipeline_info = BlockizePipelineBody(pipeline_body.as<SeqStmtNode>()->seq);
+    // Step 4: Rewrite the pipeline body.
+    Stmt pipeline = PipelineRewriter::Rewrite(buffer_data_to_buffer_, double_buffers,
+                                              pipeline_allocs, GetRef<For>(op), pipeline_info);
 
     if (const auto* realize = op->body.as<BlockRealizeNode>()) {
       const auto& block = realize->block;
@@ -680,10 +674,13 @@ class PipelineInjector : private StmtExprMutator {
       buffer_data_to_buffer_.Set(buffer->data, buffer);
     }
 
-    if (op->annotations.count(attr::double_buffer_scope)) {
-      for (const auto& write : op->writes) {
-        double_buffers.insert(write->buffer);
-      }
+    auto it = op->annotations.find(attr::double_buffer_scope);
+    if (it != op->annotations.end()) {
+      int buffer_index = Downcast<Integer>((*it).second);
+      CHECK(buffer_index >= 0 && static_cast<size_t>(buffer_index) < op->writes.size())
+          << "ValueError: Index of the buffer exceeds the size of the write regions of the block. ("
+          << buffer_index << " vs. " << op->writes.size() << ")";
+      double_buffers.insert(op->writes[buffer_index]->buffer);
     }
     Block block = Downcast<Block>(StmtExprMutator::VisitStmt_(op));
 

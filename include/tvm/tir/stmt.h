@@ -1404,16 +1404,25 @@ constexpr const char* pragma_auto_unroll_max_step = "pragma_auto_unroll_max_step
 constexpr const char* pragma_unroll_explicit = "pragma_unroll_explicit";
 
 /*! \brief Mark the scope of the software pipeline */
-constexpr const char* pipeline_scope = "pipeline_scope";
+constexpr const char* software_pipeline_scope = "software_pipeline_scope";
 
-/*! \brief Mark the prologue part of the software pipeline */
-constexpr const char* pipeline_prologue_scope = "pipeline_prologue_scope";
+/*! \brief Mark the stage of a statement in the software pipeline */
+constexpr const char* software_pipeline_stage = "software_pipeline_stage";
 
-/*! \brief Mark the epilogue part of the software pipeline */
-constexpr const char* pipeline_epilogue_scope = "pipeline_epilogue_scope";
+/*! \brief Mark the order of a statement in the software pipeline */
+constexpr const char* software_pipeline_order = "software_pipeline_order";
 
-/*! \brief Mark the main body part of the software pipeline */
-constexpr const char* pipeline_body_scope = "pipeline_body_scope";
+/*! \brief Mark the stage of the result of the software pipeline lowering. This is used to specify
+ * the behavior of nested software pipelines. Should be a 3-tuple consisting of the stage of the
+ * prologue, the body, and the epilogue of the software pipeline.
+ */
+constexpr const char* nested_software_pipeline_stage = "nested_software_pipeline_stage";
+
+/*! \brief Mark the stage of the result of the software pipeline lowering. This is used to specify
+ * the behavior of nested software pipelines. Should be a 3-tuple consisting of the stage of the
+ * prologue, the body, and the epilogue of the software pipeline.
+ */
+constexpr const char* nested_software_pipeline_order = "nested_software_pipeline_order";
 
 /*!
  * \brief Check if attr_key is a pragma key extension
