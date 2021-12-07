@@ -1,59 +1,100 @@
 # pylint: disable=missing-docstring
-import tvm
-from tvm import auto_scheduler, te
+import argparse
+import os
 
+import tvm
+from tvm import auto_scheduler
+from tvm import meta_schedule as ms
 from tvm.meta_schedule.testing.te_workload import CONFIGS
 
 
-@auto_scheduler.register_workload  # Note the auto_scheduler decorator
-def matmul_add(N, L, M, dtype):
-    A = te.placeholder((N, L), name="A", dtype=dtype)
-    B = te.placeholder((L, M), name="B", dtype=dtype)
-    C = te.placeholder((N, M), name="C", dtype=dtype)
-    k = te.reduce_axis((0, L), name="k")
-    matmul = te.compute(
-        (N, M),
-        lambda i, j: te.sum(A[i, k] * B[k, j], axis=k),
-        name="matmul",
-        attrs={"layout_free_placeholders": [B]},  # enable automatic layout transform for tensor B
+def _parse_args():
+    args = argparse.ArgumentParser()
+    args.add_argument(
+        "--workload",
+        type=str,
+        required=True,
     )
-    out = te.compute((N, M), lambda i, j: matmul[i, j] + C[i, j], name="out")
-    return [A, B, C, out]
+    args.add_argument(
+        "--target",
+        type=str,
+        required=True,
+    )
+    args.add_argument(
+        "--num-trials",
+        type=int,
+        required=True,
+    )
+    args.add_argument(
+        "--rpc-host",
+        type=str,
+        required=True,
+    )
+    args.add_argument(
+        "--rpc-port",
+        type=int,
+        required=True,
+    )
+    args.add_argument(
+        "--rpc-key",
+        type=str,
+        required=True,
+    )
+    args.add_argument(
+        "--log-dir",
+        type=str,
+        required=True,
+    )
+    parsed = args.parse_args()
+    parsed.target = tvm.target.Target(parsed.target)
+    rpc_config = ms.runner.RPCConfig(
+        tracker_host=parsed.rpc_host,
+        tracker_port=parsed.rpc_port,
+        tracker_key=parsed.rpc_key,
+        session_timeout_sec=60,
+    )
+    parsed.rpc_workers = rpc_config.count_num_servers(allow_missing=False)
+    return parsed
+
+
+ARGS = _parse_args()
 
 
 def main():
-    workload = "GMM"
-    log_file = f"{workload}.json"
-    workload_func, params = CONFIGS[workload]
+    log_file = os.path.join(ARGS.log_dir, f"{ARGS.workload}.json")
+    workload_func, params = CONFIGS[ARGS.workload]
     params = params[0]
     workload_func = auto_scheduler.register_workload(workload_func)
-    target = tvm.target.Target("llvm")
     task = auto_scheduler.SearchTask(
         func=workload_func,
         args=params,
-        target=target,
+        target=ARGS.target,
+        hardware_params=auto_scheduler.HardwareParams(
+            num_cores=int(ARGS.target.attrs["num-cores"]),
+            target=ARGS.target,
+        ),
     )
     runner = auto_scheduler.RPCRunner(
-        key=None,
-        host=None,
-        port=None,
-        n_parallel=1,
+        key=ARGS.rpc_key,
+        host=ARGS.rpc_host,
+        port=ARGS.rpc_port,
+        n_parallel=ARGS.rpc_workers,
     )
 
     # Inspect the computational graph
     print("Computational DAG:")
     print(task.compute_dag)
     tune_option = auto_scheduler.TuningOptions(
-        num_measure_trials=10,
+        num_measure_trials=ARGS.num_trials,
         measure_callbacks=[auto_scheduler.RecordToFile(log_file)],
         verbose=2,
-        runner=None,
+        runner=runner,
     )
     print("Running AutoTuning:")
     task.tune(tune_option)
+    print("History Best:")
     print(task.print_best(log_file))
     sch, args = task.apply_best(log_file)
-
     print("Lowered TIR:")
     print(tvm.lower(sch, args, simple_mode=True))
 
