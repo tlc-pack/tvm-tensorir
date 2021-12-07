@@ -164,12 +164,12 @@ class BufferMutator : private StmtExprMutator {
                                              : GetRef<BufferLoad>(load);
   }
 
-  Stmt VisitStmt_(const BufferStoreNode* op) override {
-    if (op->buffer.same_as(src_buffer_)) {
-      PrimExpr value = StmtExprMutator::VisitExpr(op->value);
+  Stmt VisitStmt_(const BufferStoreNode* store) override {
+    if (store->buffer.same_as(src_buffer_)) {
+      PrimExpr value = StmtExprMutator::VisitExpr(store->value);
       return BufferStore(tgt_buffer_, value, {0});
     } else {
-      return StmtMutator::VisitStmt_(op);
+      return StmtMutator::VisitStmt_(store);
     }
   }
 
