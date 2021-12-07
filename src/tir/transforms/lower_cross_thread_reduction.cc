@@ -149,27 +149,27 @@ Array<BufferRegion> RemoveBufferFromBufferRegions(const Array<BufferRegion>& buf
 /*!
  * \brief Substitute a given source buffer with a given target buffer in statements or expressions
  */
-class BufferReplacer : private StmtExprMutator {
+class BufferMutator : private StmtExprMutator {
  public:
   static Stmt Run(Buffer src_buffer, Buffer tgt_buffer, Stmt stmt) {
-    return BufferReplacer(src_buffer, tgt_buffer)(std::move(stmt));
+    return BufferMutator(src_buffer, tgt_buffer)(std::move(stmt));
   }
 
  private:
-  explicit BufferReplacer(Buffer src_buffer, Buffer tgt_buffer)
+  explicit BufferMutator(Buffer src_buffer, Buffer tgt_buffer)
       : src_buffer_(std::move(src_buffer)), tgt_buffer_(std::move(tgt_buffer)) {}
 
-  PrimExpr VisitExpr_(const BufferLoadNode* load) final {
+  PrimExpr VisitExpr_(const BufferLoadNode* load) override {
     return load->buffer.same_as(src_buffer_) ? BufferLoad(tgt_buffer_, {0})
                                              : GetRef<BufferLoad>(load);
   }
 
-  Stmt VisitStmt_(const BufferStoreNode* store) final {
-    if (store->buffer.same_as(src_buffer_)) {
-      PrimExpr value = StmtExprMutator::VisitExpr(store->value);
+  Stmt VisitStmt_(const BufferStoreNode* op) override {
+    if (op->buffer.same_as(src_buffer_)) {
+      PrimExpr value = StmtExprMutator::VisitExpr(op->value);
       return BufferStore(tgt_buffer_, value, {0});
     } else {
-      return StmtMutator::VisitStmt_(store);
+      return StmtMutator::VisitStmt_(op);
     }
   }
 
@@ -287,7 +287,7 @@ Stmt TransformReductionBlock(const BlockRealizeNode* realize, const Optional<Buf
       new_block->writes = {it_buffer_region.value()};
       new_block->name_hint = new_block->name_hint + "_in_thread";
       new_block->body =
-          BufferReplacer::Run(wb_buffer, it_buffer.value(), std::move(new_block->body));
+          BufferMutator::Run(wb_buffer, it_buffer.value(), std::move(new_block->body));
       new_block->init = NullOpt;
       ObjectPtr<BlockRealizeNode> n = make_object<BlockRealizeNode>(*realize);
       n->block = Block(new_block);

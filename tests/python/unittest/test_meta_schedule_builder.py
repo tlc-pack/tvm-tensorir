@@ -216,6 +216,7 @@ def test_meta_schedule_error_handle_time_out():
         artifact_path = result.artifact_path
         error_msg = result.error_msg
         assert artifact_path is None
+        print(error_msg)
         assert error_msg.startswith("LocalBuilder: Timeout")
 
 
@@ -225,4 +226,5 @@ def test_meta_schedule_missing_build_func():
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main([__file__] + sys.argv[1:]))
+   # sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    test_meta_schedule_error_handle_time_out()
