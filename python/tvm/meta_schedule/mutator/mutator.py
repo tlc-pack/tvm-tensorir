@@ -71,7 +71,7 @@ class PyMutator(Mutator):
             self.initialize_with_tune_context(tune_context)
 
         @check_override(self.__class__, Mutator)
-        def f_apply(trace: Trace) -> Optional[Trace]:
+        def f_apply(trace: Trace, _) -> Optional[Trace]:
             return self.apply(trace)
 
         def f_as_string() -> str:
