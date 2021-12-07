@@ -23,18 +23,18 @@ run () {
         2>&1 | tee "$LOG_DIR/$name.log"
 }
 
-# # Single op
-# run C1D
-# run C2D
-# # run C3D
-# run CAP
-# run DEP
-# run DIL
+# Single op
+run C1D
+run C2D
+run C3D
+run CAP
+run DEP
+run DIL
 run GMM
-# run GRP
-# # run NRM
-# run T2D
-# # Subgraph
-# run C2d-BN-RELU
-# run TBG
+run GRP
+run NRM
+run T2D
+# Subgraph
+run C2d-BN-RELU
+run TBG
 
