@@ -55,6 +55,14 @@ class Remover : public StmtExprMutator{
     }
     return body;
   }
+  Stmt VisitStmt_(const SeqStmtNode* op) final{
+    Array<Stmt> seq;
+    for (const Stmt& stmt : op->seq) {
+      seq.push_back(StmtMutator::VisitStmt(stmt));
+      pipeline_scope=NullOpt;
+    }
+    return SeqStmt(seq);
+  }
   
   PrimExpr VisitExpr_(const VarNode* op) final {
     Var var = GetRef<Var>(op);

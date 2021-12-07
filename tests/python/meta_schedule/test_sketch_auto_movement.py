@@ -122,7 +122,7 @@ sch = tune_tir(
     mod=workload,
     target=Target("nvidia/geforce-rtx-3080"),
     config=ReplayTraceConfig(
-        num_trials_per_iter=2,
+        num_trials_per_iter=32,
         num_trials_total=1024,
     ),
     f_tune_context=_create_context
@@ -132,10 +132,11 @@ if sch is None:
 else:
     print(sch.mod.script())
     print(sch.trace)
+
 # ctx = _create_context(
 #     workload,
 #     target=_target(),
-#     config=ReplayFuncConfig(
+#     config=ReplayTraceConfig(
 #                 num_trials_per_iter=32,
 #                 num_trials_total=1024,
 #             ),
@@ -152,22 +153,21 @@ else:
 #     print(str_trace)
 #     print()
 
-
-mod= sch.mod['main']
-M=N=K=1024
-dev = tvm.device("cuda", 0)
-a_np = np.random.uniform(size=(N, K)).astype("float16")
-b_np = np.random.uniform(size=(K, M)).astype("float16")
-c_np = np.dot(a_np.astype("float32"), b_np.astype("float32"))
-a = tvm.nd.array(a_np, dev)
-b = tvm.nd.array(b_np, dev)
-c = tvm.nd.array(np.zeros((N, M), dtype="float32"), dev)
-f = tvm.build(mod, target="cuda", name="dense")
-# print(f.imported_modules[0].get_source())
-f(a, b, c)
-tvm.testing.assert_allclose(c.numpy(), c_np, rtol=1e-3)
-
-evaluator = f.time_evaluator(f.entry_name, dev, number=1000)
-gflops = (N*M*K) * 2 / 1e9
-time_ms = evaluator(a, b, c).mean * 1e3
-print("matmul with tensor core: %f ms, %f GFLOPS" % (time_ms, gflops / (time_ms / 1e3)))
+# mod= sch.mod['main']
+# M=N=K=1024
+# dev = tvm.device("cuda", 0)
+# a_np = np.random.uniform(size=(N, K)).astype("float16")
+# b_np = np.random.uniform(size=(K, M)).astype("float16")
+# c_np = np.dot(a_np.astype("float32"), b_np.astype("float32"))
+# a = tvm.nd.array(a_np, dev)
+# b = tvm.nd.array(b_np, dev)
+# c = tvm.nd.array(np.zeros((N, M), dtype="float32"), dev)
+# f = tvm.build(mod, target="cuda", name="dense")
+# # print(f.imported_modules[0].get_source())
+# f(a, b, c)
+# tvm.testing.assert_allclose(c.numpy(), c_np, rtol=1e-3)
+#
+# evaluator = f.time_evaluator(f.entry_name, dev, number=1000)
+# gflops = (N*M*K) * 2 / 1e9
+# time_ms = evaluator(a, b, c).mean * 1e3
+# print("matmul with tensor core: %f ms, %f GFLOPS" % (time_ms, gflops / (time_ms / 1e3)))

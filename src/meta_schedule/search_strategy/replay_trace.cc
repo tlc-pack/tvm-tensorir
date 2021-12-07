@@ -129,11 +129,14 @@ inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasure
                                                                    int task_id) -> void {
     TRandState& rand_state = per_thread_rand_state[thread_id];
     IRModule mod = self->per_thread_mod_[thread_id];
+    int ct=0;
     for (;;) {
+      ct++;
       int design_space_index = tir::SampleInt(&rand_state, 0, design_spaces.size());
       tir::Trace trace = design_spaces[design_space_index];
       tir::Trace new_trace = tir::Trace(trace->insts, {});
       if (Optional<tir::Schedule> sch = ApplyTrace(mod, new_trace, &rand_state, self->postprocs_)) {
+        LOG(INFO)<<"success, trial num: "<<ct;
         per_task_result.Set(task_id, MeasureCandidate(sch.value(), self->args_info_));
         break;
       }

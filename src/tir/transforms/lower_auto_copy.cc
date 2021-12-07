@@ -107,7 +107,7 @@ class AutoCopyMutator : public StmtExprMutator {
     int tot_threads = threadIdx_x_ * threadIdx_y_ * threadIdx_z_;
     int vector_len = vector_bytes * 8 / data_bits_;
     if (!loop || !is_zero(indexmod(loop->extent, (vector_len * tot_threads)))) {
-      return body;
+      LOG(FATAL)<<"more thread than elements to copy";
     }
     PrimExpr outer_loop_extent = indexdiv(loop->extent, tot_threads * vector_len);
     Array<PrimExpr> factors{outer_loop_extent};
@@ -405,15 +405,13 @@ class AutoCopyMutator : public StmtExprMutator {
     Buffer src_buffer = buf_load->buffer;
     Buffer tgt_buffer = buf_store->buffer;
     padding_constraint[src_buffer.get()] = 3;
-    TensorIntrin wmma_load;
-    if (tgt_buffer.scope() == "wmma.matrix_a") {
-      wmma_load = tir::TensorIntrin::Get("wmma_load_a");
-    } else {
-      wmma_load = tir::TensorIntrin::Get("wmma_load_b");
-    }
-    
-    auto param = wmma_load->implementation->params[0];
-    Buffer new_src_buffer = wmma_load->implementation->buffer_map.at(param);
+
+    DataType dtype = DataType::Float(16);
+    Var new_src_var("src", PointerType(PrimType(dtype), src_buffer.scope()));
+    Type int32 = PrimType(DataType::Int(32));
+    Buffer new_src_buffer(new_src_var, dtype, {Integer(16), Integer(16)},
+                          {Var("s1", int32), Var("s0", int32)},
+                          Var("src_elem_offset", int32), "src", 128, 16, kDefault);
     auto read_int_set = arith::EvalSet(buf_load->indices, AsIntSet(var_range));
     Array<Range> read_region;
     for (const auto& int_set : read_int_set) {
@@ -421,8 +419,9 @@ class AutoCopyMutator : public StmtExprMutator {
     }
     match_buffers.push_back(MatchBufferRegion(new_src_buffer, BufferRegion(src_buffer,
                                                                            read_region)));
-    param = wmma_load->implementation->params[1];
-    Buffer new_tgt_buffer = wmma_load->implementation->buffer_map.at(param);
+    Var new_tgt_var("tgt",PointerType(PrimType(dtype),tgt_buffer.scope()));
+    Buffer new_tgt_buffer(new_tgt_var, dtype,{Integer(16), Integer(16)},{},Var("tgt_elem_offset",
+                                                                                  int32),"tgt",128,16,kDefault);
     auto write_int_set = arith::EvalSet(buf_store->indices, AsIntSet(var_range));
     Array<Range> write_region;
     for (const auto& int_set : write_int_set) {
@@ -470,19 +469,23 @@ class AutoCopyMutator : public StmtExprMutator {
     Buffer src_buffer = buf_load->buffer;
     Buffer tgt_buffer = buf_store->buffer;
     padding_constraint[tgt_buffer.get()] = 3;
-    TensorIntrin wmma_store = tir::TensorIntrin::Get("wmma_store");
-    
-    auto param = wmma_store->implementation->params[0];
-    Buffer new_src_buffer = wmma_store->implementation->buffer_map.at(param);
+
+    DataType dtype = DataType::Float(32);
+    Type int32 = PrimType(DataType::Int(32));
+    Var new_src_var("src", PointerType(PrimType(dtype), src_buffer.scope()));
+    Buffer new_src_buffer(new_src_var, dtype, {Integer(16), Integer(16)}, {},
+                          Var("src_elem_offset", int32), "src", 128, 16, kDefault);
     auto read_int_set = arith::EvalSet(buf_load->indices, AsIntSet(var_range));
     Array<Range> read_region;
     for (const auto& int_set : read_int_set) {
       read_region.push_back(int_set.CoverRange(Range()));
     }
-    match_buffers.push_back(MatchBufferRegion(new_src_buffer, BufferRegion(src_buffer,
-                                                                           read_region)));
-    param = wmma_store->implementation->params[1];
-    Buffer new_tgt_buffer = wmma_store->implementation->buffer_map.at(param);
+    match_buffers.push_back(
+        MatchBufferRegion(new_src_buffer, BufferRegion(src_buffer, read_region)));
+    Var new_tgt_var("tgt", PointerType(PrimType(dtype), tgt_buffer.scope()));
+    Buffer new_tgt_buffer(new_tgt_var, dtype, {Integer(16), Integer(16)},
+                          {Var("s1", int32), Var("s0", int32)}, Var("tgt_elem_offset", int32),
+                          "tgt", 128, 16, kDefault);
     auto write_int_set = arith::EvalSet(buf_store->indices, AsIntSet(var_range));
     Array<Range> write_region;
     for (const auto& int_set : write_int_set) {

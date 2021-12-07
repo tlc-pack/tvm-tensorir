@@ -720,12 +720,18 @@ class PipelineBodyRewriter : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
+    for (const Buffer& alloc_buffer : op->alloc_buffers) {
+      buffer_data_to_buffer_.Set(alloc_buffer->data, alloc_buffer);
+    }
     Block block = Downcast<Block>(StmtExprMutator::VisitStmt_(op));
     BlockNode* n = block.CopyOnWrite();
     n->reads.MutateByApply(
         std::bind(&PipelineBodyRewriter::RewritePipelineBufferRegion, this, std::placeholders::_1));
     n->writes.MutateByApply(
         std::bind(&PipelineBodyRewriter::RewritePipelineBufferRegion, this, std::placeholders::_1));
+    for (const Buffer& alloc_buffer : op->alloc_buffers) {
+      buffer_data_to_buffer_.erase(alloc_buffer->data);
+    }
     return block;
   }
 
@@ -1110,6 +1116,7 @@ class PipelineInjector : private StmtExprMutator {
       const auto& block = realize->block;
       for (const auto& buffer : block->alloc_buffers) {
         ICHECK(buffer->IsInstance<BufferNode>());
+//        LOG(INFO) << "Push " << buffer->data;
         buffer_data_to_buffer_.Set(buffer->data, buffer);
       }
       pipeline_body = block->body;

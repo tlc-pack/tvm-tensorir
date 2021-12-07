@@ -245,6 +245,7 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   pass_list.push_back(tir::transform::CompactBufferAllocation());
   pass_list.push_back(tir::transform::Simplify());
   pass_list.push_back(tir::transform::LowerAutoCopy());
+//  pass_list.push_back(transform::PrintIR("after lower auto copy"));
   pass_list.push_back(tir::transform::UnifyThreadBinding());
 //  pass_list.push_back(transform::PrintIR("Unify"));
   pass_list.push_back(tir::transform::LowerMatchBuffer());
