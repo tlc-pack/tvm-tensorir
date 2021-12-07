@@ -161,6 +161,8 @@ class PipelineBodyRewriter : public StmtExprMutator {
   }
 
   PrimExpr VisitExpr_(const CallNode* op) final {
+    // Intrinsic calls should be handled explicitly here as they are opaque accesses to
+    // buffer.
     static const auto& load_matrix_sync = builtin::tvm_load_matrix_sync();
     static const auto& store_matrix_sync = builtin::tvm_store_matrix_sync();
     static const auto& mma_sync = builtin::tvm_mma_sync();
@@ -282,6 +284,20 @@ class PipelineRewriter : public StmtExprMutator {
   }
 
  private:
+  /*!
+   * \brief Annotate the result of software pipeline rewriting with user-provided annotations.
+   *
+   * When there are nested software pipelines, after rewriting the inner software pipeline,
+   * it is required to add annotations to the result of the inner software pipeline to specify
+   * the rewriting behavior of the outer software pipeline.
+   * This method expects the annotations `attr::nested_software_pipeline_order`, and
+   * `attr::nested_software_pipeline_stage` are present on the inner software pipeline loop.
+   *
+   * \param pipeline_seq The sequence of statements after pipeline rewriting, which consists of
+   * three BlockRealize that represents the prologue, the body, and the epilogue of the software
+   * pipeline.
+   * \return The sequence of the statements that consists of the annotated software pipeline.
+   */
   SeqStmt AnnotateNestedPipeline(const SeqStmt& pipeline_seq) {
     auto it = pipeline_loop_->annotations.find(attr::nested_software_pipeline_stage);
     if (it == pipeline_loop_->annotations.end()) {
@@ -308,6 +324,12 @@ class PipelineRewriter : public StmtExprMutator {
     return SeqStmt(std::move(new_seq));
   }
 
+  /*!
+   * \brief Analyze accesses to the buffers in the software pipeline.
+   *
+   * This method check the 'define' and 'use' stage of the buffers in the software pipeline, which
+   * can be used to compute the number of versions needed to maintain after rewriting.
+   */
   std::unordered_map<Buffer, BufferAccessInfo, ObjectPtrHash, ObjectPtrEqual> GetBufferAccessInfo() {
     std::unordered_map<Buffer, BufferAccessInfo, ObjectPtrHash, ObjectPtrEqual> infos;
     for (const auto& pair : pipeline_info_) {
@@ -356,6 +378,20 @@ class PipelineRewriter : public StmtExprMutator {
     return true;
   }
 
+  /*!
+   * \brief Compute the number of versions need to maintain for buffer accessed in the software
+   * pipeline.
+   *
+   * This method applies liveness analysis to the target buffer to compute the number of versions
+   * need to maintain during the software pipeline.
+   * Annotation `attr::double_buffer_scope` is handled here which provides a way to override the
+   * result of the analysis. Additional double buffering in the software pipeline can be useful
+   * to eliminate synchonizations in GPU devices.
+   *
+   * \param buffer The target buffer
+   * \param buffer_info The access information of the target buffer.
+   * \return The number of versions required for the target buffer.
+   */
   int ComputeBufferVersions(const Buffer& buffer, const BufferAccessInfo& buffer_info) {
     if (buffer_info.def == -1) {
       // Keep the original number of versions as buffers defined outside the software pipeline
@@ -411,6 +447,11 @@ class PipelineRewriter : public StmtExprMutator {
     return num_versions;
   }
 
+  /*!
+   * \brief Rewrite buffer allocations to create new buffers with new shapes according to
+   * the software pipeline.
+   * \param pipeline_allocs The buffer allocations inside the software pipeline scope.
+   */
   void RemapPipelineBuffers(Array<Buffer> pipeline_allocs) {
     std::unordered_map<Buffer, BufferAccessInfo, ObjectPtrHash, ObjectPtrEqual> infos =
         GetBufferAccessInfo();
