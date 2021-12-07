@@ -125,6 +125,28 @@ struct PrimeTable {
   }
 };
 
+std::function<int32_t()> MakeMultinomialSampler(
+    support::LinearCongruentialEngine::TRandState* rand_state, const std::vector<double>& weights) {
+  std::vector<double> sums;
+  sums.reserve(weights.size());
+  double sum = 0.0;
+  for (double w : weights) {
+    sums.push_back(sum += w);
+  }
+  std::uniform_real_distribution<double> dist(0.0, sum);
+  auto sampler = [rand_state = support::LinearCongruentialEngine(rand_state).ForkSeed(),
+                  dist = std::move(dist), sums = std::move(sums)]() mutable -> int32_t {
+    support::LinearCongruentialEngine rand_(&rand_state);
+    double p = dist(rand_);
+    int32_t idx = std::lower_bound(sums.begin(), sums.end(), p) - sums.begin();
+    int32_t n = sums.size();
+    CHECK_LE(0, idx);
+    CHECK_LE(idx, n);
+    return (idx == n) ? (n - 1) : idx;
+  };
+  return sampler;
+}
+
 int32_t SampleInt(support::LinearCongruentialEngine::TRandState* rand_state, int32_t min_inclusive,
                   int32_t max_exclusive) {
   CHECK(min_inclusive < max_exclusive)
