@@ -64,16 +64,16 @@ def transformed_simple_compute(a: T.handle, c: T.handle) -> None:
     C = T.match_buffer(c, [16, 16], dtype="float32")
     for tx in T.thread_binding(0, 16, thread="threadIdx.x"):
         with T.block():
-            T.reads([A[tx, 0 : 16]])
-            T.writes([C[tx, 0 : 16]])
+            T.reads([A[tx, 0:16]])
+            T.writes([C[tx, 0:16]])
             B = T.alloc_buffer([2, 16, 1], dtype="float32", scope="shared")
             with T.block():
                 T.reads([A[tx, 0]])
                 T.writes([B[0, tx, 0]])
                 B[0, tx, 0] = A[tx, 0] * T.float32(2)
             with T.block():
-                T.reads([A[tx, 1 : 16], B[0 : 2, tx, 0]])
-                T.writes([B[0 : 2, tx, 0], C[tx, 0 : 15]])
+                T.reads([A[tx, 1:16], B[0:2, tx, 0]])
+                T.writes([B[0:2, tx, 0], C[tx, 0:15]])
                 for i in T.serial(0, 15):
                     with T.block():
                         T.reads([A[tx, i + 1]])
@@ -99,23 +99,37 @@ def nested_pipeline_simple(a: T.handle, c: T.handle):
                 T.reads(A[tx, i, 0:16])
                 T.writes(C[tx, i, 0:16])
                 A_shared = T.alloc_buffer((16, 1, 16), dtype="float32", scope="shared")
-                for j in T.serial(0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 0}):
+                for j in T.serial(
+                    0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 0}
+                ):
                     with T.block():
                         T.reads(A[tx, i, j])
                         T.writes(A_shared[tx, 0, j])
                         A_shared[tx, 0, j] = A[tx, i, j]
-                for j in T.serial(0, 16, annotations={"software_pipeline_scope": 1, "nested_software_pipeline_stage": [1, 1, 1], "nested_software_pipeline_order": [1, 2, 3]}):
+                for j in T.serial(
+                    0,
+                    16,
+                    annotations={
+                        "software_pipeline_scope": 1,
+                        "nested_software_pipeline_stage": [1, 1, 1],
+                        "nested_software_pipeline_order": [1, 2, 3],
+                    },
+                ):
                     with T.block():
                         T.reads(A_shared[tx, 0, j])
                         T.writes(C[tx, i, j])
                         B = T.alloc_buffer((16, 1, 1), dtype="float32", scope="shared")
                         with T.block():
-                            T.block_attr({"software_pipeline_stage": 0, "software_pipeline_order": 0})
+                            T.block_attr(
+                                {"software_pipeline_stage": 0, "software_pipeline_order": 0}
+                            )
                             T.reads(A_shared[tx, i, j])
                             T.writes(B[tx, i, 0])
                             B[tx, i, 0] = A_shared[tx, 0, j] * T.float32(2)
                         with T.block():
-                            T.block_attr({"software_pipeline_stage": 1, "software_pipeline_order": 1})
+                            T.block_attr(
+                                {"software_pipeline_stage": 1, "software_pipeline_order": 1}
+                            )
                             T.reads(B[tx, i, 0])
                             T.writes(C[tx, i, j])
                             C[tx, i, j] = B[tx, i, 0] + T.float32(1)
@@ -129,25 +143,25 @@ def transformed_nested_pipeline_simple(a: T.handle, c: T.handle) -> None:
     # with T.block("root")
     for tx in T.thread_binding(0, 16, thread="threadIdx.x"):
         with T.block():
-            T.reads([A[tx, 0 : 16, 0 : 16]])
-            T.writes([C[tx, 0 : 16, 0 : 16]])
+            T.reads([A[tx, 0:16, 0:16]])
+            T.writes([C[tx, 0:16, 0:16]])
             A_shared = T.alloc_buffer([2, 16, 1, 16], dtype="float32", scope="shared")
             B = T.alloc_buffer([2, 16, 1, 1], dtype="float32", scope="shared")
             with T.block():
-                T.reads([A[tx, 0, 0 : 16]])
-                T.writes([A_shared[0, tx, 0, 0 : 16]])
+                T.reads([A[tx, 0, 0:16]])
+                T.writes([A_shared[0, tx, 0, 0:16]])
                 for j in T.serial(0, 16):
                     with T.block():
                         T.reads([A[tx, 0, j]])
                         T.writes([A_shared[0, tx, 0, j]])
                         A_shared[0, tx, 0, j] = A[tx, 0, j]
             with T.block():
-                T.reads([A[tx, 1 : 16, 0 : 16], A_shared[0 : 2, tx, 0 : 15, 0 : 16], B[0 : 2, tx, 0 : 15, 0]])
-                T.writes([A_shared[0 : 2, tx, 0, 0 : 16], B[0 : 2, tx, 0 : 15, 0], C[tx, 0 : 15, 0 : 16]])
+                T.reads([A[tx, 1:16, 0:16], A_shared[0:2, tx, 0:15, 0:16], B[0:2, tx, 0:15, 0]])
+                T.writes([A_shared[0:2, tx, 0, 0:16], B[0:2, tx, 0:15, 0], C[tx, 0:15, 0:16]])
                 for i in T.serial(0, 15):
                     with T.block():
-                        T.reads([A[tx, i + 1, 0 : 16]])
-                        T.writes([A_shared[(i + 1) % 2, tx, 0, 0 : 16]])
+                        T.reads([A[tx, i + 1, 0:16]])
+                        T.writes([A_shared[(i + 1) % 2, tx, 0, 0:16]])
                         for j in T.serial(0, 16):
                             with T.block():
                                 T.reads([A[tx, i + 1, j]])
@@ -158,13 +172,15 @@ def transformed_nested_pipeline_simple(a: T.handle, c: T.handle) -> None:
                         T.writes([B[0, tx, i, 0]])
                         B[0, tx, i, 0] = A_shared[i % 2, tx, 0, 0] * T.float32(2)
                     with T.block():
-                        T.reads([A_shared[i % 2, tx, i, 1 : 16], B[0 : 2, tx, i, 0]])
-                        T.writes([B[0 : 2, tx, i, 0], C[tx, i, 0 : 15]])
+                        T.reads([A_shared[i % 2, tx, i, 1:16], B[0:2, tx, i, 0]])
+                        T.writes([B[0:2, tx, i, 0], C[tx, i, 0:15]])
                         for j in T.serial(0, 15):
                             with T.block():
                                 T.reads([A_shared[i % 2, tx, i, j + 1]])
                                 T.writes([B[(j + 1) % 2, tx, i, 0]])
-                                B[(j + 1) % 2, tx, i, 0] = A_shared[i % 2, tx, 0, j + 1] * T.float32(2)
+                                B[(j + 1) % 2, tx, i, 0] = A_shared[
+                                    i % 2, tx, 0, j + 1
+                                ] * T.float32(2)
                             with T.block():
                                 T.reads([B[j % 2, tx, i, 0]])
                                 T.writes([C[tx, i, j]])
@@ -174,15 +190,15 @@ def transformed_nested_pipeline_simple(a: T.handle, c: T.handle) -> None:
                         T.writes([C[tx, i, 15]])
                         C[tx, i, 15] = B[1, tx, i, 0] + T.float32(1)
             with T.block():
-                T.reads([A_shared[1, tx, 15, 0 : 16], B[0 : 2, tx, 15, 0]])
-                T.writes([B[0 : 2, tx, 15, 0], C[tx, 15, 0 : 16]])
+                T.reads([A_shared[1, tx, 15, 0:16], B[0:2, tx, 15, 0]])
+                T.writes([B[0:2, tx, 15, 0], C[tx, 15, 0:16]])
                 with T.block():
                     T.reads([A_shared[1, tx, 15, 0]])
                     T.writes([B[0, tx, 15, 0]])
                     B[0, tx, 15, 0] = A_shared[1, tx, 0, 0] * T.float32(2)
                 with T.block():
-                    T.reads([A_shared[1, tx, 15, 1 : 16], B[0 : 2, tx, 15, 0]])
-                    T.writes([B[0 : 2, tx, 15, 0], C[tx, 15, 0 : 15]])
+                    T.reads([A_shared[1, tx, 15, 1:16], B[0:2, tx, 15, 0]])
+                    T.writes([B[0:2, tx, 15, 0], C[tx, 15, 0:15]])
                     for j in T.serial(0, 15):
                         with T.block():
                             T.reads([A_shared[1, tx, 15, j + 1]])
@@ -208,23 +224,37 @@ def nested_pipeline_prefetch_inner(a: T.handle, c: T.handle):
                 T.reads(A[tx, i, 0:16])
                 T.writes(C[tx, i, 0:16])
                 A_shared = T.alloc_buffer((16, 1, 16), dtype="float32", scope="shared")
-                for j in T.serial(0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 0}):
+                for j in T.serial(
+                    0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 0}
+                ):
                     with T.block():
                         T.reads(A[tx, i, j])
                         T.writes(A_shared[tx, 0, j])
                         A_shared[tx, 0, j] = A[tx, i, j]
-                for j in T.serial(0, 16, annotations={"software_pipeline_scope": 1, "nested_software_pipeline_stage": [0, 1, 1], "nested_software_pipeline_order": [2, 1, 3]}):
+                for j in T.serial(
+                    0,
+                    16,
+                    annotations={
+                        "software_pipeline_scope": 1,
+                        "nested_software_pipeline_stage": [0, 1, 1],
+                        "nested_software_pipeline_order": [2, 1, 3],
+                    },
+                ):
                     with T.block():
                         T.reads(A_shared[tx, 0, j])
                         T.writes(C[tx, i, j])
                         B = T.alloc_buffer((16, 1, 1), dtype="float32", scope="shared")
                         with T.block():
-                            T.block_attr({"software_pipeline_stage": 0, "software_pipeline_order": 0})
+                            T.block_attr(
+                                {"software_pipeline_stage": 0, "software_pipeline_order": 0}
+                            )
                             T.reads(A_shared[tx, i, j])
                             T.writes(B[tx, i, 0])
                             B[tx, i, 0] = A_shared[tx, 0, j] * T.float32(2)
                         with T.block():
-                            T.block_attr({"software_pipeline_stage": 1, "software_pipeline_order": 1})
+                            T.block_attr(
+                                {"software_pipeline_stage": 1, "software_pipeline_order": 1}
+                            )
                             T.reads(B[tx, i, 0])
                             T.writes(C[tx, i, j])
                             C[tx, i, j] = B[tx, i, 0] + T.float32(1)
@@ -236,16 +266,16 @@ def transformed_nested_pipeline_prefetch_inner(a: T.handle, c: T.handle) -> None
     C = T.match_buffer(c, [16, 16, 16], dtype="float32")
     for tx in T.thread_binding(0, 16, thread="threadIdx.x"):
         with T.block():
-            T.reads([A[tx, 0 : 16, 0 : 16]])
-            T.writes([C[tx, 0 : 16, 0 : 16]])
+            T.reads([A[tx, 0:16, 0:16]])
+            T.writes([C[tx, 0:16, 0:16]])
             A_shared = T.alloc_buffer([2, 16, 1, 16], dtype="float32", scope="shared")
             B = T.alloc_buffer([2, 16, 1, 1], dtype="float32", scope="shared")
             with T.block():
-                T.reads([A[tx, 0, 0 : 16], A_shared[0, tx, 0, 0]])
-                T.writes([A_shared[0, tx, 0, 0 : 16], B[0, tx, 0, 0]])
+                T.reads([A[tx, 0, 0:16], A_shared[0, tx, 0, 0]])
+                T.writes([A_shared[0, tx, 0, 0:16], B[0, tx, 0, 0]])
                 with T.block():
-                    T.reads([A[tx, 0, 0 : 16]])
-                    T.writes([A_shared[0, tx, 0, 0 : 16]])
+                    T.reads([A[tx, 0, 0:16]])
+                    T.writes([A_shared[0, tx, 0, 0:16]])
                     for j in T.serial(0, 16):
                         with T.block():
                             T.reads([A[tx, 0, j]])
@@ -256,25 +286,27 @@ def transformed_nested_pipeline_prefetch_inner(a: T.handle, c: T.handle) -> None
                     T.writes([B[0, tx, 0, 0]])
                     B[0, tx, 0, 0] = A_shared[0, tx, 0, 0] * T.float32(2)
             with T.block():
-                T.reads([A[tx, 1 : 16, 0 : 16], A_shared[0 : 2, tx, 0 : 16, 0 : 16], B[0 : 2, tx, 0 : 15, 0]])
-                T.writes([A_shared[0 : 2, tx, 0, 0 : 16], B[0 : 2, tx, 0 : 16, 0], C[tx, 0 : 15, 0 : 16]])
+                T.reads([A[tx, 1:16, 0:16], A_shared[0:2, tx, 0:16, 0:16], B[0:2, tx, 0:15, 0]])
+                T.writes([A_shared[0:2, tx, 0, 0:16], B[0:2, tx, 0:16, 0], C[tx, 0:15, 0:16]])
                 for i in T.serial(0, 15):
                     with T.block():
-                        T.reads([A[tx, i + 1, 0 : 16]])
-                        T.writes([A_shared[(i + 1) % 2, tx, 0, 0 : 16]])
+                        T.reads([A[tx, i + 1, 0:16]])
+                        T.writes([A_shared[(i + 1) % 2, tx, 0, 0:16]])
                         for j in T.serial(0, 16):
                             with T.block():
                                 T.reads([A[tx, i + 1, j]])
                                 T.writes([A_shared[(i + 1) % 2, tx, 0, j]])
                                 A_shared[(i + 1) % 2, tx, 0, j] = A[tx, i + 1, j]
                     with T.block():
-                        T.reads([A_shared[i % 2, tx, i, 1 : 16], B[0 : 2, tx, i, 0]])
-                        T.writes([B[0 : 2, tx, i, 0], C[tx, i, 0 : 15]])
+                        T.reads([A_shared[i % 2, tx, i, 1:16], B[0:2, tx, i, 0]])
+                        T.writes([B[0:2, tx, i, 0], C[tx, i, 0:15]])
                         for j in T.serial(0, 15):
                             with T.block():
                                 T.reads([A_shared[i % 2, tx, i, j + 1]])
                                 T.writes([B[(j + 1) % 2, tx, i, 0]])
-                                B[(j + 1) % 2, tx, i, 0] = A_shared[i % 2, tx, 0, j + 1] * T.float32(2)
+                                B[(j + 1) % 2, tx, i, 0] = A_shared[
+                                    i % 2, tx, 0, j + 1
+                                ] * T.float32(2)
                             with T.block():
                                 T.reads([B[j % 2, tx, i, 0]])
                                 T.writes([C[tx, i, j]])
@@ -288,11 +320,11 @@ def transformed_nested_pipeline_prefetch_inner(a: T.handle, c: T.handle) -> None
                         T.writes([C[tx, i, 15]])
                         C[tx, i, 15] = B[1, tx, i, 0] + T.float32(1)
             with T.block():
-                T.reads([A_shared[1, tx, 15, 1 : 16], B[0 : 2, tx, 15, 0]])
-                T.writes([B[0 : 2, tx, 15, 0], C[tx, 15, 0 : 16]])
+                T.reads([A_shared[1, tx, 15, 1:16], B[0:2, tx, 15, 0]])
+                T.writes([B[0:2, tx, 15, 0], C[tx, 15, 0:16]])
                 with T.block():
-                    T.reads([A_shared[1, tx, 15, 1 : 16], B[0 : 2, tx, 15, 0]])
-                    T.writes([B[0 : 2, tx, 15, 0], C[tx, 15, 0 : 15]])
+                    T.reads([A_shared[1, tx, 15, 1:16], B[0:2, tx, 15, 0]])
+                    T.writes([B[0:2, tx, 15, 0], C[tx, 15, 0:15]])
                     for j in T.serial(0, 15):
                         with T.block():
                             T.reads([A_shared[1, tx, 15, j + 1]])
@@ -319,28 +351,44 @@ def nested_pipeline_interleaving(a: T.handle, c: T.handle):
                 T.writes(C[tx, i, 0:16])
                 A_shared = T.alloc_buffer((16, 1, 16), dtype="float32", scope="shared")
                 A_local = T.alloc_buffer((1, 1, 16), dtype="float32", scope="local")
-                for j in T.serial(0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 0}):
+                for j in T.serial(
+                    0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 0}
+                ):
                     with T.block():
                         T.reads(A[tx, i, j])
                         T.writes(A_shared[tx, 0, j])
                         A_shared[tx, 0, j] = A[tx, i, j]
-                for j in T.serial(0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 2}):
+                for j in T.serial(
+                    0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 2}
+                ):
                     with T.block():
                         T.reads(A_shared[tx, 0, j])
                         T.writes(A_local[0, 0, j])
                         A_local[0, 0, j] = A_shared[tx, i, j]
-                for j in T.serial(0, 16, annotations={"software_pipeline_scope": 1, "nested_software_pipeline_stage": [0, 1, 1], "nested_software_pipeline_order": [3, 1, 4]}):
+                for j in T.serial(
+                    0,
+                    16,
+                    annotations={
+                        "software_pipeline_scope": 1,
+                        "nested_software_pipeline_stage": [0, 1, 1],
+                        "nested_software_pipeline_order": [3, 1, 4],
+                    },
+                ):
                     with T.block():
                         T.reads(A_local[0, 0, j])
                         T.writes(C[tx, i, j])
                         B = T.alloc_buffer((16, 1, 1), dtype="float32", scope="shared")
                         with T.block():
-                            T.block_attr({"software_pipeline_stage": 0, "software_pipeline_order": 0})
+                            T.block_attr(
+                                {"software_pipeline_stage": 0, "software_pipeline_order": 0}
+                            )
                             T.reads(A_local[tx, i, j])
                             T.writes(B[tx, i, 0])
                             B[tx, i, 0] = A_local[0, 0, j] * T.float32(2)
                         with T.block():
-                            T.block_attr({"software_pipeline_stage": 1, "software_pipeline_order": 1})
+                            T.block_attr(
+                                {"software_pipeline_stage": 1, "software_pipeline_order": 1}
+                            )
                             T.reads(B[tx, i, 0])
                             T.writes(C[tx, i, j])
                             C[tx, i, j] = B[tx, i, 0] + T.float32(1)
@@ -352,25 +400,25 @@ def transformed_nested_pipeline_interleaving(a: T.handle, c: T.handle) -> None:
     C = T.match_buffer(c, [16, 16, 16], dtype="float32")
     for tx in T.thread_binding(0, 16, thread="threadIdx.x"):
         with T.block():
-            T.reads([A[tx, 0 : 16, 0 : 16]])
-            T.writes([C[tx, 0 : 16, 0 : 16]])
+            T.reads([A[tx, 0:16, 0:16]])
+            T.writes([C[tx, 0:16, 0:16]])
             A_shared = T.alloc_buffer([16, 1, 16], dtype="float32", scope="shared")
             A_local = T.alloc_buffer([1, 1, 16], dtype="float32", scope="local")
             B = T.alloc_buffer([2, 16, 1, 1], dtype="float32", scope="shared")
             with T.block():
-                T.reads([A[tx, 0, 0 : 16], A_shared[tx, 0, 0 : 16], A_local[tx, 0, 0]])
-                T.writes([A_shared[tx, 0, 0 : 16], A_local[0, 0, 0 : 16], B[0, tx, 0, 0]])
+                T.reads([A[tx, 0, 0:16], A_shared[tx, 0, 0:16], A_local[tx, 0, 0]])
+                T.writes([A_shared[tx, 0, 0:16], A_local[0, 0, 0:16], B[0, tx, 0, 0]])
                 with T.block():
-                    T.reads([A[tx, 0, 0 : 16]])
-                    T.writes([A_shared[tx, 0, 0 : 16]])
+                    T.reads([A[tx, 0, 0:16]])
+                    T.writes([A_shared[tx, 0, 0:16]])
                     for j in T.serial(0, 16):
                         with T.block():
                             T.reads([A[tx, 0, j]])
                             T.writes([A_shared[tx, 0, j]])
                             A_shared[tx, 0, j] = A[tx, 0, j]
                 with T.block():
-                    T.reads([A_shared[tx, 0, 0 : 16]])
-                    T.writes([A_local[0, 0, 0 : 16]])
+                    T.reads([A_shared[tx, 0, 0:16]])
+                    T.writes([A_local[0, 0, 0:16]])
                     for j in T.serial(0, 16):
                         with T.block():
                             T.reads([A_shared[tx, 0, j]])
@@ -381,20 +429,34 @@ def transformed_nested_pipeline_interleaving(a: T.handle, c: T.handle) -> None:
                     T.writes([B[0, tx, 0, 0]])
                     B[0, tx, 0, 0] = A_local[0, 0, 0] * T.float32(2)
             with T.block():
-                T.reads([A[tx, 1 : 16, 0 : 16], A_local[tx, 0 : 16, 0 : 16], B[0 : 2, tx, 0 : 15, 0], A_shared[tx, 0, 0 : 16]])
-                T.writes([A_shared[tx, 0, 0 : 16], B[0 : 2, tx, 0 : 16, 0], C[tx, 0 : 15, 0 : 16], A_local[0, 0, 0 : 16]])
+                T.reads(
+                    [
+                        A[tx, 1:16, 0:16],
+                        A_local[tx, 0:16, 0:16],
+                        B[0:2, tx, 0:15, 0],
+                        A_shared[tx, 0, 0:16],
+                    ]
+                )
+                T.writes(
+                    [
+                        A_shared[tx, 0, 0:16],
+                        B[0:2, tx, 0:16, 0],
+                        C[tx, 0:15, 0:16],
+                        A_local[0, 0, 0:16],
+                    ]
+                )
                 for i in T.serial(0, 15):
                     with T.block():
-                        T.reads([A[tx, i + 1, 0 : 16]])
-                        T.writes([A_shared[tx, 0, 0 : 16]])
+                        T.reads([A[tx, i + 1, 0:16]])
+                        T.writes([A_shared[tx, 0, 0:16]])
                         for j in T.serial(0, 16):
                             with T.block():
                                 T.reads([A[tx, i + 1, j]])
                                 T.writes([A_shared[tx, 0, j]])
                                 A_shared[tx, 0, j] = A[tx, i + 1, j]
                     with T.block():
-                        T.reads([A_local[tx, i, 1 : 16], B[0 : 2, tx, i, 0]])
-                        T.writes([B[0 : 2, tx, i, 0], C[tx, i, 0 : 15]])
+                        T.reads([A_local[tx, i, 1:16], B[0:2, tx, i, 0]])
+                        T.writes([B[0:2, tx, i, 0], C[tx, i, 0:15]])
                         for j in T.serial(0, 15):
                             with T.block():
                                 T.reads([A_local[tx, i, j + 1]])
@@ -405,8 +467,8 @@ def transformed_nested_pipeline_interleaving(a: T.handle, c: T.handle) -> None:
                                 T.writes([C[tx, i, j]])
                                 C[tx, i, j] = B[j % 2, tx, i, 0] + T.float32(1)
                     with T.block():
-                        T.reads([A_shared[tx, 0, 0 : 16]])
-                        T.writes([A_local[0, 0, 0 : 16]])
+                        T.reads([A_shared[tx, 0, 0:16]])
+                        T.writes([A_local[0, 0, 0:16]])
                         for j in T.serial(0, 16):
                             with T.block():
                                 T.reads([A_shared[tx, 0, j]])
@@ -421,11 +483,11 @@ def transformed_nested_pipeline_interleaving(a: T.handle, c: T.handle) -> None:
                         T.writes([C[tx, i, 15]])
                         C[tx, i, 15] = B[1, tx, i, 0] + T.float32(1)
             with T.block():
-                T.reads([A_local[tx, 15, 1 : 16], B[0 : 2, tx, 15, 0]])
-                T.writes([B[0 : 2, tx, 15, 0], C[tx, 15, 0 : 16]])
+                T.reads([A_local[tx, 15, 1:16], B[0:2, tx, 15, 0]])
+                T.writes([B[0:2, tx, 15, 0], C[tx, 15, 0:16]])
                 with T.block():
-                    T.reads([A_local[tx, 15, 1 : 16], B[0 : 2, tx, 15, 0]])
-                    T.writes([B[0 : 2, tx, 15, 0], C[tx, 15, 0 : 15]])
+                    T.reads([A_local[tx, 15, 1:16], B[0:2, tx, 15, 0]])
+                    T.writes([B[0:2, tx, 15, 0], C[tx, 15, 0:15]])
                     for j in T.serial(0, 15):
                         with T.block():
                             T.reads([A_local[tx, 15, j + 1]])
@@ -452,29 +514,45 @@ def nested_pipeline_double_buffer(a: T.handle, c: T.handle):
                 T.writes(C[tx, i, 0:16])
                 A_shared = T.alloc_buffer((16, 1, 16), dtype="float32", scope="shared")
                 A_local = T.alloc_buffer((1, 1, 16), dtype="float32", scope="local")
-                for j in T.serial(0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 0}):
+                for j in T.serial(
+                    0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 0}
+                ):
                     with T.block():
                         T.reads(A[tx, i, j])
                         T.writes(A_shared[tx, 0, j])
                         A_shared[tx, 0, j] = A[tx, i, j]
-                for j in T.serial(0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 2}):
+                for j in T.serial(
+                    0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 2}
+                ):
                     with T.block():
                         T.block_attr({"double_buffer_scope": 0})
                         T.reads(A_shared[tx, 0, j])
                         T.writes(A_local[0, 0, j])
                         A_local[0, 0, j] = A_shared[tx, i, j]
-                for j in T.serial(0, 16, annotations={"software_pipeline_scope": 1, "nested_software_pipeline_stage": [0, 1, 1], "nested_software_pipeline_order": [3, 1, 4]}):
+                for j in T.serial(
+                    0,
+                    16,
+                    annotations={
+                        "software_pipeline_scope": 1,
+                        "nested_software_pipeline_stage": [0, 1, 1],
+                        "nested_software_pipeline_order": [3, 1, 4],
+                    },
+                ):
                     with T.block():
                         T.reads(A_local[0, 0, j])
                         T.writes(C[tx, i, j])
                         B = T.alloc_buffer((16, 1, 1), dtype="float32", scope="shared")
                         with T.block():
-                            T.block_attr({"software_pipeline_stage": 0, "software_pipeline_order": 0})
+                            T.block_attr(
+                                {"software_pipeline_stage": 0, "software_pipeline_order": 0}
+                            )
                             T.reads(A_local[tx, i, j])
                             T.writes(B[tx, i, 0])
                             B[tx, i, 0] = A_local[0, 0, j] * T.float32(2)
                         with T.block():
-                            T.block_attr({"software_pipeline_stage": 1, "software_pipeline_order": 1})
+                            T.block_attr(
+                                {"software_pipeline_stage": 1, "software_pipeline_order": 1}
+                            )
                             T.reads(B[tx, i, 0])
                             T.writes(C[tx, i, j])
                             C[tx, i, j] = B[tx, i, 0] + T.float32(1)
@@ -488,67 +566,83 @@ def transformed_nested_pipeline_double_buffer(a: T.handle, c: T.handle) -> None:
     # with T.block("root")
     for tx in T.thread_binding(0, 16, thread="threadIdx.x"):
         with T.block():
-            T.reads([A[tx, 0 : 16, 0 : 16]])
-            T.writes([C[tx, 0 : 16, 0 : 16]])
+            T.reads([A[tx, 0:16, 0:16]])
+            T.writes([C[tx, 0:16, 0:16]])
             A_shared = T.alloc_buffer([16, 1, 16], dtype="float32", scope="shared")
             A_local = T.alloc_buffer([2, 1, 1, 16], dtype="float32", scope="local")
             B = T.alloc_buffer([2, 16, 1, 1], dtype="float32", scope="shared")
             with T.block():
-                T.reads([A[tx, 0, 0 : 16], A_shared[tx, 0, 0 : 16], A_local[0, tx, 0, 0]])
-                T.writes([A_shared[tx, 0, 0 : 16], A_local[0, 0, 0, 0 : 16], B[0, tx, 0, 0]])
+                T.reads([A[tx, 0, 0:16], A_shared[tx, 0, 0:16], A_local[0, tx, 0, 0]])
+                T.writes([A_shared[tx, 0, 0:16], A_local[0, 0, 0, 0:16], B[0, tx, 0, 0]])
                 with T.block():
-                    T.reads([A[tx, 0, 0 : 16]])
-                    T.writes([A_shared[tx, 0, 0 : 16]])
+                    T.reads([A[tx, 0, 0:16]])
+                    T.writes([A_shared[tx, 0, 0:16]])
                     for j in T.serial(0, 16):
                         with T.block():
                             T.reads([A[tx, 0, j]])
                             T.writes([A_shared[tx, 0, j]])
                             A_shared[tx, 0, j] = A[tx, 0, j]
                 with T.block():
-                    T.reads([A_shared[tx, 0, 0 : 16]])
-                    T.writes([A_local[0, 0, 0, 0 : 16]])
+                    T.reads([A_shared[tx, 0, 0:16]])
+                    T.writes([A_local[0, 0, 0, 0:16]])
                     for j in T.serial(0, 16):
                         with T.block():
                             T.reads([A_shared[tx, 0, j]])
                             T.writes([A_local[0, 0, 0, j]])
-                            T.block_attr({"double_buffer_scope":0})
+                            T.block_attr({"double_buffer_scope": 0})
                             A_local[0, 0, 0, j] = A_shared[tx, 0, j]
                 with T.block():
                     T.reads([A_local[0, tx, 0, 0]])
                     T.writes([B[0, tx, 0, 0]])
                     B[0, tx, 0, 0] = A_local[0, 0, 0, 0] * T.float32(2)
             with T.block():
-                T.reads([A[tx, 1 : 16, 0 : 16], A_local[0 : 2, tx, 0 : 16, 0 : 16], B[0 : 2, tx, 0 : 15, 0], A_shared[tx, 0, 0 : 16]])
-                T.writes([A_shared[tx, 0, 0 : 16], B[0 : 2, tx, 0 : 16, 0], C[tx, 0 : 15, 0 : 16], A_local[0 : 2, 0, 0, 0 : 16]])
+                T.reads(
+                    [
+                        A[tx, 1:16, 0:16],
+                        A_local[0:2, tx, 0:16, 0:16],
+                        B[0:2, tx, 0:15, 0],
+                        A_shared[tx, 0, 0:16],
+                    ]
+                )
+                T.writes(
+                    [
+                        A_shared[tx, 0, 0:16],
+                        B[0:2, tx, 0:16, 0],
+                        C[tx, 0:15, 0:16],
+                        A_local[0:2, 0, 0, 0:16],
+                    ]
+                )
                 for i in T.serial(0, 15):
                     with T.block():
-                        T.reads([A[tx, i + 1, 0 : 16]])
-                        T.writes([A_shared[tx, 0, 0 : 16]])
+                        T.reads([A[tx, i + 1, 0:16]])
+                        T.writes([A_shared[tx, 0, 0:16]])
                         for j in T.serial(0, 16):
                             with T.block():
                                 T.reads([A[tx, i + 1, j]])
                                 T.writes([A_shared[tx, 0, j]])
                                 A_shared[tx, 0, j] = A[tx, i + 1, j]
                     with T.block():
-                        T.reads([A_local[i % 2, tx, i, 1 : 16], B[0 : 2, tx, i, 0]])
-                        T.writes([B[0 : 2, tx, i, 0], C[tx, i, 0 : 15]])
+                        T.reads([A_local[i % 2, tx, i, 1:16], B[0:2, tx, i, 0]])
+                        T.writes([B[0:2, tx, i, 0], C[tx, i, 0:15]])
                         for j in T.serial(0, 15):
                             with T.block():
                                 T.reads([A_local[i % 2, tx, i, j + 1]])
                                 T.writes([B[(j + 1) % 2, tx, i, 0]])
-                                B[(j + 1) % 2, tx, i, 0] = A_local[i % 2, 0, 0, j + 1] * T.float32(2)
+                                B[(j + 1) % 2, tx, i, 0] = A_local[i % 2, 0, 0, j + 1] * T.float32(
+                                    2
+                                )
                             with T.block():
                                 T.reads([B[j % 2, tx, i, 0]])
                                 T.writes([C[tx, i, j]])
                                 C[tx, i, j] = B[j % 2, tx, i, 0] + T.float32(1)
                     with T.block():
-                        T.reads([A_shared[tx, 0, 0 : 16]])
-                        T.writes([A_local[(i + 1) % 2, 0, 0, 0 : 16]])
+                        T.reads([A_shared[tx, 0, 0:16]])
+                        T.writes([A_local[(i + 1) % 2, 0, 0, 0:16]])
                         for j in T.serial(0, 16):
                             with T.block():
                                 T.reads([A_shared[tx, 0, j]])
                                 T.writes([A_local[(i + 1) % 2, 0, 0, j]])
-                                T.block_attr({"double_buffer_scope":0})
+                                T.block_attr({"double_buffer_scope": 0})
                                 A_local[(i + 1) % 2, 0, 0, j] = A_shared[tx, i + 1, j]
                     with T.block():
                         T.reads([A_local[(i + 1) % 2, tx, i + 1, 0]])
@@ -559,11 +653,11 @@ def transformed_nested_pipeline_double_buffer(a: T.handle, c: T.handle) -> None:
                         T.writes([C[tx, i, 15]])
                         C[tx, i, 15] = B[1, tx, i, 0] + T.float32(1)
             with T.block():
-                T.reads([A_local[1, tx, 15, 1 : 16], B[0 : 2, tx, 15, 0]])
-                T.writes([B[0 : 2, tx, 15, 0], C[tx, 15, 0 : 16]])
+                T.reads([A_local[1, tx, 15, 1:16], B[0:2, tx, 15, 0]])
+                T.writes([B[0:2, tx, 15, 0], C[tx, 15, 0:16]])
                 with T.block():
-                    T.reads([A_local[1, tx, 15, 1 : 16], B[0 : 2, tx, 15, 0]])
-                    T.writes([B[0 : 2, tx, 15, 0], C[tx, 15, 0 : 15]])
+                    T.reads([A_local[1, tx, 15, 1:16], B[0:2, tx, 15, 0]])
+                    T.writes([B[0:2, tx, 15, 0], C[tx, 15, 0:15]])
                     for j in T.serial(0, 15):
                         with T.block():
                             T.reads([A_local[1, tx, 15, j + 1]])
@@ -633,6 +727,8 @@ def simple_compute_conflicting_order(a: T.handle, d: T.handle):
                     T.reads(C[tx, 0])
                     T.writes(D[tx, i])
                     D[tx, i] = C[tx, 0] + T.float32(1)
+
+
 @T.prim_func
 def simple_compute_missing_annotation(a: T.handle, c: T.handle):
     A = T.match_buffer(a, (16, 16), dtype="float32")
@@ -663,7 +759,9 @@ def nested_pipeline_missing_annotation(a: T.handle, c: T.handle):
                 T.reads(A[tx, i, 0:16])
                 T.writes(C[tx, i, 0:16])
                 A_shared = T.alloc_buffer((16, 1, 16), dtype="float32", scope="shared")
-                for j in T.serial(0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 0}):
+                for j in T.serial(
+                    0, 16, annotations={"software_pipeline_stage": 0, "software_pipeline_order": 0}
+                ):
                     with T.block():
                         T.reads(A[tx, i, j])
                         T.writes(A_shared[tx, 0, j])
@@ -674,12 +772,16 @@ def nested_pipeline_missing_annotation(a: T.handle, c: T.handle):
                         T.writes(C[tx, i, j])
                         B = T.alloc_buffer((16, 1, 1), dtype="float32", scope="shared")
                         with T.block():
-                            T.block_attr({"software_pipeline_stage": 0, "software_pipeline_order": 0})
+                            T.block_attr(
+                                {"software_pipeline_stage": 0, "software_pipeline_order": 0}
+                            )
                             T.reads(A_shared[tx, i, j])
                             T.writes(B[tx, i, 0])
                             B[tx, i, 0] = A_shared[tx, 0, j] * T.float32(2)
                         with T.block():
-                            T.block_attr({"software_pipeline_stage": 1, "software_pipeline_order": 1})
+                            T.block_attr(
+                                {"software_pipeline_stage": 1, "software_pipeline_order": 1}
+                            )
                             T.reads(B[tx, i, 0])
                             T.writes(C[tx, i, j])
                             C[tx, i, j] = B[tx, i, 0] + T.float32(1)
@@ -721,5 +823,5 @@ def test_error_missing_nested_annotation():
     _check_error(nested_pipeline_missing_annotation)
 
 
-if __name__=='__main__':
+if __name__ == "__main__":
     sys.exit(pytest.main([__file__] + sys.argv[1:]))
