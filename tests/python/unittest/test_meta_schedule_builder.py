@@ -201,7 +201,7 @@ def test_meta_schedule_error_handle_time_out():
 
     def initializer():
         @register_func("meta_schedule.builder.test_time_out")
-        def timeout_build(mod, target):  # pylint: disable=unused-argument, unused-variable
+        def timeout_build(mod, target, _):  # pylint: disable=unused-argument, unused-variable
             time.sleep(2)
 
     builder = LocalBuilder(
@@ -216,7 +216,6 @@ def test_meta_schedule_error_handle_time_out():
         artifact_path = result.artifact_path
         error_msg = result.error_msg
         assert artifact_path is None
-        print(error_msg)
         assert error_msg.startswith("LocalBuilder: Timeout")
 
 
@@ -226,5 +225,4 @@ def test_meta_schedule_missing_build_func():
 
 
 if __name__ == "__main__":
-   # sys.exit(pytest.main([__file__] + sys.argv[1:]))
-    test_meta_schedule_error_handle_time_out()
+   sys.exit(pytest.main([__file__] + sys.argv[1:]))
