@@ -251,6 +251,7 @@ inline std::vector<double> PredictNormalizedScore(const std::vector<CachedTrace>
 
 /**************** Evolutionary Search ****************/
 
+// TODO(@zxybazh): Early stopping for small search space, including deduplication.
 /*!
  * \brief A search strategy that generates measure candidates using evolutionary search.
  * \note The algorithm:
@@ -268,7 +269,6 @@ inline std::vector<double> PredictNormalizedScore(const std::vector<CachedTrace>
  *            pick     `k = num_measures_per_iter *      eps_greedy ` from `init`
  *   do the measurement on `chosen` & update the cost model
  *
- *  Todo: (@zxybazh): Early stopping for small search space, including deduplication.
  */
 class EvolutionarySearchNode : public SearchStrategyNode {
  public:
@@ -489,7 +489,7 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::PickBestFromDatab
 inline std::vector<CachedTrace> EvolutionarySearchNode::State::SampleInitPopulation(int num) {
   // Pick unmeasured states
   std::vector<CachedTrace> results(num);
-  auto f_proc_unmeasured = [this, &results, &num](int thread_id, int trace_id) -> void {
+  auto f_proc_unmeasured = [this, &results](int thread_id, int trace_id) -> void {
     TRandState& rand_state = self->per_thread_data_[thread_id].rand_state;
     const IRModule& mod = self->per_thread_data_[thread_id].mod;
     CachedTrace& result = results[trace_id];
@@ -574,7 +574,8 @@ std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
         if (Optional<Mutator> opt_mutator = mutator_sampler()) {
           // Decision: mutate
           Mutator mutator = opt_mutator.value();
-          if (Optional<tir::Trace> opt_new_trace = mutator->Apply(ctrace.sch->trace().value())) {
+          if (Optional<tir::Trace> opt_new_trace =
+                  mutator->Apply(ctrace.sch->trace().value(), &rand_state)) {
             tir::Trace new_trace = opt_new_trace.value();
             if (Optional<tir::Schedule> opt_sch =
                     ApplyTrace(mod, new_trace, &rand_state, self->postprocs_)) {
