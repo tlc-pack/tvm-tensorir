@@ -100,6 +100,7 @@ class LinearCongruentialEngine {
    * \param rand_state The random state given in result_type.
    */
   void Seed(TRandState rand_state = 1) {
+    ICHECK(rand_state != -1) << "The seed can't be -1 which should be changed to random seed!";
     rand_state %= modulus;  // Make sure the seed is within the range of modulus.
     if (rand_state == 0)
       rand_state = 1;  // Avoid getting all 0 given the current parameter set.

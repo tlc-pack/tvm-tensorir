@@ -59,10 +59,10 @@ class CostModelNode : public runtime::Object {
                       const Array<RunnerResult>& results) = 0;
 
   /*!
-   * \brief Predict the running results of given measure candidates.
+   * \brief Predict the normalized score (the larger the better) of given measure candidates.
    * \param tune_context The tuning context.
    * \param candidates The measure candidates.
-   * \return The predicted running results.
+   * \return The predicted normalized score.
    */
   virtual std::vector<double> Predict(const TuneContext& tune_context,
                                       const Array<MeasureCandidate>& candidates) = 0;

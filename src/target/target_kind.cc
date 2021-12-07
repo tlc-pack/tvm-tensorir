@@ -227,10 +227,10 @@ TVM_REGISTER_TARGET_KIND("llvm", kDLCPU)
     .add_attr_option<String>("mabi")
     .add_attr_option<Bool>("system-lib")
     .add_attr_option<String>("runtime")
+    .add_attr_option<Integer>("num-cores")
     .add_attr_option<Bool>("link-params", Bool(false))
     .add_attr_option<Bool>("unpacked-api")
     .add_attr_option<String>("interface-api")
-    .add_attr_option<Integer>("num-cores")
     // Fast math flags, see https://llvm.org/docs/LangRef.html#fast-math-flags
     .add_attr_option<Bool>("fast-math")  // implies all the below
     .add_attr_option<Bool>("fast-math-nnan")

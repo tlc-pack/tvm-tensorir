@@ -29,7 +29,7 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
                          Optional<SearchStrategy> search_strategy,                  //
                          Optional<Array<ScheduleRule>> sch_rules,                   //
                          Optional<Array<Postproc>> postprocs,                       //
-                         Optional<Array<Mutator>> mutators,                         //
+                         Optional<Map<Mutator, FloatImm>> mutator_probs,            //
                          Optional<String> task_name,                                //
                          support::LinearCongruentialEngine::TRandState rand_state,  //
                          int num_threads) {
@@ -40,7 +40,7 @@ TuneContext::TuneContext(Optional<IRModule> mod,                                
   n->search_strategy = search_strategy;
   n->sch_rules = sch_rules.value_or({});
   n->postprocs = postprocs.value_or({});
-  n->mutators = mutators.value_or({});
+  n->mutator_probs = mutator_probs.value_or({});
   n->task_name = task_name.value_or("main");
   if (rand_state == -1) {
     rand_state = support::LinearCongruentialEngine::DeviceRandom();
@@ -66,8 +66,10 @@ void TuneContextNode::Initialize() {
   for (const Postproc& postproc : postprocs) {
     postproc->InitializeWithTuneContext(GetRef<TuneContext>(this));
   }
-  for (const Mutator& mutator : mutators) {
-    mutator->InitializeWithTuneContext(GetRef<TuneContext>(this));
+  if (mutator_probs.defined()) {
+    for (const auto& kv : mutator_probs) {
+      kv.first->InitializeWithTuneContext(GetRef<TuneContext>(this));
+    }
   }
 }
 
@@ -78,14 +80,14 @@ TVM_REGISTER_GLOBAL("meta_schedule.TuneContext")
                        Optional<Target> target,                                   //
                        Optional<SpaceGenerator> space_generator,                  //
                        Optional<SearchStrategy> search_strategy,                  //
-                       Array<ScheduleRule> sch_rules,                             //
-                       Array<Postproc> postprocs,                                 //
-                       Array<Mutator> mutators,                                   //
+                       Optional<Array<ScheduleRule>> sch_rules,                   //
+                       Optional<Array<Postproc>> postprocs,                       //
+                       Optional<Map<Mutator, FloatImm>> mutator_probs,            //
                        Optional<String> task_name,                                //
                        support::LinearCongruentialEngine::TRandState rand_state,  //
                        int num_threads) -> TuneContext {
       return TuneContext(mod, target, space_generator, search_strategy, sch_rules, postprocs,
-                         mutators, task_name, rand_state, num_threads);
+                         mutator_probs, task_name, rand_state, num_threads);
     });
 }  // namespace meta_schedule
 }  // namespace tvm

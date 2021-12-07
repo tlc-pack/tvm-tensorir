@@ -260,7 +260,7 @@ inline tir::BlockRV GetRVFromSRef(const tir::Schedule& sch, const tir::StmtSRef&
 /*!
  * \brief Get the number of cores in CPU
  * \param target The target
- * \param
+ * \return The number of cores.
  */
 inline int GetTargetNumCores(const Target& target) {
   int num_cores = target->GetAttr<Integer>("num-cores").value_or(-1);
@@ -269,11 +269,10 @@ inline int GetTargetNumCores(const Target& target) {
     ICHECK(f_cpu_count)
         << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
     num_cores = (*f_cpu_count)(false);
-    LOG(WARNING) << "Warning: Target does not have attribute \"num-cores\", falling back the "
-                    "number of CPU cores on the local machine. The inaccuracy in number of "
-                    "cores may lead to dramatically inferior performance. Falling back to "
-                    "assuming "
-                 << num_cores << " CPU core(s)";
+    LOG(FATAL)
+        << "Target does not have attribute \"num-cores\", pyhsical core number must be "
+           "defined! For example, on the local machine, the target must be \"llvm -num-cores "
+        << num_cores << "\"";
   }
   return num_cores;
 }

@@ -48,8 +48,8 @@ class TuneContextNode : public runtime::Object {
   Array<ScheduleRule> sch_rules;
   /*! \brief The postprocessors. */
   Array<Postproc> postprocs;
-  /*! \brief The mutators. */
-  Array<Mutator> mutators;
+  /*! \brief The probability of using certain mutator. */
+  Map<Mutator, FloatImm> mutator_probs;
   /*! \brief The name of the tuning task. */
   String task_name;
   /*! \brief The random state. */
@@ -73,7 +73,7 @@ class TuneContextNode : public runtime::Object {
     v->Visit("search_strategy", &search_strategy);
     v->Visit("sch_rules", &sch_rules);
     v->Visit("postprocs", &postprocs);
-    v->Visit("mutators", &mutators);
+    v->Visit("mutator_probs", &mutator_probs);
     v->Visit("task_name", &task_name);
     v->Visit("rand_state", &rand_state);
     v->Visit("num_threads", &num_threads);
@@ -104,7 +104,7 @@ class TuneContext : public runtime::ObjectRef {
    * \param search_strategy The search strategy.
    * \param sch_rules The schedule rules.
    * \param postprocs The postprocessors.
-   * \param mutators The mutators.
+   * \param mutator_probs The probability of using certain mutator.
    * \param task_name The name of the tuning task.
    * \param rand_state The random state.
    * \param num_threads The number of threads to be used.
@@ -115,7 +115,7 @@ class TuneContext : public runtime::ObjectRef {
                                Optional<SearchStrategy> search_strategy,                  //
                                Optional<Array<ScheduleRule>> sch_rules,                   //
                                Optional<Array<Postproc>> postprocs,                       //
-                               Optional<Array<Mutator>> mutators,                         //
+                               Optional<Map<Mutator, FloatImm>> mutator_probs,            //
                                Optional<String> task_name,                                //
                                support::LinearCongruentialEngine::TRandState rand_state,  //
                                int num_threads);

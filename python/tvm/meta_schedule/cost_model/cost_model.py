@@ -87,7 +87,7 @@ class CostModel(Object):
         Return
         ------
         result : np.ndarray
-            The predicted running results.
+            The predicted normalized score.
         """
         n = len(candidates)
         results = np.zeros(shape=(n,), dtype="float64")
@@ -117,7 +117,6 @@ class PyCostModel(CostModel):
 
         @check_override(self.__class__, CostModel)
         def f_update(
-            self,
             tune_context: TuneContext,
             candidates: List[MeasureCandidate],
             results: List[RunnerResult],

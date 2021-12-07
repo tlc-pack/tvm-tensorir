@@ -16,7 +16,7 @@
 # under the License.
 """Meta Schedule tuning context."""
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import Optional, List, Dict, TYPE_CHECKING
 
 from tvm import IRModule
 from tvm._ffi import register_object
@@ -58,8 +58,8 @@ class TuneContext(Object):
         The schedule rules.
     postprocs: Optional[List[Postproc"]] = None,
         The postprocessors.
-    mutators: Optional[List[Mutator]] = None,
-        The mutators.
+    mutator_probs: Optional[Dict[Mutator, float]]
+        Mutators and their probability mass.
     task_name : Optional[str] = None
         The name of the tuning task.
     rand_state : int = -1
@@ -82,7 +82,7 @@ class TuneContext(Object):
     search_strategy: Optional["SearchStrategy"]
     sch_rules: List["ScheduleRule"]
     postprocs: List["Postproc"]
-    mutators: List["Mutator"]
+    mutator_probs: Optional[Dict["Mutator", float]]
     task_name: str
     rand_state: int
     num_threads: int
@@ -90,42 +90,17 @@ class TuneContext(Object):
     def __init__(
         self,
         mod: Optional[IRModule] = None,
+        *,
         target: Optional[Target] = None,
         space_generator: Optional["SpaceGenerator"] = None,
         search_strategy: Optional["SearchStrategy"] = None,
         sch_rules: Optional[List["ScheduleRule"]] = None,
         postprocs: Optional[List["Postproc"]] = None,
-        mutators: Optional[List["Mutator"]] = None,
+        mutator_probs: Optional[Dict["Mutator", float]] = None,
         task_name: str = "main",
         rand_state: int = -1,
         num_threads: Optional[int] = None,
     ):
-        """Constructor.
-
-        Parameters
-        ----------
-        mod : Optional[IRModule] = None
-            The workload to be optimized.
-        target : Optional[Target] = None
-            The target to be optimized for.
-        space_generator : Optional[SpaceGenerator] = None
-            The design space generator.
-        search_strategy : Optional[SearchStrategy] = None
-            The search strategy.
-        sch_rules : List[ScheduleRule] = []
-            The schedule rules.
-        postprocs : List[Postproc] = []
-            The postprocessors.
-        mutators : List[Mutator] = []
-            The mutators.
-        task_name : str = "main"
-            The name of the tuning task.
-        rand_state : int = -1
-            The random state.
-            Need to be in integer in [1, 2^31-1], -1 means using random number.
-        num_threads : Optional[int] = None
-            The number of threads to be used, None means using the logical cpu count.
-        """
         if isinstance(mod, PrimFunc):
             mod = IRModule.from_expr(mod)
         if num_threads is None:
@@ -139,7 +114,7 @@ class TuneContext(Object):
             search_strategy,
             sch_rules,
             postprocs,
-            mutators,
+            mutator_probs,
             task_name,
             rand_state,
             num_threads,
