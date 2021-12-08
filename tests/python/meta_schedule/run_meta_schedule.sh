@@ -1,4 +1,4 @@
-set -euxo pipefail
+# set -euxo pipefail
 
 RPC_HOST="192.168.6.66"
 RPC_PORT="4445"
@@ -17,7 +17,7 @@ run () {
         --rpc-host "$RPC_HOST"              \
         --rpc-port "$RPC_PORT"              \
         --rpc-key "$RPC_KEY"                \
-        --num-trials 1500                   \
+        --num-trials 5000                   \
         2>&1 | tee "$LOG_DIR/$name.log"
 }
 
