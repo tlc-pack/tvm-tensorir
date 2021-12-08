@@ -78,9 +78,10 @@ class ScopeReplacer : public StmtMutator {
   bool found_;
 };
 
-class BufferReplacer : public StmtExprMutator {
+class ReadWriteAtBufferReplacer : public StmtExprMutator {
  public:
-  explicit BufferReplacer(const Buffer& src, const Buffer& dst, Map<Block, Block>* block_sref_reuse)
+  explicit ReadWriteAtBufferReplacer(const Buffer& src, const Buffer& dst,
+                                     Map<Block, Block>* block_sref_reuse)
       : src_(src), dst_(dst), block_sref_reuse_(block_sref_reuse) {}
 
  private:
@@ -245,7 +246,7 @@ struct ReadWriteAtImpl {
       domain.push_back(Range::FromMinExtent(min, extent));
     }
     // Step 4. Insert the auto copy block and replace buffers
-    BufferReplacer replacer(src_, dst_, &block_sref_reuse_);
+    ReadWriteAtBufferReplacer replacer(src_, dst_, &block_sref_reuse_);
     for (int i = st; i < ed; ++i) {
       Stmt stmt = subtrees[i];
       subtrees.Set(i, Stmt(nullptr));
