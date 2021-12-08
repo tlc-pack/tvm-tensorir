@@ -34,7 +34,7 @@ def test_tune_matmul():
         tensors=te_workload.batch_matmul_nkkm(B=1, N=128, M=128, K=128),
         target=Target("llvm --num-cores=16"),
         config=ReplayTraceConfig(
-            num_trials_per_iter=64,
+            num_trials_per_iter=32,
             num_trials_total=32,
         ),
     )
