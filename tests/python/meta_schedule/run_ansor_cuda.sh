@@ -2,17 +2,17 @@ set -euxo pipefail
 
 RPC_HOST="192.168.6.66"
 RPC_PORT="4445"
-RPC_KEY="raspi4b-aarch64"
-TARGET="raspberry-pi/4b-64"
+RPC_KEY="jetson-agx-xavier"
+TARGET="nvidia/jetson-agx-xavier"
 NUM_TRIALS=800
-LOG_DIR=$HOME/logs/ansor-cpu/
+LOG_DIR=$HOME/logs/ansor-cuda/
 
 mkdir -p $LOG_DIR
 
 run () {
     name=$1
     echo "Running workload $name"
-    python tests/python/meta_schedule/test_ansor_cpu.py \
+    python tests/python/meta_schedule/test_ansor.py \
         --workload "$name"                  \
         --target "$TARGET"                  \
         --rpc-host "$RPC_HOST"              \
