@@ -2,16 +2,16 @@
 
 RPC_HOST="192.168.6.66"
 RPC_PORT="4445"
-RPC_KEY="raspi4b-aarch64"
-TARGET="raspberry-pi/4b-64"
-LOG_DIR=$HOME/logs/ms-cpu/
+RPC_KEY="jetson-agx-xavier"
+TARGET="nvidia/jetson-agx-xavier"
+LOG_DIR=$HOME/logs/ms-cuda/
 
 mkdir -p $LOG_DIR
 
 run () {
     name=$1
     echo "Running workload $name"
-    python tests/python/meta_schedule/test_tune_te_cpu.py \
+    python tests/python/meta_schedule/test_meta_schedule.py \
         --workload "$name"                  \
         --target "$TARGET"                  \
         --rpc-host "$RPC_HOST"              \
@@ -24,7 +24,7 @@ run () {
 # Single op
 run C1D
 run C2D
-# run C3D
+run C3D
 run CAP
 run DEP
 run DIL
