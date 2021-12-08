@@ -87,6 +87,7 @@ def main():
             num_trials_total=ARGS.num_trials,
         ),
         runner=runner,
+        task_name=ARGS.workload,
     )
     if sch is None:
         print("No valid schedule found!")
