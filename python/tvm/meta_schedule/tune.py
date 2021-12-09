@@ -21,6 +21,8 @@ import os.path
 from typing import Callable, Dict, List, Optional, Union
 
 from tvm.ir.module import IRModule
+from tvm.runtime import NDArray
+from tvm.meta_schedule.integration import extract_task
 from tvm.target.target import Target
 from tvm.te import Tensor, create_prim_func
 from tvm.tir import PrimFunc, Schedule
@@ -606,3 +608,127 @@ def tune_te(
         mutator_probs=mutator_probs,
         num_threads=num_threads,
     )
+
+
+from tvm import script
+
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,missing-docstring
+
+
+from tvm.script import tir as T
+
+
+@script.ir_module
+class MatmulModule:
+    @T.prim_func
+    def matmul(a: T.handle, b: T.handle, c: T.handle) -> None:  # pylint: disable=no-self-argument
+        T.func_attr({"global_symbol": "matmul", "tir.noalias": True})
+        A = T.match_buffer(a, (1024, 1024), "float32")
+        B = T.match_buffer(b, (1024, 1024), "float32")
+        C = T.match_buffer(c, (1024, 1024), "float32")
+        for i, j, k in T.grid(1024, 1024, 1024):
+            with T.block("matmul"):
+                vi, vj, vk = T.axis.remap("SSR", [i, j, k])
+                with T.init():
+                    C[vi, vj] = 0.0
+                C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
+
+
+def tune_relay(
+    mod: Union[RelayFunc, IRModule],
+    target: Union[str, Target],
+    config: SearchStrategyConfig,
+    params: Optional[Dict[str, NDArray]] = None,
+    *,
+    task_name: str = "main",
+    work_dir: Optional[str] = None,
+    builder: Optional[Builder] = None,
+    runner: Optional[Runner] = None,
+    database: Optional[Database] = None,
+    measure_callbacks: Optional[List[MeasureCallback]] = None,
+    f_tune_context: Optional[TYPE_F_TUNE_CONTEXT] = None,
+    f_task_scheduler: Optional[TYPE_F_TASK_SCHEDULER] = None,
+) -> List[Optional[Schedule]]:
+    """Tune a TIR IRModule with a given target.
+
+    Parameters
+    ----------
+    mod : Union[RelayFunc, IRModule]
+        The module to tune.
+    target : Union[str, Target]
+        The target to tune for.
+    config : SearchStrategyConfig
+        The search strategy config.
+    params : Optional[Dict[str, tvm.runtime.NDArray]]
+        The associated parameters of the program
+    task_name : str
+        The name of the task.
+    work_dir : Optional[str]
+        The working directory to save intermediate results.
+    builder : Optional[Builder]
+        The builder to use.
+    runner : Optional[Runner]
+        The runner to use.
+    database : Optional[Database]
+        The database to use.
+    measure_callbacks : Optional[List[MeasureCallback]]
+        The callbacks used during tuning.
+    f_tune_context : Optional[TYPE_F_TUNE_CONTEXT]
+        The function to create TuneContext.
+    f_task_scheduler : Optional[TYPE_F_TASK_SCHEDULER]
+        The function to create TaskScheduler.
+
+    Returns
+    -------
+    schs : List[Optional[Schedule]]
+        The tuned schedules.
+    """
+    with _work_dir_context(work_dir) as path:
+        logger.info("Working directory: %s", path)
+        extracted_tasks = extract_task(mod, target, params)  #!!!!!!!!!! DEBUG ONLY
+        # import pickle  #!!!!!!!!!! DEBUG ONLY
+
+        # pickle.dump(extracted_tasks, open("/home/zxybazh/test.pickle", "wb"), HIGHEST_PROTOCOL)
+
+        # extracted_tasks = pickle.load(
+        #    open("/home/zxybazh/test.pickle", "rb")
+        # )  #!!!!!!!!!! DEBUG ONLY
+        target = _parse_target(target)
+        builder = _parse_builder(builder)
+        runner = _parse_runner(runner)
+        database = _parse_database(database, path)
+        measure_callbacks = _parse_measure_callbacks(measure_callbacks)
+        tune_contexts = []
+        for task in extracted_tasks:
+            if task.task_name == "fused_nn_adaptive_avg_pool2d":
+                continue
+            assert (
+                len(task.dispatched) == 1
+            ), "Only size 1 dispatched task list is supported for now"
+            mod = _parse_mod(task.dispatched[0])
+            tune_contexts.append(
+                _parse_f_tune_context(f_tune_context)(mod, target, config, task_name)
+            )
+        task_scheduler = _parse_f_task_scheduler(f_task_scheduler)(
+            tune_contexts,
+            builder,
+            runner,
+            database,
+            measure_callbacks,
+        )
+
+        task_scheduler.tune()
+
+        schs = []
+
+        for task in tune_contexts:
+            mod = task.mod
+            workload = database.commit_workload(mod)
+            bests: List[TuningRecord] = database.get_top_k(workload, top_k=1)
+            if not bests:
+                return None
+            assert len(bests) == 1
+            sch = Schedule(mod)
+            bests[0].trace.apply_to_schedule(sch, remove_postproc=False)
+            schs.append(sch)
+        return schs
