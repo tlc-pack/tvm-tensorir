@@ -81,14 +81,28 @@ def main():
     workload_func, params = CONFIGS[ARGS.workload]
     params = params[0]
     workload_func = auto_scheduler.register_workload(workload_func)
+
+    if ARGS.target.device_name == "cpu":
+        hardware_params = auto_scheduler.HardwareParams(
+            num_cores=int(ARGS.target.attrs["num-cores"]),
+            target=ARGS.target,
+        )
+    else:
+        hardware_params = auto_scheduler.HardwareParams(
+            num_cores=-1,
+            vector_unit_bytes=16,
+            cache_line_bytes=64,
+            max_shared_memory_per_block=int(ARGS.target.attrs["shared_memory_per_block"]),
+            max_local_memory_per_block=int(ARGS.target.attrs["registers_per_block"]),
+            max_threads_per_block=int(ARGS.target.attrs["max_threads_per_block"]),
+            max_vthread_extent=8,
+            warp_size=32,
+        )
     task = auto_scheduler.SearchTask(
         func=workload_func,
         args=params,
         target=ARGS.target,
-        hardware_params=auto_scheduler.HardwareParams(
-            num_cores=int(ARGS.target.attrs["num-cores"]),
-            target=ARGS.target,
-        ),
+        hardware_params=hardware_params,
     )
     runner = auto_scheduler.RPCRunner(
         key=ARGS.rpc_key,
