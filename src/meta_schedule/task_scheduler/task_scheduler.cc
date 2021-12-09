@@ -95,6 +95,7 @@ void TaskSchedulerNode::InitializeTask(int task_id) {
   TuneContext task = this->tasks[task_id];
   LOG(INFO) << "Initializing task " << task_id << ": " << task->task_name << ", mod =\n"
             << tir::AsTVMScript(task->mod);
+  // debug using python side api
   this->tasks[task_id]->Initialize();
 }
 
