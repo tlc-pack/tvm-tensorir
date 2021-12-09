@@ -21,11 +21,9 @@ from itertools import chain as itertools_chain
 import logging
 import os
 import tempfile
-from typing import Callable, Dict, List, NamedTuple, Optional, TYPE_CHECKING, Tuple
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, TYPE_CHECKING, Tuple
 
 import numpy as np
-
-from tvm.tir.expr import Any
 
 from ...contrib.tar import tar, untar
 from ..cost_model import PyCostModel
@@ -534,8 +532,8 @@ class XGBModel(PyCostModel):
 
         ys_pred = self.booster.predict(d_valid.dmatrix)
         eval_result: List[Tuple[str, float]] = [
-            f_eval(ys_pred)
-            for f_eval in (
+            feval(ys_pred)
+            for feval in (
                 average_peak_score,
                 d_valid.rmse,
             )

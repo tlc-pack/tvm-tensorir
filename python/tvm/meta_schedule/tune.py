@@ -16,329 +16,441 @@
 # under the License.
 """User-facing Tuning API"""
 
-from contextlib import contextmanager
 import logging
 import os.path
-import tempfile
-from typing import Callable, Generator, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 from tvm.ir.module import IRModule
 from tvm.target.target import Target
 from tvm.te import Tensor, create_prim_func
 from tvm.tir import PrimFunc, Schedule
 
-from . import schedule_rule
-from . import measure_callback
-from . import postproc
-from . import mutator
 from .builder import Builder, LocalBuilder
 from .cost_model import CostModel, XGBModel
 from .database import Database, JSONDatabase, TuningRecord
+from .feature_extractor import PerStoreFeature
 from .measure_callback import MeasureCallback
+from .mutator import Mutator
+from .postproc import Postproc
 from .runner import LocalRunner, Runner
-from .search_strategy import ReplayFuncConfig, ReplayTraceConfig
-from .space_generator import PostOrderApply
+from .schedule_rule import ScheduleRule
+from .search_strategy import (
+    EvolutionarySearchConfig,
+    ReplayFuncConfig,
+    ReplayTraceConfig,
+)
+from .space_generator import PostOrderApply, SpaceGenerator
 from .task_scheduler import RoundRobin, TaskScheduler
 from .tune_context import TuneContext
 
 
 logger = logging.getLogger(__name__)
 
-
 SearchStrategyConfig = Union[
     ReplayFuncConfig,
     ReplayTraceConfig,
+    EvolutionarySearchConfig,
 ]
-
-TYPE_F_TUNE_CONTEXT = Callable[  # pylint: disable=invalid-name
-    [
-        IRModule,
-        Target,
-        SearchStrategyConfig,
-        str,
-    ],
-    TuneContext,
-]
-
-TYPE_F_TASK_SCHEDULER = Callable[  # pylint: disable=invalid-name
+TypeSpaceGenerator = Callable[[], SpaceGenerator]
+TypeScheduleRule = Callable[[], List[ScheduleRule]]
+TypePostproc = Callable[[], List[Postproc]]
+TypeMutatorProb = Callable[[], Dict[Mutator, float]]
+TypeTaskScheduler = Callable[
     [
         List[TuneContext],
         Builder,
         Runner,
         Database,
+        CostModel,
         List[MeasureCallback],
     ],
     TaskScheduler,
 ]
 
 
-def _parse_mod(mod: Union[PrimFunc, IRModule]) -> IRModule:
-    if isinstance(mod, PrimFunc):
-        mod = mod.with_attr("global_symbol", "main")
-        mod = mod.with_attr("tir.noalias", True)
-        mod = IRModule({"main": mod})
-    if not isinstance(mod, IRModule):
-        raise TypeError(f"Expected `mod` to be PrimFunc or IRModule, but gets: {mod}")
-    return mod
+class DefaultLLVM:
+    """Default tuning configuration for LLVM."""
 
-
-def _parse_target(target: Union[str, Target]) -> Target:
-    if isinstance(target, str):
-        target = Target(target)
-    if not isinstance(target, Target):
-        raise TypeError(f"Expected `target` to be str or Target, but gets: {target}")
-    return target
-
-
-@contextmanager
-def _work_dir_context(work_dir: Optional[str]) -> Generator[str, None, None]:
-    if work_dir is not None and not os.path.isdir(work_dir):
-        raise ValueError(f"`work_dir` must be a directory, but gets: {work_dir}")
-    temp_dir = None
-    try:
-        if work_dir is not None:
-            yield work_dir
-        else:
-            temp_dir = tempfile.TemporaryDirectory()
-            yield temp_dir.name
-    finally:
-        if temp_dir is not None:
-            temp_dir.cleanup()
-
-
-def _parse_builder(builder: Optional[Builder]) -> Builder:
-    if builder is None:
-        builder = LocalBuilder()
-    if not isinstance(builder, Builder):
-        raise TypeError(f"Expected `builder` to be Builder, but gets: {builder}")
-    return builder
-
-
-def _parse_runner(runner: Optional[Runner]) -> Runner:
-    if runner is None:
-        runner = LocalRunner()
-    if not isinstance(runner, Runner):
-        raise TypeError(f"Expected `runner` to be Runner, but gets: {runner}")
-    return runner
-
-
-def _parse_database(database: Optional[Database], path: str) -> Database:
-    if database is None:
-        database = JSONDatabase(
-            path_workload=os.path.join(path, "workload.json"),
-            path_tuning_record=os.path.join(path, "tuning_record.json"),
+    @staticmethod
+    def _sch_rules() -> List[ScheduleRule]:
+        from tvm.meta_schedule import (  # pylint: disable=import-outside-toplevel
+            schedule_rule as M,
         )
-    if not isinstance(database, Database):
-        raise TypeError(f"Expected `database` to be Database, but gets: {database}")
-    return database
 
-
-def _parse_measure_callbacks(
-    measure_callbacks: Optional[List[MeasureCallback]],
-) -> List[MeasureCallback]:
-    if measure_callbacks is None:
-        measure_callbacks = [
-            measure_callback.AddToDatabase(),
-            measure_callback.RemoveBuildArtifact(),
-            measure_callback.EchoStatistics(),
+        return [
+            M.AutoInline(
+                into_producer=False,
+                into_consumer=True,
+                into_cache_only=False,
+                inline_const_tensor=True,
+                disallow_if_then_else=True,
+                require_injective=True,
+                require_ordered=True,
+                disallow_op=["tir.exp"],
+            ),
+            M.MultiLevelTiling(
+                structure="SSRSRS",
+                tile_binds=None,
+                max_innermost_factor=64,
+                vector_load_max_len=None,
+                reuse_read=None,
+                reuse_write=M.ReuseType(
+                    req="may",
+                    levels=[1, 2],
+                    scope="global",
+                ),
+            ),
+            M.ParallelizeVectorizeUnroll(
+                max_jobs_per_core=16,
+                max_vectorize_extent=32,
+                unroll_max_steps=[0, 16, 64, 512],
+                unroll_explicit=True,
+            ),
+            M.RandomComputeLocation(),
         ]
-    if not isinstance(measure_callbacks, (list, tuple)):
-        raise TypeError(
-            f"Expected `measure_callbacks` to be List[MeasureCallback], "
-            f"but gets: {measure_callbacks}"
+
+    @staticmethod
+    def _postproc() -> List[Postproc]:
+        from tvm.meta_schedule import (  # pylint: disable=import-outside-toplevel
+            postproc as M,
         )
-    measure_callbacks = list(measure_callbacks)
-    for i, callback in enumerate(measure_callbacks):
-        if not isinstance(callback, MeasureCallback):
+
+        return [
+            M.RewriteParallelVectorizeUnroll(),
+            M.RewriteReductionBlock(),
+        ]
+
+    @staticmethod
+    def _mutator_probs() -> Dict[Mutator, float]:
+        from tvm.meta_schedule import (  # pylint: disable=import-outside-toplevel
+            mutator as M,
+        )
+
+        return {
+            M.MutateTileSize(): 0.9,
+            M.MutateUnroll(): 0.03,
+            M.MutateParallel(max_jobs_per_core=16): 0.02,
+        }
+
+
+class DefaultCUDA:
+    """Default tuning configuration for CUDA."""
+
+    @staticmethod
+    def _sch_rules() -> List[ScheduleRule]:
+        from tvm.meta_schedule import (  # pylint: disable=import-outside-toplevel
+            schedule_rule as M,
+        )
+
+        return [
+            M.AutoInline(
+                into_producer=False,
+                into_consumer=True,
+                into_cache_only=False,
+                inline_const_tensor=True,
+                disallow_if_then_else=False,
+                require_injective=False,
+                require_ordered=False,
+                disallow_op=None,
+            ),
+            M.MultiLevelTiling(
+                structure="SSSRRSRS",
+                tile_binds=["blockIdx.x", "vthread.x", "threadIdx.x"],
+                max_innermost_factor=64,
+                vector_load_max_len=4,
+                reuse_read=M.ReuseType(
+                    req="must",
+                    levels=[4],
+                    scope="shared",
+                ),
+                reuse_write=M.ReuseType(
+                    req="must",
+                    levels=[3],
+                    scope="local",
+                ),
+            ),
+            M.AutoInline(
+                into_producer=True,
+                into_consumer=True,
+                into_cache_only=True,
+                inline_const_tensor=True,
+                disallow_if_then_else=False,
+                require_injective=False,
+                require_ordered=False,
+                disallow_op=None,
+            ),
+            M.ParallelizeVectorizeUnroll(
+                max_jobs_per_core=-1,  # disable parallelize
+                max_vectorize_extent=-1,  # disable vectorize
+                unroll_max_steps=[0, 16, 64, 512, 1024],
+                unroll_explicit=True,
+            ),
+        ]
+
+    @staticmethod
+    def _postproc() -> List[Postproc]:
+        from tvm.meta_schedule import (  # pylint: disable=import-outside-toplevel
+            postproc as M,
+        )
+
+        return [
+            M.RewriteCooperativeFetch(),
+            M.RewriteUnboundBlock(),
+            M.RewriteParallelVectorizeUnroll(),
+            M.RewriteReductionBlock(),
+            M.VerifyGPUCode(),
+        ]
+
+    @staticmethod
+    def _mutator_probs() -> Dict[Mutator, float]:
+        from tvm.meta_schedule import (  # pylint: disable=import-outside-toplevel
+            mutator as M,
+        )
+
+        return {
+            M.MutateTileSize(): 0.9,
+            M.MutateUnroll(): 0.1,
+        }
+
+
+class Parse:
+    """Parse tuning configuration from user inputs."""
+
+    @staticmethod
+    def _mod(mod: Union[PrimFunc, IRModule]) -> IRModule:
+        if isinstance(mod, PrimFunc):
+            mod = mod.with_attr("global_symbol", "main")
+            mod = mod.with_attr("tir.noalias", True)
+            mod = IRModule({"main": mod})
+        if not isinstance(mod, IRModule):
+            raise TypeError(f"Expected `mod` to be PrimFunc or IRModule, but gets: {mod}")
+        return mod
+
+    @staticmethod
+    def _target(target: Union[str, Target]) -> Target:
+        if isinstance(target, str):
+            target = Target(target)
+        if not isinstance(target, Target):
+            raise TypeError(f"Expected `target` to be str or Target, but gets: {target}")
+        return target
+
+    @staticmethod
+    def _builder(builder: Optional[Builder]) -> Builder:
+        if builder is None:
+            builder = LocalBuilder()
+        if not isinstance(builder, Builder):
+            raise TypeError(f"Expected `builder` to be Builder, but gets: {builder}")
+        return builder
+
+    @staticmethod
+    def _runner(runner: Optional[Runner]) -> Runner:
+        if runner is None:
+            runner = LocalRunner()
+        if not isinstance(runner, Runner):
+            raise TypeError(f"Expected `runner` to be Runner, but gets: {runner}")
+        return runner
+
+    @staticmethod
+    def _database(database: Union[None, Database], path: str) -> Database:
+        if database is None:
+            path_workload = os.path.join(path, "workload.json")
+            path_tuning_record = os.path.join(path, "tuning_record.json")
+            logger.info(
+                "Creating JSONDatabase. Workload at: %s. Tuning records at: %s",
+                path_workload,
+                path_tuning_record,
+            )
+            database = JSONDatabase(
+                path_workload=path_workload,
+                path_tuning_record=path_tuning_record,
+            )
+        elif callable(database):
+            database = database(path)
+        if not isinstance(database, Database):
+            raise TypeError(f"Expected `database` to be Database, but gets: {database}")
+        return database
+
+    @staticmethod
+    def _callbacks(
+        measure_callbacks: Optional[List[MeasureCallback]],
+    ) -> List[MeasureCallback]:
+        if measure_callbacks is None:
+            from tvm.meta_schedule import (  # pylint: disable=import-outside-toplevel
+                measure_callback as M,
+            )
+
+            return [
+                M.AddToDatabase(),
+                M.RemoveBuildArtifact(),
+                M.EchoStatistics(),
+            ]
+        if not isinstance(measure_callbacks, (list, tuple)):
             raise TypeError(
                 f"Expected `measure_callbacks` to be List[MeasureCallback], "
-                f"but measure_callbacks[{i}] is: {callback}"
+                f"but gets: {measure_callbacks}"
             )
-    return measure_callbacks
+        measure_callbacks = list(measure_callbacks)
+        for i, callback in enumerate(measure_callbacks):
+            if not isinstance(callback, MeasureCallback):
+                raise TypeError(
+                    f"Expected `measure_callbacks` to be List[MeasureCallback], "
+                    f"but measure_callbacks[{i}] is: {callback}"
+                )
+        return measure_callbacks
 
+    @staticmethod
+    def _cost_model(cost_model: Optional[CostModel]) -> CostModel:
+        if cost_model is None:
+            return XGBModel(extractor=PerStoreFeature())
+        if not isinstance(cost_model, CostModel):
+            raise TypeError(f"Expected `cost_model` to be CostModel, but gets: {cost_model}")
+        return cost_model
 
-def _parse_f_tune_context(f_tune_context: Optional[TYPE_F_TUNE_CONTEXT]) -> TYPE_F_TUNE_CONTEXT:
-    def default_llvm(
-        mod: IRModule,
-        target: Target,
-        config: SearchStrategyConfig,
-        task_name: str,
-    ) -> TuneContext:
-        return TuneContext(
-            mod=mod,
-            target=target,
-            space_generator=PostOrderApply(),
-            search_strategy=config.create_strategy(),
-            sch_rules=[
-                schedule_rule.AutoInline(
-                    into_producer=False,
-                    into_consumer=True,
-                    into_cache_only=False,
-                    inline_const_tensor=True,
-                    disallow_if_then_else=True,
-                    require_injective=True,
-                    require_ordered=True,
-                    disallow_op=["tir.exp"],
-                ),
-                schedule_rule.MultiLevelTiling(
-                    structure="SSRSRS",
-                    tile_binds=None,
-                    max_innermost_factor=64,
-                    vector_load_max_len=None,
-                    reuse_read=None,
-                    reuse_write=schedule_rule.ReuseType(
-                        req="may",
-                        levels=[1, 2],
-                        scope="global",
-                    ),
-                ),
-                schedule_rule.ParallelizeVectorizeUnroll(
-                    max_jobs_per_core=16,
-                    max_vectorize_extent=32,
-                    unroll_max_steps=[0, 16, 64, 512],
-                    unroll_explicit=True,
-                ),
-                schedule_rule.RandomComputeLocation(),
-            ],
-            postprocs=[
-                postproc.RewriteParallelVectorizeUnroll(),
-                postproc.RewriteReductionBlock(),
-            ],
-            mutator_probs={
-                mutator.MutateTileSize(): 0.9,
-                mutator.MutateUnroll(): 0.03,
-                mutator.MutateParallel(max_jobs_per_core=16): 0.02,
-            },
-            task_name=task_name,
-            rand_state=-1,
-            num_threads=None,
-        )
+    @staticmethod
+    def _space_generator(space_generator: Optional[TypeSpaceGenerator]) -> SpaceGenerator:
+        if space_generator is None:
+            return PostOrderApply()
+        if callable(space_generator):
+            space_generator = space_generator()
+        if not isinstance(space_generator, SpaceGenerator):
+            raise TypeError(
+                f"Expected `space_generator` to return SpaceGenerator, "
+                f"but gets: {space_generator}"
+            )
+        return space_generator
 
-    def default_cuda(
-        mod: IRModule,
-        target: Target,
-        config: SearchStrategyConfig,
-        task_name: str,
-    ) -> TuneContext:
-        return TuneContext(
-            mod=mod,
-            target=target,
-            space_generator=PostOrderApply(),
-            search_strategy=config.create_strategy(),
-            sch_rules=[
-                schedule_rule.AutoInline(
-                    into_producer=False,
-                    into_consumer=True,
-                    into_cache_only=False,
-                    inline_const_tensor=True,
-                    disallow_if_then_else=False,
-                    require_injective=False,
-                    require_ordered=False,
-                    disallow_op=None,
-                ),
-                schedule_rule.MultiLevelTiling(
-                    structure="SSSRRSRS",
-                    tile_binds=["blockIdx.x", "vthread.x", "threadIdx.x"],
-                    max_innermost_factor=64,
-                    vector_load_max_len=4,
-                    reuse_read=schedule_rule.ReuseType(
-                        req="must",
-                        levels=[4],
-                        scope="shared",
-                    ),
-                    reuse_write=schedule_rule.ReuseType(
-                        req="must",
-                        levels=[3],
-                        scope="local",
-                    ),
-                ),
-                schedule_rule.AutoInline(
-                    into_producer=True,
-                    into_consumer=True,
-                    into_cache_only=True,
-                    inline_const_tensor=True,
-                    disallow_if_then_else=False,
-                    require_injective=False,
-                    require_ordered=False,
-                    disallow_op=None,
-                ),
-                schedule_rule.ParallelizeVectorizeUnroll(
-                    max_jobs_per_core=-1,  # disable parallelize
-                    max_vectorize_extent=-1,  # disable vectorize
-                    unroll_max_steps=[0, 16, 64, 512, 1024],
-                    unroll_explicit=True,
-                ),
-            ],
-            postprocs=[
-                postproc.RewriteCooperativeFetch(),
-                postproc.RewriteUnboundBlock(),
-                postproc.RewriteParallelVectorizeUnroll(),
-                postproc.RewriteReductionBlock(),
-                postproc.VerifyGPUCode(),
-            ],
-            mutator_probs={
-                mutator.MutateTileSize(): 0.9,
-                mutator.MutateUnroll(): 0.1,
-            },
-            task_name=task_name,
-            rand_state=-1,
-            num_threads=None,
-        )
-
-    def default(
-        mod: IRModule,
-        target: Target,
-        config: SearchStrategyConfig,
-        task_name: str,
-    ) -> TuneContext:
+    @staticmethod
+    def _sch_rules(sch_rules: Optional[TypeScheduleRule], target: Target) -> List[ScheduleRule]:
+        if callable(sch_rules):
+            return sch_rules()
+        if sch_rules is not None:
+            raise TypeError(f"Expected `sch_rules` to be None or callable, but gets: {sch_rules}")
+        # pylint: disable=protected-access
         if target.kind.name == "llvm":
-            return default_llvm(mod, target, config, task_name)
+            return DefaultLLVM._sch_rules()
         if target.kind.name == "cuda":
-            return default_cuda(mod, target, config, task_name)
-        raise NotImplementedError(f"Unsupported target: {target.kind.name}")
+            return DefaultCUDA._sch_rules()
+        # pylint: enable=protected-access
+        raise ValueError(f"Unsupported target: {target}")
 
-    if f_tune_context is None:
-        return default
-    return f_tune_context
+    @staticmethod
+    def _postproc(postproc: Optional[TypePostproc], target: Target) -> List[Postproc]:
+        if callable(postproc):
+            return postproc()
+        if postproc is not None:
+            raise TypeError(f"Expected `postproc` to be None or callable, but gets: {postproc}")
+        # pylint: disable=protected-access
+        if target.kind.name == "llvm":
+            return DefaultLLVM._postproc()
+        if target.kind.name == "cuda":
+            return DefaultCUDA._postproc()
+        # pylint: enable=protected-access
+        raise ValueError(f"Unsupported target: {target}")
 
+    @staticmethod
+    def _mutator_probs(
+        mutator_probs: Optional[TypeMutatorProb],
+        target: Target,
+    ) -> Dict[Mutator, float]:
+        if callable(mutator_probs):
+            return mutator_probs()
+        if mutator_probs is not None:
+            raise TypeError(
+                f"Expected `mutator_probs` to be None or callable, but gets: {mutator_probs}"
+            )
+        # pylint: disable=protected-access
+        if target.kind.name == "llvm":
+            return DefaultLLVM._mutator_probs()
+        if target.kind.name == "cuda":
+            return DefaultCUDA._mutator_probs()
+        # pylint: enable=protected-access
+        raise ValueError(f"Unsupported target: {target}")
 
-def _parse_f_task_scheduler(
-    f_task_scheduler: Optional[TYPE_F_TASK_SCHEDULER],
-) -> TYPE_F_TASK_SCHEDULER:
-    def default(
+    @staticmethod
+    def _tune_context(
+        tune_context: Optional[TuneContext],
+        mod: IRModule,
+        target: Target,
+        config: SearchStrategyConfig,
+        task_name: str,
+        space_generator: Optional[TypeSpaceGenerator],
+        sch_rules: Optional[TypeScheduleRule],
+        postprocs: Optional[TypePostproc],
+        mutator_probs: Optional[TypeMutatorProb],
+        num_threads: Optional[int],
+    ) -> TuneContext:
+        if tune_context is None:
+            return TuneContext(
+                mod=mod,
+                target=target,
+                # pylint: disable=protected-access
+                space_generator=Parse._space_generator(space_generator),
+                search_strategy=config.create_strategy(),
+                sch_rules=Parse._sch_rules(sch_rules, target),
+                postprocs=Parse._postproc(postprocs, target),
+                mutator_probs=Parse._mutator_probs(mutator_probs, target),
+                # pylint: enable=protected-access
+                task_name=task_name,
+                rand_state=-1,
+                num_threads=num_threads,
+            )
+        if not isinstance(tune_context, TuneContext):
+            raise TypeError(f"Expected `tune_context` to be TuneContext, but gets: {tune_context}")
+        return tune_context
+
+    @staticmethod
+    def _task_scheduler(
+        task_scheduler: Union[None, TaskScheduler, TypeTaskScheduler],
         tasks: List[TuneContext],
         builder: Builder,
         runner: Runner,
         database: Database,
+        cost_model: CostModel,
         measure_callbacks: List[MeasureCallback],
-    ) -> TaskScheduler:
-        return RoundRobin(
-            tasks=tasks,
-            builder=builder,
-            runner=runner,
-            database=database,
-            measure_callbacks=measure_callbacks,
-        )
-
-    if f_task_scheduler is None:
-        return default
-    return f_task_scheduler
+    ):
+        if task_scheduler is None:
+            return RoundRobin(
+                tasks=tasks,
+                builder=builder,
+                runner=runner,
+                database=database,
+                cost_model=cost_model,
+                measure_callbacks=measure_callbacks,
+            )
+        if callable(task_scheduler):
+            return task_scheduler(
+                tasks,
+                builder,
+                runner,
+                database,
+                cost_model,
+                measure_callbacks,
+            )
+        if not isinstance(task_scheduler, TaskScheduler):
+            raise TypeError(
+                f"Expected `task_scheduler` to be TaskScheduler, but gets: {task_scheduler}"
+            )
+        return task_scheduler
 
 
 def tune_tir(
     mod: Union[IRModule, PrimFunc],
     target: Union[str, Target],
     config: SearchStrategyConfig,
+    work_dir: str,
     *,
     task_name: str = "main",
-    work_dir: Optional[str] = None,
     builder: Optional[Builder] = None,
     runner: Optional[Runner] = None,
     database: Optional[Database] = None,
     cost_model: Optional[CostModel] = None,
     measure_callbacks: Optional[List[MeasureCallback]] = None,
-    f_tune_context: Optional[TYPE_F_TUNE_CONTEXT] = None,
-    f_task_scheduler: Optional[TYPE_F_TASK_SCHEDULER] = None,
+    task_scheduler: Optional[TaskScheduler] = None,
+    space: Optional[TypeSpaceGenerator] = None,
+    sch_rules: Optional[TypeScheduleRule] = None,
+    postprocs: Optional[TypePostproc] = None,
+    mutator_probs: Optional[TypeMutatorProb] = None,
+    num_threads: Optional[int] = None,
 ) -> Optional[Schedule]:
     """Tune a TIR IRModule with a given target.
 
@@ -375,46 +487,63 @@ def tune_tir(
         The tuned schedule.
     """
 
-    with _work_dir_context(work_dir) as path:
-        logger.info("Working directory: %s", path)
-        mod = _parse_mod(mod)
-        target = _parse_target(target)
-        builder = _parse_builder(builder)
-        runner = _parse_runner(runner)
-        database = _parse_database(database, path)
-        measure_callbacks = _parse_measure_callbacks(measure_callbacks)
-        tune_context = _parse_f_tune_context(f_tune_context)(mod, target, config, task_name)
-        task_scheduler = _parse_f_task_scheduler(f_task_scheduler)(
-            [tune_context],
-            builder,
-            runner,
-            database,
-            measure_callbacks,
-        )
-        task_scheduler.tune()
-        workload = database.commit_workload(mod)
-        bests: List[TuningRecord] = database.get_top_k(workload, top_k=1)
-        if not bests:
-            return None
-        assert len(bests) == 1
-        sch = Schedule(mod)
-        bests[0].trace.apply_to_schedule(sch, remove_postproc=False)
-        return sch
+    logger.info("Working directory: %s", work_dir)
+    # pylint: disable=protected-access
+    mod = Parse._mod(mod)
+    database = Parse._database(database, work_dir)
+    tune_context = Parse._tune_context(
+        tune_context=None,
+        mod=mod,
+        target=Parse._target(target),
+        config=config,
+        task_name=task_name,
+        space_generator=space,
+        sch_rules=sch_rules,
+        postprocs=postprocs,
+        mutator_probs=mutator_probs,
+        num_threads=num_threads,
+    )
+    task_scheduler = Parse._task_scheduler(
+        task_scheduler,
+        [tune_context],
+        builder=Parse._builder(builder),
+        runner=Parse._runner(runner),
+        database=database,
+        cost_model=Parse._cost_model(cost_model),
+        measure_callbacks=Parse._callbacks(measure_callbacks),
+    )
+    # pylint: enable=protected-access
+    task_scheduler.tune()
+    bests: List[TuningRecord] = database.get_top_k(
+        database.commit_workload(mod),
+        top_k=1,
+    )
+    if not bests:
+        return None
+    assert len(bests) == 1
+    sch = Schedule(mod)
+    bests[0].trace.apply_to_schedule(sch, remove_postproc=False)
+    return sch
 
 
 def tune_te(
     tensors: List[Tensor],
     target: Union[str, Target],
     config: SearchStrategyConfig,
+    work_dir: str,
     *,
     task_name: str = "main",
-    work_dir: Optional[str] = None,
     builder: Optional[Builder] = None,
     runner: Optional[Runner] = None,
     database: Optional[Database] = None,
+    cost_model: Optional[CostModel] = None,
     measure_callbacks: Optional[List[MeasureCallback]] = None,
-    f_tune_context: Optional[TYPE_F_TUNE_CONTEXT] = None,
-    f_task_scheduler: Optional[TYPE_F_TASK_SCHEDULER] = None,
+    task_scheduler: Optional[TaskScheduler] = None,
+    space: Optional[TypeSpaceGenerator] = None,
+    sch_rules: Optional[TypeScheduleRule] = None,
+    postprocs: Optional[TypePostproc] = None,
+    mutator_probs: Optional[TypeMutatorProb] = None,
+    num_threads: Optional[int] = None,
 ) -> Optional[Schedule]:
     """Tune a TE compute DAG with a given target.
 
@@ -452,12 +581,17 @@ def tune_te(
         mod=create_prim_func(tensors),
         target=target,
         config=config,
-        task_name=task_name,
         work_dir=work_dir,
+        task_name=task_name,
         builder=builder,
         runner=runner,
         database=database,
+        cost_model=cost_model,
         measure_callbacks=measure_callbacks,
-        f_tune_context=f_tune_context,
-        f_task_scheduler=f_task_scheduler,
+        task_scheduler=task_scheduler,
+        space=space,
+        sch_rules=sch_rules,
+        postprocs=postprocs,
+        mutator_probs=mutator_probs,
+        num_threads=num_threads,
     )

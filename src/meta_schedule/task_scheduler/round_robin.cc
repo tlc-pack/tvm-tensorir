@@ -66,6 +66,9 @@ TaskScheduler TaskScheduler::RoundRobin(Array<TuneContext> tasks,        //
   n->cost_model = cost_model;
   n->measure_callbacks = measure_callbacks.value_or({});
   n->task_id = -1;
+  for (const TuneContext& task : tasks) {
+    task->task_scheduler = n.get();
+  }
   return TaskScheduler(n);
 }
 

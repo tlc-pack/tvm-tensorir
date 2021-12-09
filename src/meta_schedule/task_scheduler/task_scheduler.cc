@@ -178,7 +178,8 @@ void TaskSchedulerNode::JoinRunningTask(int task_id) {
   for (const RunnerFuture future : task->runner_futures.value()) {
     results.push_back(future->Result());
   }
-  task->search_strategy.value()->NotifyRunnerResults(results);
+  task->search_strategy.value()->NotifyRunnerResults(task, task->measure_candidates.value(),
+                                                     results);
   // Invoke the callbacks
   ICHECK(task->measure_candidates.defined());
   ICHECK(task->builder_results.defined());

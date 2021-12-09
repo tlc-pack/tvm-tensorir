@@ -20,6 +20,7 @@
 #define TVM_META_SCHEDULE_TASK_SCHEDULER_H_
 
 #include <tvm/meta_schedule/builder.h>
+#include <tvm/meta_schedule/cost_model.h>
 #include <tvm/meta_schedule/database.h>
 #include <tvm/meta_schedule/measure_callback.h>
 #include <tvm/meta_schedule/runner.h>

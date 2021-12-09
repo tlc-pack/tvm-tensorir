@@ -17,6 +17,8 @@
 # pylint: disable=missing-docstring
 import argparse
 import logging
+from os import cpu_count
+import tempfile
 
 import tvm
 from tvm import meta_schedule as ms
@@ -79,21 +81,24 @@ def main():
         alloc_repeat=3,
         max_workers=ARGS.rpc_workers,
     )
-    sch: tir.Schedule = ms.tune_tir(
-        mod=create_te_workload(ARGS.workload, 0),
-        target=ARGS.target,
-        config=ms.EvolutionarySearchConfig(
-            num_trials_per_iter=64,
-            num_trials_total=ARGS.num_trials,
-        ),
-        runner=runner,
-        task_name=ARGS.workload,
-    )
-    if sch is None:
-        print("No valid schedule found!")
-    else:
-        print(sch.mod.script())
-        print(sch.trace)
+    with tempfile.TemporaryDirectory() as work_dir:
+        sch: tir.Schedule = ms.tune_tir(
+            mod=create_te_workload(ARGS.workload, 0),
+            target=ARGS.target,
+            config=ms.EvolutionarySearchConfig(
+                num_trials_per_iter=64,
+                num_trials_total=ARGS.num_trials,
+            ),
+            runner=runner,
+            task_name=ARGS.workload,
+            work_dir=work_dir,
+            num_threads=cpu_count(),
+        )
+        if sch is None:
+            print("No valid schedule found!")
+        else:
+            print(sch.mod.script())
+            print(sch.trace)
 
 
 if __name__ == "__main__":

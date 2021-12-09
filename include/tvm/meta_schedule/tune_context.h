@@ -33,6 +33,8 @@
 namespace tvm {
 namespace meta_schedule {
 
+class TaskSchedulerNode;
+
 /*! \brief The auto tuning context. */
 class TuneContextNode : public runtime::Object {
  public:
@@ -57,6 +59,8 @@ class TuneContextNode : public runtime::Object {
   /*! \brief The number of threads to be used. */
   int num_threads;
 
+  /*! \brief The task scheduler that owns the tune context */
+  const TaskSchedulerNode* task_scheduler;
   /*! \brief Whether the tuning task has been stopped or finished. */
   bool is_stopped;
   /*! \brief The measure candidates. */

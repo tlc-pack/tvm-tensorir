@@ -16,16 +16,12 @@
 # under the License.
 """Evolutionary Search Strategy"""
 
-from typing import NamedTuple, TYPE_CHECKING
+from typing import NamedTuple
 
 from tvm._ffi import register_object
 
 from .. import _ffi_api
-from ..database import Database
 from .search_strategy import SearchStrategy
-
-if TYPE_CHECKING:
-    from ..cost_model import CostModel
 
 
 @register_object("meta_schedule.EvolutionarySearch")
@@ -54,10 +50,6 @@ class EvolutionarySearch(SearchStrategy):
         The probability of mutation.
     eps_greedy : float
         The ratio of greedy selected samples in the final picks.
-    database : Database
-        The database used in the search.
-    cost_model : CostModel
-        The cost model used in the search.
     """
 
     num_trials_per_iter: int
@@ -69,16 +61,12 @@ class EvolutionarySearch(SearchStrategy):
     max_evolve_fail_cnt: int
     p_mutate: float
     eps_greedy: float
-    database: Database
-    cost_model: "CostModel"
 
     def __init__(
         self,
         *,
         num_trials_per_iter: int,
         num_trials_total: int,
-        database: Database,
-        cost_model: "CostModel",
         population: int = 2048,
         max_replay_fail_cnt: int = 64,
         init_measured_ratio: float = 0.2,
@@ -99,8 +87,6 @@ class EvolutionarySearch(SearchStrategy):
             max_evolve_fail_cnt,
             p_mutate,
             eps_greedy,
-            database,
-            cost_model,
         )
 
 
@@ -109,8 +95,6 @@ class EvolutionarySearchConfig(NamedTuple):
 
     num_trials_per_iter: int
     num_trials_total: int
-    database: Database
-    cost_model: "CostModel"
     population: int = 2048
     max_replay_fail_cnt: int = 64
     init_measured_ratio: float = 0.2
@@ -123,8 +107,6 @@ class EvolutionarySearchConfig(NamedTuple):
         return EvolutionarySearch(
             num_trials_per_iter=self.num_trials_per_iter,
             num_trials_total=self.num_trials_total,
-            database=self.database,
-            cost_model=self.cost_model,
             population=self.population,
             max_replay_fail_cnt=self.max_replay_fail_cnt,
             init_measured_ratio=self.init_measured_ratio,
