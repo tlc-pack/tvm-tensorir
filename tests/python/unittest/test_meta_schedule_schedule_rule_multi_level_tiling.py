@@ -52,7 +52,7 @@ def test_cpu_matmul():
             "v21, v22 = sch.sample_perfect_tile(loop=l4, n=2, max_innermost_factor=64)",
             "l23, l24 = sch.split(loop=l4, factors=[v21, v22])",
             "sch.reorder(l9, l17, l10, l18, l23, l11, l19, l24, l12, l20)",
-            "sch.reverse_compute_at(block=b1, loop=l18, preserve_unit_loops=1)",
+            "sch.reverse_compute_at(block=b1, loop=l18, preserve_unit_loops=True)",
         ],
         [
             'b0 = sch.get_block(name="C", func_name="main")',
@@ -65,7 +65,7 @@ def test_cpu_matmul():
             "v21, v22 = sch.sample_perfect_tile(loop=l4, n=2, max_innermost_factor=64)",
             "l23, l24 = sch.split(loop=l4, factors=[v21, v22])",
             "sch.reorder(l9, l17, l10, l18, l23, l11, l19, l24, l12, l20)",
-            "sch.reverse_compute_at(block=b1, loop=l17, preserve_unit_loops=1)",
+            "sch.reverse_compute_at(block=b1, loop=l17, preserve_unit_loops=True)",
         ],
         [
             'b0 = sch.get_block(name="C", func_name="main")',
@@ -110,7 +110,7 @@ def test_cpu_matmul_relu():
             "v21, v22 = sch.sample_perfect_tile(loop=l4, n=2, max_innermost_factor=64)",
             "l23, l24 = sch.split(loop=l4, factors=[v21, v22])",
             "sch.reorder(l9, l17, l10, l18, l23, l11, l19, l24, l12, l20)",
-            "sch.reverse_compute_at(block=b1, loop=l18, preserve_unit_loops=1)",
+            "sch.reverse_compute_at(block=b1, loop=l18, preserve_unit_loops=True)",
         ],
         [
             'b0 = sch.get_block(name="C", func_name="main")',
@@ -123,7 +123,7 @@ def test_cpu_matmul_relu():
             "v21, v22 = sch.sample_perfect_tile(loop=l4, n=2, max_innermost_factor=64)",
             "l23, l24 = sch.split(loop=l4, factors=[v21, v22])",
             "sch.reorder(l9, l17, l10, l18, l23, l11, l19, l24, l12, l20)",
-            "sch.reverse_compute_at(block=b1, loop=l17, preserve_unit_loops=1)",
+            "sch.reverse_compute_at(block=b1, loop=l17, preserve_unit_loops=True)",
         ],
         [
             'b0 = sch.get_block(name="C", func_name="main")',
@@ -176,18 +176,18 @@ def test_cuda_matmul():
             "l33 = sch.fuse(l12, l22)",
             'sch.bind(loop=l33, thread_axis="threadIdx.x")',
             'b34 = sch.cache_read(block=b0, read_buffer_index=1, storage_scope="shared")',
-            "sch.compute_at(block=b34, loop=l28, preserve_unit_loops=1)",
+            "sch.compute_at(block=b34, loop=l28, preserve_unit_loops=True)",
             "l35, l36, l37, l38, l39, l40 = sch.get_loops(block=b34)",
             "l41 = sch.fuse(l39, l40)",
             "v42, v43 = sch.sample_perfect_tile(loop=l41, n=2, max_innermost_factor=4)",
             'sch.annotate(block_or_loop=b34, ann_key="meta_schedule.cooperative_fetch", ann_val=v43)',
             'b44 = sch.cache_read(block=b0, read_buffer_index=2, storage_scope="shared")',
-            "sch.compute_at(block=b44, loop=l28, preserve_unit_loops=1)",
+            "sch.compute_at(block=b44, loop=l28, preserve_unit_loops=True)",
             "l45, l46, l47, l48, l49, l50 = sch.get_loops(block=b44)",
             "l51 = sch.fuse(l49, l50)",
             "v52, v53 = sch.sample_perfect_tile(loop=l51, n=2, max_innermost_factor=4)",
             'sch.annotate(block_or_loop=b44, ann_key="meta_schedule.cooperative_fetch", ann_val=v53)',
-            "sch.reverse_compute_at(block=b1, loop=l33, preserve_unit_loops=1)",
+            "sch.reverse_compute_at(block=b1, loop=l33, preserve_unit_loops=True)",
         ]
     ]
     # pylint: enable=line-too-long
@@ -229,18 +229,18 @@ def test_cuda_matmul_relu():
             "l33 = sch.fuse(l12, l22)",
             'sch.bind(loop=l33, thread_axis="threadIdx.x")',
             'b34 = sch.cache_read(block=b0, read_buffer_index=1, storage_scope="shared")',
-            "sch.compute_at(block=b34, loop=l28, preserve_unit_loops=1)",
+            "sch.compute_at(block=b34, loop=l28, preserve_unit_loops=True)",
             "l35, l36, l37, l38, l39, l40 = sch.get_loops(block=b34)",
             "l41 = sch.fuse(l39, l40)",
             "v42, v43 = sch.sample_perfect_tile(loop=l41, n=2, max_innermost_factor=4)",
             'sch.annotate(block_or_loop=b34, ann_key="meta_schedule.cooperative_fetch", ann_val=v43)',
             'b44 = sch.cache_read(block=b0, read_buffer_index=2, storage_scope="shared")',
-            "sch.compute_at(block=b44, loop=l28, preserve_unit_loops=1)",
+            "sch.compute_at(block=b44, loop=l28, preserve_unit_loops=True)",
             "l45, l46, l47, l48, l49, l50 = sch.get_loops(block=b44)",
             "l51 = sch.fuse(l49, l50)",
             "v52, v53 = sch.sample_perfect_tile(loop=l51, n=2, max_innermost_factor=4)",
             'sch.annotate(block_or_loop=b44, ann_key="meta_schedule.cooperative_fetch", ann_val=v53)',
-            "sch.reverse_compute_at(block=b1, loop=l33, preserve_unit_loops=1)",
+            "sch.reverse_compute_at(block=b1, loop=l33, preserve_unit_loops=True)",
         ]
     ]
     # pylint: enable=line-too-long

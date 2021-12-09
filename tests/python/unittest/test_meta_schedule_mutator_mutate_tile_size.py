@@ -61,7 +61,7 @@ def _sch(decisions: List[List[int]]) -> Schedule:
     l17, l18, l19, l20 = sch.split(loop=l3, factors=[8, 4, 8, 2])
     l23, l24 = sch.split(loop=l4, factors=[512, 1])
     sch.reorder(l9, l17, l10, l18, l23, l11, l19, l24, l12, l20)
-    sch.reverse_compute_at(block=b1, loop=l18, preserve_unit_loops=1)
+    sch.reverse_compute_at(block=b1, loop=l18, preserve_unit_loops=True)
     # pylint: enable=invalid-name
     return sch
 

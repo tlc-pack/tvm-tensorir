@@ -73,7 +73,7 @@ def _sch(decisions: List[List[int]]) -> Schedule:
     )
     l23, l24 = sch.split(loop=l4, factors=[v21, v22])
     sch.reorder(l9, l17, l10, l18, l23, l11, l19, l24, l12, l20)
-    sch.reverse_compute_at(block=b1, loop=l18, preserve_unit_loops=1)
+    sch.reverse_compute_at(block=b1, loop=l18, preserve_unit_loops=True)
     v57 = sch.sample_categorical(
         candidates=[0, 16, 64, 512],
         probs=[0.25, 0.25, 0.25, 0.25],

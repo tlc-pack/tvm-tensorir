@@ -298,7 +298,7 @@ void TracedScheduleNode::ComputeAt(const BlockRV& block_rv, const LoopRV& loop_r
   static const InstructionKind& kind = InstructionKind::Get("ComputeAt");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                       /*inputs=*/{block_rv, loop_rv},
-                                      /*attrs=*/{Integer(preserve_unit_loops)},
+                                      /*attrs=*/{Bool(preserve_unit_loops)},
                                       /*outputs=*/{}));
 }
 
@@ -309,7 +309,7 @@ void TracedScheduleNode::ReverseComputeAt(const BlockRV& block_rv, const LoopRV&
   static const InstructionKind& kind = InstructionKind::Get("ReverseComputeAt");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                       /*inputs=*/{block_rv, loop_rv},
-                                      /*attrs=*/{Integer(preserve_unit_loops)},
+                                      /*attrs=*/{Bool(preserve_unit_loops)},
                                       /*outputs=*/{}));
 }
 
