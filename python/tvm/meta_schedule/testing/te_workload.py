@@ -589,6 +589,20 @@ def matmul(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     return (a, b, c)
 
 
+def matmul_fp16(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
+    a = te.placeholder((n, k), name="A", dtype="float16")
+    b = te.placeholder((k, m), name="B", dtype="float16")
+    k = te.reduce_axis((0, k), name="k")
+
+    def f_compute(i, j):
+        v_a = tir.Cast(dtype="float32", value=a[i, k])
+        v_b = tir.Cast(dtype="float32", value=b[k, j])
+        return te.sum(v_a * v_b, axis=[k])
+
+    c = te.compute((n, m), f_compute, name="C")
+    return [a, b, c]
+
+
 def matmul_relu(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     a = te.placeholder((n, k), name="A")
     b = te.placeholder((m, k), name="B")
@@ -598,6 +612,21 @@ def matmul_relu(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor
         lambda i, j: te.sum(a[i, k] * b[k, j], axis=[k]),
         name="C",
     )
+    d = topi.nn.relu(c)  # pylint: disable=invalid-name
+    return (a, b, d)
+
+
+def matmul_relu_fp16(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
+    a = te.placeholder((n, k), name="A", dtype="float16")
+    b = te.placeholder((k, m), name="B", dtype="float16")
+    k = te.reduce_axis((0, k), name="k")
+
+    def f_compute(i, j):
+        v_a = tir.Cast(dtype="float32", value=a[i, k])
+        v_b = tir.Cast(dtype="float32", value=b[k, j])
+        return te.sum(v_a * v_b, axis=[k])
+
+    c = te.compute((n, m), f_compute, name="C")
     d = topi.nn.relu(c)  # pylint: disable=invalid-name
     return (a, b, d)
 

@@ -130,7 +130,6 @@ class ConcreteScheduleNode : public ScheduleNode {
   BlockRV Blockize(const LoopRV& loop_rv) override;
   void Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) override;
   void Tensorize(const LoopRV& loop_rv, const String& intrin_name) override;
-
   /******** Schedule: Annotation ********/
   void Annotate(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
   void Unannotate(const LoopRV& loop_rv, const String& ann_key) override;

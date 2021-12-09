@@ -22,12 +22,13 @@ namespace tvm {
 namespace tir {
 
 /*!
- * \brief Parse instruction: sch.bind(..., "threadIdx.x")
+ * \brief Parse instruction: sch.bind(..., axis)
  * \param sch The schedule
  * \param inst The instruction to be parsed
+ * \param axis The axis name expected
  * \return NullOpt if parsing fails; Otherwise, the extent of thread axis
  */
-Optional<Integer> ParseThreadBinding(const Schedule& sch, const Instruction& inst) {
+Optional<Integer> ParseThreadBinding(const Schedule& sch, const Instruction& inst, String axis) {
   static InstructionKind inst_kind_bind = InstructionKind::Get("Bind");
   if (!inst->kind.same_as(inst_kind_bind)) {
     return NullOpt;
@@ -35,7 +36,7 @@ Optional<Integer> ParseThreadBinding(const Schedule& sch, const Instruction& ins
   ICHECK_EQ(inst->inputs.size(), 1);
   ICHECK_EQ(inst->attrs.size(), 1);
   String thread_axis = Downcast<String>(inst->attrs[0]);
-  if (thread_axis != "threadIdx.x") {
+  if (thread_axis != axis) {
     return NullOpt;
   }
   return Downcast<Integer>(sch->Get(Downcast<LoopRV>(inst->inputs[0]))->extent);
@@ -61,6 +62,26 @@ Optional<BlockRV> ParseAnnotate(const Schedule& sch, const Instruction& inst, in
   }
   *vector_lane = Downcast<Integer>(sch->Get(Downcast<ExprRV>(inst->inputs[1])))->value;
   return Downcast<BlockRV>(inst->inputs[0]);
+}
+
+/*!
+ * \brief Parse instruction: sch.annotate(..., attr::meta_schedule_tensor_core_enabled)
+ * \param sch The schedule
+ * \param inst The instruction to be parsed
+ * \return Whether ths parsing is successful
+ */
+bool ParseTensorCoreAnn(const Schedule& sch, const Instruction& inst) {
+  static InstructionKind inst_kind_annotate = InstructionKind::Get("Annotate");
+  if (!inst->kind.same_as(inst_kind_annotate)) {
+    return false;
+  }
+  ICHECK_EQ(inst->inputs.size(), 2);
+  ICHECK_EQ(inst->attrs.size(), 1);
+  String ann_key = Downcast<String>(inst->attrs[0]);
+  if (ann_key != attr::meta_schedule_tensor_core_enabled) {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace tir
@@ -93,30 +114,57 @@ bool RewriteCooperativeFetchNode::Apply(const tir::Schedule& sch) {
   using tir::Schedule;
   using tir::Trace;
   Trace trace = sch->trace().value();
-  int thread_extent = -1;
+  int thread_extent_x = -1;
+  int thread_extent_y = -1;
   int vector_lane = -1;
   std::vector<std::function<void()>> tasks;
   for (const Instruction& inst : trace->insts) {
-    if (Optional<Integer> new_thread_extent = tir::ParseThreadBinding(sch, inst)) {
-      thread_extent = new_thread_extent.value()->value;
-    }
-    if (Optional<BlockRV> block_rv = tir::ParseAnnotate(sch, inst, &vector_lane)) {
-      ICHECK_NE(thread_extent, -1);
+    if (Optional<Integer> new_thread_extent = tir::ParseThreadBinding(sch, inst, "threadIdx.x")) {
+      thread_extent_x = new_thread_extent.value()->value;
+    } else if (Optional<Integer> new_thread_extent =
+                   tir::ParseThreadBinding(sch, inst, "threadIdx.y")) {
+      thread_extent_y = new_thread_extent.value()->value;
+    } else if (tir::ParseTensorCoreAnn(sch, inst)) {
+      thread_extent_x = 32;
+    } else if (Optional<BlockRV> block_rv = tir::ParseAnnotate(sch, inst, &vector_lane)) {
+      ICHECK_NE(thread_extent_x, -1);
       if (vector_lane > 1) {
-        tasks.push_back([thread_extent, vector_lane, sch, block = block_rv.value()]() -> void {
+        tasks.push_back([thread_extent_x, thread_extent_y, vector_lane, sch,
+                         block = block_rv.value()]() -> void {
           LoopRV fused = sch->GetLoops(block).back();
-          Array<LoopRV> split = sch->Split(fused, {NullOpt,                 //
-                                                   Integer(thread_extent),  //
-                                                   Integer(vector_lane)});
-          sch->Vectorize(split[2]);
-          sch->Bind(split[1], "threadIdx.x");
+          if (thread_extent_y == -1) {
+            Array<LoopRV> split = sch->Split(fused, {NullOpt,                   //
+                                                     Integer(thread_extent_x),  //
+                                                     Integer(vector_lane)});
+            sch->Vectorize(split[2]);
+            sch->Bind(split[1], "threadIdx.x");
+          } else {
+            Array<LoopRV> split = sch->Split(fused, {NullOpt,                   //
+                                                     Integer(thread_extent_y),  //
+                                                     Integer(thread_extent_x),  //
+                                                     Integer(vector_lane)});
+            sch->Vectorize(split[3]);
+            sch->Bind(split[2], "threadIdx.x");
+            sch->Bind(split[1], "threadIdx.y");
+          }
+          sch->StorageAlign(block, 0, -2, 32, 8);
         });
       } else {
-        tasks.push_back([thread_extent, sch, block = block_rv.value()]() -> void {
-          LoopRV fused = sch->GetLoops(block).back();
-          Array<LoopRV> split = sch->Split(fused, {NullOpt, Integer(thread_extent)});
-          sch->Bind(split[1], "threadIdx.x");
-        });
+        tasks.push_back(
+            [thread_extent_x, thread_extent_y, sch, block = block_rv.value()]() -> void {
+              LoopRV fused = sch->GetLoops(block).back();
+              if (thread_extent_y == -1) {
+                Array<LoopRV> split = sch->Split(fused, {NullOpt, Integer(thread_extent_x)});
+                sch->Bind(split[1], "threadIdx.x");
+              } else {
+                Array<LoopRV> split = sch->Split(fused, {NullOpt,                   //
+                                                         Integer(thread_extent_y),  //
+                                                         Integer(thread_extent_x)});
+                sch->Bind(split[2], "threadIdx.x");
+                sch->Bind(split[1], "threadIdx.y");
+              }
+              sch->StorageAlign(block, 0, -2, 32, 8);
+            });
       }
     }
   }

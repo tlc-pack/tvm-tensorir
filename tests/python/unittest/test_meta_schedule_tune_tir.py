@@ -17,11 +17,17 @@
 # pylint: disable=missing-docstring
 import logging
 
+import tvm
 import pytest
 from tvm.meta_schedule import ReplayTraceConfig, tune_tir
+from tvm.meta_schedule.tune_context import TuneContext
+from tvm.meta_schedule import schedule_rule, postproc
+from tvm.meta_schedule.space_generator import PostOrderApply
 from tvm.script import tir as T
 from tvm.target.target import Target
+from tvm.te.operation import create_prim_func
 from tvm.tir import Schedule
+from tvm.meta_schedule.testing import te_workload, tir_tensor_intrin
 
 logging.basicConfig()
 logging.getLogger("tvm.meta_schedule").setLevel(logging.DEBUG)
@@ -80,6 +86,116 @@ def test_tune_matmul_cuda():
         print(sch.trace)
 
 
+@pytest.mark.skip("Integeration test")
+def test_tune_matmul_cuda_tensor_core():
+    def f_tune_context(mod, target, config, task_name):
+        return TuneContext(
+            mod=mod,
+            target=target,
+            space_generator=PostOrderApply(),
+            search_strategy=config.create_strategy(),
+            sch_rules=[
+                schedule_rule.AutoInline(
+                    into_producer=False,
+                    into_consumer=True,
+                    into_cache_only=False,
+                    inline_const_tensor=True,
+                    disallow_if_then_else=False,
+                    require_injective=False,
+                    require_ordered=False,
+                    disallow_op=None,
+                ),
+                schedule_rule.MultiLevelTiling(
+                    structure="SSSRRSRS",
+                    tile_binds=["blockIdx.x", "blockIdx.y", "threadIdx.y"],
+                    use_tensor_core=True,
+                    max_innermost_factor=64,
+                    vector_load_max_len=4,
+                    reuse_read=schedule_rule.ReuseType(
+                        req="must",
+                        levels=[4],
+                        scope="shared",
+                    ),
+                    reuse_write=schedule_rule.ReuseType(
+                        req="no",
+                        levels=[],
+                        scope="",
+                    ),
+                ),
+                schedule_rule.AutoInline(
+                    into_producer=True,
+                    into_consumer=True,
+                    into_cache_only=True,
+                    inline_const_tensor=True,
+                    disallow_if_then_else=False,
+                    require_injective=False,
+                    require_ordered=False,
+                    disallow_op=None,
+                ),
+                schedule_rule.ParallelizeVectorizeUnroll(
+                    max_jobs_per_core=-1,  # disable parallelize
+                    max_vectorize_extent=-1,  # disable vectorize
+                    unroll_max_steps=[0, 16, 64, 512, 1024],
+                    unroll_explicit=True,
+                ),
+            ],
+            postprocs=[
+                postproc.RewriteCooperativeFetch(),
+                # postproc.RewriteUnboundBlock(),
+                postproc.RewriteParallelVectorizeUnroll(),
+                postproc.RewriteReductionBlock(),
+                postproc.RewriteTensorCore(),
+                postproc.VerifyGPUCode(),
+            ],
+            mutators=[],
+            task_name=task_name,
+            rand_state=-1,
+            num_threads=None,
+        )
+    
+    n = 4096
+    mod = create_prim_func(te_workload.matmul_fp16(n, n, n))
+    target = Target("nvidia/geforce-rtx-3070")
+    config = ReplayTraceConfig(
+        num_trials_per_iter=32,
+        num_trials_total=320,
+    )
+
+    sch: Schedule = tune_tir(mod=mod, target=target, config=config, f_tune_context=f_tune_context)
+    if sch is None:
+        print("No valid schedule found!")
+    else:
+        print(sch.mod.script())
+        print(sch.trace)
+
+        from tvm.contrib import nvcc
+        import numpy as np
+
+        ctx = tvm.gpu(0)
+        if nvcc.have_tensorcore(ctx.compute_version):
+            with tvm.transform.PassContext():
+                func = tvm.build(sch.mod["main"], [], "cuda")
+                print(sch.mod.script())
+                print(func.imported_modules[0].get_source())
+            a_np = np.random.uniform(size=(n, n)).astype("float16")
+            b_np = np.random.uniform(size=(n, n)).astype("float16")
+            a = tvm.nd.array(a_np, ctx)
+            b = tvm.nd.array(b_np, ctx)
+            c = tvm.nd.array(np.zeros((n, n), dtype="float32"), ctx)
+            evaluator = func.time_evaluator(
+                func.entry_name, ctx, number=3, repeat=1, min_repeat_ms=40
+            )
+            print("matmul with tensor core: %f ms" % (evaluator(a, b, c).mean * 1e3))
+
+            np.testing.assert_allclose(
+                c.asnumpy(),
+                np.matmul(a_np.astype("float32"), b_np.astype("float32")),
+                rtol=1e-4,
+                atol=1e-4,
+            )
+
+
 if __name__ == """__main__""":
     test_tune_matmul_cpu()
     test_tune_matmul_cuda()
+    test_tune_matmul_cuda_tensor_core()

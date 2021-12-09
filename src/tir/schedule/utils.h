@@ -338,6 +338,28 @@ inline Optional<TObjectRef> GetAnn(const StmtSRef& sref, const String& ann_key) 
 }
 
 /*!
+ * \brief Check if a Block/For has a specific pair of annotation key and values
+ * \param sref The sref to the block or the for loop
+ * \param ann_key The annotation key to be checked
+ * \param ann_val The annotation value to be checked
+ * \return Whether a Block/For has a specific pair of annotation key and values
+ */
+inline bool HasAnn(const StmtSRef& sref, const String& ann_key, const String& ann_val) {
+  Optional<String> result = GetAnn<String>(sref, ann_key);
+  return result.defined() && result.value() == ann_val;
+}
+
+/******** Tensorization ******/
+/*!
+ * \brief Rewrite the block's outer loops to match the tensor intrin
+ * \param sch The schedule
+ * \param block_rv The block_rv we want to rewrite
+ * \param intrin_name The name of the tensor intrin we want to match
+ */
+Optional<LoopRV> TilingwithTensorIntrin(const tir::Schedule& sch, const tir::BlockRV& block_rv,
+                                        const String& intrin_name);
+
+/*!
  * \brief Substitute the var in current block scope specified in key->var to be value.
  * \param stmt The source stmt to be substituted
  * \param value_func The function of new values mapping.

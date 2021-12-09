@@ -350,6 +350,7 @@ def matmul_relu(var_A: T.handle, var_B: T.handle, var_compute: T.handle) -> None
             T.writes([compute[i0_1, i1_1]])
             compute[i0_1, i1_1] = T.max(C[i0_1, i1_1], T.float32(0))
 
+
 # pylint: enable=no-member,invalid-name,unused-variable
 
 
@@ -481,7 +482,7 @@ def test_buffer_matched():
 
 def test_output_block():
     sch = tir.Schedule(matmul_relu, debug_mask="all")
-    block= sch.get_block("compute")
+    block = sch.get_block("compute")
     with pytest.raises(tvm.tir.ScheduleError):
         sch.compute_inline(block)
 

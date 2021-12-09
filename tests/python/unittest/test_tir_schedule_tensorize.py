@@ -304,9 +304,9 @@ def dot_product_impl(a: T.handle, b: T.handle, c: T.handle) -> None:
 # pylint: disable=invalid-name
 
 
-tir.TensorIntrin.register('test_identity_intrin', desc_func, intrin_func)
-tir.TensorIntrin.register('test_mma_intrin', desc_func, lower_intrin_func)
-tir.TensorIntrin.register('test_dot_product_intrin', dot_product_desc, dot_product_impl)
+tir.TensorIntrin.register("test_identity_intrin", desc_func, intrin_func)
+tir.TensorIntrin.register("test_mma_intrin", desc_func, lower_intrin_func)
+tir.TensorIntrin.register("test_dot_product_intrin", dot_product_desc, dot_product_impl)
 
 
 def test_tensorize_gemm():
@@ -320,7 +320,7 @@ def test_tensorize_gemm():
     ko, ki = s.split(k, factors=[None, 16])
     s.reorder(io, jo, ko, ii, ji, ki)
     s.decompose_reduction(update, ko)
-    s.tensorize(ii, 'test_identity_intrin')
+    s.tensorize(ii, "test_identity_intrin")
 
     func = tvm.build(s.mod["main"])
     a_np = np.random.uniform(size=(128, 128)).astype("float32")
@@ -343,7 +343,7 @@ def test_tensorize_buffer_bind():
     ko, ki = s.split(k, factors=[None, 16])
     s.reorder(io, jo, ko, ii, ji, ki)
     s.decompose_reduction(update, ko)
-    s.tensorize(ii, 'test_mma_intrin')
+    s.tensorize(ii, "test_mma_intrin")
     tvm.ir.assert_structural_equal(tensorized_func, s.mod["main"])
     verify_trace_roundtrip(sch=s, mod=func)
 
@@ -357,7 +357,7 @@ def test_high_dim_tensorize():
     jo, ji = s.split(j, factors=[None, 16])
     ko, ki = s.split(k, factors=[None, 16])
     s.reorder(io, jo, ko, ii, ji, ki)
-    s.tensorize(ii, 'test_mma_intrin')
+    s.tensorize(ii, "test_mma_intrin")
     tvm.ir.assert_structural_equal(tensorized_batch_matmul, s.mod["main"])
     verify_trace_roundtrip(sch=s, mod=batch_matmul)
 
@@ -369,7 +369,7 @@ def test_tensorize_dot_product():
     C = s.get_block("update")
     _, _, _, k = s.get_loops(C)
     _, ki = s.split(k, factors=[None, 4])
-    s.tensorize(ki, 'test_dot_product_intrin')
+    s.tensorize(ki, "test_dot_product_intrin")
     target = "llvm"
     ctx = tvm.device(target, 0)
     a_np = np.random.uniform(size=(1, 4, 4)).astype("float32")

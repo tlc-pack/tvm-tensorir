@@ -118,13 +118,19 @@ def blockize_schedule_2(a: T.handle, c: T.handle) -> None:
                             T.writes([C[vi : (vi + 1), vj : (vj + 1)]])
                             C[vi, vj] = B[vi, vj] + T.float32(1)
 
+
 @T.prim_func
-def rowsum(a: T.handle, b:T.handle) -> None:
+def rowsum(a: T.handle, b: T.handle) -> None:
     A = T.match_buffer(a, [128, 128])
-    B = T.match_buffer(b, [128,])
+    B = T.match_buffer(
+        b,
+        [
+            128,
+        ],
+    )
     for k, i in T.grid(128, 128):
         with T.block("B"):
-            vk, vi = T.axis.remap('RS', [k, i])
+            vk, vi = T.axis.remap("RS", [k, i])
             with T.init():
                 B[vi] = 0.0
             B[vi] = B[vi] + A[vi, vk]
@@ -145,12 +151,13 @@ def rowsum_blockized(a: T.handle, b: T.handle) -> None:
         for i0, i1_1 in T.grid(128, 128):
             with T.block("B"):
                 vk, vi = T.axis.remap("RS", [i0, i1_1])
-                B[vi] = (B[vi] + A[vi, vk])
+                B[vi] = B[vi] + A[vi, vk]
+
 
 def test_blockize():
     func = elementwise
     # schedule
-    s = tir.Schedule(func, debug_mask='all')
+    s = tir.Schedule(func, debug_mask="all")
     B = s.get_block("B")
     _ = s.get_block("C")
     x, y = s.get_loops(B)
@@ -165,7 +172,7 @@ def test_blockize():
 def test_blockize_schedule():
     func = elementwise
     # test 1
-    s = tir.Schedule(func, debug_mask='all')
+    s = tir.Schedule(func, debug_mask="all")
     B = s.get_block("B")
     C = s.get_block("C")
     x, y = s.get_loops(B)
@@ -178,7 +185,7 @@ def test_blockize_schedule():
     tvm.ir.assert_structural_equal(s.mod["main"], blockize_schedule_1)
     verify_trace_roundtrip(sch=s, mod=func)
     # test 2
-    s = tir.Schedule(func, debug_mask='all')
+    s = tir.Schedule(func, debug_mask="all")
     B = s.get_block("B")
     C = s.get_block("C")
     x, y = s.get_loops(C)
@@ -191,7 +198,7 @@ def test_blockize_schedule():
     tvm.ir.assert_structural_equal(s.mod["main"], blockize_schedule_1)
     verify_trace_roundtrip(sch=s, mod=func)
     # test 3
-    s = tir.Schedule(func, debug_mask='all')
+    s = tir.Schedule(func, debug_mask="all")
     B = s.get_block("B")
     C = s.get_block("C")
     x, y = s.get_loops(B)
@@ -209,7 +216,7 @@ def test_blockize_schedule():
 
 
 def test_blockize_init_loops():
-    s = tir.Schedule(rowsum, debug_mask='all')
+    s = tir.Schedule(rowsum, debug_mask="all")
     k, _ = s.get_loops(s.get_block("B"))
     s.blockize(k)
     tvm.ir.assert_structural_equal(s.mod["main"], rowsum_blockized)
