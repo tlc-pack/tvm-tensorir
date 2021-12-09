@@ -21,10 +21,13 @@
  * \file src/tir/ir/function.cc
  * \brief The function data structure.
  */
+#include <tvm/arith/analyzer.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
+
+#include "../../support/nd_int_set.h"
 
 namespace tvm {
 namespace tir {
@@ -67,18 +70,84 @@ TVM_REGISTER_NODE_TYPE(PrimFuncNode);
 
 Array<PrimExpr> IndexMapNode::Apply(const Array<PrimExpr>& inputs) const {
   CHECK_EQ(inputs.size(), this->src_iters.size());
+  arith::Analyzer analyzer;
   int n = inputs.size();
-  std::unordered_map<const VarNode*, PrimExpr> var_map;
-  var_map.reserve(n);
   for (int i = 0; i < n; ++i) {
-    var_map.emplace(this->src_iters[i].get(), inputs[i]);
+    analyzer.Bind(this->src_iters[i], inputs[i]);
   }
   Array<PrimExpr> results;
   results.reserve(this->tgt_iters.size());
   for (PrimExpr result : this->tgt_iters) {
-    results.push_back(Substitute(std::move(result), var_map));
+    results.push_back(analyzer.Simplify(std::move(result)));
   }
   return results;
+}
+
+Array<PrimExpr> IndexMapNode::MapShape(const Array<PrimExpr>& shape) const {
+  using namespace support;
+  Array<PrimExpr> indices;
+  std::unordered_map<const VarNode*, arith::IntSet> dom_map;
+  for (const PrimExpr dim : shape) {
+    Var var;
+    indices.push_back(var);
+    dom_map.emplace(var.get(), arith::IntSet::FromMinExtent(0, dim));
+  }
+  Array<PrimExpr> mapped_indices = Apply(indices);
+  NDIntSet nd_int_set = NDIntSetFromPoint(mapped_indices);
+  nd_int_set = NDIntSetEval(nd_int_set, dom_map);
+  Array<PrimExpr> new_shape;
+  for (const auto& int_set : nd_int_set) {
+    ICHECK(is_zero(int_set.min()));
+    new_shape.push_back(int_set.max() + 1);
+  }
+  auto fmul = [](PrimExpr a, PrimExpr b, Span span) { return a * b; };
+  PrimExpr old_size = foldl(fmul, Integer(1), shape);
+  PrimExpr new_size = foldl(fmul, Integer(1), new_shape);
+
+  arith::Analyzer analyzer;
+  CHECK(analyzer.CanProveEqual(old_size, new_size))
+      << "ValueError: The size of the new shape after IndexMap " << new_shape
+      << " doesn't match the size of the original shape " << shape;
+  return new_shape;
+}
+
+String IndexMapNode::ToPythonString() const {
+  std::unordered_set<std::string> used_names;
+  Map<Var, PrimExpr> var_remap;
+  for (const Var& src_iter : src_iters) {
+    if (used_names.count(src_iter->name_hint)) {
+      std::string new_name = src_iter->name_hint + std::to_string(used_names.size());
+      used_names.insert(new_name);
+      var_remap.Set(src_iter, Var(new_name));
+    } else {
+      used_names.insert(src_iter->name_hint);
+    }
+  }
+  std::ostringstream oss;
+  oss << "lambda ";
+  for (size_t i = 0; i < src_iters.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    auto it = var_remap.find(src_iters[i]);
+    if (it != var_remap.end()) {
+      oss << (*it).second;
+    } else {
+      oss << src_iters[i];
+    }
+  }
+  oss << ": (";
+  for (size_t i = 0; i < tgt_iters.size(); ++i) {
+    if (i != 0) {
+      oss << ", ";
+    }
+    oss << Substitute(tgt_iters[i], var_remap);
+  }
+  if (tgt_iters.size() == 1) {
+    oss << ",";
+  }
+  oss << ")";
+  return String(oss.str());
 }
 
 IndexMap::IndexMap(Array<Var> src_iters, Array<PrimExpr> tgt_iters) {
