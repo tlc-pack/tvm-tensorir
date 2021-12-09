@@ -16,15 +16,13 @@
 # under the License.
 """Evolutionary Search Strategy"""
 
-from typing import TYPE_CHECKING, Dict
+from typing import NamedTuple, TYPE_CHECKING
 
 from tvm._ffi import register_object
 
-from .search_strategy import SearchStrategy
-from ..mutator import Mutator
-from ..database import Database
-
 from .. import _ffi_api
+from ..database import Database
+from .search_strategy import SearchStrategy
 
 if TYPE_CHECKING:
     from ..cost_model import CostModel
@@ -103,4 +101,35 @@ class EvolutionarySearch(SearchStrategy):
             eps_greedy,
             database,
             cost_model,
+        )
+
+
+class EvolutionarySearchConfig(NamedTuple):
+    """Configuration for EvolutionarySearch"""
+
+    num_trials_per_iter: int
+    num_trials_total: int
+    database: Database
+    cost_model: "CostModel"
+    population: int = 2048
+    max_replay_fail_cnt: int = 64
+    init_measured_ratio: float = 0.2
+    genetic_algo_iters: int = 10
+    max_evolve_fail_cnt: int = 10
+    p_mutate: float = 0.85
+    eps_greedy: float = 0.25
+
+    def create_strategy(self) -> EvolutionarySearch:
+        return EvolutionarySearch(
+            num_trials_per_iter=self.num_trials_per_iter,
+            num_trials_total=self.num_trials_total,
+            database=self.database,
+            cost_model=self.cost_model,
+            population=self.population,
+            max_replay_fail_cnt=self.max_replay_fail_cnt,
+            init_measured_ratio=self.init_measured_ratio,
+            genetic_algo_iters=self.genetic_algo_iters,
+            max_evolve_fail_cnt=self.max_evolve_fail_cnt,
+            p_mutate=self.p_mutate,
+            eps_greedy=self.eps_greedy,
         )

@@ -30,7 +30,9 @@ from tvm.tir import PrimFunc, Schedule
 from . import schedule_rule
 from . import measure_callback
 from . import postproc
+from . import mutator
 from .builder import Builder, LocalBuilder
+from .cost_model import CostModel, XGBModel
 from .database import Database, JSONDatabase, TuningRecord
 from .measure_callback import MeasureCallback
 from .runner import LocalRunner, Runner
@@ -196,12 +198,17 @@ def _parse_f_tune_context(f_tune_context: Optional[TYPE_F_TUNE_CONTEXT]) -> TYPE
                     unroll_max_steps=[0, 16, 64, 512],
                     unroll_explicit=True,
                 ),
+                schedule_rule.RandomComputeLocation(),
             ],
             postprocs=[
                 postproc.RewriteParallelVectorizeUnroll(),
                 postproc.RewriteReductionBlock(),
             ],
-            mutator_probs=None,
+            mutator_probs={
+                mutator.MutateTileSize(): 0.9,
+                mutator.MutateUnroll(): 0.03,
+                mutator.MutateParallel(max_jobs_per_core=16): 0.02,
+            },
             task_name=task_name,
             rand_state=-1,
             num_threads=None,
@@ -269,7 +276,10 @@ def _parse_f_tune_context(f_tune_context: Optional[TYPE_F_TUNE_CONTEXT]) -> TYPE
                 postproc.RewriteReductionBlock(),
                 postproc.VerifyGPUCode(),
             ],
-            mutator_probs=None,
+            mutator_probs={
+                mutator.MutateTileSize(): 0.9,
+                mutator.MutateUnroll(): 0.1,
+            },
             task_name=task_name,
             rand_state=-1,
             num_threads=None,
@@ -325,6 +335,7 @@ def tune_tir(
     builder: Optional[Builder] = None,
     runner: Optional[Runner] = None,
     database: Optional[Database] = None,
+    cost_model: Optional[CostModel] = None,
     measure_callbacks: Optional[List[MeasureCallback]] = None,
     f_tune_context: Optional[TYPE_F_TUNE_CONTEXT] = None,
     f_task_scheduler: Optional[TYPE_F_TASK_SCHEDULER] = None,
@@ -349,6 +360,8 @@ def tune_tir(
         The runner to use.
     database : Optional[Database]
         The database to use.
+    cost_model : Optional[CostModel]
+        The cost model to use.
     measure_callbacks : Optional[List[MeasureCallback]]
         The callbacks used during tuning.
     f_tune_context : Optional[TYPE_F_TUNE_CONTEXT]

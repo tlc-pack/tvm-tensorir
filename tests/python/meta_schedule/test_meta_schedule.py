@@ -82,7 +82,7 @@ def main():
     sch: tir.Schedule = ms.tune_tir(
         mod=create_te_workload(ARGS.workload, 0),
         target=ARGS.target,
-        config=ms.ReplayTraceConfig(
+        config=ms.EvolutionarySearchConfig(
             num_trials_per_iter=64,
             num_trials_total=ARGS.num_trials,
         ),
