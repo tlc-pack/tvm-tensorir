@@ -85,7 +85,7 @@ bool FindSamplePerfectTile(const Trace& trace, TRandState* rand_state, Instructi
       continue;
     }
     std::vector<int64_t> tiles = DowncastDecision(decision);
-    if (tiles.size() >= 2 || Product(tiles) >= 2) {
+    if (tiles.size() >= 2 && Product(tiles) >= 2) {
       instructions.push_back(inst);
       decisions.push_back(tiles);
     }

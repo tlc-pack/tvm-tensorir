@@ -137,7 +137,9 @@ class SearchStrategyNode : public runtime::Object {
    * \brief Update the search strategy with measurement results.
    * \param results The measurement results from the runner.
    */
-  virtual void NotifyRunnerResults(const Array<RunnerResult>& results) = 0;
+  virtual void NotifyRunnerResults(const TuneContext& tune_context,
+                                   const Array<MeasureCandidate>& measure_candidates,
+                                   const Array<RunnerResult>& results) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SearchStrategy";
   TVM_DECLARE_BASE_OBJECT_INFO(SearchStrategyNode, Object);
@@ -167,7 +169,8 @@ class PySearchStrategyNode : public SearchStrategyNode {
    * \brief The function type of `NotifyRunnerResults` method.
    * \param results The measurement results from the runner.
    */
-  using FNotifyRunnerResults = runtime::TypedPackedFunc<void(const Array<RunnerResult>&)>;
+  using FNotifyRunnerResults = runtime::TypedPackedFunc<void(
+      const TuneContext&, const Array<MeasureCandidate>&, const Array<RunnerResult>&)>;
 
   /*! \brief The packed function to the `InitializeWithTuneContext` method. */
   FInitializeWithTuneContext f_initialize_with_tune_context;
@@ -210,10 +213,12 @@ class PySearchStrategyNode : public SearchStrategyNode {
     return this->f_generate_measure_candidates();
   }
 
-  void NotifyRunnerResults(const Array<RunnerResult>& results) final {
+  void NotifyRunnerResults(const TuneContext& tune_context,
+                           const Array<MeasureCandidate>& measure_candidates,
+                           const Array<RunnerResult>& results) final {
     ICHECK(f_notify_runner_results != nullptr)
         << "PySearchStrategy's NotifyRunnerResults method not implemented!";
-    this->f_notify_runner_results(results);
+    this->f_notify_runner_results(tune_context, measure_candidates, results);
   }
 
   static constexpr const char* _type_key = "meta_schedule.PySearchStrategy";
@@ -278,9 +283,7 @@ class SearchStrategy : public runtime::ObjectRef {
                                                    int genetic_algo_iters,      //
                                                    int max_evolve_fail_cnt,     //
                                                    double p_mutate,             //
-                                                   double eps_greedy,           //
-                                                   Database database,           //
-                                                   CostModel cost_model);
+                                                   double eps_greedy);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
 };

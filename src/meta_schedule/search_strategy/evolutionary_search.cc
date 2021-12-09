@@ -193,7 +193,7 @@ struct ConcurrentBitmask {
   explicit ConcurrentBitmask(int n)
       : size((n + kBitWidth - 1) / kBitWidth), bitmask(size, 0), mutexes(size) {}
   /*!
-   * \brief Query and mark the given index if not visted before.
+   * \brief Query and mark the given index if not visited before.
    * \param x The index to concurrently check if used. If not, mark as used.
    * \return Whether the index has been used before.
    */
@@ -326,11 +326,13 @@ class EvolutionarySearchNode : public SearchStrategyNode {
                                                       const std::vector<CachedTrace>& bests,
                                                       int num);
     inline Optional<Array<MeasureCandidate>> GenerateMeasureCandidates();
-    inline void NotifyRunnerResults(const Array<RunnerResult>& results);
+    inline void NotifyRunnerResults(const TuneContext& tune_context,
+                                    const Array<MeasureCandidate>& measure_candidates,
+                                    const Array<RunnerResult>& results);
   };
 
   /*! \brief The tuning context of the evolutionary search strategy. */
-  TuneContext tune_context_{nullptr};
+  const TuneContextNode* tune_context_{nullptr};
   /*! \brief The target for the workload. */
   Target target_{nullptr};
   /*! \brief The metadata of the function arguments. */
@@ -416,13 +418,15 @@ class EvolutionarySearchNode : public SearchStrategyNode {
     CHECK(tune_context->num_threads > 0) << "Number of threads has to be larger than 0.";
     CHECK(tune_context->target.defined()) << "Target must be defined!";
 
-    this->tune_context_ = tune_context;
+    this->tune_context_ = tune_context.get();
     this->target_ = tune_context->target.value();
     this->args_info_ = ArgInfo::FromPrimFunc(FindEntryFunc(tune_context->mod.value()));
     this->mutator_probs_ = tune_context->mutator_probs;
     this->postprocs_ = tune_context->postprocs;
     this->num_threads_ = tune_context->num_threads;
     this->rand_state_ = ForkSeed(&tune_context->rand_state);
+    this->cost_model_ = tune_context->task_scheduler->cost_model.value();
+    this->database_ = tune_context->task_scheduler->database;
     this->token_ = this->database_->CommitWorkload(tune_context->mod.value());
     this->per_thread_data_.reserve(this->num_threads_);
     for (int i = 0; i < this->num_threads_; i++) {
@@ -454,9 +458,11 @@ class EvolutionarySearchNode : public SearchStrategyNode {
     return this->state_->GenerateMeasureCandidates();
   }
 
-  void NotifyRunnerResults(const Array<RunnerResult>& results) final {
+  void NotifyRunnerResults(const TuneContext& tune_context,
+                           const Array<MeasureCandidate>& measure_candidates,
+                           const Array<RunnerResult>& results) final {
     ICHECK(this->state_ != nullptr);
-    this->state_->NotifyRunnerResults(results);
+    this->state_->NotifyRunnerResults(tune_context, measure_candidates, results);
   }
 };
 
@@ -467,8 +473,8 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::PickBestFromDatab
   for (TuningRecord record : top_records) {
     measured_traces.push_back(record->trace);
   }
-  int acutal_num = measured_traces.size();
-  std::vector<CachedTrace> results(acutal_num);
+  int actual_num = measured_traces.size();
+  std::vector<CachedTrace> results(actual_num);
   auto f_proc_measured = [this, &measured_traces, &results](int thread_id, int trace_id) -> void {
     TRandState& rand_state = self->per_thread_data_[thread_id].rand_state;
     const IRModule& mod = self->per_thread_data_[thread_id].mod;
@@ -482,7 +488,7 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::PickBestFromDatab
       throw;
     }
   };
-  support::parallel_for_dynamic(0, acutal_num, self->num_threads_, f_proc_measured);
+  support::parallel_for_dynamic(0, actual_num, self->num_threads_, f_proc_measured);
   return results;
 }
 
@@ -540,8 +546,8 @@ std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
   // Main loop: (genetic_algo_iters + 1) times
   for (int iter = 0;; ++iter) {
     // Predict normalized score with the cost model,
-    std::vector<double> scores =
-        PredictNormalizedScore(sch_curr, self->tune_context_, self->cost_model_, self->args_info_);
+    std::vector<double> scores = PredictNormalizedScore(
+        sch_curr, GetRef<TuneContext>(self->tune_context_), self->cost_model_, self->args_info_);
     for (int i = 0, n = sch_curr.size(); i < n; ++i) {
       CachedTrace& entry = sch_curr[i];
       entry.score = scores[i];
@@ -580,7 +586,7 @@ std::vector<CachedTrace> EvolutionarySearchNode::State::EvolveWithCostModel(
             if (Optional<tir::Schedule> opt_sch =
                     ApplyTrace(mod, new_trace, &rand_state, self->postprocs_)) {
               // note that sch's trace is different from new_trace
-              // beacuase it contains post-processing infomation
+              // because it contains post-processing information
               result = CachedTrace(opt_sch.value(), -1.0);
               break;
             }
@@ -686,10 +692,13 @@ EvolutionarySearchNode::State::GenerateMeasureCandidates() {
   return AssembleCandidates(picks, self->args_info_);
 }
 
-inline void EvolutionarySearchNode::State::NotifyRunnerResults(const Array<RunnerResult>& results) {
+inline void EvolutionarySearchNode::State::NotifyRunnerResults(
+    const TuneContext& tune_context, const Array<MeasureCandidate>& measure_candidates,
+    const Array<RunnerResult>& results) {
   st += results.size();
   ed += results.size();
   // Measure Callbacks done in TaskScheduler
+  this->self->cost_model_->Update(tune_context, measure_candidates, results);
 }
 
 SearchStrategy SearchStrategy::EvolutionarySearch(int num_trials_per_iter,     //
@@ -700,9 +709,7 @@ SearchStrategy SearchStrategy::EvolutionarySearch(int num_trials_per_iter,     /
                                                   int genetic_algo_iters,      //
                                                   int max_evolve_fail_cnt,     //
                                                   double p_mutate,             //
-                                                  double eps_greedy,           //
-                                                  Database database,           //
-                                                  CostModel cost_model) {
+                                                  double eps_greedy) {
   ObjectPtr<EvolutionarySearchNode> n = make_object<EvolutionarySearchNode>();
   n->num_trials_per_iter = num_trials_per_iter;
   n->num_trials_total = num_trials_total;
@@ -716,8 +723,6 @@ SearchStrategy SearchStrategy::EvolutionarySearch(int num_trials_per_iter,     /
   n->p_mutate = p_mutate;
   TVM_META_SCHEDULE_CHECK_PROB_RANGE(eps_greedy, "Greedy pick probability");
   n->eps_greedy = eps_greedy;
-  n->database_ = database;
-  n->cost_model_ = cost_model;
   return SearchStrategy(n);
 }
 

@@ -17,21 +17,21 @@
 """
 XGBoost-based cost model
 """
-from typing import NamedTuple, Optional, Tuple, Callable, List, TYPE_CHECKING
-
-import os
-import logging
-import tempfile
 from itertools import chain as itertools_chain
+import logging
+import os
+import tempfile
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, TYPE_CHECKING, Tuple
+
 import numpy as np
 
+from ...contrib.tar import tar, untar
+from ..cost_model import PyCostModel
+from ..feature_extractor import FeatureExtractor
 from ..runner import RunnerResult
 from ..search_strategy import MeasureCandidate
-from ..feature_extractor import FeatureExtractor
-from ..cost_model import PyCostModel
 from ..utils import cpu_count
 from .metric import max_curve
-from ...contrib.tar import tar, untar
 
 if TYPE_CHECKING:
     from ..tune_context import TuneContext
@@ -76,7 +76,7 @@ class PackSum:
     def __init__(
         self,
         xs: List[np.ndarray],
-        ys: Optional[List[float]],
+        ys: Optional[np.ndarray],
     ):
         """Create PackSum format given a batch of samples
 
@@ -85,7 +85,7 @@ class PackSum:
         xs : List[np.ndarray]
             A batch of input samples
         ys : Optional[List[float]]
-            A batch of labels. None means no lables available.
+            A batch of labels. None means no labels available.
         """
         import xgboost as xgb  # type: ignore # pylint: disable=import-outside-toplevel
 
@@ -279,8 +279,6 @@ class XGBModel(PyCostModel):
         extractor: FeatureExtractor,
         # xgboost model config
         config: XGBConfig = XGBConfig(),
-        # load from disk
-        path: Optional[str] = None,
         # behavior of randomness
         num_warmup_samples: int = 100,
         # evaluation
@@ -296,9 +294,6 @@ class XGBModel(PyCostModel):
             # use physical core number
             config = config._replace(nthread=cpu_count(logical=False))
         self.config = config
-        # serialization-related
-        if path is not None:
-            self.load(path)
         # behavior of randomness
         self.num_warmup_samples = num_warmup_samples
         # evaluation
@@ -324,14 +319,14 @@ class XGBModel(PyCostModel):
         Since XGBoost model trains from scratch, each time we can only load the model without the
         previous cached features / results so any call of update won't use previous training data.
         """
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            untar(path, tmpdirname)
-            self.booster.load_model(os.path.join(tmpdirname, "model.bin"))
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            untar(path, tmp_dir)
+            self.booster.load_model(os.path.join(tmp_dir, "model.bin"))
             self.cached_features = list(
-                np.load(os.path.join(tmpdirname, "cached_features.npy"), allow_pickle=True)
+                np.load(os.path.join(tmp_dir, "cached_features.npy"), allow_pickle=True)
             )
             self.cached_mean_costs = np.load(
-                os.path.join(tmpdirname, "cached_mean_costs.npy"), allow_pickle=True
+                os.path.join(tmp_dir, "cached_mean_costs.npy"), allow_pickle=True
             )
             self.cached_normalizer = np.min(self.cached_mean_costs)
             if self.cached_normalizer <= 0:
@@ -396,7 +391,10 @@ class XGBModel(PyCostModel):
             x.numpy().astype("float32")
             for x in self.extractor.extract_from(tune_context, candidates)
         ]
-        new_mean_costs = [float(sum(x.run_secs) / len(x.run_secs)) for x in results]
+        new_mean_costs = np.asarray(
+            [float(sum(x.run_secs) / len(x.run_secs)) for x in results],
+            dtype="float32",
+        )
         if self.booster is not None and self.cached_normalizer is not None:
             logger.debug(
                 "XGB validation: %s",
@@ -452,7 +450,7 @@ class XGBModel(PyCostModel):
     def _train(  # type: ignore # pylint: disable=invalid-name
         self,
         xs: List[np.ndarray],
-        ys: List[float],
+        ys: np.ndarray,
     ) -> None:
         import xgboost as xgb  # type: ignore # pylint: disable=import-outside-toplevel
 
@@ -505,7 +503,7 @@ class XGBModel(PyCostModel):
     def _validate(  # type: ignore # pylint: disable=invalid-name
         self,
         xs: List[np.ndarray],
-        ys: List[float],
+        ys: np.ndarray,
     ) -> List[Tuple[str, float]]:
         """Evaluate the score of inputs.
 
@@ -554,7 +552,7 @@ def custom_callback(
     """Callback function for xgboost to support multiple custom evaluation functions"""
     sort_key = make_metric_sorter(focused_metric=focused_metric)
 
-    state = {}
+    state: Dict[str, Any] = {}
 
     def init(env: "xgb.core.CallbackEnv"):
         """Internal function"""
@@ -594,33 +592,37 @@ def custom_callback(
         # `eval_result` is a list of (key, score)
         eval_result: List[Tuple[str, float]] = []
         if cvfolds is None:
-            eval_result = itertools_chain.from_iterable(
-                [
-                    (key, float(value))
-                    for key, value in map(
-                        lambda x: x.split(":"),
-                        booster.eval_set(
-                            evals=evals,
-                            iteration=iteration,
-                            feval=feval,
-                        ).split()[1:],
-                    )
-                ]
-                for feval in fevals
+            eval_result = list(
+                itertools_chain.from_iterable(
+                    [
+                        (key, float(value))
+                        for key, value in map(
+                            lambda x: x.split(":"),
+                            booster.eval_set(
+                                evals=evals,
+                                iteration=iteration,
+                                feval=feval,
+                            ).split()[1:],
+                        )
+                    ]
+                    for feval in fevals
+                )
             )
         else:
-            eval_result = itertools_chain.from_iterable(
-                [
-                    (key, score)
-                    for key, score, _std in aggcv(
-                        fold.eval(
-                            iteration=iteration,
-                            feval=feval,
+            eval_result = list(
+                itertools_chain.from_iterable(
+                    [
+                        (key, score)
+                        for key, score, _std in aggcv(
+                            fold.eval(
+                                iteration=iteration,
+                                feval=feval,
+                            )
+                            for fold in cvfolds
                         )
-                        for fold in cvfolds
-                    )
-                ]
-                for feval in fevals
+                    ]
+                    for feval in fevals
+                )
             )
         eval_result = list(eval_result)
         eval_result.sort(key=sort_key)

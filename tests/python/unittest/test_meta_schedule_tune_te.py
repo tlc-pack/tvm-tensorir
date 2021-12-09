@@ -16,9 +16,10 @@
 # under the License.
 # pylint: disable=missing-docstring
 import logging
+import tempfile
 
 import pytest
-from tvm.meta_schedule import tune_te, ReplayTraceConfig
+from tvm.meta_schedule import ReplayTraceConfig, tune_te
 from tvm.meta_schedule.testing import te_workload
 from tvm.target.target import Target
 from tvm.tir import Schedule
@@ -30,19 +31,21 @@ logging.getLogger("tvm.meta_schedule").setLevel(logging.DEBUG)
 
 @pytest.mark.skip("Integration test")
 def test_tune_matmul():
-    sch: Schedule = tune_te(
-        tensors=te_workload.batch_matmul_nkkm(B=1, N=128, M=128, K=128),
-        target=Target("llvm --num-cores=16"),
-        config=ReplayTraceConfig(
-            num_trials_per_iter=32,
-            num_trials_total=32,
-        ),
-    )
-    if sch is None:
-        print("No valid schedule found!")
-    else:
-        print(sch.mod.script())
-        print(sch.trace)
+    with tempfile.TemporaryDirectory() as work_dir:
+        sch: Schedule = tune_te(
+            tensors=te_workload.batch_matmul_nkkm(B=1, N=128, M=128, K=128),
+            target=Target("llvm --num-cores=16"),
+            config=ReplayTraceConfig(
+                num_trials_per_iter=32,
+                num_trials_total=32,
+            ),
+            work_dir=work_dir,
+        )
+        if sch is None:
+            print("No valid schedule found!")
+        else:
+            print(sch.mod.script())
+            print(sch.trace)
 
 
 if __name__ == """__main__""":

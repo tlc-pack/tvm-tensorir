@@ -16,18 +16,12 @@
 # under the License.
 """Evolutionary Search Strategy"""
 
-from typing import TYPE_CHECKING, Dict
+from typing import NamedTuple
 
 from tvm._ffi import register_object
 
-from .search_strategy import SearchStrategy
-from ..mutator import Mutator
-from ..database import Database
-
 from .. import _ffi_api
-
-if TYPE_CHECKING:
-    from ..cost_model import CostModel
+from .search_strategy import SearchStrategy
 
 
 @register_object("meta_schedule.EvolutionarySearch")
@@ -56,10 +50,6 @@ class EvolutionarySearch(SearchStrategy):
         The probability of mutation.
     eps_greedy : float
         The ratio of greedy selected samples in the final picks.
-    database : Database
-        The database used in the search.
-    cost_model : CostModel
-        The cost model used in the search.
     """
 
     num_trials_per_iter: int
@@ -71,16 +61,12 @@ class EvolutionarySearch(SearchStrategy):
     max_evolve_fail_cnt: int
     p_mutate: float
     eps_greedy: float
-    database: Database
-    cost_model: "CostModel"
 
     def __init__(
         self,
         *,
         num_trials_per_iter: int,
         num_trials_total: int,
-        database: Database,
-        cost_model: "CostModel",
         population: int = 2048,
         max_replay_fail_cnt: int = 64,
         init_measured_ratio: float = 0.2,
@@ -101,6 +87,31 @@ class EvolutionarySearch(SearchStrategy):
             max_evolve_fail_cnt,
             p_mutate,
             eps_greedy,
-            database,
-            cost_model,
+        )
+
+
+class EvolutionarySearchConfig(NamedTuple):
+    """Configuration for EvolutionarySearch"""
+
+    num_trials_per_iter: int
+    num_trials_total: int
+    population: int = 2048
+    max_replay_fail_cnt: int = 64
+    init_measured_ratio: float = 0.2
+    genetic_algo_iters: int = 10
+    max_evolve_fail_cnt: int = 10
+    p_mutate: float = 0.85
+    eps_greedy: float = 0.25
+
+    def create_strategy(self) -> EvolutionarySearch:
+        return EvolutionarySearch(
+            num_trials_per_iter=self.num_trials_per_iter,
+            num_trials_total=self.num_trials_total,
+            population=self.population,
+            max_replay_fail_cnt=self.max_replay_fail_cnt,
+            init_measured_ratio=self.init_measured_ratio,
+            genetic_algo_iters=self.genetic_algo_iters,
+            max_evolve_fail_cnt=self.max_evolve_fail_cnt,
+            p_mutate=self.p_mutate,
+            eps_greedy=self.eps_greedy,
         )

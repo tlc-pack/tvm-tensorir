@@ -146,6 +146,7 @@ def verify_meta_schedule_with_tensorrt(
                 ).evaluate()
 
 
+@has_tensorrt_codegen
 def test_conv2d_relu():
     data_shape = (1, 1280, 14, 14)
     out_channels = 256
@@ -170,6 +171,7 @@ def test_conv2d_relu():
     verify_meta_schedule_with_tensorrt(mod, params, data_shape)
 
 
+@has_tensorrt_codegen
 @pytest.mark.parametrize(
     "model_name",
     ["resnet-50", "mobilenet"],

@@ -16,29 +16,28 @@
 # under the License.
 """ Test Meta Schedule SearchStrategy """
 # pylint: disable=missing-function-docstring
-from typing import List, Tuple, Union, Optional
-
 import sys
+from typing import List, Optional, Tuple, Union
+
 import numpy as np
 import pytest
-
 import tvm
-
 from tvm.ir import IRModule
 from tvm.meta_schedule import TuneContext
+from tvm.meta_schedule.builder import LocalBuilder
+from tvm.meta_schedule.cost_model import PyCostModel
+from tvm.meta_schedule.database import PyDatabase, TuningRecord, Workload
 from tvm.meta_schedule.mutator.mutator import PyMutator
-from tvm.meta_schedule.runner import RunnerResult
-from tvm.meta_schedule.space_generator import ScheduleFn
+from tvm.meta_schedule.runner import LocalRunner, RunnerResult
 from tvm.meta_schedule.search_strategy import (
-    SearchStrategy,
-    ReplayTrace,
-    ReplayFunc,
     EvolutionarySearch,
     MeasureCandidate,
+    ReplayFunc,
+    ReplayTrace,
+    SearchStrategy,
 )
-from tvm.meta_schedule.database import PyDatabase, Workload, TuningRecord
-from tvm.meta_schedule.cost_model import PyCostModel
-
+from tvm.meta_schedule.space_generator import ScheduleFn
+from tvm.meta_schedule.task_scheduler import RoundRobin
 from tvm.script import tir as T
 from tvm.tir.schedule import Schedule, Trace
 
@@ -111,7 +110,7 @@ def test_meta_schedule_replay_func(TestClass: SearchStrategy):  # pylint: disabl
                 remove_decisions=(isinstance(strategy, ReplayTrace)),
             )
             runner_results.append(RunnerResult(run_secs=[0.11, 0.41, 0.54], error_msg=None))
-        strategy.notify_runner_results(runner_results)
+        strategy.notify_runner_results(tune_context, candidates, runner_results)
         candidates = strategy.generate_measure_candidates()
     strategy.post_tuning()
     assert num_trials_each_iter == [7, 7, 6]
@@ -187,11 +186,11 @@ def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
                 self.random_state = np.random.get_state()
             self.max_range = max_range
 
-        def load(self, file_location: str) -> None:
-            self.random_state = tuple(np.load(file_location, allow_pickle=True))
+        def load(self, path: str) -> None:
+            self.random_state = tuple(np.load(path, allow_pickle=True))
 
-        def save(self, file_location: str) -> None:
-            np.save(file_location, np.array(self.random_state, dtype=object), allow_pickle=True)
+        def save(self, path: str) -> None:
+            np.save(path, np.array(self.random_state, dtype=object), allow_pickle=True)
 
         def update(
             self,
@@ -212,9 +211,6 @@ def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
     num_trials_per_iter = 10
     num_trials_total = 100
 
-    mutator = DummyMutator()
-    database = DummyDatabase()
-    cost_model = RandomModel()
     strategy = EvolutionarySearch(
         num_trials_per_iter=num_trials_per_iter,
         num_trials_total=num_trials_total,
@@ -224,15 +220,23 @@ def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
         max_evolve_fail_cnt=10,
         p_mutate=0.5,
         eps_greedy=0.9,
-        database=database,
-        cost_model=cost_model,
     )
     tune_context = TuneContext(
         mod=Matmul,
         space_generator=ScheduleFn(sch_fn=_schedule_matmul),
-        mutator_probs={mutator: 1.0},
+        mutator_probs={
+            DummyMutator(): 1.0,
+        },
         target=tvm.target.Target("llvm"),
-        num_threads=1,  # beacuse we are using a mutator from the python side
+        num_threads=1,  # because we are using a mutator from the python side
+    )
+    _scheduler = RoundRobin(
+        tasks=[tune_context],
+        builder=LocalBuilder(),
+        runner=LocalRunner(),
+        database=DummyDatabase(),
+        cost_model=RandomModel(),
+        measure_callbacks=[],
     )
     tune_context.space_generator.initialize_with_tune_context(tune_context)
     spaces = tune_context.space_generator.generate_design_space(tune_context.mod)
@@ -252,7 +256,7 @@ def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
                 remove_decisions=(isinstance(strategy, ReplayTrace)),
             )
             runner_results.append(RunnerResult(run_secs=[0.11, 0.41, 0.54], error_msg=None))
-        strategy.notify_runner_results(runner_results)
+        strategy.notify_runner_results(tune_context, candidates, runner_results)
         candidates = strategy.generate_measure_candidates()
     strategy.post_tuning()
     print(num_trials_each_iter)
@@ -260,7 +264,9 @@ def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
     assert num_trials_each_iter == [correct_count] * (num_trials_total // correct_count) + (
         [num_trials_total % correct_count] if num_trials_total % correct_count != 0 else []
     )
+    del _scheduler
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    test_meta_schedule_evolutionary_search()
+    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
