@@ -18,7 +18,6 @@
 
 import logging
 import os.path
-from pickle import HIGHEST_PROTOCOL
 from typing import Callable, Dict, List, Optional, Union
 
 from tvm.ir.module import IRModule

@@ -18,11 +18,10 @@
 import logging
 import pytest
 import tempfile
-import sys
 
 from typing import Tuple, List
 
-from tvm.meta_schedule import ReplayTraceConfig, tune_tir
+from tvm.meta_schedule import ReplayTraceConfig
 from tvm.meta_schedule.tune import tune_relay
 from tvm.target.target import Target
 from tvm.tir import Schedule
