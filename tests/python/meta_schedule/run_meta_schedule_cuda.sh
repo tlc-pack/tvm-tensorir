@@ -5,6 +5,7 @@ RPC_PORT="4445"
 RPC_KEY="jetson-agx-xavier"
 TARGET="nvidia/jetson-agx-xavier"
 LOG_DIR=$HOME/logs/ms-cuda/
+NUM_TRIALS=800
 
 mkdir -p $LOG_DIR
 
@@ -17,7 +18,7 @@ run () {
         --rpc-host "$RPC_HOST"              \
         --rpc-port "$RPC_PORT"              \
         --rpc-key "$RPC_KEY"                \
-        --num-trials 5000                   \
+        --num-trials $NUM_TRIALS            \
         2>&1 | tee "$LOG_DIR/$name.log"
 }
 

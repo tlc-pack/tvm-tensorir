@@ -16,17 +16,16 @@
 # under the License.
 """Meta Schedule MeasureCallback."""
 
-from typing import TYPE_CHECKING, List
+from typing import List, TYPE_CHECKING
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from ..search_strategy import MeasureCandidate
+from .. import _ffi_api
 from ..builder import BuilderResult
 from ..runner import RunnerResult
+from ..search_strategy import MeasureCandidate
 from ..utils import _get_hex_address, check_override
-
-from .. import _ffi_api
 
 if TYPE_CHECKING:
     from ..task_scheduler import TaskScheduler

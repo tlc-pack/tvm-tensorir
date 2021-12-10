@@ -5,6 +5,7 @@ RPC_PORT="4445"
 RPC_KEY="raspi4b-aarch64"
 TARGET="raspberry-pi/4b-64"
 LOG_DIR=$HOME/logs/ms-cpu/
+NUM_TRIALS=800
 
 mkdir -p $LOG_DIR
 
@@ -17,14 +18,14 @@ run () {
         --rpc-host "$RPC_HOST"              \
         --rpc-port "$RPC_PORT"              \
         --rpc-key "$RPC_KEY"                \
-        --num-trials 5000                   \
+        --num-trials $NUM_TRIALS            \
         2>&1 | tee "$LOG_DIR/$name.log"
 }
 
 # Single op
 run C1D
 run C2D
-# run C3D
+run C3D
 run CAP
 run DEP
 run DIL

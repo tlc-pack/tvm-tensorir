@@ -328,9 +328,7 @@ class XGBModel(PyCostModel):
             self.cached_mean_costs = np.load(
                 os.path.join(tmp_dir, "cached_mean_costs.npy"), allow_pickle=True
             )
-            self.cached_normalizer = np.min(self.cached_mean_costs)
-            if self.cached_normalizer <= 0:
-                raise ValueError("The minimum mean cost must be greater than 0!")
+            self._set_cached_normalizer()
 
     def save(self, path: str) -> None:
         """Save the cost model to given file location.
@@ -387,12 +385,18 @@ class XGBModel(PyCostModel):
         if len(candidates) == 0:
             return
         # extract feature and do validation
+
+        def _mean_cost(x: RunnerResult) -> float:
+            if not x.run_secs:
+                return 1e10
+            return sum(float(s) for s in x.run_secs) / len(x.run_secs)
+
         new_features = [
             x.numpy().astype("float32")
             for x in self.extractor.extract_from(tune_context, candidates)
         ]
         new_mean_costs = np.asarray(
-            [float(sum(x.run_secs) / len(x.run_secs)) for x in results],
+            [_mean_cost(x) for x in results],
             dtype="float32",
         )
         if self.booster is not None and self.cached_normalizer is not None:
@@ -409,9 +413,7 @@ class XGBModel(PyCostModel):
         # use together with previous features
         self.cached_features.extend(new_features)
         self.cached_mean_costs = np.append(self.cached_mean_costs, new_mean_costs)
-        self.cached_normalizer = np.min(self.cached_mean_costs)
-        if self.cached_normalizer <= 0:
-            raise ValueError("The minimum mean cost must be greater than 0!")
+        self._set_cached_normalizer()
         # train xgb model
         self._train(
             xs=self.cached_features,
@@ -540,6 +542,14 @@ class XGBModel(PyCostModel):
         ]
         eval_result.sort(key=make_metric_sorter("p-rmse"))
         return eval_result
+
+    def _set_cached_normalizer(self) -> None:
+        filtered = self.cached_mean_costs[self.cached_mean_costs > 0]
+        if filtered.size == 0:
+            self.cached_normalizer = 1.0
+        else:
+            self.cached_normalizer = np.min(filtered)
+            assert self.cached_normalizer > 0
 
 
 def custom_callback(

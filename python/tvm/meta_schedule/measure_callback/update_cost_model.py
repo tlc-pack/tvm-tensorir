@@ -14,11 +14,17 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""
-The tvm.meta_schedule.measure_callback package.
-"""
-from .measure_callback import MeasureCallback, PyMeasureCallback
-from .add_to_database import AddToDatabase
-from .echo_statistics import EchoStatistics
-from .remove_build_artifact import RemoveBuildArtifact
-from .update_cost_model import UpdateCostModel
+"""A measure callback that updates the cost model"""
+from tvm._ffi import register_object
+
+from .. import _ffi_api
+from .measure_callback import MeasureCallback
+
+
+@register_object("meta_schedule.UpdateCostModel")
+class UpdateCostModel(MeasureCallback):
+    def __init__(self) -> None:
+        """A measure callback that updates the cost model"""
+        self.__init_handle_by_constructor__(
+            _ffi_api.MeasureCallbackUpdateCostModel,  # type: ignore # pylint: disable=no-member
+        )

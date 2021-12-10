@@ -286,6 +286,7 @@ class Parse:
                 M.AddToDatabase(),
                 M.RemoveBuildArtifact(),
                 M.EchoStatistics(),
+                M.UpdateCostModel(),
             ]
         if not isinstance(measure_callbacks, (list, tuple)):
             raise TypeError(

@@ -1,4 +1,4 @@
-set -euxo pipefail
+# set -euxo pipefail
 
 RPC_HOST="192.168.6.66"
 RPC_PORT="4445"

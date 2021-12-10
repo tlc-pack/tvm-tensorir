@@ -697,8 +697,6 @@ inline void EvolutionarySearchNode::State::NotifyRunnerResults(
     const Array<RunnerResult>& results) {
   st += results.size();
   ed += results.size();
-  // Measure Callbacks done in TaskScheduler
-  this->self->cost_model_->Update(tune_context, measure_candidates, results);
 }
 
 SearchStrategy SearchStrategy::EvolutionarySearch(int num_trials_per_iter,     //
