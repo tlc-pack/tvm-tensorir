@@ -17,11 +17,11 @@
 # pylint: disable=missing-docstring
 import logging
 import pytest
+import tempfile
 import sys
 
 from typing import Tuple, List
 
-import tvm
 from tvm.meta_schedule import ReplayTraceConfig, tune_tir
 from tvm.meta_schedule.tune import tune_relay
 from tvm.target.target import Target
@@ -32,15 +32,6 @@ logging.getLogger("tvm.meta_schedule").setLevel(logging.DEBUG)
 from tvm.meta_schedule.testing import MODEL_TYPE, MODEL_TYPES, get_torch_model
 
 
-@pytest.mark.parametrize(
-    "model_name",
-    [
-        # Image classification
-        "resnet18"
-    ],
-)
-@pytest.mark.parametrize("batch_size", [1, 8, 16])
-@pytest.mark.parametrize("target", ["nvidia/geforce-rtx-3070"])  # ["llvm --num-cores=16"]
 def test_meta_schedule_tune_relay(model_name: str, batch_size: int, target: str):
     if model_name == "inception_v3" and batch_size == 1:
         pytest.skip("inception_v3 does not handle batch_size of 1")
@@ -56,7 +47,6 @@ def test_meta_schedule_tune_relay(model_name: str, batch_size: int, target: str)
         input_shape = (batch_size, 3, 3, 299, 299)
     else:
         raise ValueError("Unsupported model: " + model_name)
-
     output_shape: Tuple[int, int] = (batch_size, 1000)
 
     mod, params = get_torch_model(
@@ -66,25 +56,27 @@ def test_meta_schedule_tune_relay(model_name: str, batch_size: int, target: str)
         dtype="float32",
     )
 
-    target = tvm.target.Target(target)
-    schs: List[Schedule] = tune_relay(
-        mod=mod,
-        params=params,
-        target=target,
-        config=ReplayTraceConfig(
-            num_trials_per_iter=32,
-            num_trials_total=32,
-        ),
-    )
-    for i, sch in enumerate(schs):
-        print("-" * 10 + f" Part {i} " + "-" * 10)
-        if sch is None:
-            print("No valid schedule found!")
-        else:
-            print(sch.mod.script())
-            print(sch.trace)
+    with tempfile.TemporaryDirectory() as work_dir:
+        target = Target(target)
+        schs: List[Schedule] = tune_relay(
+            mod=mod,
+            params=params,
+            target=target,
+            config=ReplayTraceConfig(
+                num_trials_per_iter=32,
+                num_trials_total=32,
+            ),
+            work_dir=work_dir,
+        )
+        for i, sch in enumerate(schs):
+            print("-" * 10 + f" Part {i}/{len(schs)} " + "-" * 10)
+            if sch is None:
+                print("No valid schedule found!")
+            else:
+                print(sch.mod.script())
+                print(sch.trace)
 
 
 if __name__ == """__main__""":
+    test_meta_schedule_tune_relay("resnet18", 1, "llvm --num-cores=16")
     test_meta_schedule_tune_relay("resnet18", 1, "nvidia/geforce-rtx-3070")
-    # sys.exit(pytest.main([__file__] + sys.argv[1:]))

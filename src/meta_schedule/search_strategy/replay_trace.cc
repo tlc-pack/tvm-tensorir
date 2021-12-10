@@ -141,7 +141,6 @@ inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasure
       }
     }
   };
-  LOG(INFO) << self->num_threads_;
   support::parallel_for_dynamic(0, ed - st, self->num_threads_, f_worker);
   return per_task_result;
 }
