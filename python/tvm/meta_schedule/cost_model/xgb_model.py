@@ -328,9 +328,7 @@ class XGBModel(PyCostModel):
             self.cached_mean_costs = np.load(
                 os.path.join(tmp_dir, "cached_mean_costs.npy"), allow_pickle=True
             )
-            self.cached_normalizer = np.min(self.cached_mean_costs)
-            if self.cached_normalizer <= 0:
-                raise ValueError("The minimum mean cost must be greater than 0!")
+            self._set_cached_normalizer()
 
     def save(self, path: str) -> None:
         """Save the cost model to given file location.
@@ -415,9 +413,7 @@ class XGBModel(PyCostModel):
         # use together with previous features
         self.cached_features.extend(new_features)
         self.cached_mean_costs = np.append(self.cached_mean_costs, new_mean_costs)
-        self.cached_normalizer = np.min(self.cached_mean_costs)
-        if self.cached_normalizer <= 0:
-            raise ValueError("The minimum mean cost must be greater than 0!")
+        self._set_cached_normalizer()
         # train xgb model
         self._train(
             xs=self.cached_features,
@@ -546,6 +542,14 @@ class XGBModel(PyCostModel):
         ]
         eval_result.sort(key=make_metric_sorter("p-rmse"))
         return eval_result
+
+    def _set_cached_normalizer(self) -> None:
+        filtered = self.cached_mean_costs[self.cached_mean_costs > 0]
+        if filtered.size == 0:
+            self.cached_normalizer = 1.0
+        else:
+            self.cached_normalizer = np.min(filtered)
+            assert self.cached_normalizer > 0
 
 
 def custom_callback(
