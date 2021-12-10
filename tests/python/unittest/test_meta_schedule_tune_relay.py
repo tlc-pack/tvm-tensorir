@@ -31,6 +31,9 @@ logging.getLogger("tvm.meta_schedule").setLevel(logging.DEBUG)
 from tvm.meta_schedule.testing import MODEL_TYPE, MODEL_TYPES, get_torch_model
 
 
+@pytest.mark.parametrize("model_name", ["resnet18"])
+@pytest.mark.parametrize("batch_size", [1])
+@pytest.mark.parametrize("target", ["llvm --num-cores=16", "nvidia/geforce-rtx-3070"])
 def test_meta_schedule_tune_relay(model_name: str, batch_size: int, target: str):
     if model_name == "inception_v3" and batch_size == 1:
         pytest.skip("inception_v3 does not handle batch_size of 1")
