@@ -119,6 +119,7 @@ class DefaultLLVM:
         )
 
         return [
+            M.DisallowDynamicLoop(),
             M.RewriteParallelVectorizeUnroll(),
             M.RewriteReductionBlock(),
         ]
@@ -197,6 +198,7 @@ class DefaultCUDA:
         )
 
         return [
+            M.DisallowDynamicLoop(),
             M.RewriteCooperativeFetch(),
             M.RewriteUnboundBlock(),
             M.RewriteParallelVectorizeUnroll(),
