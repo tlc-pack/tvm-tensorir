@@ -93,14 +93,23 @@ def test_tune_matmul_cuda():
 
 @pytest.mark.skip("Integeration test")
 def test_tune_matmul_cuda_tensor_core():
-    def f_tune_context(mod, target, config, task_name):
-        return TuneContext(
-            mod=mod,
-            target=target,
-            space_generator=PostOrderApply(),
-            search_strategy=config.create_strategy(),
-            sch_rules=[
-                schedule_rule.AutoInline(
+    n = 512
+    mod = create_prim_func(te_workload.matmul_fp16(n, n, n))
+    target = Target("nvidia/geforce-rtx-3070")
+    config = ReplayTraceConfig(
+        num_trials_per_iter=32,
+        num_trials_total=320,
+    )
+
+    class DefaultTensorCore:
+        @staticmethod
+        def _sch_rules():
+            from tvm.meta_schedule import (  # pylint: disable=import-outside-toplevel
+                schedule_rule as M,
+            )
+
+            return [
+                M.AutoInline(
                     into_producer=False,
                     into_consumer=True,
                     into_cache_only=False,
@@ -110,7 +119,7 @@ def test_tune_matmul_cuda_tensor_core():
                     require_ordered=False,
                     disallow_op=None,
                 ),
-                schedule_rule.MultiLevelTiling(
+                M.MultiLevelTiling(
                     structure="SSSRRSRS",
                     tile_binds=["blockIdx.x", "blockIdx.y", "threadIdx.y"],
                     use_tensor_core=True,
@@ -127,7 +136,7 @@ def test_tune_matmul_cuda_tensor_core():
                         scope="",
                     ),
                 ),
-                schedule_rule.AutoInline(
+                M.AutoInline(
                     into_producer=True,
                     into_consumer=True,
                     into_cache_only=True,
@@ -137,67 +146,70 @@ def test_tune_matmul_cuda_tensor_core():
                     require_ordered=False,
                     disallow_op=None,
                 ),
-                schedule_rule.ParallelizeVectorizeUnroll(
+                M.ParallelizeVectorizeUnroll(
                     max_jobs_per_core=-1,  # disable parallelize
                     max_vectorize_extent=-1,  # disable vectorize
                     unroll_max_steps=[0, 16, 64, 512, 1024],
                     unroll_explicit=True,
                 ),
-            ],
-            postprocs=[
-                postproc.RewriteCooperativeFetch(),
-                # postproc.RewriteUnboundBlock(),
-                postproc.RewriteParallelVectorizeUnroll(),
-                postproc.RewriteReductionBlock(),
-                postproc.RewriteTensorCore(),
-                postproc.VerifyGPUCode(),
-            ],
-            mutators=[],
-            task_name=task_name,
-            rand_state=-1,
+            ]
+
+        @staticmethod
+        def _postproc():
+            from tvm.meta_schedule import (  # pylint: disable=import-outside-toplevel
+                postproc as M,
+            )
+
+            return [
+                M.RewriteCooperativeFetch(),
+                M.RewriteParallelVectorizeUnroll(),
+                M.RewriteReductionBlock(),
+                M.RewriteTensorCore(),
+                M.VerifyGPUCode(),
+            ]
+
+    with tempfile.TemporaryDirectory() as work_dir:
+        sch: Schedule = tune_tir(
+            mod=mod,
+            target=target,
+            config=config,
+            work_dir=work_dir,
+            space=PostOrderApply(),
+            sch_rules=DefaultTensorCore._sch_rules,
+            postprocs=DefaultTensorCore._postproc,
             num_threads=None,
         )
+        if sch is None:
+            print("No valid schedule found!")
+        else:
+            print(sch.mod.script())
+            print(sch.trace)
 
-    n = 4096
-    mod = create_prim_func(te_workload.matmul_fp16(n, n, n))
-    target = Target("nvidia/geforce-rtx-3070")
-    config = ReplayTraceConfig(
-        num_trials_per_iter=32,
-        num_trials_total=320,
-    )
+            from tvm.contrib import nvcc
+            import numpy as np
 
-    sch: Schedule = tune_tir(mod=mod, target=target, config=config, f_tune_context=f_tune_context)
-    if sch is None:
-        print("No valid schedule found!")
-    else:
-        print(sch.mod.script())
-        print(sch.trace)
+            ctx = tvm.gpu(0)
+            if nvcc.have_tensorcore(ctx.compute_version):
+                with tvm.transform.PassContext():
+                    func = tvm.build(sch.mod["main"], [], "cuda")
+                    print(sch.mod.script())
+                    print(func.imported_modules[0].get_source())
+                a_np = np.random.uniform(size=(n, n)).astype("float16")
+                b_np = np.random.uniform(size=(n, n)).astype("float16")
+                a = tvm.nd.array(a_np, ctx)
+                b = tvm.nd.array(b_np, ctx)
+                c = tvm.nd.array(np.zeros((n, n), dtype="float32"), ctx)
+                evaluator = func.time_evaluator(
+                    func.entry_name, ctx, number=3, repeat=1, min_repeat_ms=40
+                )
+                print("matmul with tensor core: %f ms" % (evaluator(a, b, c).mean * 1e3))
 
-        from tvm.contrib import nvcc
-        import numpy as np
-
-        ctx = tvm.gpu(0)
-        if nvcc.have_tensorcore(ctx.compute_version):
-            with tvm.transform.PassContext():
-                func = tvm.build(sch.mod["main"], [], "cuda")
-                print(sch.mod.script())
-                print(func.imported_modules[0].get_source())
-            a_np = np.random.uniform(size=(n, n)).astype("float16")
-            b_np = np.random.uniform(size=(n, n)).astype("float16")
-            a = tvm.nd.array(a_np, ctx)
-            b = tvm.nd.array(b_np, ctx)
-            c = tvm.nd.array(np.zeros((n, n), dtype="float32"), ctx)
-            evaluator = func.time_evaluator(
-                func.entry_name, ctx, number=3, repeat=1, min_repeat_ms=40
-            )
-            print("matmul with tensor core: %f ms" % (evaluator(a, b, c).mean * 1e3))
-
-            np.testing.assert_allclose(
-                c.asnumpy(),
-                np.matmul(a_np.astype("float32"), b_np.astype("float32")),
-                rtol=1e-4,
-                atol=1e-4,
-            )
+                np.testing.assert_allclose(
+                    c.asnumpy(),
+                    np.matmul(a_np.astype("float32"), b_np.astype("float32")),
+                    rtol=1e-4,
+                    atol=1e-4,
+                )
 
 
 if __name__ == """__main__""":

@@ -136,6 +136,7 @@ bool RewriteReductionBlockNode::Apply(const tir::Schedule& sch) {
       // If the block is the isolation block of tensor core,
       // we mark the init block for later postprocessor to handle the tensorization step
       if (HasAnn(block_sref, tir::attr::meta_schedule_auto_tensorize, "wmma_fill")) {
+        sch->Unannotate(init_block_rv, tir::attr::meta_schedule_auto_tensorize);
         sch->Unannotate(block_rv, tir::attr::meta_schedule_auto_tensorize);
         Array<tir::BlockRV> init_inner_block_rv = sch->GetChildBlocks(init_block_rv);
         ICHECK_EQ(init_inner_block_rv.size(), 1);
