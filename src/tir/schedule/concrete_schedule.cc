@@ -625,6 +625,8 @@ void ConcreteScheduleNode::Annotate(const LoopRV& loop_rv, const String& ann_key
     ICHECK(!ann_val->IsInstance<StringImmNode>())
         << "TypeError: runtime::String is expected, but gets StringImm";
     tir::Annotate(state_, this->GetSRef(loop_rv), ann_key, this->Get(GetRef<PrimExpr>(expr)));
+  } else if (ann_val.as<ArrayNode>()) {
+    tir::Annotate(state_, this->GetSRef(loop_rv), ann_key, ann_val);
   } else {
     LOG(FATAL)
         << "TypeError: Only strings, integers, floats and ExprRVs are supported for now, but gets: "
@@ -651,6 +653,8 @@ void ConcreteScheduleNode::Annotate(const BlockRV& block_rv, const String& ann_k
     ICHECK(!ann_val->IsInstance<StringImmNode>())
         << "TypeError: runtime::String is expected, but gets StringImm";
     tir::Annotate(state_, this->GetSRef(block_rv), ann_key, this->Get(GetRef<PrimExpr>(expr)));
+  } else if (ann_val.as<ArrayNode>()) {
+    tir::Annotate(state_, this->GetSRef(block_rv), ann_key, ann_val);
   } else {
     LOG(FATAL)
         << "TypeError: Only strings, integers, floats and ExprRVs are supported for now, but gets: "

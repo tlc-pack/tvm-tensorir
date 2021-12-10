@@ -592,38 +592,11 @@ class PipelineInjector : private StmtExprMutator {
     }
   }
 
-  PipelineInfo BlockizePipelineBody(const Array<Stmt>& stmts) {
-    PipelineInfo pipeline_info;
-    Array<Block> original_order;
-    for (const Stmt& stmt : stmts) {
-      const auto* block_realize = stmt.as<BlockRealizeNode>();
-      Block block;
-      if (block_realize && is_one(block_realize->predicate)) {
-        block = block_realize->block;
-        auto pipeline_stmt_info =
-            CheckAndRemovePipelineAnnotation(&block.CopyOnWrite()->annotations);
-        original_order.push_back(block);
-        pipeline_info.emplace(block, pipeline_stmt_info);
-      } else {
-        CHECK(stmt->IsInstance<ForNode>()) << "ValueError: Statements in the software pipeline must"
-                                           << " be either Block or For";
-        For for_stmt = Downcast<For>(stmt);
-        auto pipeline_stmt_info =
-            CheckAndRemovePipelineAnnotation(&for_stmt.CopyOnWrite()->annotations);
-        block = MakeBlock(for_stmt, buffer_data_to_buffer_);
-        original_order.push_back(block);
-        pipeline_info.emplace(block, pipeline_stmt_info);
-      }
-    }
-    ValidatePipelineBody(pipeline_info, original_order);
-    return pipeline_info;
-  }
-
   Stmt VisitStmt_(const ForNode* op) final {
     // Step 1: Recursively rewrite the children first.
     For for_node = Downcast<For>(StmtExprMutator::VisitStmt_(op));
-    auto it = for_node->annotations.find(attr::software_pipeline_scope);
-    if (it == for_node->annotations.end()) {
+    bool is_pipeline = HasPipelineAnnotation(op);
+    if (!is_pipeline) {
       return std::move(for_node);
     }
     // Step 2: Find the body of the pipeline. It can be direct child of the for-loop. If the
@@ -641,12 +614,57 @@ class PipelineInjector : private StmtExprMutator {
     } else {
       pipeline_body = for_node->body;
     }
-    CHECK(pipeline_body->IsInstance<SeqStmtNode>())
+
+    const SeqStmtNode* pipeline_body_seq = pipeline_body.as<SeqStmtNode>();
+    CHECK(pipeline_body_seq)
         << "ValueError: The body of the software pipeline should be SeqStmt, got "
         << pipeline_body->GetTypeKey();
+    const SeqStmtNode* original_seq = op->body->IsInstance<BlockRealizeNode>() ? op->body.as<BlockRealizeNode>()->block->body.as<SeqStmtNode>() : op->body.as<SeqStmtNode>();
+    ICHECK(original_seq);
+
     // Step 3: Blockize the components of the pipeline. Each child of the pipelined loop should
     // be converted into a block.
-    PipelineInfo pipeline_info = BlockizePipelineBody(pipeline_body.as<SeqStmtNode>()->seq);
+    PipelineInfo pipeline_info;
+    Array<Block> original_order;
+    for (size_t i = 0; i < pipeline_body_seq->seq.size(); i++) {
+      // Check if nested pipeline exists
+      const auto* nested_for = original_seq->seq[i].as<ForNode>();
+      if (nested_for && HasPipelineAnnotation(nested_for)) {
+        const auto* rewritten_nested_pipeline = pipeline_body_seq->seq[i].as<BlockRealizeNode>();
+        ICHECK(rewritten_nested_pipeline);
+        const Block& nested_pipeline_block = rewritten_nested_pipeline->block;
+        ICHECK(nested_pipeline_block->match_buffers.empty());  // match_buffer should have been lowered
+        for (const auto& buffer : nested_pipeline_block->alloc_buffers) {
+          pipeline_allocs.push_back(buffer);
+          buffer_data_to_buffer_.Set(buffer->data, buffer);
+        }
+        ICHECK(nested_pipeline_block->body->IsInstance<SeqStmtNode>());
+        const Array<Stmt>& nested_blocks = nested_pipeline_block->body.as<SeqStmtNode>()->seq;
+        ICHECK(nested_blocks.size() == 3);
+        for (size_t j = 0; j < nested_blocks.size(); j++) {
+          const auto* block_realize = nested_blocks[j].as<BlockRealizeNode>();
+          ICHECK(block_realize);
+          Block block = is_one(block_realize->predicate) ? block_realize->block : MakeBlock(GetRef<Stmt>(block_realize), buffer_data_to_buffer_);
+          original_order.push_back(block);
+        }
+      } else {
+        const Stmt& child = pipeline_body_seq->seq[i];
+        const auto* block_realize = child.as<BlockRealizeNode>();
+        Block block = (block_realize && is_one(block_realize->predicate)) ? block_realize->block : MakeBlock(child, buffer_data_to_buffer_);
+        original_order.push_back(block);
+      }
+    }
+
+    auto pipeline_stages = Downcast<Array<Integer>>(op->annotations.at(attr::software_pipeline_stage));
+    auto pipeline_orders = Downcast<Array<Integer>>(op->annotations.at(attr::software_pipeline_order));
+    CHECK_EQ(pipeline_stages.size(), original_order.size());
+    CHECK_EQ(pipeline_orders.size(), original_order.size());
+    for (size_t i = 0; i < pipeline_stages.size(); i++) {
+      PipelineStageOrder stage_order(pipeline_stages[i]->value, pipeline_orders[i]->value);
+      pipeline_info.emplace(original_order[i], stage_order);
+    }
+    ValidatePipelineBody(pipeline_info, original_order);
+
     // Step 4: Rewrite the pipeline body.
     Stmt pipeline = PipelineRewriter::Rewrite(buffer_data_to_buffer_, double_buffers,
                                               pipeline_allocs, GetRef<For>(op), pipeline_info);
@@ -725,16 +743,33 @@ class PipelineInjector : private StmtExprMutator {
     }
     Block block = Downcast<Block>(StmtExprMutator::VisitStmt_(op));
 
-    if (block->body->IsInstance<SeqStmtNode>()) {
-      // Rewriting for software pipelining will produce nested SeqStmt. These statements need to be
-      // flattened for rewriting outer software pipeline (if nested software pipelines are present).
-      block = FlattenNestedBlocks(block);
-    }
+    // if (block->body->IsInstance<SeqStmtNode>()) {
+    //   // Rewriting for software pipelining will produce nested SeqStmt. These statements need to be
+    //   // flattened for rewriting outer software pipeline (if nested software pipelines are present).
+    //   block = FlattenNestedBlocks(block);
+    // }
 
     for (const auto& buffer : op->alloc_buffers) {
       buffer_data_to_buffer_.erase(buffer->data);
     }
     return block;
+  }
+
+  bool HasPipelineAnnotation(const ForNode* op) const {
+    auto it1 = op->annotations.find(attr::software_pipeline_stage);
+    auto it2 = op->annotations.find(attr::software_pipeline_order);
+    bool has_stage = it1 != op->annotations.end();
+    bool has_order = it2 != op->annotations.end();
+    if (has_stage && has_order) {
+      return true;
+    }
+    if (has_stage) {
+      LOG(FATAL) << "ValueError: Order of the software pipeline is not defined.";
+    }
+    if (has_order) {
+      LOG(FATAL) << "ValueError: Stage of the software pipeline is not defined.";
+    }
+    return false;
   }
 
   Map<Var, Buffer> buffer_data_to_buffer_;
