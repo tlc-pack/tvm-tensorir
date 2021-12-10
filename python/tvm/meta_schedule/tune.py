@@ -70,16 +70,6 @@ TypeTaskScheduler = Callable[
     TaskScheduler,
 ]
 
-TYPE_F_TUNE_CONTEXT = Callable[  # pylint: disable=invalid-name
-    [
-        IRModule,
-        Target,
-        SearchStrategyConfig,
-        str,
-    ],
-    TuneContext,
-]
-
 
 class DefaultLLVM:
     """Default tuning configuration for LLVM."""
