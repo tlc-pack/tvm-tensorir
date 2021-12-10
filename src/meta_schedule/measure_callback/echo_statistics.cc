@@ -255,16 +255,21 @@ struct TaskInfo {
       best_round = trials;
       best_gflops = flop / run_ms / 1e6;
     }
-    LOG(INFO) << "[" << name                            //
-              << "] Trial #" << trials                  //
+    LOG(INFO) << "[" << name << "] Trial #" << trials   //
+              << std::fixed << std::setprecision(4)     //
               << ": GFLOPs: " << (flop / run_ms / 1e6)  //
+              << ". Time: " << run_ms << " ms"          //
               << ". Best GFLOPs: " << best_gflops;
   }
 
-  void UpdateError(const String& err, const MeasureCandidate& candidate) {
+  void UpdateError(std::string err, const MeasureCandidate& candidate) {
+    static const auto* f_proc = runtime::Registry::Get("meta_schedule._process_error_message");
+    ICHECK(f_proc != nullptr);
+    err = (*f_proc)(err).operator std::string();
     ++error_count;
-    LOG(INFO) << "[" << name            //
-              << "] Trial #" << trials  //
+    ++trials;
+    LOG(INFO) << "[" << name << "] Trial #" << trials  //
+              << std::fixed << std::setprecision(4)    //
               << ": Error in building: " << err << "\n"
               << tir::AsTVMScript(candidate->sch->mod()) << "\n"
               << Concat(candidate->sch->trace().value()->AsPython(false), "\n");

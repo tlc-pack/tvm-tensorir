@@ -15,18 +15,17 @@
 # specific language governing permissions and limitations
 # under the License.
 """Utilities for meta schedule"""
-from typing import Any, Callable, List, Optional, Union
-
 import ctypes
 import json
 import os
 import shutil
-import psutil  # type: ignore
+from typing import Any, Callable, List, Optional, Union
 
+import psutil
 import tvm
 from tvm._ffi import get_global_func, register_func
 from tvm.error import TVMError
-from tvm.ir import Array, Map, IRModule
+from tvm.ir import Array, IRModule, Map
 from tvm.rpc import RPCSession
 from tvm.runtime import PackedFunc, String
 from tvm.tir import FloatImm, IntImm
@@ -59,6 +58,14 @@ def _cpu_count_impl(logical: bool = True) -> int:
     when measuring locally.
     """
     return psutil.cpu_count(logical=logical) or 1
+
+
+@register_func("meta_schedule._process_error_message")
+def _process_error_message(error_msg: str) -> str:
+    error_msg_lines = str(error_msg).splitlines()
+    if len(error_msg_lines) >= 50:
+        return "\n".join(error_msg_lines[:25] + ["..."] + error_msg_lines[-25:])
+    return error_msg
 
 
 def cpu_count(logical: bool = True) -> int:
