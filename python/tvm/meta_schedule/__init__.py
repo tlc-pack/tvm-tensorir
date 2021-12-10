@@ -33,5 +33,5 @@ from .search_strategy import (
     ReplayFuncConfig,
     ReplayTraceConfig,
 )
-from .tune import tune_te, tune_tir
+from .tune import tune_te, tune_tir, tune_relay
 from .tune_context import TuneContext

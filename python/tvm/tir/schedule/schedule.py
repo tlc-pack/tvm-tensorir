@@ -1763,8 +1763,13 @@ class Schedule(Object):
 
     ########## Schedule: Layout transformation ##########
 
-    def transform_layout(self, block: BlockRV, buffer_index: int, is_write_index: bool,
-                         index_map : Union[IndexMap, Callable]) -> None:
+    def transform_layout(
+        self,
+        block: BlockRV,
+        buffer_index: int,
+        is_write_index: bool,
+        index_map: Union[IndexMap, Callable],
+    ) -> None:
         """Apply a transformation represented by IndexMap to buffer
 
         Parameters

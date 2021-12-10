@@ -33,6 +33,7 @@ class MODEL_TYPE(Enum):  # pylint: disable=invalid-name
 # Specify the type of each model
 MODEL_TYPES = {
     # Image classification models
+    "resnet18": MODEL_TYPE.IMAGE_CLASSIFICATION,
     "resnet50": MODEL_TYPE.IMAGE_CLASSIFICATION,
     "alexnet": MODEL_TYPE.IMAGE_CLASSIFICATION,
     "vgg16": MODEL_TYPE.IMAGE_CLASSIFICATION,

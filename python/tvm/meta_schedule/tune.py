@@ -21,9 +21,12 @@ import os.path
 from typing import Callable, Dict, List, Optional, Union
 
 from tvm.ir.module import IRModule
+from tvm.runtime import NDArray
+from tvm.meta_schedule.integration import extract_task
 from tvm.target.target import Target
 from tvm.te import Tensor, create_prim_func
 from tvm.tir import PrimFunc, Schedule
+from tvm.relay import Function as RelayFunc
 
 from .builder import Builder, LocalBuilder
 from .cost_model import CostModel, XGBModel
@@ -595,3 +598,107 @@ def tune_te(
         mutator_probs=mutator_probs,
         num_threads=num_threads,
     )
+
+
+def tune_relay(
+    mod: Union[RelayFunc, IRModule],
+    target: Union[str, Target],
+    config: SearchStrategyConfig,
+    work_dir: str,
+    *,
+    params: Optional[Dict[str, NDArray]] = None,
+    task_name: str = "main",
+    builder: Optional[Builder] = None,
+    runner: Optional[Runner] = None,
+    database: Optional[Database] = None,
+    cost_model: Optional[CostModel] = None,
+    measure_callbacks: Optional[List[MeasureCallback]] = None,
+    task_scheduler: Optional[TaskScheduler] = None,
+    space: Optional[TypeSpaceGenerator] = None,
+    sch_rules: Optional[TypeScheduleRule] = None,
+    postprocs: Optional[TypePostproc] = None,
+    mutator_probs: Optional[TypeMutatorProb] = None,
+    num_threads: Optional[int] = None,
+) -> List[Optional[Schedule]]:
+    """Tune a TIR IRModule with a given target.
+
+    Parameters
+    ----------
+    mod : Union[RelayFunc, IRModule]
+        The module to tune.
+    target : Union[str, Target]
+        The target to tune for.
+    config : SearchStrategyConfig
+        The search strategy config.
+    params : Optional[Dict[str, tvm.runtime.NDArray]]
+        The associated parameters of the program
+    task_name : str
+        The name of the task.
+    work_dir : Optional[str]
+        The working directory to save intermediate results.
+    builder : Optional[Builder]
+        The builder to use.
+    runner : Optional[Runner]
+        The runner to use.
+    database : Optional[Database]
+        The database to use.
+    measure_callbacks : Optional[List[MeasureCallback]]
+        The callbacks used during tuning.
+    f_tune_context : Optional[TYPE_F_TUNE_CONTEXT]
+        The function to create TuneContext.
+    f_task_scheduler : Optional[TYPE_F_TASK_SCHEDULER]
+        The function to create TaskScheduler.
+
+    Returns
+    -------
+    schs : List[Optional[Schedule]]
+        The tuned schedules.
+    """
+
+    logger.info("Working directory: %s", work_dir)
+    extracted_tasks = extract_task(mod, target, params)
+    # pylint: disable=protected-access
+    tune_contexts = []
+    target = Parse._target(target)
+    database = Parse._database(database, work_dir)
+    for task in extracted_tasks:
+        assert len(task.dispatched) == 1, "Only size 1 dispatched task list is supported for now"
+        mod = Parse._mod(task.dispatched[0])
+        tune_contexts.append(
+            Parse._tune_context(
+                tune_context=None,
+                mod=mod,
+                target=target,
+                config=config,
+                task_name=task_name,
+                space_generator=space,
+                sch_rules=sch_rules,
+                postprocs=postprocs,
+                mutator_probs=mutator_probs,
+                num_threads=num_threads,
+            )
+        )
+    task_scheduler = Parse._task_scheduler(
+        task_scheduler,
+        tune_contexts,
+        builder=Parse._builder(builder),
+        runner=Parse._runner(runner),
+        database=database,
+        cost_model=Parse._cost_model(cost_model),
+        measure_callbacks=Parse._callbacks(measure_callbacks),
+    )
+    # pylint: enable=protected-access
+    task_scheduler.tune()
+    schs = []
+    for task in tune_contexts:
+        mod = task.mod
+        workload = database.commit_workload(mod)
+        bests: List[TuningRecord] = database.get_top_k(workload, top_k=1)
+        if not bests:
+            schs.append(None)
+        else:
+            assert len(bests) == 1
+            sch = Schedule(mod)
+            bests[0].trace.apply_to_schedule(sch, remove_postproc=False)
+            schs.append(sch)
+    return schs

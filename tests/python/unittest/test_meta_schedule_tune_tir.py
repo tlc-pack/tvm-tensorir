@@ -157,7 +157,7 @@ def test_tune_matmul_cuda_tensor_core():
             rand_state=-1,
             num_threads=None,
         )
-    
+
     n = 4096
     mod = create_prim_func(te_workload.matmul_fp16(n, n, n))
     target = Target("nvidia/geforce-rtx-3070")
