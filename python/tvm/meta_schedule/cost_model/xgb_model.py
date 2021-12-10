@@ -387,12 +387,18 @@ class XGBModel(PyCostModel):
         if len(candidates) == 0:
             return
         # extract feature and do validation
+
+        def _mean_cost(x: RunnerResult) -> float:
+            if not x.run_secs:
+                return 0.0
+            return sum(float(s) for s in x.run_secs) / len(x.run_secs)
+
         new_features = [
             x.numpy().astype("float32")
             for x in self.extractor.extract_from(tune_context, candidates)
         ]
         new_mean_costs = np.asarray(
-            [float(sum(x.run_secs) / len(x.run_secs)) for x in results],
+            [_mean_cost(x) for x in results],
             dtype="float32",
         )
         if self.booster is not None and self.cached_normalizer is not None:

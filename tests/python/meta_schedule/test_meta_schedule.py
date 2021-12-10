@@ -60,6 +60,10 @@ def _parse_args():
     )
     parsed = args.parse_args()
     parsed.target = tvm.target.Target(parsed.target)
+    if parsed.target.attrs["mtriple"] == "aarch64-linux-gnu":
+        parsed.alloc_repeat = 3
+    else:
+        parsed.alloc_repeat = 1
     parsed.rpc_config = ms.runner.RPCConfig(
         tracker_host=parsed.rpc_host,
         tracker_port=parsed.rpc_port,
