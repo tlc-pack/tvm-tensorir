@@ -18,6 +18,7 @@
 
 import logging
 import os.path
+from pickle import HIGHEST_PROTOCOL
 from typing import Callable, Dict, List, Optional, Union
 
 from tvm.ir.module import IRModule
@@ -79,6 +80,7 @@ TYPE_F_TUNE_CONTEXT = Callable[  # pylint: disable=invalid-name
     ],
     TuneContext,
 ]
+
 
 class DefaultLLVM:
     """Default tuning configuration for LLVM."""
