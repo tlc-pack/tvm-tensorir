@@ -520,7 +520,7 @@ inline std::vector<CachedTrace> EvolutionarySearchNode::State::SampleInitPopulat
 
 inline std::vector<CachedTrace> EvolutionarySearchNode::State::MergeSamples(
     const std::vector<CachedTrace>& measured, const std::vector<CachedTrace>& unmeasured) {
-  ICHECK(measured.size() + unmeasured.size() == self->population)
+  ICHECK_EQ(measured.size() + unmeasured.size(), self->population)
       << "Num of total init samples does not equal to population size!";
   std::vector<CachedTrace> inits;
   inits.reserve(self->population);
