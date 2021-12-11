@@ -31,6 +31,7 @@ logging.getLogger("tvm.meta_schedule").setLevel(logging.DEBUG)
 from tvm.meta_schedule.testing import MODEL_TYPE, MODEL_TYPES, get_torch_model
 
 
+@pytest.mark.skip("Integration test")
 @pytest.mark.parametrize("model_name", ["resnet18"])
 @pytest.mark.parametrize("batch_size", [1])
 @pytest.mark.parametrize("target", ["llvm --num-cores=16", "nvidia/geforce-rtx-3070"])
