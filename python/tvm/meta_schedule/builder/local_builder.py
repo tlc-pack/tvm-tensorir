@@ -213,7 +213,7 @@ class LocalBuilder(PyBuilder):
 
 
 @register_func("meta_schedule.builder.default_build")
-def default_build(mod: IRModule, target: Target, params: Optional[Dict[str, NDArray]]) -> Module:
+def default_build(mod: IRModule, target: Target, _params: Optional[Dict[str, NDArray]]) -> Module:
     """Default build function.
 
     Parameters
@@ -222,7 +222,7 @@ def default_build(mod: IRModule, target: Target, params: Optional[Dict[str, NDAr
         The IRModule to be built.
     target : Target
         The target to be built.
-    params : Optional[Dict[str, NDArray]]
+    _params : Optional[Dict[str, NDArray]]
         The parameters to be used for the build. Must be None.
 
     Returns

@@ -229,7 +229,7 @@ inline StmtSRef ConcreteScheduleNode::GetSRef(const BlockRV& block_rv) const {
   if (it == this->symbol_table_.end()) {
     LOG(FATAL) << "IndexError: Cannot find corresponding BlockRV: " << block_rv;
   }
-  const ObjectRef& obj = (*it).second;
+  ObjectRef obj = (*it).second;
   const auto* sref = obj.as<StmtSRefNode>();
   if (sref == nullptr) {
     LOG(FATAL) << "ValueError: BlockRV's corresponding type is invalid: "
@@ -248,7 +248,7 @@ inline StmtSRef ConcreteScheduleNode::GetSRef(const LoopRV& loop_rv) const {
   if (it == this->symbol_table_.end()) {
     LOG(FATAL) << "IndexError: Cannot find corresponding LoopRV: " << loop_rv;
   }
-  const ObjectRef& obj = (*it).second;
+  ObjectRef obj = (*it).second;
   if (obj.same_as(inline_mark)) {
     return inline_mark;
   }

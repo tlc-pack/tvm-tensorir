@@ -127,15 +127,16 @@ inline Optional<Array<MeasureCandidate>> ReplayTraceNode::State::GenerateMeasure
   ICHECK_LT(st, ed);
   std::vector<TRandState> per_thread_rand_state = ForkSeed(&self->rand_state_, self->num_threads_);
   Array<MeasureCandidate> per_task_result(ed - st, MeasureCandidate{nullptr});
-  auto f_worker = [this, &per_thread_rand_state, &per_task_result](int thread_id,
-                                                                   int task_id) -> void {
+  ThreadedTraceApply pp(self->postprocs_);
+  auto f_worker = [this, &per_thread_rand_state, &per_task_result, &pp](int thread_id,
+                                                                        int task_id) -> void {
     TRandState& rand_state = per_thread_rand_state[thread_id];
     IRModule mod = self->per_thread_mod_[thread_id];
     for (;;) {
       int design_space_index = tir::SampleInt(&rand_state, 0, design_spaces.size());
       tir::Trace trace = design_spaces[design_space_index];
       tir::Trace new_trace = tir::Trace(trace->insts, {});
-      if (Optional<tir::Schedule> sch = ApplyTrace(mod, new_trace, &rand_state, self->postprocs_)) {
+      if (Optional<tir::Schedule> sch = pp.Apply(mod, new_trace, &rand_state)) {
         per_task_result.Set(task_id, MeasureCandidate(sch.value(), self->args_info_));
         break;
       }

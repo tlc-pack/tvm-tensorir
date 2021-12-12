@@ -72,7 +72,7 @@ class AfterRewrite0:
                                     v1 = T.axis.spatial(512, (ax0_ax1_fused_0 * 8 + ax0_ax1_fused_1) % 512)
                                     T.reads([A[v0, v1]])
                                     T.writes([A_shared[v0, v1]])
-                                    T.block_attr({"buffer_dim_align":[[0, 0, 32, 8]], "meta_schedule.cooperative_fetch":1})
+                                    T.block_attr({"meta_schedule.cooperative_fetch":1})
                                     A_shared[v0, v1] = A[v0, v1]
                         for ax0_ax1_fused_0 in T.serial(0, 1024):
                             for ax0_ax1_fused_1 in T.thread_binding(0, 8, thread="threadIdx.x"):
@@ -82,7 +82,7 @@ class AfterRewrite0:
                                         v1 = T.axis.spatial(512, i0_0_i1_0_fused * 32 + (ax0_ax1_fused_0 * 16 + ax0_ax1_fused_1 * 2 + ax0_ax1_fused_2) % 32)
                                         T.reads([B[v0, v1]])
                                         T.writes([B_shared[v0, v1]])
-                                        T.block_attr({"buffer_dim_align":[[0, 0, 32, 8]], "meta_schedule.cooperative_fetch":2})
+                                        T.block_attr({"meta_schedule.cooperative_fetch":2})
                                         B_shared[v0, v1] = B[v0, v1]
                         for i2_1, i0_3, i1_3, i2_2, i0_4, i1_4 in T.grid(16, 2, 2, 32, 16, 2):
                             with T.block("C"):
@@ -266,10 +266,10 @@ def test_rewrite_cooperative_fetch_tensor_core():
     # pylint: disable=line-too-long,invalid-name
     b0 = sch.get_block(name="C", func_name="main")
     l1, l2, l3 = sch.get_loops(block=b0)
-    l4, l5 = sch.split(loop=l1, factors=[32, 16])
-    l6, l7 = sch.split(loop=l2, factors=[32, 16])
-    l8, l9 = sch.split(loop=l3, factors=[32, 16])
-    l10, l11, l12, l13, l14, l15 = sch.get_loops(block=b0)
+    _, l5 = sch.split(loop=l1, factors=[32, 16])
+    _, l7 = sch.split(loop=l2, factors=[32, 16])
+    _, l9 = sch.split(loop=l3, factors=[32, 16])
+    _, _, l12, _, l14, _ = sch.get_loops(block=b0)
     sch.reorder(l12, l14, l5, l7, l9)
     b16 = sch.blockize(loop=l5)
     sch.annotate(block_or_loop=b0, ann_key="meta_schedule.auto_tensorize", ann_val="wmma_sync")
@@ -295,15 +295,15 @@ def test_rewrite_cooperative_fetch_tensor_core():
     sch.bind(loop=l51, thread_axis="threadIdx.y")
     b52 = sch.cache_read(block=b16, read_buffer_index=1, storage_scope="shared")
     sch.compute_at(block=b52, loop=l46, preserve_unit_loops=True)
-    l53, l54, l55, l56, l57, l58 = sch.get_loops(block=b52)
+    _, _, _, _, l57, l58 = sch.get_loops(block=b52)
     l59 = sch.fuse(l57, l58)
-    v60, v61 = sch.sample_perfect_tile(loop=l59, n=2, max_innermost_factor=4, decision=[32768, 1])
+    _, v61 = sch.sample_perfect_tile(loop=l59, n=2, max_innermost_factor=4, decision=[32768, 1])
     sch.annotate(block_or_loop=b52, ann_key="meta_schedule.cooperative_fetch", ann_val=v61)
     b62 = sch.cache_read(block=b16, read_buffer_index=2, storage_scope="shared")
     sch.compute_at(block=b62, loop=l46, preserve_unit_loops=True)
-    l63, l64, l65, l66, l67, l68 = sch.get_loops(block=b62)
+    _, _, _, _, l67, l68 = sch.get_loops(block=b62)
     l69 = sch.fuse(l67, l68)
-    v70, v71 = sch.sample_perfect_tile(loop=l69, n=2, max_innermost_factor=4, decision=[8192, 4])
+    _, v71 = sch.sample_perfect_tile(loop=l69, n=2, max_innermost_factor=4, decision=[8192, 4])
     sch.annotate(block_or_loop=b62, ann_key="meta_schedule.cooperative_fetch", ann_val=v71)
     b72 = sch.cache_read(block=b16, read_buffer_index=1, storage_scope="wmma.matrix_a")
     b73 = sch.cache_read(block=b16, read_buffer_index=2, storage_scope="wmma.matrix_b")
