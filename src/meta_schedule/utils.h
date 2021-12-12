@@ -37,6 +37,7 @@
 #include <tvm/meta_schedule/tune_context.h>
 #include <tvm/support/parallel_for.h>
 
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -277,31 +278,51 @@ inline int GetTargetNumCores(const Target& target) {
   return num_cores;
 }
 
-/*!
- * \brief Apply the trace and postprocessors to an IRModule
- * \param mod The IRModule to be applied
- * \param trace The trace to apply to the IRModule
- * \param rand_state The random seed
- * \param postprocs The postprocessors to apply to the IRModule
- * \return The schedule created, or NullOpt if any postprocessor fails
- */
-inline Optional<tir::Schedule> ApplyTrace(const IRModule& mod, const tir::Trace& trace,
-                                          TRandState* rand_state,
-                                          const Array<Postproc>& postprocs) {
-  tir::Schedule sch =
-      tir::Schedule::Traced(mod,
-                            /*rand_state=*/ForkSeed(rand_state),
-                            /*debug_mode=*/0,
-                            /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
-  trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
-  sch->EnterPostproc();
-  for (const Postproc& proc : postprocs) {
-    if (!proc->Apply(sch)) {
-      return NullOpt;
+struct ThreadedTraceApply {
+  const Array<Postproc>& postprocs;
+  std::vector<std::unique_ptr<std::atomic<int>>> fail_counter;
+
+  explicit ThreadedTraceApply(const Array<Postproc>& postprocs)
+      : postprocs(postprocs), fail_counter(postprocs.size()) {
+    for (std::unique_ptr<std::atomic<int>>& p : fail_counter) {
+      p = std::make_unique<std::atomic<int>>(0);
     }
   }
-  return sch;
-}
+
+  /*!
+   * \brief Apply the trace and postprocessors to an IRModule
+   * \param mod The IRModule to be applied
+   * \param trace The trace to apply to the IRModule
+   * \param rand_state The random seed
+   * \return The schedule created, or NullOpt if any postprocessor fails
+   */
+  Optional<tir::Schedule> Apply(const IRModule& mod, const tir::Trace& trace,
+                                TRandState* rand_state) {
+    tir::Schedule sch =
+        tir::Schedule::Traced(mod,
+                              /*rand_state=*/ForkSeed(rand_state),
+                              /*debug_mode=*/0,
+                              /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
+    trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
+    sch->EnterPostproc();
+    for (int i = 0, n = postprocs.size(); i < n; ++i) {
+      if (!postprocs[i]->Apply(sch)) {
+        ++*fail_counter[i];
+        return NullOpt;
+      }
+    }
+    return sch;
+  }
+
+  std::string SummarizeFailures() const {
+    std::ostringstream os;
+    for (int i = 0, n = postprocs.size(); i < n; ++i) {
+      os << "Postproc #" << i << " [" << postprocs[i]  //
+         << "]: " << *fail_counter[i] << " failure(s)\n";
+    }
+    return os.str();
+  }
+};
 
 }  // namespace meta_schedule
 }  // namespace tvm

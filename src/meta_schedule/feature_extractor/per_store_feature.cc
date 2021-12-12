@@ -52,6 +52,31 @@ inline double slog(double x) { return x >= 0 ? std::log2(x + 1) : std::log2(-x +
 namespace utils {
 
 /*!
+ * \brief Get the shape of the buffer
+ * \param buffer The buffer
+ * \param analyzer The analyzer
+ * \return The shape of the buffer
+ */
+std::vector<int64_t> GetBufferShape(const Buffer& buffer, arith::Analyzer* analyzer) {
+  int ndim = buffer->shape.size();
+  std::vector<int64_t> result;
+  result.reserve(ndim);
+  for (const PrimExpr& i : buffer->shape) {
+    if (const IntImmNode* int_imm = i.as<IntImmNode>()) {
+      result.push_back(int_imm->value);
+      continue;
+    }
+    arith::ConstIntBound bound = analyzer->const_int_bound(i);
+    if (0 <= bound->max_value && bound->max_value < arith::ConstIntBound::kPosInf) {
+      result.push_back(bound->max_value);
+    } else {
+      result.push_back(1);
+    }
+  }
+  return result;
+}
+
+/*!
  * \brief Given a loop, return its `pragma_auto_unroll_max_step` annotation if it exists
  * \param loop The loop to be checked
  * \return The value of `pragma_auto_unroll_max_step` if it exists, or -1 if it does not exist
@@ -655,7 +680,7 @@ struct Feature {
 
     static void Pad(std::vector<double>* v) { v->insert(v->end(), 18, 0.0); }
 
-    void SetStride(const LoopNest& loop_nest);
+    void SetStride(const LoopNest& loop_nest, arith::Analyzer* analyzer);
 
     void SetReuse(const LoopNest& loop_nest,     //
                   int64_t top_loop_touch_bytes,  //
@@ -775,13 +800,13 @@ void Feature::SetRegion(const LoopNest& loop_nest, IntVec* for_touched_bytes,
   }
 }
 
-void Feature::SubFeature::SetStride(const LoopNest& loop_nest) {
+void Feature::SubFeature::SetStride(const LoopNest& loop_nest, arith::Analyzer* analyzer) {
   int n_loops = loop_nest.loops.size();
   const std::vector<const ForNode*>& loops = loop_nest.loops;
   // For each buffer, we find the loop stride on it
   const BufferNode* buffer = this->buffer;
   int ndim = this->buffer->shape.size();
-  IntVec buffer_shape = support::AsVector<PrimExpr, int64_t>(buffer->shape);
+  IntVec buffer_shape = utils::GetBufferShape(GetRef<Buffer>(buffer), analyzer);
   // Calculate the buffer's stride from its shape
   IntVec buffer_stride(ndim);
   if (ndim >= 1) {
@@ -934,7 +959,7 @@ Feature::Feature(const BufferStoreNode* store, const LoopNest& loop_nest, int64_
   this->SetRegion(loop_nest, for_touched_bytes, buffer_touched_under_loop, analyzer);
   // Step 2. Calculate stride-related feature
   for (auto& feature : sub_features) {
-    feature.SetStride(loop_nest);
+    feature.SetStride(loop_nest, analyzer);
   }
   // Step 3. Calculate reuse-related feature
   int64_t top_loop_touch_bytes = 0.0;
@@ -1056,9 +1081,10 @@ struct Feature {
 
   Feature() = default;
 
-  explicit Feature(const LoopNest& loop_nest, const Buffer& buffer) {
+  explicit Feature(const LoopNest& loop_nest, const Buffer& buffer, arith::Analyzer* analyzer) {
+    std::vector<int64_t> shape = utils::GetBufferShape(buffer, analyzer);
     int64_t numel = 1;
-    for (int64_t x : support::AsVector<PrimExpr, int64_t>(buffer->shape)) {
+    for (int64_t x : shape) {
       numel *= x;
     }
     alloc_size = numel * buffer->dtype.bytes();
@@ -1181,7 +1207,7 @@ class PerStoreFeatureCollector : private StmtVisitor {
 
   void HandleBufferAlloc(const Buffer& buffer) {
     Feature& feature = buffer_features_[buffer.get()];
-    feature.group4 = std::make_unique<group4::Feature>(loop_nest_, buffer);
+    feature.group4 = std::make_unique<group4::Feature>(loop_nest_, buffer, &analyzer_);
   }
 
   explicit PerStoreFeatureCollector(bool is_gpu, int64_t cache_line_bytes,

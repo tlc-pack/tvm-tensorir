@@ -60,7 +60,7 @@ def _parse_args():
     )
     parsed = args.parse_args()
     parsed.target = tvm.target.Target(parsed.target)
-    if parsed.target.attrs["mtriple"] == "aarch64-linux-gnu":
+    if parsed.target.attrs.get("mtriple", None) == "aarch64-linux-gnu":
         parsed.alloc_repeat = 3
     else:
         parsed.alloc_repeat = 1
@@ -68,7 +68,7 @@ def _parse_args():
         tracker_host=parsed.rpc_host,
         tracker_port=parsed.rpc_port,
         tracker_key=parsed.rpc_key,
-        session_timeout_sec=60,
+        session_timeout_sec=30,
     )
     parsed.rpc_workers = parsed.rpc_config.count_num_servers(allow_missing=False)
     return parsed
@@ -92,6 +92,7 @@ def main():
             config=ms.EvolutionarySearchConfig(
                 num_trials_per_iter=64,
                 num_trials_total=ARGS.num_trials,
+                init_max_fail_count=1024,
             ),
             runner=runner,
             task_name=ARGS.workload,

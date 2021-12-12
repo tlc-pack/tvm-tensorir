@@ -214,11 +214,12 @@ def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
     strategy = EvolutionarySearch(
         num_trials_per_iter=num_trials_per_iter,
         num_trials_total=num_trials_total,
-        population=5,
+        population_size=5,
         init_measured_ratio=0.1,
-        genetic_algo_iters=3,
-        max_evolve_fail_cnt=10,
-        p_mutate=0.5,
+        init_max_fail_count=10,
+        genetic_num_iters=3,
+        genetic_mutate_prob=0.5,
+        genetic_max_fail_count=10,
         eps_greedy=0.9,
     )
     tune_context = TuneContext(
@@ -268,5 +269,4 @@ def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
 
 
 if __name__ == "__main__":
-    test_meta_schedule_evolutionary_search()
-    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))

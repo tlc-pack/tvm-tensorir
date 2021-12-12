@@ -51,9 +51,13 @@ def _create_context(mod, target) -> TuneContext:
 class AfterRewrite0:
     @T.prim_func
     def main(var_A: T.handle, var_B: T.handle, var_C: T.handle) -> None:
+        # function attr dict
+        T.func_attr({"global_symbol": "main", "tir.noalias": True})
         A = T.match_buffer(var_A, [512, 512], dtype="float32")
         B = T.match_buffer(var_B, [512, 512], dtype="float32")
         C = T.match_buffer(var_C, [512, 512], dtype="float32")
+        # body
+        # with T.block("root")
         C_local = T.alloc_buffer([512, 512], dtype="float32", scope="local")
         A_shared = T.alloc_buffer([512, 512], dtype="float32", scope="shared")
         B_shared = T.alloc_buffer([512, 512], dtype="float32", scope="shared")
@@ -99,10 +103,13 @@ class AfterRewrite0:
                             C[v0, v1] = C_local[v0, v1]
 
 
+
 @tvm.script.ir_module
 class AfterRewrite1:
     @T.prim_func
     def main(var_A: T.handle, var_B: T.handle, var_C: T.handle) -> None:
+        # function attr dict
+        T.func_attr({"global_symbol": "main", "tir.noalias": True})
         A = T.match_buffer(var_A, [512, 512], dtype="float16")
         B = T.match_buffer(var_B, [512, 512], dtype="float16")
         C = T.match_buffer(var_C, [512, 512], dtype="float32")
@@ -129,7 +136,7 @@ class AfterRewrite1:
                                             v1 = T.axis.spatial(512, i2_0_0 * 128 + (ax0_ax1_fused_0 * 256 + ax0_ax1_fused_1 * 32 + ax0_ax1_fused_2) % 128)
                                             T.reads([A[v0, v1]])
                                             T.writes([A_shared[v0, v1]])
-                                            T.block_attr({"meta_schedule.cooperative_fetch":1})
+                                            T.block_attr({"buffer_dim_align":[[0, 0, 32, 8]], "meta_schedule.cooperative_fetch":1})
                                             A_shared[v0, v1] = A[v0, v1]
                             for ax0_ax1_fused_0 in T.serial(0, 32):
                                 for ax0_ax1_fused_1 in T.thread_binding(0, 8, thread="threadIdx.y"):
@@ -140,7 +147,7 @@ class AfterRewrite1:
                                                 v1 = T.axis.spatial(512, i0_0_1_i1_0_1_fused % 2 * 256 + (ax0_ax1_fused_0 * 1024 + ax0_ax1_fused_1 * 128 + ax0_ax1_fused_2 * 4 + ax0_ax1_fused_3) % 256)
                                                 T.reads([B[v0, v1]])
                                                 T.writes([B_shared[v0, v1]])
-                                                T.block_attr({"meta_schedule.cooperative_fetch":4})
+                                                T.block_attr({"buffer_dim_align":[[0, 0, 32, 8]], "meta_schedule.cooperative_fetch":4})
                                                 B_shared[v0, v1] = B[v0, v1]
                             for i2_0_1, i0_0_3, i1_0_3, i2_0_2 in T.grid(8, 1, 1, 1):
                                 for ax0, ax1 in T.grid(256, 16):
@@ -259,10 +266,10 @@ def test_rewrite_cooperative_fetch_tensor_core():
     # pylint: disable=line-too-long,invalid-name
     b0 = sch.get_block(name="C", func_name="main")
     l1, l2, l3 = sch.get_loops(block=b0)
-    l4, l5 = sch.split(loop=l1, factors=[32, 16])
-    l6, l7 = sch.split(loop=l2, factors=[32, 16])
-    l8, l9 = sch.split(loop=l3, factors=[32, 16])
-    l10, l11, l12, l13, l14, l15 = sch.get_loops(block=b0)
+    _, l5 = sch.split(loop=l1, factors=[32, 16])
+    _, l7 = sch.split(loop=l2, factors=[32, 16])
+    _, l9 = sch.split(loop=l3, factors=[32, 16])
+    _, _, l12, _, l14, _ = sch.get_loops(block=b0)
     sch.reorder(l12, l14, l5, l7, l9)
     b16 = sch.blockize(loop=l5)
     sch.annotate(block_or_loop=b0, ann_key="meta_schedule.auto_tensorize", ann_val="wmma_sync")
@@ -287,25 +294,25 @@ def test_rewrite_cooperative_fetch_tensor_core():
     l51 = sch.fuse(l30, l40)
     sch.bind(loop=l51, thread_axis="threadIdx.y")
     b52 = sch.cache_read(block=b16, read_buffer_index=1, storage_scope="shared")
-    sch.compute_at(block=b52, loop=l46, preserve_unit_loops=1)
-    l53, l54, l55, l56, l57, l58 = sch.get_loops(block=b52)
+    sch.compute_at(block=b52, loop=l46, preserve_unit_loops=True)
+    _, _, _, _, l57, l58 = sch.get_loops(block=b52)
     l59 = sch.fuse(l57, l58)
-    v60, v61 = sch.sample_perfect_tile(loop=l59, n=2, max_innermost_factor=4, decision=[32768, 1])
+    _, v61 = sch.sample_perfect_tile(loop=l59, n=2, max_innermost_factor=4, decision=[32768, 1])
     sch.annotate(block_or_loop=b52, ann_key="meta_schedule.cooperative_fetch", ann_val=v61)
     b62 = sch.cache_read(block=b16, read_buffer_index=2, storage_scope="shared")
-    sch.compute_at(block=b62, loop=l46, preserve_unit_loops=1)
-    l63, l64, l65, l66, l67, l68 = sch.get_loops(block=b62)
+    sch.compute_at(block=b62, loop=l46, preserve_unit_loops=True)
+    _, _, _, _, l67, l68 = sch.get_loops(block=b62)
     l69 = sch.fuse(l67, l68)
-    v70, v71 = sch.sample_perfect_tile(loop=l69, n=2, max_innermost_factor=4, decision=[8192, 4])
+    _, v71 = sch.sample_perfect_tile(loop=l69, n=2, max_innermost_factor=4, decision=[8192, 4])
     sch.annotate(block_or_loop=b62, ann_key="meta_schedule.cooperative_fetch", ann_val=v71)
     b72 = sch.cache_read(block=b16, read_buffer_index=1, storage_scope="wmma.matrix_a")
     b73 = sch.cache_read(block=b16, read_buffer_index=2, storage_scope="wmma.matrix_b")
-    sch.compute_at(block=b72, loop=l48, preserve_unit_loops=1)
-    sch.compute_at(block=b73, loop=l48, preserve_unit_loops=1)
+    sch.compute_at(block=b72, loop=l48, preserve_unit_loops=True)
+    sch.compute_at(block=b73, loop=l48, preserve_unit_loops=True)
     sch.annotate(block_or_loop=b72, ann_key="meta_schedule.auto_tensorize", ann_val="wmma_load_a")
     sch.annotate(block_or_loop=b73, ann_key="meta_schedule.auto_tensorize", ann_val="wmma_load_b")
-    sch.reverse_compute_at(block=b19, loop=l51, preserve_unit_loops=1)
-    sch.reverse_compute_at(block=b18, loop=l51, preserve_unit_loops=1)
+    sch.reverse_compute_at(block=b19, loop=l51, preserve_unit_loops=True)
+    sch.reverse_compute_at(block=b18, loop=l51, preserve_unit_loops=True)
     # pylint: enable=line-too-long,invalid-name
     # fmt: on
     sch.enter_postproc()

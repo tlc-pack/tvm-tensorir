@@ -112,10 +112,12 @@ void TaskSchedulerNode::Tune() {
         task->space_generator.value()->GenerateDesignSpace(task->mod.value());
     LOG(INFO) << "Total " << design_spaces.size() << " design space(s) generated";
     for (int i = 0, n = design_spaces.size(); i < n; ++i) {
-      const tir::Schedule& sch = design_spaces[i];
-      LOG(INFO) << "Design space #" << i << ":\n"  //
+      tir::Schedule sch = design_spaces[i];
+      tir::Trace trace = sch->trace().value();
+      trace = trace->Simplified(true);
+      LOG(INFO) << "Design space #" << i << ":\n"
                 << tir::AsTVMScript(sch->mod()) << "\n"
-                << Concat(sch->trace().value()->AsPython(false), "\n");
+                << Concat(trace->AsPython(false), "\n");
     }
     task->search_strategy.value()->PreTuning(design_spaces);
   }

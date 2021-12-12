@@ -16,21 +16,21 @@
 # under the License.
 # pylint: disable=missing-docstring
 import logging
-import pytest
 import tempfile
+from typing import List, Tuple
 
-from typing import Tuple, List
-
+import pytest
 from tvm.meta_schedule import ReplayTraceConfig
+from tvm.meta_schedule.testing import MODEL_TYPE, MODEL_TYPES, get_torch_model
 from tvm.meta_schedule.tune import tune_relay
 from tvm.target.target import Target
 from tvm.tir import Schedule
 
 logging.basicConfig()
 logging.getLogger("tvm.meta_schedule").setLevel(logging.DEBUG)
-from tvm.meta_schedule.testing import MODEL_TYPE, MODEL_TYPES, get_torch_model
 
 
+@pytest.mark.skip("Integration test")
 @pytest.mark.parametrize("model_name", ["resnet18"])
 @pytest.mark.parametrize("batch_size", [1])
 @pytest.mark.parametrize("target", ["llvm --num-cores=16", "nvidia/geforce-rtx-3070"])

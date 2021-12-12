@@ -5,7 +5,7 @@ RPC_PORT="4445"
 RPC_KEY="raspi4b-aarch64"
 TARGET="raspberry-pi/4b-64"
 LOG_DIR=$HOME/logs/ms-cpu/
-NUM_TRIALS=800
+NUM_TRIALS=2000
 
 mkdir -p $LOG_DIR
 

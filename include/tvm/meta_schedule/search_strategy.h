@@ -265,24 +265,22 @@ class SearchStrategy : public runtime::ObjectRef {
    * \brief Constructor of evolutionary search strategy.
    * \param num_trials_per_iter The number of trials per iteration, i.e., the batch size.
    * \param num_trials_total The total number of trials for evolutionary search.
-   * \param population The initial sample population.
-   * \param max_replay_fail_cnt The maximum number to fail trace replaying.
+   * \param population_size The initial sample population.
    * \param init_measured_ratio The ratio of measures samples in initial population.
-   * \param genetic_algo_iters The iterations to run the genetic algorithm.
-   * \param max_evolve_fail_cnt The maximum number to try evolving the given trace.
-   * \param p_mutate The probability of mutation.
+   * \param init_max_fail_count The maximum number to fail trace replaying.
+   * \param genetic_num_iters The iterations to run the genetic algorithm.
+   * \param genetic_mutate_prob The probability of mutation.
+   * \param genetic_max_fail_count The maximum number to try evolving the given trace.
    * \param eps_greedy The ratio to select samples in a greedy fashion via their predicted score.
-   * \param database The database to use.
-   * \param cost_model The cost model to use.
    */
   TVM_DLL static SearchStrategy EvolutionarySearch(int num_trials_per_iter,     //
                                                    int num_trials_total,        //
-                                                   int population,              //
-                                                   int max_replay_fail_cnt,     //
+                                                   int population_size,         //
                                                    double init_measured_ratio,  //
-                                                   int genetic_algo_iters,      //
-                                                   int max_evolve_fail_cnt,     //
-                                                   double p_mutate,             //
+                                                   int init_max_fail_count,     //
+                                                   int genetic_num_iters,       //
+                                                   double genetic_mutate_prob,  //
+                                                   int genetic_max_fail_count,  //
                                                    double eps_greedy);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);

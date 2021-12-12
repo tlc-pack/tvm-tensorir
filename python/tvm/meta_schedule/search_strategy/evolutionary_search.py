@@ -36,30 +36,30 @@ class EvolutionarySearch(SearchStrategy):
         Number of trials per iteration.
     num_trials_total : int
         Total number of trials.
-    population : int
+    population_size : int
         The initial population of traces from measured samples and randomly generated samples.
-    max_replay_fail_cnt : int
-        The maximum number to fail trace replaying.
     init_measured_ratio : int
         The ratio of measured samples in the initial population.
-    genetic_algo_iters : int
+    init_max_fail_count : int
+        The maximum number to fail trace replaying.
+    genetic_num_iters : int
         The number of iterations for genetic algorithm.
-    max_evolve_fail_cnt : int
-        The maximum number to retry mutation.
-    p_mutate : float
+    genetic_mutate_prob : float
         The probability of mutation.
+    genetic_max_fail_count : int
+        The maximum number to retry mutation.
     eps_greedy : float
         The ratio of greedy selected samples in the final picks.
     """
 
     num_trials_per_iter: int
     num_trials_total: int
-    population: int
+    population_size: int
     init_measured_ratio: int
-    genetic_algo_iters: int
-    max_replay_fail_cnt: int
-    max_evolve_fail_cnt: int
-    p_mutate: float
+    init_max_fail_count: int
+    genetic_num_iters: int
+    genetic_mutate_prob: float
+    genetic_max_fail_count: int
     eps_greedy: float
 
     def __init__(
@@ -67,25 +67,25 @@ class EvolutionarySearch(SearchStrategy):
         *,
         num_trials_per_iter: int,
         num_trials_total: int,
-        population: int = 2048,
-        max_replay_fail_cnt: int = 64,
-        init_measured_ratio: float = 0.2,
-        genetic_algo_iters: int = 10,
-        max_evolve_fail_cnt: int = 10,
-        p_mutate: float = 0.85,
-        eps_greedy: float = 0.25,
-    ):
+        population_size: int,
+        init_measured_ratio: float,
+        init_max_fail_count: int,
+        genetic_num_iters: int,
+        genetic_mutate_prob: float,
+        genetic_max_fail_count: int,
+        eps_greedy: float,
+    ) -> None:
         """Constructor"""
         self.__init_handle_by_constructor__(
             _ffi_api.SearchStrategyEvolutionarySearch,  # type: ignore # pylint: disable=no-member
             num_trials_per_iter,
             num_trials_total,
-            population,
-            max_replay_fail_cnt,
+            population_size,
             init_measured_ratio,
-            genetic_algo_iters,
-            max_evolve_fail_cnt,
-            p_mutate,
+            init_max_fail_count,
+            genetic_num_iters,
+            genetic_mutate_prob,
+            genetic_max_fail_count,
             eps_greedy,
         )
 
@@ -95,23 +95,23 @@ class EvolutionarySearchConfig(NamedTuple):
 
     num_trials_per_iter: int
     num_trials_total: int
-    population: int = 2048
-    max_replay_fail_cnt: int = 64
+    population_size: int = 2048
     init_measured_ratio: float = 0.2
-    genetic_algo_iters: int = 10
-    max_evolve_fail_cnt: int = 10
-    p_mutate: float = 0.85
-    eps_greedy: float = 0.25
+    init_max_fail_count: int = 64
+    genetic_num_iters: int = 4
+    genetic_mutate_prob: float = 0.85
+    genetic_max_fail_count: int = 10
+    eps_greedy: float = 0.05
 
     def create_strategy(self) -> EvolutionarySearch:
         return EvolutionarySearch(
             num_trials_per_iter=self.num_trials_per_iter,
             num_trials_total=self.num_trials_total,
-            population=self.population,
-            max_replay_fail_cnt=self.max_replay_fail_cnt,
+            population_size=self.population_size,
             init_measured_ratio=self.init_measured_ratio,
-            genetic_algo_iters=self.genetic_algo_iters,
-            max_evolve_fail_cnt=self.max_evolve_fail_cnt,
-            p_mutate=self.p_mutate,
+            init_max_fail_count=self.init_max_fail_count,
+            genetic_num_iters=self.genetic_num_iters,
+            genetic_mutate_prob=self.genetic_mutate_prob,
+            genetic_max_fail_count=self.genetic_max_fail_count,
             eps_greedy=self.eps_greedy,
         )

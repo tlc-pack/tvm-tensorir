@@ -158,6 +158,7 @@ class After0:
 class Before1:
     @T.prim_func
     def main(var_A: T.handle, var_B: T.handle, var_C: T.handle) -> None:
+        T.func_attr({"global_symbol": "main", "tir.noalias": True})
         A = T.match_buffer(var_A, [512, 512], dtype="float16")
         B = T.match_buffer(var_B, [512, 512], dtype="float16")
         C = T.match_buffer(var_C, [512, 512], dtype="float32")
@@ -260,6 +261,7 @@ class Before1:
 class After1:
     @T.prim_func
     def main(var_A: T.handle, var_B: T.handle, var_C: T.handle) -> None:
+        T.func_attr({"global_symbol": "main", "tir.noalias": True})
         A = T.match_buffer(var_A, [512, 512], dtype="float16")
         B = T.match_buffer(var_B, [512, 512], dtype="float16")
         C = T.match_buffer(var_C, [512, 512], dtype="float32")

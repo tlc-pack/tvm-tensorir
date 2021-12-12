@@ -146,8 +146,8 @@ bool RewriteCooperativeFetchNode::Apply(const tir::Schedule& sch) {
             sch->Vectorize(split[3]);
             sch->Bind(split[2], "threadIdx.x");
             sch->Bind(split[1], "threadIdx.y");
+            sch->StorageAlign(block, 0, -2, 32, 8);
           }
-          sch->StorageAlign(block, 0, -2, 32, 8);
         });
       } else {
         tasks.push_back(
@@ -162,8 +162,8 @@ bool RewriteCooperativeFetchNode::Apply(const tir::Schedule& sch) {
                                                          Integer(thread_extent_x)});
                 sch->Bind(split[2], "threadIdx.x");
                 sch->Bind(split[1], "threadIdx.y");
+                sch->StorageAlign(block, 0, -2, 32, 8);
               }
-              sch->StorageAlign(block, 0, -2, 32, 8);
             });
       }
     }

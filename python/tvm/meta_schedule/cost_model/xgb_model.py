@@ -389,7 +389,7 @@ class XGBModel(PyCostModel):
         def _mean_cost(x: RunnerResult) -> float:
             if not x.run_secs:
                 return 1e10
-            return sum(float(s) for s in x.run_secs) / len(x.run_secs)
+            return float(np.median([float(s) for s in x.run_secs]))
 
         new_features = [
             x.numpy().astype("float32")
