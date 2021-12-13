@@ -330,7 +330,8 @@ class PipelineRewriter : public StmtExprMutator {
    * This method check the 'define' and 'use' stage of the buffers in the software pipeline, which
    * can be used to compute the number of versions needed to maintain after rewriting.
    */
-  std::unordered_map<Buffer, BufferAccessInfo, ObjectPtrHash, ObjectPtrEqual> GetBufferAccessInfo() {
+  std::unordered_map<Buffer, BufferAccessInfo, ObjectPtrHash, ObjectPtrEqual>
+  GetBufferAccessInfo() {
     std::unordered_map<Buffer, BufferAccessInfo, ObjectPtrHash, ObjectPtrEqual> infos;
     for (const auto& pair : pipeline_info_) {
       const Block& block = pair.first;
@@ -619,51 +620,55 @@ class PipelineInjector : private StmtExprMutator {
     CHECK(pipeline_body_seq)
         << "ValueError: The body of the software pipeline should be SeqStmt, got "
         << pipeline_body->GetTypeKey();
-    const SeqStmtNode* original_seq = op->body->IsInstance<BlockRealizeNode>() ? op->body.as<BlockRealizeNode>()->block->body.as<SeqStmtNode>() : op->body.as<SeqStmtNode>();
+    const SeqStmtNode* original_seq =
+        op->body->IsInstance<BlockRealizeNode>()
+            ? op->body.as<BlockRealizeNode>()->block->body.as<SeqStmtNode>()
+            : op->body.as<SeqStmtNode>();
     ICHECK(original_seq);
 
     // Step 3: Blockize the components of the pipeline. Each child of the pipelined loop should
     // be converted into a block.
     PipelineInfo pipeline_info;
     Array<Block> original_order;
+
+    auto f_add_child = [&](const Stmt& child) {
+      const auto* block_realize = child.as<BlockRealizeNode>();
+      Block block = (block_realize && is_one(block_realize->predicate))
+                        ? block_realize->block
+                        : MakeBlock(child, buffer_data_to_buffer_);
+      original_order.push_back(block);
+    };
     for (size_t i = 0; i < pipeline_body_seq->seq.size(); i++) {
-      // Check if nested pipeline exists
-      const auto* nested_for = original_seq->seq[i].as<ForNode>();
-      if (nested_for && HasPipelineAnnotation(nested_for)) {
-        const auto* rewritten_nested_pipeline = pipeline_body_seq->seq[i].as<BlockRealizeNode>();
-        ICHECK(rewritten_nested_pipeline);
-        const Block& nested_pipeline_block = rewritten_nested_pipeline->block;
-        ICHECK(nested_pipeline_block->match_buffers.empty());  // match_buffer should have been lowered
+      const auto* nested_block_realize = pipeline_body_seq->seq[i].as<BlockRealizeNode>();
+      if (nested_block_realize && is_one(nested_block_realize->predicate) &&
+          nested_block_realize->block->body->IsInstance<SeqStmtNode>()) {
+        const Block& nested_pipeline_block = nested_block_realize->block;
+        ICHECK(
+            nested_pipeline_block->match_buffers.empty());  // match_buffer should have been lowered
         for (const auto& buffer : nested_pipeline_block->alloc_buffers) {
           pipeline_allocs.push_back(buffer);
           buffer_data_to_buffer_.Set(buffer->data, buffer);
         }
-        ICHECK(nested_pipeline_block->body->IsInstance<SeqStmtNode>());
-        const Array<Stmt>& nested_blocks = nested_pipeline_block->body.as<SeqStmtNode>()->seq;
-        ICHECK(nested_blocks.size() == 3);
-        for (size_t j = 0; j < nested_blocks.size(); j++) {
-          const auto* block_realize = nested_blocks[j].as<BlockRealizeNode>();
-          ICHECK(block_realize);
-          Block block = is_one(block_realize->predicate) ? block_realize->block : MakeBlock(GetRef<Stmt>(block_realize), buffer_data_to_buffer_);
-          original_order.push_back(block);
+        const auto* nested_seq = nested_pipeline_block->body.as<SeqStmtNode>();
+        for (size_t j = 0; j < nested_seq->seq.size(); j++) {
+          f_add_child(nested_seq->seq[j]);
         }
       } else {
-        const Stmt& child = pipeline_body_seq->seq[i];
-        const auto* block_realize = child.as<BlockRealizeNode>();
-        Block block = (block_realize && is_one(block_realize->predicate)) ? block_realize->block : MakeBlock(child, buffer_data_to_buffer_);
-        original_order.push_back(block);
+        f_add_child(pipeline_body_seq->seq[i]);
       }
     }
 
-    auto pipeline_stages = Downcast<Array<Integer>>(op->annotations.at(attr::software_pipeline_stage));
-    auto pipeline_orders = Downcast<Array<Integer>>(op->annotations.at(attr::software_pipeline_order));
+    auto pipeline_stages =
+        Downcast<Array<Integer>>(op->annotations.at(attr::software_pipeline_stage));
+    auto pipeline_orders =
+        Downcast<Array<Integer>>(op->annotations.at(attr::software_pipeline_order));
     CHECK_EQ(pipeline_stages.size(), original_order.size());
     CHECK_EQ(pipeline_orders.size(), original_order.size());
     for (size_t i = 0; i < pipeline_stages.size(); i++) {
       PipelineStageOrder stage_order(pipeline_stages[i]->value, pipeline_orders[i]->value);
       pipeline_info.emplace(original_order[i], stage_order);
     }
-    ValidatePipelineBody(pipeline_info, original_order);
+    // ValidatePipelineBody(pipeline_info, original_order);
 
     // Step 4: Rewrite the pipeline body.
     Stmt pipeline = PipelineRewriter::Rewrite(buffer_data_to_buffer_, double_buffers,
@@ -744,9 +749,10 @@ class PipelineInjector : private StmtExprMutator {
     Block block = Downcast<Block>(StmtExprMutator::VisitStmt_(op));
 
     // if (block->body->IsInstance<SeqStmtNode>()) {
-    //   // Rewriting for software pipelining will produce nested SeqStmt. These statements need to be
-    //   // flattened for rewriting outer software pipeline (if nested software pipelines are present).
-    //   block = FlattenNestedBlocks(block);
+    //   // Rewriting for software pipelining will produce nested SeqStmt. These statements need to
+    //   be
+    //   // flattened for rewriting outer software pipeline (if nested software pipelines are
+    //   present). block = FlattenNestedBlocks(block);
     // }
 
     for (const auto& buffer : op->alloc_buffers) {
