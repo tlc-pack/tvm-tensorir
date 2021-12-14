@@ -628,6 +628,19 @@ AnalyzeReadWritePattern(const BufferRegion& read_region, const BufferRegion& wri
 bool NeedsMultiLevelTiling(const ScheduleState& self, const StmtSRef& block_sref);
 
 /*!
+ * \brief Checks if the rfactor or cross thread reduction is beneficial to the given block.
+ * \param self The schedule state.
+ * \param block_sref The block to be checked.
+ * \param max_parallel_extent The maximum parallel jobs on the target.
+ * \param max_parallel_extent The maximum cores on the target.
+ * \return A boolean indicating whether the operation is beneficial.
+ */
+bool NeedsRFactorOrCrossThreadReduction(const tir::ScheduleState& self,   //
+                                        const tir::StmtSRef& block_sref,  //
+                                        int64_t max_parallel_extent,      //
+                                        int64_t max_parallel_basic);
+
+/*!
  * \brief Checks if the given AST contains the specific operators
  * \param stmt The AST to be checked
  * \param ops The list of operators to be checked

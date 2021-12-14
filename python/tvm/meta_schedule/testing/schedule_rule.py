@@ -18,6 +18,7 @@
 from typing import List
 
 from tvm.meta_schedule.schedule_rule import (
+    AddRFactor,
     AutoInline,
     MultiLevelTiling,
     ParallelizeVectorizeUnroll,
@@ -33,6 +34,7 @@ def get(target: Target) -> List[ScheduleRule]:
     if target.kind.name == "llvm":
         return [
             auto_inline(target),
+            add_rfactor(target),
             multi_level_tiling(target),
             parallel_vectorize_unroll(target),
         ]
@@ -181,4 +183,11 @@ def random_compute_location(target: Target) -> ScheduleRule:
     """Default schedule rules for with random-compute-location"""
     if target.kind.name == "llvm":
         return RandomComputeLocation()
+    raise NotImplementedError(f"{target.kind.name} is not supported")
+
+
+def add_rfactor(target: Target) -> ScheduleRule:
+    """Default schedule rules for with add_rfactor"""
+    if target.kind.name == "llvm":
+        return AddRFactor(max_jobs_per_core=16, max_innermost_factor=64)
     raise NotImplementedError(f"{target.kind.name} is not supported")
