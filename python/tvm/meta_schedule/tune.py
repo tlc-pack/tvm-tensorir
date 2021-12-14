@@ -256,10 +256,10 @@ class Parse:
         return runner
 
     @staticmethod
-    def _database(database: Union[None, Database], path: str) -> Database:
+    def _database(database: Union[None, Database], task_name: str, path: str) -> Database:
         if database is None:
-            path_workload = os.path.join(path, "workload.json")
-            path_tuning_record = os.path.join(path, "tuning_record.json")
+            path_workload = os.path.join(path, f"{task_name}_database_workload.json")
+            path_tuning_record = os.path.join(path, f"{task_name}_database_tuning_record.json")
             logger.info(
                 "Creating JSONDatabase. Workload at: %s. Tuning records at: %s",
                 path_workload,
@@ -269,8 +269,6 @@ class Parse:
                 path_workload=path_workload,
                 path_tuning_record=path_tuning_record,
             )
-        elif callable(database):
-            database = database(path)
         if not isinstance(database, Database):
             raise TypeError(f"Expected `database` to be Database, but gets: {database}")
         return database
@@ -496,7 +494,7 @@ def tune_tir(
     logger.info("Working directory: %s", work_dir)
     # pylint: disable=protected-access
     mod = Parse._mod(mod)
-    database = Parse._database(database, work_dir)
+    database = Parse._database(database, task_name, work_dir)
     tune_context = Parse._tune_context(
         tune_context=None,
         mod=mod,
@@ -529,6 +527,7 @@ def tune_tir(
     assert len(bests) == 1
     sch = Schedule(mod)
     bests[0].trace.apply_to_schedule(sch, remove_postproc=False)
+    task_scheduler.cost_model.save(os.path.join(work_dir, f"{task_name}.xgb"))
     return sch
 
 
@@ -663,7 +662,7 @@ def tune_relay(
     # pylint: disable=protected-access
     tune_contexts = []
     target = Parse._target(target)
-    database = Parse._database(database, work_dir)
+    database = Parse._database(database, task_name, work_dir)
     for task in extracted_tasks:
         assert len(task.dispatched) == 1, "Only size 1 dispatched task list is supported for now"
         mod = Parse._mod(task.dispatched[0])
@@ -692,7 +691,7 @@ def tune_relay(
     )
     # pylint: enable=protected-access
     task_scheduler.tune()
-    schs = []
+    schs: List[Schedule] = []
     for task in tune_contexts:
         mod = task.mod
         workload = database.commit_workload(mod)

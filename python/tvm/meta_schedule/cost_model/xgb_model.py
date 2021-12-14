@@ -319,8 +319,11 @@ class XGBModel(PyCostModel):
         Since XGBoost model trains from scratch, each time we can only load the model without the
         previous cached features / results so any call of update won't use previous training data.
         """
+        import xgboost as xgb  # pylint: disable=import-outside-toplevel
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             untar(path, tmp_dir)
+            self.booster = xgb.Booster()
             self.booster.load_model(os.path.join(tmp_dir, "model.bin"))
             self.cached_features = list(
                 np.load(os.path.join(tmp_dir, "cached_features.npy"), allow_pickle=True)
@@ -346,23 +349,24 @@ class XGBModel(PyCostModel):
         import xgboost as xgb  # pylint: disable=import-outside-toplevel
 
         if self.booster is None:
-            # save all the paramaters
+            # save all the parameters
             self.booster = xgb.Booster(self.config.to_dict())
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            self.booster.save_model(os.path.join(tmpdirname, "model.bin"))
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            self.booster.save_model(os.path.join(tmp_dir, "model.bin"))
             np.save(
-                os.path.join(tmpdirname, "cached_features.npy"),
+                os.path.join(tmp_dir, "cached_features.npy"),
                 np.array(self.cached_features, dtype=object),
             )
-            np.save(os.path.join(tmpdirname, "cached_mean_costs.npy"), self.cached_mean_costs)
+            np.save(os.path.join(tmp_dir, "cached_mean_costs.npy"), self.cached_mean_costs)
             tar(
                 path,
                 [
-                    os.path.join(tmpdirname, "model.bin"),
-                    os.path.join(tmpdirname, "cached_features.npy"),
-                    os.path.join(tmpdirname, "cached_mean_costs.npy"),
+                    os.path.join(tmp_dir, "model.bin"),
+                    os.path.join(tmp_dir, "cached_features.npy"),
+                    os.path.join(tmp_dir, "cached_mean_costs.npy"),
                 ],
             )
+            logger.info("Saved XGBModel to %s", path)
 
     def update(
         self,
@@ -491,7 +495,6 @@ class XGBModel(PyCostModel):
         )
 
         del self.d_train
-        # todo(zxybazh): measure callback to save the model
 
     def _predict(  # type: ignore # pylint: disable=invalid-name
         self,

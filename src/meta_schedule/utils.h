@@ -278,16 +278,22 @@ inline int GetTargetNumCores(const Target& target) {
   return num_cores;
 }
 
+/*!
+ * \brief A helper data structure that replays a trace and collects failure counts
+ * for each postprocessor
+ */
 struct ThreadedTraceApply {
-  const Array<Postproc>& postprocs;
-  std::vector<std::unique_ptr<std::atomic<int>>> fail_counter;
-
+  /*! \brief Constructor */
   explicit ThreadedTraceApply(const Array<Postproc>& postprocs)
-      : postprocs(postprocs), fail_counter(postprocs.size()) {
-    for (std::unique_ptr<std::atomic<int>>& p : fail_counter) {
-      p = std::make_unique<std::atomic<int>>(0);
+      : n_(postprocs.size()), items_(new Item[n_]) {
+    for (int i = 0; i < n_; ++i) {
+      items_[i].postproc = postprocs[i];
+      items_[i].fail_counter = 0;
     }
   }
+
+  /*! \brief Destructor */
+  ~ThreadedTraceApply() { delete[] items_; }
 
   /*!
    * \brief Apply the trace and postprocessors to an IRModule
@@ -305,23 +311,38 @@ struct ThreadedTraceApply {
                               /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
     trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
     sch->EnterPostproc();
-    for (int i = 0, n = postprocs.size(); i < n; ++i) {
-      if (!postprocs[i]->Apply(sch)) {
-        ++*fail_counter[i];
+    for (int i = 0; i < n_; ++i) {
+      Item& item = items_[i];
+      if (!item.postproc->Apply(sch)) {
+        ++item.fail_counter;
         return NullOpt;
       }
     }
     return sch;
   }
 
+  /*! \brief Returns a string summarizing the failures on each postprocessor */
   std::string SummarizeFailures() const {
     std::ostringstream os;
-    for (int i = 0, n = postprocs.size(); i < n; ++i) {
-      os << "Postproc #" << i << " [" << postprocs[i]  //
-         << "]: " << *fail_counter[i] << " failure(s)\n";
+    for (int i = 0; i < n_; ++i) {
+      const Item& item = items_[i];
+      os << "Postproc #" << i << " [" << item.postproc  //
+         << "]: " << item.fail_counter.load() << " failure(s)";
+      if (i != n_ - 1) {
+        os << "\n";
+      }
     }
     return os.str();
   }
+
+ private:
+  struct Item {
+    Postproc postproc{nullptr};
+    std::atomic<int> fail_counter{0};
+  };
+
+  int n_;
+  Item* items_;
 };
 
 }  // namespace meta_schedule
