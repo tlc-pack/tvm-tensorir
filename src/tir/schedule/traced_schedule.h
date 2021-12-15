@@ -90,6 +90,7 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   /******** Schedule: Block annotation ********/
   void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
                     int offset) final;
+  void SetScope(const BlockRV& block_rv, int buffer_index, const String& storage_scope) final;
   /******** Schedule: Blockize & Tensorize ********/
   BlockRV Blockize(const LoopRV& loop_rv) final;
   void Tensorize(const LoopRV& loop_rv, const String& intrin_name) final;

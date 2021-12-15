@@ -644,6 +644,16 @@ bool HasOp(const Stmt& stmt, const Array<Op>& ops);
  */
 bool HasIfThenElse(const Stmt& stmt);
 
+/******** Storage Scope ********/
+
+/*!
+ * \brief Check whether the input storage scope string is valid. Throw an error if not.
+ * \param self The schedule state
+ * \param storage_scope The storage scope string to be checked
+ * \throw ScheduleError If the input storage scope is not valid
+ */
+void CheckStorageScope(const ScheduleState& self, String storage_scope);
+
 /*!
  * \brief Checks if a block could be successfully computed inline into its consumer
  * \param self The schedule state
