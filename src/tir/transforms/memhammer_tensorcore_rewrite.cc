@@ -87,7 +87,7 @@ Stmt RewriteWmmaLoad(Stmt stmt) {
 
   DataType dtype = DataType::Float(16);
   Var new_src_var("src", PointerType(PrimType(dtype), src_buffer.scope()));
-  Type int32 = PrimType(DataType::Int(32));
+  DataType int32 = DataType::Int(32);
   Buffer new_src_buffer(new_src_var, dtype, {Integer(16), Integer(16)},
                         {Var("s1", int32), Var("s0", int32)}, Var("src_elem_offset", int32), "src",
                         128, 16, kDefault);
@@ -123,7 +123,9 @@ Stmt RewriteWmmaLoad(Stmt stmt) {
            {new_tgt_buffer->data, 16, 16, 16, frag_index, new_src_pointer,
             new_src_buffer->strides[new_src_buffer->strides.size() - 2], StringImm("row_major")}));
   wmma_body = BlockRealize(
-      {}, Bool(true), Block({}, {}, {}, "wmma_load", wmma_body, NullOpt, {}, match_buffers, {}));
+      {}, Bool(true),
+      Block({}, {BufferRegion(src_buffer, read_region)}, {BufferRegion(tgt_buffer, write_region)},
+            "wmma_load", wmma_body, NullOpt, {}, match_buffers, {}));
   for (int i = static_cast<int>(loops.size()) - 3; i >= 0; i--) {
     wmma_body = For(loops[i]->loop_var, loops[i]->min, loops[i]->extent, loops[i]->kind, wmma_body,
                     loops[i]->thread_binding, loops[i]->annotations);
@@ -155,7 +157,7 @@ Stmt RewriteWmmaStore(Stmt stmt) {
   Buffer tgt_buffer = buf_store->buffer;
 
   DataType dtype = DataType::Float(32);
-  Type int32 = PrimType(DataType::Int(32));
+  DataType int32 = DataType::Int(32);
   Var new_src_var("src", PointerType(PrimType(dtype), src_buffer.scope()));
   Buffer new_src_buffer(new_src_var, dtype, {Integer(16), Integer(16)}, {},
                         Var("src_elem_offset", int32), "src", 128, 16, kDefault);
@@ -190,7 +192,9 @@ Stmt RewriteWmmaStore(Stmt stmt) {
                                  {new_src_buffer->data, 16, 16, 16, frag_index, new_tgt_pointer,
                                   new_tgt_buffer->strides[0], StringImm("row_major")}));
   wmma_body = BlockRealize(
-      {}, Bool(true), Block({}, {}, {}, "wmma_store", wmma_body, NullOpt, {}, match_buffers, {}));
+      {}, Bool(true),
+      Block({}, {BufferRegion(src_buffer, read_region)}, {BufferRegion(tgt_buffer, write_region)},
+            "wmma_store", wmma_body, NullOpt, {}, match_buffers, {}));
   for (int i = static_cast<int>(loops.size()) - 3; i >= 0; i--) {
     wmma_body = For(loops[i]->loop_var, loops[i]->min, loops[i]->extent, loops[i]->kind, wmma_body,
                     loops[i]->thread_binding, loops[i]->annotations);
@@ -201,14 +205,14 @@ Stmt RewriteWmmaStore(Stmt stmt) {
 Stmt SharedToWmma::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
                            OutputSet* output) const {
   Stmt after_tiling = TileWmmaBlock(stmt).first;
-  output->padding_min.Set(constraints.read_region->buffer, 3);
+  output->padding_min.Set(constraints.read_region->buffer, 8);
   return RewriteWmmaLoad(after_tiling);
 }
 
 Stmt WmmaToShared::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
                            OutputSet* output) const {
   Stmt after_tiling = TileWmmaBlock(stmt).first;
-  output->padding_min.Set(constraints.write_region->buffer, 3);
+  output->padding_min.Set(constraints.write_region->buffer, 8);
   return RewriteWmmaStore(after_tiling);
 }
 
@@ -249,7 +253,7 @@ Stmt WmmaToGlobal::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
   std::tie(body, seq) =
       InsertCacheStage(body, true, "shared.dyn", compute_location, outer_loops, &cache_buffer);
   output->alloc_buffer.push_back(cache_buffer);
-  output->padding_min.Set(cache_buffer, 3);
+  output->padding_min.Set(cache_buffer, 8);
   // Step 2. do coalesced rewrite and tensor core rewrite respectively for 2 parts
   WmmaToGlobalRewriter rewriter(seq.get(), constraints);
   return rewriter(body);
