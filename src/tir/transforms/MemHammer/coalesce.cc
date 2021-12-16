@@ -1,31 +1,31 @@
 /*
-* Licensed to the Apache Software Foundation (ASF) under one
-* or more contributor license agreements.  See the NOTICE file
-* distributed with this work for additional information
-* regarding copyright ownership.  The ASF licenses this file
-* to you under the Apache License, Version 2.0 (the
-* "License"); you may not use this file except in compliance
-* with the License.  You may obtain a copy of the License at
-*
-*   http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing,
-* software distributed under the License is distributed on an
-* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-* KIND, either express or implied.  See the License for the
-* specific language governing permissions and limitations
-* under the License.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
-#include "rewrite_rule.h"
 #include "../../../runtime/thread_storage_scope.h"
-namespace tvm{
-namespace tir{
+#include "rewrite_rule.h"
+namespace tvm {
+namespace tir {
 /*!
  * \brief Fuse consecutive loops
  * \param stmt the outer-most loop
  * \return the fused loop
  */
-Stmt FuseNestLoops(const Stmt& stmt){
+Stmt FuseNestLoops(const Stmt& stmt) {
   std::vector<const ForNode*> loops;
   Stmt body = stmt;
   while (const ForNode* loop = body.as<ForNode>()) {
@@ -64,11 +64,10 @@ Stmt FuseNestLoops(const Stmt& stmt){
  * \param constraints The constraints, including thread extents, vector bytes, and data bits.
  * \return The stmt after transformation
  */
-Stmt SplitBindVectorize(const Stmt& stmt, const Map<String, ObjectRef>& constraints){
+Stmt SplitBindVectorize(const Stmt& stmt, const Map<String, ObjectRef>& constraints) {
   Stmt body = stmt;
   const ForNode* loop = body.as<ForNode>();
-  PrimExpr vector_bytes = Downcast<PrimExpr>(constraints.Get("vector_bytes").value_or(Integer
-                                                                                        (1)));
+  PrimExpr vector_bytes = Downcast<PrimExpr>(constraints.Get("vector_bytes").value_or(Integer(1)));
   PrimExpr threadIdx_x_ = Downcast<PrimExpr>(constraints.Get("threadIdx.x").value_or(Integer(1)));
   PrimExpr threadIdx_y_ = Downcast<PrimExpr>(constraints.Get("threadIdx.y").value_or(Integer(1)));
   PrimExpr threadIdx_z_ = Downcast<PrimExpr>(constraints.Get("threadIdx.z").value_or(Integer(1)));
@@ -81,7 +80,7 @@ Stmt SplitBindVectorize(const Stmt& stmt, const Map<String, ObjectRef>& constrai
   PrimExpr outer_loop_extent = indexdiv(loop->extent, tot_threads * vector_len);
   Array<PrimExpr> factors{outer_loop_extent};
   std::vector<std::string> thread_axis;
-  //generate thread binding loops
+  // generate thread binding loops
   int new_loop_num = 2;
   if (is_one(threadIdx_z_)) {
     factors.push_back(threadIdx_z_);
@@ -98,14 +97,14 @@ Stmt SplitBindVectorize(const Stmt& stmt, const Map<String, ObjectRef>& constrai
     thread_axis.push_back("threadIdx.x");
     new_loop_num++;
   }
-  //generate vectorized loop
+  // generate vectorized loop
   factors.push_back(vector_len);
   std::vector<Var> new_loop_vars;
   new_loop_vars.reserve(new_loop_num);
   for (int i = 0; i < new_loop_num; i++) {
     new_loop_vars.push_back(loop->loop_var.copy_with_suffix("_" + std::to_string(i)));
   }
-  
+
   PrimExpr substitute_value = 0;
   for (int i = 0; i < new_loop_num; i++) {
     substitute_value *= factors[i];
@@ -118,7 +117,7 @@ Stmt SplitBindVectorize(const Stmt& stmt, const Map<String, ObjectRef>& constrai
       return NullOpt;
     }
   });
-  
+
   For new_loop = For(new_loop_vars[new_loop_num - 1], 0, vector_len, ForKind::kVectorized, body);
 
   for (int i = new_loop_num - 2; i >= 1; i--) {
@@ -131,8 +130,8 @@ Stmt SplitBindVectorize(const Stmt& stmt, const Map<String, ObjectRef>& constrai
   return std::move(new_loop);
 }
 
-Stmt CoalescedAccess::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints, Map<String, ObjectRef>*
-                                                                                               output) const{
+Stmt CoalescedAccess::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
+                              Map<String, ObjectRef>* output) const {
   Stmt after_fuse = FuseNestLoops(stmt);
   Stmt after_split = SplitBindVectorize(after_fuse, constraints);
   return after_split;
@@ -145,7 +144,8 @@ Stmt CoalescedAccess::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& co
  * the index mapping
  * \return The mapping
  */
-std::pair<Array<PrimExpr>, Array<Var>> GetMapping(const Stmt& stmt, const Map<String, ObjectRef>& constraints) {
+std::pair<Array<PrimExpr>, Array<Var>> GetMapping(const Stmt& stmt,
+                                                  const Map<String, ObjectRef>& constraints) {
   Stmt body = stmt;
   Array<Var> loop_vars;
   while (const ForNode* loop = body.as<ForNode>()) {
@@ -168,8 +168,8 @@ std::pair<Array<PrimExpr>, Array<Var>> GetMapping(const Stmt& stmt, const Map<St
   return std::make_pair(result, loop_vars);
 }
 
-Stmt InverseMapping::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints, Map<String, ObjectRef>*
-                                                                                              output)const {
+Stmt InverseMapping::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
+                             Map<String, ObjectRef>* output) const {
   Stmt body = stmt;
   Map<Var, Range> var_range;
   Array<PrimExpr> loop_vars;
@@ -218,12 +218,12 @@ Stmt InverseMapping::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& con
   BufferLoad new_buf_load = BufferLoad(read_region->buffer, read_index);
   BufferStore new_buf_store = BufferStore(write_region->buffer, new_buf_load, write_index);
   Stmt ret = new_buf_store;
-  //Step 3.3 construct loop body
+  // Step 3.3 construct loop body
   for (int i = static_cast<int>(new_loop_vars.size()) - 1; i >= 0; i--) {
     PrimExpr extent = write_region->region[i]->extent;
     ret = For(new_loop_vars[i], 0, extent, ForKind::kSerial, ret);
   }
   return ret;
 }
-}// namespace tir
-}// namespace tvm
+}  // namespace tir
+}  // namespace tvm

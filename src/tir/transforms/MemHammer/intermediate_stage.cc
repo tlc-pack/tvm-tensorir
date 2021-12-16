@@ -1,25 +1,25 @@
 /*
-* Licensed to the Apache Software Foundation (ASF) under one
-* or more contributor license agreements.  See the NOTICE file
-* distributed with this work for additional information
-* regarding copyright ownership.  The ASF licenses this file
-* to you under the Apache License, Version 2.0 (the
-* "License"); you may not use this file except in compliance
-* with the License.  You may obtain a copy of the License at
-*
-*   http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing,
-* software distributed under the License is distributed on an
-* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-* KIND, either express or implied.  See the License for the
-* specific language governing permissions and limitations
-* under the License.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 #include "rewrite_rule.h"
 
-namespace tvm{
-namespace tir{
+namespace tvm {
+namespace tir {
 /*!
  * \brief lift all the thread binding loops
  * \param stmt the top loop
@@ -63,7 +63,7 @@ class IndexPatternFinder : public ExprVisitor {
  public:
   IndexPatternFinder(const Map<Var, Range>& var_range, Array<PrimExpr>* resulting_index)
       : var_range_(var_range), resulting_index_(resulting_index) {}
-    
+
   static Array<Array<PrimExpr>> getRankPromotedShape(Array<PrimExpr> indices,
                                                      const Map<Var, Range>& var_range,
                                                      Array<PrimExpr>* rewrite_indices) {
@@ -89,7 +89,7 @@ class IndexPatternFinder : public ExprVisitor {
     }
     return new_shape;
   }
-  
+
   void VisitExpr_(const VarNode* op) final {
     arith::Analyzer analyzer;
     PrimExpr extent = var_range_[GetRef<Var>(op)]->extent;
@@ -191,8 +191,7 @@ class RankPromoter : public StmtExprMutator {
     return new_indices;
   }
   RankPromoter(const Buffer& src, const Buffer& dst, const Array<Array<PrimExpr>>& new_shape,
-               const Array<Array<PrimExpr>>& relaxed_new_shape,
-               const Array<Range>& relaxed_region)
+               const Array<Array<PrimExpr>>& relaxed_new_shape, const Array<Range>& relaxed_region)
       : src_(src),
         dst_(dst),
         new_shape_(new_shape),
@@ -250,8 +249,8 @@ class RankPromoter : public StmtExprMutator {
  * \brief Insert a cache stage to the compute location
  * \param stmt the stmt
  * \param is_write_cache whether to write a read cache or write cache
- * \param storage_scope the storage scope of the new cache 
- * \param compute_location the compute location. 
+ * \param storage_scope the storage scope of the new cache
+ * \param compute_location the compute location.
  * \param outer_loops the outer loops of this stmt
  * \param alloc_buffer the new cache block
  * \return a pair. The first is the stmt after transformation.
@@ -310,8 +309,8 @@ std::pair<Stmt, SeqStmt> InsertCacheStage(Stmt stmt, bool is_write_cache, String
   analyzer.Bind(all_var_range);
   for (const PrimExpr& index : rewrite_indices) {
     auto int_set = arith::EvalSet(index, relax_var_intset);
-    relaxed_region.push_back(Range::FromMinExtent(
-        int_set.min(), analyzer.Simplify(int_set.max() - int_set.min() + 1)));
+    relaxed_region.push_back(
+        Range::FromMinExtent(int_set.min(), analyzer.Simplify(int_set.max() - int_set.min() + 1)));
   }
   // Step 3. generate the data copy bodies
   // preparation work
@@ -342,16 +341,16 @@ std::pair<Stmt, SeqStmt> InsertCacheStage(Stmt stmt, bool is_write_cache, String
   Array<PrimExpr> real_new_buf_indices =
       RankPromoter::RewriteBackIndex(new_buf_indices, relaxed_new_shape);
   // Step 3.2 generate a body that writes to the cache
-  Stmt generate_body =
-      is_write_cache ? BufferStore(orig_buffer, BufferLoad(new_buffer, real_new_buf_indices),
-                                   real_orig_buf_indices)
-                     : BufferStore(new_buffer, BufferLoad(orig_buffer, real_orig_buf_indices),
-                                   real_new_buf_indices);
+  Stmt generate_body = is_write_cache
+                           ? BufferStore(orig_buffer, BufferLoad(new_buffer, real_new_buf_indices),
+                                         real_orig_buf_indices)
+                           : BufferStore(new_buffer, BufferLoad(orig_buffer, real_orig_buf_indices),
+                                         real_new_buf_indices);
   for (int i = static_cast<int>(relaxed_region.size()) - 1; i >= 0; i--) {
     if (i == static_cast<int>(relaxed_region.size()) - 1 && !is_const_int(vector_bytes, -1)) {
       ICHECK(analyzer.CanProve(vector_bytes == relaxed_region[i]->extent));
-      generate_body = For(new_loop_vars[i], 0, relaxed_region[i]->extent, ForKind::kVectorized,
-                          generate_body);
+      generate_body =
+          For(new_loop_vars[i], 0, relaxed_region[i]->extent, ForKind::kVectorized, generate_body);
     } else {
       generate_body =
           For(new_loop_vars[i], 0, relaxed_region[i]->extent, ForKind::kSerial, generate_body);
@@ -379,20 +378,18 @@ std::pair<Stmt, SeqStmt> InsertCacheStage(Stmt stmt, bool is_write_cache, String
   return std::make_pair(generate_body, insert_location);
 }
 
-Stmt CreateLocalStage::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints, Map<String, ObjectRef>*
-                                                                                                output) const {
+Stmt CreateLocalStage::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
+                               Map<String, ObjectRef>* output) const {
   Stmt body;
   For compute_location;
   std::tie(body, compute_location) = LiftThreadBindingLoops(std::move(stmt));
   Array<For> outer_loops = Downcast<Array<For>>(constraints["outer_loops"]);
   Buffer cache_buffer;
-  Stmt after_caching =  InsertCacheStage(body, false, "local", compute_location, outer_loops,
-                                  &cache_buffer)
-      .first;
+  Stmt after_caching =
+      InsertCacheStage(body, false, "local", compute_location, outer_loops, &cache_buffer).first;
   output->Set("alloc_buffer", cache_buffer);
   return after_caching;
 }
 
-}// namespace tir
-}// namespace tvm
-
+}  // namespace tir
+}  // namespace tvm
