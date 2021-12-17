@@ -186,6 +186,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRFactor")
 /******** (FFI) Block annotation ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStorageAlign")
     .set_body_method<Schedule>(&ScheduleNode::StorageAlign);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSetScope")
+    .set_body_method<Schedule>(&ScheduleNode::SetScope);
 /******** (FFI) Blockize & Tensorize ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBlockize")
     .set_body_method<Schedule>(&ScheduleNode::Blockize);
