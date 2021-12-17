@@ -131,7 +131,7 @@ Stmt SplitBindVectorize(const Stmt& stmt, const ConstraintSet& constraints) {
 }
 
 Stmt CoalescedAccess::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
-                             OutputSet* output) const {
+                              OutputSet* output) const {
   Stmt after_fuse = FuseNestLoops(stmt);
   Stmt after_split = SplitBindVectorize(after_fuse, constraints);
   return after_split;

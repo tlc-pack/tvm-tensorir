@@ -23,24 +23,23 @@
 #include "../../../include/tvm/tir/op.h"
 #include "../../../include/tvm/tir/stmt_functor.h"
 #include "../../../include/tvm/tir/transform.h"
-
 #include "../schedule/utils.h"
 
 namespace tvm {
 namespace tir {
 
 /*! \brief the set containing all possible constraints */
-struct ConstraintSet{
+struct ConstraintSet {
   Map<String, Integer> thread_extent;
   Array<For> outer_loops;
   BufferRegion read_region;
   BufferRegion write_region;
   Integer data_bits;
-  Integer add_local_stage=Integer(0);
-  Integer vector_bytes=1;
+  Integer add_local_stage = Integer(0);
+  Integer vector_bytes = 1;
 };
 
-struct OutputSet{
+struct OutputSet {
   Array<Buffer> alloc_buffer;
   Map<Buffer, Integer> padding_min;
 };
@@ -63,13 +62,10 @@ class RewriteRule {
    * \param constraints The constraints of the rewrite
    * \return A boolean flag indicating whether the rule can be applied
    */
-  virtual bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const {
-    return true;
-  }
+  virtual bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const { return true; }
 
  public:
-  inline Stmt Apply(const Stmt& stmt, const ConstraintSet& constraints,
-                    OutputSet* output) const {
+  inline Stmt Apply(const Stmt& stmt, const ConstraintSet& constraints, OutputSet* output) const {
     if (CanApply(stmt, constraints)) {
       return Rewrite(stmt, constraints, output);
     } else {
@@ -83,8 +79,7 @@ class RewriteRule {
  */
 class CoalescedAccess : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
-              OutputSet* output) const final;
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints, OutputSet* output) const final;
   bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
     runtime::StorageScope src_scope =
         runtime::StorageScope::Create(constraints.read_region->buffer.scope());
@@ -102,8 +97,7 @@ class CoalescedAccess : public RewriteRule {
  */
 class InverseMapping : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
-               OutputSet* output) const final;
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints, OutputSet* output) const final;
   bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
     runtime::StorageScope src_scope =
         runtime::StorageScope::Create(constraints.read_region->buffer.scope());
@@ -119,8 +113,7 @@ class InverseMapping : public RewriteRule {
  */
 class CreateLocalStage : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
-               OutputSet* output) const final;
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints, OutputSet* output) const final;
   bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
     runtime::StorageScope src_scope =
         runtime::StorageScope::Create(constraints.read_region->buffer.scope());
@@ -137,8 +130,7 @@ class CreateLocalStage : public RewriteRule {
  */
 class WmmaToGlobal : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
-               OutputSet* output) const final;
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints, OutputSet* output) const final;
   bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
     runtime::StorageScope src_scope =
         runtime::StorageScope::Create(constraints.read_region->buffer.scope());
@@ -154,8 +146,7 @@ class WmmaToGlobal : public RewriteRule {
  */
 class SharedToWmma : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
-               OutputSet* output) const final;
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints, OutputSet* output) const final;
   bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
     runtime::StorageScope src_scope =
         runtime::StorageScope::Create(constraints.read_region->buffer.scope());
@@ -172,8 +163,7 @@ class SharedToWmma : public RewriteRule {
  */
 class WmmaToShared : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
-              OutputSet* output) const final;
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints, OutputSet* output) const final;
   bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
     runtime::StorageScope src_scope =
         runtime::StorageScope::Create(constraints.read_region->buffer.scope());

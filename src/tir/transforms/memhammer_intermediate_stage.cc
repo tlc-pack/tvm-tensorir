@@ -384,10 +384,9 @@ Stmt CreateLocalStage::Rewrite(const Stmt& stmt, const ConstraintSet& constraint
   For compute_location;
   std::tie(body, compute_location) = LiftThreadBindingLoops(std::move(stmt));
   Buffer cache_buffer;
-  Stmt after_caching =
-      InsertCacheStage(body, false, "local", compute_location, constraints.outer_loops,
-                       &cache_buffer)
-          .first;
+  Stmt after_caching = InsertCacheStage(body, false, "local", compute_location,
+                                        constraints.outer_loops, &cache_buffer)
+                           .first;
   output->alloc_buffer.push_back(cache_buffer);
   return after_caching;
 }
