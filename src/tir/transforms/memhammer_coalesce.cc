@@ -82,17 +82,17 @@ Stmt SplitBindVectorize(const Stmt& stmt, const ConstraintSet& constraints) {
   std::vector<std::string> thread_axis;
   // generate thread binding loops
   int new_loop_num = 2;
-  if (is_one(threadIdx_z)) {
+  if (!is_one(threadIdx_z)) {
     factors.push_back(threadIdx_z);
     thread_axis.push_back("threadIdx.z");
     new_loop_num++;
   }
-  if (is_one(threadIdx_y)) {
+  if (!is_one(threadIdx_y)) {
     factors.push_back(threadIdx_y);
     thread_axis.push_back("threadIdx.y");
     new_loop_num++;
   }
-  if (is_one(threadIdx_x)) {
+  if (!is_one(threadIdx_x)) {
     factors.push_back(threadIdx_x);
     thread_axis.push_back("threadIdx.x");
     new_loop_num++;
