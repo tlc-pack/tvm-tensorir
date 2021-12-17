@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "rewrite_rule.h"
+#include "memhammer_rewrite_rule.h"
 
 namespace tvm {
 namespace tir {

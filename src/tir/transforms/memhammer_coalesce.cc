@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "../../../runtime/thread_storage_scope.h"
-#include "rewrite_rule.h"
+#include "../../runtime/thread_storage_scope.h"
+#include "memhammer_rewrite_rule.h"
 namespace tvm {
 namespace tir {
 /*!

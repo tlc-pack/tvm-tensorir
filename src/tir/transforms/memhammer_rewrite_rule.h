@@ -16,21 +16,25 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include <tvm/arith/iter_affine_map.h>
-#include <tvm/runtime/registry.h>
-#include <tvm/target/target.h>
-#include <tvm/tir/expr.h>
-#include <tvm/tir/op.h>
-#include <tvm/tir/stmt_functor.h>
-#include <tvm/tir/transform.h>
+#include "../../../include/tvm/arith/iter_affine_map.h"
+#include "../../../include/tvm/runtime/registry.h"
+#include "../../../include/tvm/target/target.h"
+#include "../../../include/tvm/tir/expr.h"
+#include "../../../include/tvm/tir/op.h"
+#include "../../../include/tvm/tir/stmt_functor.h"
+#include "../../../include/tvm/tir/transform.h"
 
-#include "../../schedule/utils.h"
+#include "../schedule/utils.h"
 
 namespace tvm {
 namespace tir {
 
+struct ConstraintSet{
+
+};
+
 class RewriteRule {
- public:
+ private:
   /*!
    * \brief Rewrite the stmt under certain constraints
    * \param stmt The stmt
@@ -51,6 +55,7 @@ class RewriteRule {
     return true;
   }
 
+ public:
   inline Stmt Apply(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
                     Map<String, ObjectRef>* output) const {
     if (CanApply(stmt, constraints)) {
