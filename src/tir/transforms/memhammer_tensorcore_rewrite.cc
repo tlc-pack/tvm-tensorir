@@ -194,25 +194,23 @@ Stmt RewriteWmmaStore(Stmt stmt) {
   return wmma_body;
 }
 
-Stmt SharedToWmma::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-                           Map<String, ObjectRef>* output) const {
+Stmt SharedToWmma::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+                           OutputSet* output) const {
   Stmt after_tiling = TileWmmaBlock(stmt).first;
-  BufferRegion read_region = Downcast<BufferRegion>(constraints["read_region"]);
-  output->Set("wmma_use", read_region->buffer);
+  output->padding_min.Set(constraints.read_region->buffer, 3);
   return RewriteWmmaLoad(after_tiling);
 }
 
-Stmt WmmaToShared::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-                           Map<String, ObjectRef>* output) const {
+Stmt WmmaToShared::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+                           OutputSet* output) const {
   Stmt after_tiling = TileWmmaBlock(stmt).first;
-  BufferRegion write_region = Downcast<BufferRegion>(constraints["write_region"]);
-  output->Set("wmma_use", write_region->buffer);
+  output->padding_min.Set(constraints.write_region->buffer, 3);
   return RewriteWmmaStore(after_tiling);
 }
 
 class WmmaToGlobalRewriter : public StmtExprMutator {
  public:
-  WmmaToGlobalRewriter(const SeqStmtNode* tgt_stmt, const Map<String, ObjectRef>& constraints)
+  WmmaToGlobalRewriter(const SeqStmtNode* tgt_stmt, const ConstraintSet& constraints)
       : tgt_stmt_(tgt_stmt), constraints_(constraints) {}
 
  private:
@@ -228,26 +226,26 @@ class WmmaToGlobalRewriter : public StmtExprMutator {
   }
 
   const SeqStmtNode* tgt_stmt_;
-  const Map<String, ObjectRef>& constraints_;
+  const ConstraintSet& constraints_;
 };
 
 std::pair<Stmt, SeqStmt> InsertCacheStage(Stmt stmt, bool is_write_cache, String storage_scope,
                                           For compute_location, const Array<For>& outer_loops,
                                           Buffer* alloc_buffer);
 
-Stmt WmmaToGlobal::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-                           Map<String, ObjectRef>* output) const {
+Stmt WmmaToGlobal::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+                           OutputSet* output) const {
   Stmt body;
   For compute_location;
   std::tie(body, compute_location) = TileWmmaBlock(stmt);
   SeqStmt seq;
-  Array<For> outer_loops = Downcast<Array<For>>(constraints["outer_loops"]);
+  Array<For> outer_loops = constraints.outer_loops;
   Buffer cache_buffer;
   // Step 1. add a shared memory cache
   std::tie(body, seq) =
       InsertCacheStage(body, true, "shared.dyn", compute_location, outer_loops, &cache_buffer);
-  output->Set("alloc_buffer", cache_buffer);
-  output->Set("wmma_use", cache_buffer);
+  output->alloc_buffer.push_back(cache_buffer);
+  output->padding_min.Set(cache_buffer, 3);
   // Step 2. do coalesced rewrite and tensor core rewrite respectively for 2 parts
   WmmaToGlobalRewriter rewriter(seq.get(), constraints);
   return rewriter(body);

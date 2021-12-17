@@ -378,16 +378,17 @@ std::pair<Stmt, SeqStmt> InsertCacheStage(Stmt stmt, bool is_write_cache, String
   return std::make_pair(generate_body, insert_location);
 }
 
-Stmt CreateLocalStage::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-                               Map<String, ObjectRef>* output) const {
+Stmt CreateLocalStage::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+                               OutputSet* output) const {
   Stmt body;
   For compute_location;
   std::tie(body, compute_location) = LiftThreadBindingLoops(std::move(stmt));
-  Array<For> outer_loops = Downcast<Array<For>>(constraints["outer_loops"]);
   Buffer cache_buffer;
   Stmt after_caching =
-      InsertCacheStage(body, false, "local", compute_location, outer_loops, &cache_buffer).first;
-  output->Set("alloc_buffer", cache_buffer);
+      InsertCacheStage(body, false, "local", compute_location, constraints.outer_loops,
+                       &cache_buffer)
+          .first;
+  output->alloc_buffer.push_back(cache_buffer);
   return after_caching;
 }
 

@@ -29,8 +29,20 @@
 namespace tvm {
 namespace tir {
 
+/*! \brief the set containing all possible constraints */
 struct ConstraintSet{
+  Map<String, Integer> thread_extent;
+  Array<For> outer_loops;
+  BufferRegion read_region;
+  BufferRegion write_region;
+  Integer data_bits;
+  Integer add_local_stage=Integer(0);
+  Integer vector_bytes=1;
+};
 
+struct OutputSet{
+  Array<Buffer> alloc_buffer;
+  Map<Buffer, Integer> padding_min;
 };
 
 class RewriteRule {
@@ -43,21 +55,21 @@ class RewriteRule {
    *               buffer to be allocated, etc.)
    * \return the stmt after rewrite
    */
-  virtual Stmt Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-                       Map<String, ObjectRef>* output) const = 0;
+  virtual Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+                       OutputSet* output) const = 0;
   /*!
    * \brief Whether the rewrite rule can be applied to the stmt under certain constraints
    * \param stmt The stmt
    * \param constraints The constraints of the rewrite
    * \return A boolean flag indicating whether the rule can be applied
    */
-  virtual bool CanApply(const Stmt& stmt, const Map<String, ObjectRef>& constraints) const {
+  virtual bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const {
     return true;
   }
 
  public:
-  inline Stmt Apply(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-                    Map<String, ObjectRef>* output) const {
+  inline Stmt Apply(const Stmt& stmt, const ConstraintSet& constraints,
+                    OutputSet* output) const {
     if (CanApply(stmt, constraints)) {
       return Rewrite(stmt, constraints, output);
     } else {
@@ -71,13 +83,13 @@ class RewriteRule {
  */
 class CoalescedAccess : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-               Map<String, ObjectRef>* output) const final;
-  bool CanApply(const Stmt& stmt, const Map<String, ObjectRef>& constraints) const final {
-    String src = Downcast<String>(constraints["src_scope"]);
-    String tgt = Downcast<String>(constraints["tgt_scope"]);
-    runtime::StorageScope src_scope = runtime::StorageScope::Create(src);
-    runtime::StorageScope tgt_scope = runtime::StorageScope::Create(tgt);
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+              OutputSet* output) const final;
+  bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
+    runtime::StorageScope src_scope =
+        runtime::StorageScope::Create(constraints.read_region->buffer.scope());
+    runtime::StorageScope tgt_scope =
+        runtime::StorageScope::Create(constraints.write_region->buffer.scope());
     return (src_scope.rank == runtime::StorageRank::kGlobal &&
             tgt_scope.rank == runtime::StorageRank::kShared) ||
            (src_scope.rank == runtime::StorageRank::kShared &&
@@ -90,13 +102,13 @@ class CoalescedAccess : public RewriteRule {
  */
 class InverseMapping : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-               Map<String, ObjectRef>* output) const final;
-  bool CanApply(const Stmt& stmt, const Map<String, ObjectRef>& constraints) const final {
-    String src = Downcast<String>(constraints["src_scope"]);
-    String tgt = Downcast<String>(constraints["tgt_scope"]);
-    runtime::StorageScope src_scope = runtime::StorageScope::Create(src);
-    runtime::StorageScope tgt_scope = runtime::StorageScope::Create(tgt);
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+               OutputSet* output) const final;
+  bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
+    runtime::StorageScope src_scope =
+        runtime::StorageScope::Create(constraints.read_region->buffer.scope());
+    runtime::StorageScope tgt_scope =
+        runtime::StorageScope::Create(constraints.write_region->buffer.scope());
     return src_scope.rank == runtime::StorageRank::kShared &&
            tgt_scope.rank == runtime::StorageRank::kGlobal;
   }
@@ -107,17 +119,15 @@ class InverseMapping : public RewriteRule {
  */
 class CreateLocalStage : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-               Map<String, ObjectRef>* output) const final;
-  bool CanApply(const Stmt& stmt, const Map<String, ObjectRef>& constraints) const final {
-    String src = Downcast<String>(constraints["src_scope"]);
-    String tgt = Downcast<String>(constraints["tgt_scope"]);
-    PrimExpr has_local_stage =
-        Downcast<PrimExpr>(constraints.Get("local_stage").value_or(Integer(0)));
-    runtime::StorageScope src_scope = runtime::StorageScope::Create(src);
-    runtime::StorageScope tgt_scope = runtime::StorageScope::Create(tgt);
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+               OutputSet* output) const final;
+  bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
+    runtime::StorageScope src_scope =
+        runtime::StorageScope::Create(constraints.read_region->buffer.scope());
+    runtime::StorageScope tgt_scope =
+        runtime::StorageScope::Create(constraints.write_region->buffer.scope());
     return src_scope.rank == runtime::StorageRank::kGlobal &&
-           tgt_scope.rank == runtime::StorageRank::kShared && is_one(has_local_stage);
+           tgt_scope.rank == runtime::StorageRank::kShared && is_one(constraints.add_local_stage);
   }
 };
 
@@ -127,13 +137,13 @@ class CreateLocalStage : public RewriteRule {
  */
 class WmmaToGlobal : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-               Map<String, ObjectRef>* output) const final;
-  bool CanApply(const Stmt& stmt, const Map<String, ObjectRef>& constraints) const final {
-    String src = Downcast<String>(constraints["src_scope"]);
-    String tgt = Downcast<String>(constraints["tgt_scope"]);
-    runtime::StorageScope src_scope = runtime::StorageScope::Create(src);
-    runtime::StorageScope tgt_scope = runtime::StorageScope::Create(tgt);
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+               OutputSet* output) const final;
+  bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
+    runtime::StorageScope src_scope =
+        runtime::StorageScope::Create(constraints.read_region->buffer.scope());
+    runtime::StorageScope tgt_scope =
+        runtime::StorageScope::Create(constraints.write_region->buffer.scope());
     return src_scope.rank == runtime::StorageRank::kWMMAAccumulator &&
            tgt_scope.rank == runtime::StorageRank::kGlobal;
   }
@@ -144,13 +154,13 @@ class WmmaToGlobal : public RewriteRule {
  */
 class SharedToWmma : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-               Map<String, ObjectRef>* output) const final;
-  bool CanApply(const Stmt& stmt, const Map<String, ObjectRef>& constraints) const final {
-    String src = Downcast<String>(constraints["src_scope"]);
-    String tgt = Downcast<String>(constraints["tgt_scope"]);
-    runtime::StorageScope src_scope = runtime::StorageScope::Create(src);
-    runtime::StorageScope tgt_scope = runtime::StorageScope::Create(tgt);
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+               OutputSet* output) const final;
+  bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
+    runtime::StorageScope src_scope =
+        runtime::StorageScope::Create(constraints.read_region->buffer.scope());
+    runtime::StorageScope tgt_scope =
+        runtime::StorageScope::Create(constraints.write_region->buffer.scope());
     return src_scope.rank == runtime::StorageRank::kShared &&
            (tgt_scope.rank == runtime::StorageRank::kWMMAMatrixA ||
             tgt_scope.rank == runtime::StorageRank::kWMMAMatrixB);
@@ -162,13 +172,13 @@ class SharedToWmma : public RewriteRule {
  */
 class WmmaToShared : public RewriteRule {
  public:
-  Stmt Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-               Map<String, ObjectRef>* output) const final;
-  bool CanApply(const Stmt& stmt, const Map<String, ObjectRef>& constraints) const final {
-    String src = Downcast<String>(constraints["src_scope"]);
-    String tgt = Downcast<String>(constraints["tgt_scope"]);
-    runtime::StorageScope src_scope = runtime::StorageScope::Create(src);
-    runtime::StorageScope tgt_scope = runtime::StorageScope::Create(tgt);
+  Stmt Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+              OutputSet* output) const final;
+  bool CanApply(const Stmt& stmt, const ConstraintSet& constraints) const final {
+    runtime::StorageScope src_scope =
+        runtime::StorageScope::Create(constraints.read_region->buffer.scope());
+    runtime::StorageScope tgt_scope =
+        runtime::StorageScope::Create(constraints.write_region->buffer.scope());
     return src_scope.rank == runtime::StorageRank::kWMMAAccumulator &&
            tgt_scope.rank == runtime::StorageRank::kShared;
   }

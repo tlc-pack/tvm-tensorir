@@ -64,16 +64,16 @@ Stmt FuseNestLoops(const Stmt& stmt) {
  * \param constraints The constraints, including thread extents, vector bytes, and data bits.
  * \return The stmt after transformation
  */
-Stmt SplitBindVectorize(const Stmt& stmt, const Map<String, ObjectRef>& constraints) {
+Stmt SplitBindVectorize(const Stmt& stmt, const ConstraintSet& constraints) {
   Stmt body = stmt;
   const ForNode* loop = body.as<ForNode>();
-  PrimExpr vector_bytes = Downcast<PrimExpr>(constraints.Get("vector_bytes").value_or(Integer(1)));
-  PrimExpr threadIdx_x_ = Downcast<PrimExpr>(constraints.Get("threadIdx.x").value_or(Integer(1)));
-  PrimExpr threadIdx_y_ = Downcast<PrimExpr>(constraints.Get("threadIdx.y").value_or(Integer(1)));
-  PrimExpr threadIdx_z_ = Downcast<PrimExpr>(constraints.Get("threadIdx.z").value_or(Integer(1)));
-  PrimExpr tot_threads = threadIdx_x_ * threadIdx_y_ * threadIdx_z_;
-  PrimExpr data_bits_ = Downcast<PrimExpr>(constraints["data_bit"]);
-  PrimExpr vector_len = max(1, vector_bytes * 8 / data_bits_);
+  PrimExpr vector_bytes = constraints.vector_bytes;
+  PrimExpr threadIdx_x = constraints.thread_extent.Get("threadIdx.x").value_or(Integer(1));
+  PrimExpr threadIdx_y = constraints.thread_extent.Get("threadIdx.y").value_or(Integer(1));
+  PrimExpr threadIdx_z = constraints.thread_extent.Get("threadIdx.z").value_or(Integer(1));
+  PrimExpr tot_threads = threadIdx_x * threadIdx_y * threadIdx_z;
+  PrimExpr data_bits = constraints.data_bits;
+  PrimExpr vector_len = max(1, vector_bytes * 8 / data_bits);
   if (!loop || !is_zero(indexmod(loop->extent, (vector_len * tot_threads)))) {
     LOG(FATAL) << "the number of elements must be a multiple of thread num";
   }
@@ -82,18 +82,18 @@ Stmt SplitBindVectorize(const Stmt& stmt, const Map<String, ObjectRef>& constrai
   std::vector<std::string> thread_axis;
   // generate thread binding loops
   int new_loop_num = 2;
-  if (is_one(threadIdx_z_)) {
-    factors.push_back(threadIdx_z_);
+  if (is_one(threadIdx_z)) {
+    factors.push_back(threadIdx_z);
     thread_axis.push_back("threadIdx.z");
     new_loop_num++;
   }
-  if (is_one(threadIdx_y_)) {
-    factors.push_back(threadIdx_y_);
+  if (is_one(threadIdx_y)) {
+    factors.push_back(threadIdx_y);
     thread_axis.push_back("threadIdx.y");
     new_loop_num++;
   }
-  if (is_one(threadIdx_x_)) {
-    factors.push_back(threadIdx_x_);
+  if (is_one(threadIdx_x)) {
+    factors.push_back(threadIdx_x);
     thread_axis.push_back("threadIdx.x");
     new_loop_num++;
   }
@@ -130,8 +130,8 @@ Stmt SplitBindVectorize(const Stmt& stmt, const Map<String, ObjectRef>& constrai
   return std::move(new_loop);
 }
 
-Stmt CoalescedAccess::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-                              Map<String, ObjectRef>* output) const {
+Stmt CoalescedAccess::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+                             OutputSet* output) const {
   Stmt after_fuse = FuseNestLoops(stmt);
   Stmt after_split = SplitBindVectorize(after_fuse, constraints);
   return after_split;
@@ -145,7 +145,7 @@ Stmt CoalescedAccess::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& co
  * \return The mapping
  */
 std::pair<Array<PrimExpr>, Array<Var>> GetMapping(const Stmt& stmt,
-                                                  const Map<String, ObjectRef>& constraints) {
+                                                  const ConstraintSet& constraints) {
   Stmt body = stmt;
   Array<Var> loop_vars;
   while (const ForNode* loop = body.as<ForNode>()) {
@@ -153,7 +153,7 @@ std::pair<Array<PrimExpr>, Array<Var>> GetMapping(const Stmt& stmt,
     body = loop->body;
   }
   const BufferStoreNode* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
-  BufferRegion write_region = Downcast<BufferRegion>(constraints["write_region"]);
+  BufferRegion write_region = constraints.write_region;
   const Array<PrimExpr>& write_index = buf_store->indices;
   ICHECK(write_region->region.size() == write_index.size() &&
          write_region->buffer.same_as(buf_store->buffer));
@@ -168,8 +168,8 @@ std::pair<Array<PrimExpr>, Array<Var>> GetMapping(const Stmt& stmt,
   return std::make_pair(result, loop_vars);
 }
 
-Stmt InverseMapping::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& constraints,
-                             Map<String, ObjectRef>* output) const {
+Stmt InverseMapping::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
+                             OutputSet* output) const {
   Stmt body = stmt;
   Map<Var, Range> var_range;
   Array<PrimExpr> loop_vars;
@@ -188,8 +188,8 @@ Stmt InverseMapping::Rewrite(const Stmt& stmt, const Map<String, ObjectRef>& con
   CHECK_EQ(iter_map.size(), loop_vars.size());
   Map<Var, PrimExpr> inverse_mapping = arith::InverseAffineIterMap(iter_map, loop_vars);
   // Step 3. Generate new body
-  BufferRegion read_region = Downcast<BufferRegion>(constraints["read_region"]);
-  BufferRegion write_region = Downcast<BufferRegion>(constraints["write_region"]);
+  BufferRegion read_region = constraints.read_region;
+  BufferRegion write_region = constraints.write_region;
   Array<PrimExpr> write_index;
   Array<PrimExpr> read_index;
   Array<Var> new_loop_vars;
