@@ -212,7 +212,7 @@ std::vector<State> SubRule(std::vector<State> states, FLambda sub_rule) {
   std::vector<State> results;
   for (auto&& state : states) {
     std::vector<State> next = sub_rule(std::move(state));
-    results.insert(results.end(),
+    results.insert(results.end(),                          //
                    std::make_move_iterator(next.begin()),  //
                    std::make_move_iterator(next.end()));
   }
