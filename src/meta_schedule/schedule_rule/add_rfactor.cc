@@ -27,7 +27,6 @@ class AddRFactorNode : public ScheduleRuleNode {
   void InitializeWithTuneContext(const TuneContext& context) final {
     ICHECK(context->target.defined());
     Target target = context->target.value();
-    GetTargetNumCores(target);
     this->max_parallel_basic_ = GetTargetNumCores(target);
     if (this->max_jobs_per_core != -1) {
       this->max_parallel_extent_ = max_parallel_basic_ * max_jobs_per_core;
