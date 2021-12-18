@@ -191,6 +191,7 @@ def add_rfactor(target: Target) -> ScheduleRule:
     """Default schedule rules for with add_rfactor"""
     if target.kind.name == "llvm":
         return AddRFactor(max_jobs_per_core=16, max_innermost_factor=64)
+    raise NotImplementedError(f"{target.kind.name} is not supported")
 
 
 def cross_thread_reduction(target: Target) -> ScheduleRule:
