@@ -340,6 +340,14 @@ bool HasSingleChild(const StmtSRef& loop_or_block_sref);
 bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
+ * \brief Get the lowest common ancestor of an array of blocks or loops on the sref tree
+ * \param srefs The block srefs or loop srefs whose lowest common ancestor is to be queried
+ * \return The lowest common ancestor of the input block srefs or loop srefs
+ * \note The input array is required to have at least one sref
+ */
+StmtSRef GetSRefLowestCommonAncestor(const Array<StmtSRef>& srefs);
+
+/*!
  * \brief Collect all the feasible compute locations among the loops above the block
  * \param self The TIR schedule class
  * \param block_sref The input block
