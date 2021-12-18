@@ -43,15 +43,15 @@ std::pair<Stmt, For> TileWmmaBlock(Stmt stmt) {
   std::vector<Var> new_loop_vars;
   Array<PrimExpr> factor{floordiv(extent_last2, 16), floordiv(extent_last1, 16), 16, 16};
   new_loop_vars.reserve(4);
-  for (int i = 0; i < 4; i++) {
-    new_loop_vars.push_back(
-        loops[loops.size() - (i + 1) % 2 - 1]->loop_var.copy_with_suffix(std::to_string(i / 2)));
+  for (int i = 0; i < 2; i++) {
+    new_loop_vars.push_back(loops[loops.size() - 2]->loop_var.copy_with_suffix(std::to_string(i)));
+    new_loop_vars.push_back(loops[loops.size() - 1]->loop_var.copy_with_suffix(std::to_string(i)));
   }
   Map<Var, PrimExpr> substitue_value;
   substitue_value.Set(loops[loops.size() - 2]->loop_var, new_loop_vars[0] * 16 + new_loop_vars[2]);
   substitue_value.Set(loops[loops.size() - 1]->loop_var, new_loop_vars[1] * 16 + new_loop_vars[3]);
   body = Substitute(body, substitue_value);
-  for (int i = 3; i >= 0; i--) {
+  for (int i = static_cast<int>(new_loop_vars.size()) - 1; i >= 0; i--) {
     body = For(new_loop_vars[i], 0, factor[i], ForKind::kSerial, body);
   }
   For compute_location = Downcast<For>(body);
@@ -93,8 +93,9 @@ Stmt RewriteWmmaLoad(Stmt stmt) {
                         128, 16, kDefault);
   auto read_int_set = arith::EvalSet(buf_load->indices, AsIntSet(var_range));
   Array<Range> read_region;
-  for (const auto& int_set : read_int_set) {
-    read_region.push_back(int_set.CoverRange(Range()));
+  for (int i = 0; i < static_cast<int>(read_int_set.size()); i++) {
+    read_region.push_back(
+        read_int_set[i].CoverRange(Range::FromMinExtent(0, src_buffer->shape[i])));
   }
   match_buffers.push_back(MatchBufferRegion(new_src_buffer, BufferRegion(src_buffer, read_region)));
   Var new_tgt_var("tgt", PointerType(PrimType(dtype), tgt_buffer.scope()));
@@ -102,8 +103,9 @@ Stmt RewriteWmmaLoad(Stmt stmt) {
                         Var("tgt_elem_offset", int32), "tgt", 128, 16, kDefault);
   auto write_int_set = arith::EvalSet(buf_store->indices, AsIntSet(var_range));
   Array<Range> write_region;
-  for (const auto& int_set : write_int_set) {
-    write_region.push_back(int_set.CoverRange(Range()));
+  for (int i = 0; i < static_cast<int>(write_int_set.size()); i++) {
+    write_region.push_back(
+        write_int_set[i].CoverRange(Range::FromMinExtent(0, tgt_buffer->shape[i])));
   }
   match_buffers.push_back(
       MatchBufferRegion(new_tgt_buffer, BufferRegion(tgt_buffer, write_region)));
@@ -159,8 +161,9 @@ Stmt RewriteWmmaStore(Stmt stmt) {
                         Var("src_elem_offset", int32), "src", 128, 16, kDefault);
   auto read_int_set = arith::EvalSet(buf_load->indices, AsIntSet(var_range));
   Array<Range> read_region;
-  for (const auto& int_set : read_int_set) {
-    read_region.push_back(int_set.CoverRange(Range()));
+  for (int i = 0; i < static_cast<int>(read_int_set.size()); i++) {
+    read_region.push_back(
+        read_int_set[i].CoverRange(Range::FromMinExtent(0, src_buffer->shape[i])));
   }
   match_buffers.push_back(MatchBufferRegion(new_src_buffer, BufferRegion(src_buffer, read_region)));
   Var new_tgt_var("tgt", PointerType(PrimType(dtype), tgt_buffer.scope()));
@@ -169,8 +172,9 @@ Stmt RewriteWmmaStore(Stmt stmt) {
                         128, 16, kDefault);
   auto write_int_set = arith::EvalSet(buf_store->indices, AsIntSet(var_range));
   Array<Range> write_region;
-  for (const auto& int_set : write_int_set) {
-    write_region.push_back(int_set.CoverRange(Range()));
+  for (int i = 0; i < static_cast<int>(write_int_set.size()); i++) {
+    write_region.push_back(
+        write_int_set[i].CoverRange(Range::FromMinExtent(0, tgt_buffer->shape[i])));
   }
   match_buffers.push_back(
       MatchBufferRegion(new_tgt_buffer, BufferRegion(tgt_buffer, write_region)));

@@ -32,24 +32,24 @@ Stmt FuseNestLoops(const Stmt& stmt) {
     loops.push_back(loop);
     body = loop->body;
   }
-  Var fused_var = loops[0]->loop_var.copy_with_suffix("_fused");
-  Array<PrimExpr> substitute_value;
-  substitute_value.resize(loops.size());
+  std::string suffix;
+  int n = loops.size();
+  for (int i = 1; i < n; i++) {
+    suffix += "_" + loops[i]->loop_var->name_hint;
+  }
+  suffix += "_fused";
+  Var fused_var = loops[0]->loop_var.copy_with_suffix(suffix);
+  Map<Var, PrimExpr> subst_map;
   PrimExpr tot = fused_var;
-  for (int i = static_cast<int>(loops.size()) - 1; i >= 0; i--) {
-    substitute_value.Set(i, floormod(tot, loops[i]->extent));
+  for (int i = n - 1; i >= 0; i--) {
+    subst_map.Set(loops[i]->loop_var, floormod(tot, loops[i]->extent));
     tot = floordiv(tot, loops[i]->extent);
   }
   auto f_substitute = [&](const Var& v) -> Optional<PrimExpr> {
-    for (int i = 0; i < static_cast<int>(loops.size()); i++) {
-      if (v.same_as(loops[i]->loop_var)) {
-        return substitute_value[i];
-      }
-    }
-    return NullOpt;
+    return subst_map.Get(v).value_or(v);
   };
   PrimExpr fused_extent = 1;
-  for (int i = 0; i < static_cast<int>(loops.size()); i++) {
+  for (int i = 0; i < n; i++) {
     fused_extent *= loops[i]->extent;
   }
   Stmt new_stmt = Substitute(body, f_substitute);
@@ -81,32 +81,29 @@ Stmt SplitBindVectorize(const Stmt& stmt, const ConstraintSet& constraints) {
   Array<PrimExpr> factors{outer_loop_extent};
   std::vector<std::string> thread_axis;
   // generate thread binding loops
-  int new_loop_num = 2;
   if (!is_one(threadIdx_z)) {
     factors.push_back(threadIdx_z);
     thread_axis.push_back("threadIdx.z");
-    new_loop_num++;
   }
   if (!is_one(threadIdx_y)) {
     factors.push_back(threadIdx_y);
     thread_axis.push_back("threadIdx.y");
-    new_loop_num++;
   }
   if (!is_one(threadIdx_x)) {
     factors.push_back(threadIdx_x);
     thread_axis.push_back("threadIdx.x");
-    new_loop_num++;
   }
   // generate vectorized loop
   factors.push_back(vector_len);
+  int n = factors.size();
   std::vector<Var> new_loop_vars;
-  new_loop_vars.reserve(new_loop_num);
-  for (int i = 0; i < new_loop_num; i++) {
+  new_loop_vars.reserve(n);
+  for (int i = 0; i < n; i++) {
     new_loop_vars.push_back(loop->loop_var.copy_with_suffix("_" + std::to_string(i)));
   }
 
   PrimExpr substitute_value = 0;
-  for (int i = 0; i < new_loop_num; i++) {
+  for (int i = 0; i < n; i++) {
     substitute_value *= factors[i];
     substitute_value += new_loop_vars[i];
   }
@@ -118,11 +115,11 @@ Stmt SplitBindVectorize(const Stmt& stmt, const ConstraintSet& constraints) {
     }
   });
 
-  For new_loop = For(new_loop_vars[new_loop_num - 1], 0, vector_len, ForKind::kVectorized, body);
+  For new_loop = For(new_loop_vars.back(), 0, vector_len, ForKind::kVectorized, body);
 
-  for (int i = new_loop_num - 2; i >= 1; i--) {
+  for (int i = n - 2; i >= 1; i--) {
     new_loop =
-        For(new_loop_vars[i], 0, factors[i], ForKind::kThreadBinding, new_loop,
+        For(new_loop_vars[i], 0, factors[i], ForKind::kThreadBinding, std::move(new_loop),
             IterVar(Range(nullptr), Var(thread_axis[i - 1]), kThreadIndex, thread_axis[i - 1]));
   }
 
@@ -138,18 +135,20 @@ Stmt CoalescedAccess::Rewrite(const Stmt& stmt, const ConstraintSet& constraints
 }
 
 /*!
- * \brief Get the index mapping of a specific stmt
- * \param stmt The stmt
+ * \brief Get the index mapping of a specific stmt.
+ *        The stmt is like:
+ *        for i0:
+ *          ...
+ *          for in:
+ *            A[f(i0, ..., in])] = B[i0, ..., in],
+ *        where f is the index mapping we want to get.
  * \param constraints The constraints, including the write region that is required to calculate
  * the index mapping
- * \return The mapping
+ * \return The mapping in the form of j0, ..., jm, where j0, ... jm = f(i0, ..., in)
  */
-std::pair<Array<PrimExpr>, Array<Var>> GetMapping(const Stmt& stmt,
-                                                  const ConstraintSet& constraints) {
+Array<PrimExpr> GetMapping(const Stmt& stmt, const ConstraintSet& constraints) {
   Stmt body = stmt;
-  Array<Var> loop_vars;
   while (const ForNode* loop = body.as<ForNode>()) {
-    loop_vars.push_back(loop->loop_var);
     body = loop->body;
   }
   const BufferStoreNode* buf_store = TVM_TYPE_AS(buf_store, body, BufferStoreNode);
@@ -165,7 +164,7 @@ std::pair<Array<PrimExpr>, Array<Var>> GetMapping(const Stmt& stmt,
       result.push_back(pattern);
     }
   }
-  return std::make_pair(result, loop_vars);
+  return result;
 }
 
 Stmt InverseMapping::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
@@ -174,8 +173,7 @@ Stmt InverseMapping::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
   Map<Var, Range> var_range;
   Array<PrimExpr> loop_vars;
   // Step 1. Get index mapping
-  std::pair<Array<PrimExpr>, Array<Var>> mapping = GetMapping(stmt, constraints);
-  Array<PrimExpr> mapping_pattern = mapping.first;
+  Array<PrimExpr> mapping_pattern = GetMapping(stmt, constraints);
   while (const ForNode* loop = body.as<ForNode>()) {
     var_range.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
     loop_vars.push_back(loop->loop_var);
@@ -196,7 +194,7 @@ Stmt InverseMapping::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
   Map<Var, PrimExpr> substitute_map;
   // Step 3.1 construct target buffer indices
   for (int i = 0, j = 0; i < static_cast<int>(write_region->region.size()); i++) {
-    if (is_zero(write_region->region[i]->extent)) {
+    if (is_one(write_region->region[i]->extent)) {
       write_index.push_back(write_region->region[i]->min);
     } else {
       Var var = runtime::Downcast<Var>(loop_vars[j]).copy_with_suffix("_inverse");
@@ -207,7 +205,7 @@ Stmt InverseMapping::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
   }
   // Step 3.2 construct source buffer indices
   for (int i = 0, j = 0; i < static_cast<int>(read_region->region.size()); i++) {
-    if (is_zero(read_region->region[i]->extent)) {
+    if (is_one(read_region->region[i]->extent)) {
       read_index.push_back(read_region->region[i]->min);
     } else {
       read_index.push_back(
@@ -221,7 +219,7 @@ Stmt InverseMapping::Rewrite(const Stmt& stmt, const ConstraintSet& constraints,
   // Step 3.3 construct loop body
   for (int i = static_cast<int>(new_loop_vars.size()) - 1; i >= 0; i--) {
     PrimExpr extent = write_region->region[i]->extent;
-    ret = For(new_loop_vars[i], 0, extent, ForKind::kSerial, ret);
+    ret = For(new_loop_vars[i], 0, extent, ForKind::kSerial, std::move(ret));
   }
   return ret;
 }

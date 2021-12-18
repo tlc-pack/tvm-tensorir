@@ -20,6 +20,21 @@
 
 namespace tvm {
 namespace tir {
+
+Stmt CopyLoopChain(const std::vector<const ForNode*> loops, const Stmt& inner_body, int ith = -1,
+                   Stmt* ith_loop = nullptr) {
+  Stmt ret = inner_body;
+  for (int i = static_cast<int>(loops.size() - 1); i >= 0; i--) {
+    ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loops[i]);
+    new_loop->body = ret;
+    ret = For(new_loop);
+    if (ith == i) {
+      *ith_loop = ret;
+    }
+  }
+  return ret;
+}
+
 /*!
  * \brief lift all the thread binding loops
  * \param stmt the top loop
@@ -38,32 +53,38 @@ std::pair<Stmt, For> LiftThreadBindingLoops(Stmt stmt) {
     }
     body = loop->body;
   }
-
-  for (int i = static_cast<int>(normal_loops.size()) - 1; i >= 0; i--) {
-    const ForNode* loop = normal_loops[i];
-    body = For(loop->loop_var, loop->min, loop->extent, loop->kind, body, loop->thread_binding,
-               loop->annotations);
-  }
+  body = CopyLoopChain(normal_loops, body);
   For compute_location;
-  for (int i = static_cast<int>(thread_binding_loops.size()) - 1; i >= 0; i--) {
-    const ForNode* loop = thread_binding_loops[i];
-    body = For(loop->loop_var, loop->min, loop->extent, loop->kind, body, loop->thread_binding,
-               loop->annotations);
-    if (i == static_cast<int>(thread_binding_loops.size()) - 1) {
-      compute_location = Downcast<For>(body);
-    }
-  }
+  body = CopyLoopChain(thread_binding_loops, body,
+                       static_cast<int>(thread_binding_loops.size()) - 1, &compute_location);
+
   return std::make_pair(body, compute_location);
 }
 
 /*!
- * \brief Analyze the access pattern for rank promotion
+ * \brief Analyze the access pattern for buffer rank promotion.
+ * Rank promotion is a transformation that reshapes the buffer
+ * but doesn't change its underlying data layout.
+ * After the reshape, we expect that all dimensions of the access indices
+ * will be in the form of floormod(floordiv(x, a), b).
+ * Rank promotion removes strided access, thus enabling further buffer compacting
  */
 class IndexPatternFinder : public ExprVisitor {
  public:
   IndexPatternFinder(const Map<Var, Range>& var_range, Array<PrimExpr>* resulting_index)
       : var_range_(var_range), resulting_index_(resulting_index) {}
 
+  /*!
+   * \brief Calculate the new buffer shape after rank promotion.
+   * For each dimension of original shape, it will be split into multiple parts.
+   * The inner array represents the multiple parts of one original dimension,
+   * and the outer array represents the original dimensions
+   * For example, original shape [4, 8] may be split into [[2, 2], [2, 4]]
+   * \param indices The access indices of the buffer
+   * \param var_range The iter range of the vars in the indices
+   * \param rewrite_indices The access indices after rank promotion
+   * \return The new buffer shape after rank promotion.
+   */
   static Array<Array<PrimExpr>> getRankPromotedShape(Array<PrimExpr> indices,
                                                      const Map<Var, Range>& var_range,
                                                      Array<PrimExpr>* rewrite_indices) {
@@ -90,6 +111,7 @@ class IndexPatternFinder : public ExprVisitor {
     return new_shape;
   }
 
+ private:
   void VisitExpr_(const VarNode* op) final {
     arith::Analyzer analyzer;
     PrimExpr extent = var_range_[GetRef<Var>(op)]->extent;
@@ -144,6 +166,12 @@ class IndexPatternFinder : public ExprVisitor {
  */
 class RankPromoter : public StmtExprMutator {
  public:
+  /*!
+   * \brief Flatten the buffer shape like performing inverse rank promotion.
+   * For example, [[i0, i1], [j0, j1]] to [i0 * i1, j0 * j1]
+   * \param new_shape The buffer shape in the special form as returned by getRankPromotedShape
+   * \return The buffer shape after flatten
+   */
   static Array<PrimExpr> FlattenNewShape(const Array<Array<PrimExpr>>& new_shape) {
     Array<PrimExpr> ret;
     ret.reserve(new_shape.size());
@@ -156,25 +184,36 @@ class RankPromoter : public StmtExprMutator {
     }
     return ret;
   }
-
+  /**
+   * \brief Rewrite the index given the shape after rank promotion
+   * \param indices The original indices
+   * \param new_shape The buffer shape after rank promotion
+   * \return The new indices
+   */
   static Array<PrimExpr> RewriteIndex(const Array<PrimExpr>& indices,
                                       const Array<Array<PrimExpr>>& new_shape) {
     Array<PrimExpr> new_indices;
     ICHECK_EQ(indices.size(), new_shape.size());
     for (int i = 0; i < static_cast<int>(indices.size()); i++) {
       PrimExpr index = indices[i];
-      Array<PrimExpr> dim_convert_index(new_shape[i].size(), 0);
+      // The indices transformed from one original dimension
+      Array<PrimExpr> index_dim(new_shape[i].size(), 0);
       for (int j = static_cast<int>(new_shape[i].size()) - 1; j >= 0; j--) {
-        dim_convert_index.Set(j, floormod(index, new_shape[i][j]));
+        index_dim.Set(j, floormod(index, new_shape[i][j]));
         index = floordiv(index, new_shape[i][j]);
       }
       for (int j = 0; j < static_cast<int>(new_shape[i].size()); j++) {
-        new_indices.push_back(dim_convert_index[j]);
+        new_indices.push_back(index_dim[j]);
       }
     }
     return new_indices;
   }
-
+  /*!
+   * \brief Rewrite the index after buffer flattening
+   * \param indices The original indices
+   * \param new_shape The shape before buffer flattening
+   * \return The indices after buffer flattening
+   */
   static Array<PrimExpr> RewriteBackIndex(const Array<PrimExpr>& indices,
                                           const Array<Array<PrimExpr>>& new_shape) {
     Array<PrimExpr> new_indices;
@@ -229,6 +268,12 @@ class RankPromoter : public StmtExprMutator {
     return std::move(load);
   }
 
+  /*!
+   * \brief Rewrite the indices after performing buffer rank promotion +
+   * buffer compacting + buffer flattening.
+   * \param indices The origina indices
+   * \return The indices after these transformations
+   */
   Array<PrimExpr> ConvertIndices(const Array<PrimExpr>& indices) {
     Array<PrimExpr> rewrite_indices = RewriteIndex(indices, new_shape_);
     arith::Analyzer analyzer;
@@ -371,10 +416,7 @@ std::pair<Stmt, SeqStmt> InsertCacheStage(Stmt stmt, bool is_write_cache, String
   } else {
     generate_body = insert_location = SeqStmt({generate_body, rewrite_body});
   }
-  for (int i = static_cast<int>(loops.size()) - 1; i >= 0; i--) {
-    generate_body = For(loops[i]->loop_var, loops[i]->min, loops[i]->extent, loops[i]->kind,
-                        generate_body, loops[i]->thread_binding, loops[i]->annotations);
-  }
+  generate_body = CopyLoopChain(loops, generate_body);
   return std::make_pair(generate_body, insert_location);
 }
 
