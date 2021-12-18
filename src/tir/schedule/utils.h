@@ -135,21 +135,6 @@ inline Array<StmtSRef> BlockRVs2BlockSRefs(const Schedule& sch, const Array<Bloc
   return block_srefs;
 }
 
-/*!
- * \brief Convert an array of loop rvs to an array of loop srefs
- * \param sch The schedule used to evaluate the random variables
- * \param block_rvs The random variables to be converted
- * \return The conversion result srefs
- */
-inline Array<StmtSRef> LoopRVs2LoopSRefs(const Schedule& sch, const Array<LoopRV>& loop_rvs) {
-  Array<StmtSRef> loop_srefs;
-  loop_srefs.reserve(loop_rvs.size());
-  for (const LoopRV& loop_rv : loop_rvs) {
-    loop_srefs.push_back(sch->GetSRef(loop_rv));
-  }
-  return loop_srefs;
-}
-
 /******** Storage scope ********/
 
 /*!
