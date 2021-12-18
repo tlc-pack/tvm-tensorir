@@ -262,6 +262,7 @@ inline StmtSRef ConcreteScheduleNode::GetSRef(const LoopRV& loop_rv) const {
                << (obj.defined() ? obj->GetTypeKey() : "None");
   }
   if (sref->stmt == nullptr) {
+    throw;
     LOG(FATAL) << "ValueError: The loop no longer exists in the IRModule";
   }
   return GetRef<StmtSRef>(sref);

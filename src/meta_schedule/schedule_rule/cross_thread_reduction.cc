@@ -31,7 +31,7 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
     Optional<Integer> opt_max_threads_per_block = target->GetAttr<Integer>("max_threads_per_block");
     Optional<Integer> opt_warp_size = target->GetAttr<Integer>("thread_warp_size");
     CHECK(opt_max_threads_per_block.defined())
-        << "ValueError: Target does not have attribute \"max_threads_per-block\"";
+        << "ValueError: Target does not have attribute \"max_threads_per_block\"";
     CHECK(opt_warp_size.defined())
         << "ValueError: Target does not have attribute \"thread_warp_size\"";
 
@@ -60,8 +60,11 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
     tir::LoopRV target_loop{nullptr};
     // `target_block` is the consumer block that we want to compute-at the input block to.
     tir::BlockRV target_block{nullptr};
+    // `tgt_block_innermost_loop` is the innermost loop outside the target block.
+    tir::LoopRV tgt_block_innermost_loop{nullptr};
 
-    std::tie(fusible, target_loop, target_block) = GetComputeTargetLoopAndBlock(tmp_sch, block_rv);
+    std::tie(fusible, target_loop, target_block, tgt_block_innermost_loop) =
+        GetComputeTargetLoopAndBlock(tmp_sch, block_rv);
 
     // Step 3. Try block fusion.
     if (fusible) {
@@ -73,8 +76,11 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
       // split the loop before binding.
       if (!InThreadScope(tmp_sch, target_block)) {
         const Array<tir::LoopRV>& split_res =
-            tmp_sch->Split(tmp_sch->GetLoops(target_block).back(), {NullOpt, Integer(warp_size)});
+            tmp_sch->Split(tgt_block_innermost_loop, {NullOpt, Integer(warp_size)});
         tmp_sch->Bind(split_res[1], "threadIdx.x");
+        if (tgt_block_innermost_loop.same_as(target_loop)) {
+          target_loop = split_res[0];
+        }
       }
       // Step 3.2. Do the compute-at.
       tmp_sch->ComputeAt(block_rv, target_loop, /*preserve_unit_loops=*/true);
@@ -124,9 +130,10 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
    * \return A tuple consisting of
    * 1. a boolean indicating whether the block can be computed at some target loop (a.k.a. fusible);
    * 2. the compute-at target loop when fusible, or a null loop random variable;
-   * 3. the first block under the target loop when fusible, or a null block random variable.
+   * 3. the first block under the target loop when fusible, or a null block random variable;
+   * 4. the innermost loop outside the target block when fusible, or a null block random variable.
    */
-  std::tuple<bool, tir::LoopRV, tir::BlockRV> GetComputeTargetLoopAndBlock(
+  std::tuple<bool, tir::LoopRV, tir::BlockRV, tir::LoopRV> GetComputeTargetLoopAndBlock(
       const tir::Schedule& sch, const tir::BlockRV& block_rv) {
     // Step 1. Get all the consumers of the input block.
     Array<tir::BlockRV> consumers = sch->GetConsumers(block_rv);
@@ -134,7 +141,8 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
     // Step 2. If the block has no consumer or the first consumer needs multi-level tiling, it is
     // not fusible.
     if (consumers.empty() || tir::NeedsMultiLevelTiling(sch->state(), sch->GetSRef(consumers[0]))) {
-      return std::make_tuple(false, tir::LoopRV{nullptr}, tir::BlockRV{nullptr});
+      return std::make_tuple(false, tir::LoopRV{nullptr}, tir::BlockRV{nullptr},
+                             tir::LoopRV{nullptr});
     }
 
     // Step 3. Calculate the lowest common ancestor of all the consumers.
@@ -150,9 +158,10 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
 
     // Step 5. A negative position index means not fusible, and vice-versa.
     if (pos < 0) {
-      return std::make_tuple(false, tir::LoopRV{nullptr}, tir::BlockRV{nullptr});
+      return std::make_tuple(false, tir::LoopRV{nullptr}, tir::BlockRV{nullptr},
+                             tir::LoopRV{nullptr});
     } else {
-      return std::make_tuple(true, tgt_block_loops[pos], consumers[0]);
+      return std::make_tuple(true, tgt_block_loops[pos], consumers[0], tgt_block_loops.back());
     }
   }
 
