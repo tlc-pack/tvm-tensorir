@@ -106,7 +106,7 @@ class CoalescedAccess : public RewriteRule {
     return IsCopyBetweenScope(src_buffer, tgt_buffer, runtime::StorageRank::kGlobal,
                               runtime::StorageRank::kShared) ||
            IsCopyBetweenScope(src_buffer, tgt_buffer, runtime::StorageRank::kShared,
-                              runtime::StorageRank::kGlobal)
+                              runtime::StorageRank::kGlobal);
   }
 };
 
@@ -120,7 +120,7 @@ class InverseMapping : public RewriteRule {
     Buffer src_buffer = constraints.read_region->buffer;
     Buffer tgt_buffer = constraints.write_region->buffer;
     return IsCopyBetweenScope(src_buffer, tgt_buffer, runtime::StorageRank::kShared,
-                              runtime::StorageRank::kGlobal)
+                              runtime::StorageRank::kGlobal);
   }
 };
 
