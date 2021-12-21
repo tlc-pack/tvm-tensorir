@@ -150,7 +150,7 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
     //   the scope block, and thereby the target block is the first consumer;
     // - If the lowest common ancestor is a loop, the target block is also the first consumer.
     const tir::StmtSRef& lca_sref =
-        tir::GetSRefLowestCommonAncestor(tir::BlockRVs2BlockSRefs(sch, consumers));
+        tir::GetSRefLowestCommonAncestor(tir::BlockRVs2StmtSRefs(sch, consumers));
 
     // Step 4. Get the outer loops of the target block, and get the compute-at position index.
     Array<tir::LoopRV> tgt_block_loops = sch->GetLoops(consumers[0]);
