@@ -20,6 +20,7 @@ from typing import List
 from tvm.meta_schedule.schedule_rule import (
     AddRFactor,
     AutoInline,
+    CrossThreadReduction,
     MultiLevelTiling,
     ParallelizeVectorizeUnroll,
     RandomComputeLocation,
@@ -190,4 +191,11 @@ def add_rfactor(target: Target) -> ScheduleRule:
     """Default schedule rules for with add_rfactor"""
     if target.kind.name == "llvm":
         return AddRFactor(max_jobs_per_core=16, max_innermost_factor=64)
+    raise NotImplementedError(f"{target.kind.name} is not supported")
+
+
+def cross_thread_reduction(target: Target) -> ScheduleRule:
+    """Default schedule rules for with cross-thread reduction"""
+    if target.kind.name == "cuda":
+        return CrossThreadReduction()
     raise NotImplementedError(f"{target.kind.name} is not supported")

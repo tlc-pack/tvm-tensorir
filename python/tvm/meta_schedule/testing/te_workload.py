@@ -382,8 +382,8 @@ def conv2d_nhwc_without_layout_rewrite(  # pylint: disable=invalid-name
     else:
         dilation_h, dilation_w = dilation
 
-    batch, in_height, in_width, in_channel = Input.shape # type: ignore
-    kernel_h, kernel_w, _channel, num_filter = Filter.shape # type: ignore
+    batch, in_height, in_width, in_channel = Input.shape  # type: ignore
+    kernel_h, kernel_w, _channel, num_filter = Filter.shape  # type: ignore
 
     # compute the output shape
     dilated_kernel_h = (kernel_h - 1) * dilation_h + 1
@@ -410,7 +410,7 @@ def conv2d_nhwc_without_layout_rewrite(  # pylint: disable=invalid-name
             PaddedInput[
                 nn, yy * stride_h + ry * dilation_h, xx * stride_w + rx * dilation_w, rc
             ].astype(out_dtype)
-            * Filter[ry, rx, rc, ff].astype(out_dtype), # type: ignore
+            * Filter[ry, rx, rc, ff].astype(out_dtype),  # type: ignore
             axis=[ry, rx, rc],
         ),
         name="Conv2dOutput",
@@ -680,7 +680,6 @@ def conv2d_nchw_bias_bn_relu(  # pylint: disable=invalid-name
     return (x, w, b, bn_scale, bn_offset, y)
 
 
-
 def max_pool2d_nchw(  # pylint: disable=invalid-name
     n: int,
     h: int,
@@ -693,9 +692,16 @@ def max_pool2d_nchw(  # pylint: disable=invalid-name
     return (x, y)
 
 
+def softmax_mn(m, n) -> Tuple[te.Tensor, te.Tensor]:  # pylint: disable=invalid-name
+    a = te.placeholder((m, n), name="A")
+    b = topi.nn.softmax(a, axis=1)
+
+    return (a, b)
+
+
 def create_te_workload(name: str, idx: int) -> tir.PrimFunc:
     workload_func, params = CONFIGS[name]
-    return te.create_prim_func(workload_func(*params[idx])) # type: ignore
+    return te.create_prim_func(workload_func(*params[idx]))  # type: ignore
 
 
 CONFIGS = {

@@ -799,6 +799,27 @@ bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_s
   return parent_block_sref->parent == nullptr;
 }
 
+StmtSRef GetSRefLowestCommonAncestor(const Array<StmtSRef>& srefs) {
+  CHECK(!srefs.empty()) << "ValueError: The input array is required to have at least one sref";
+
+  std::unordered_map<const StmtSRefNode*, int> sref_visited_cnt;
+  for (const StmtSRef& sref : srefs) {
+    const StmtSRefNode* p = sref.get();
+    while (p != nullptr) {
+      ++sref_visited_cnt[p];
+      p = p->parent;
+    }
+  }
+
+  int n_sref = static_cast<int>(srefs.size());
+  const StmtSRefNode* p = srefs[0].get();
+  while (p != nullptr && sref_visited_cnt[p] != n_sref) {
+    p = p->parent;
+  }
+  ICHECK(p != nullptr);
+  return GetRef<StmtSRef>(p);
+}
+
 Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref) {
   Array<StmtSRef> loop_srefs = GetLoops(block_sref);
   Array<StmtSRef> result;
