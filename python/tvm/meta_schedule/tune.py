@@ -664,7 +664,7 @@ def tune_relay(
                 mod=mod,
                 target=target,
                 config=config,
-                task_name=task_name,
+                task_name=task.task_name,
                 space_generator=space,
                 sch_rules=sch_rules,
                 postprocs=postprocs,
