@@ -91,7 +91,7 @@ def test_meta_schedule_extract_from_torch_model(model_name: str, batch_size: int
         dtype="float32",
     )
     target = tvm.target.Target(target)
-    ms.integration.extract_task(mod, params=params, target=target)
+    ms.integration.extract_task_from_relay(mod, params=params, target=target)
 
 
 if __name__ == "__main__":

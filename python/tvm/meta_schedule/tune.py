@@ -23,7 +23,7 @@ from tvm.ir.base import structural_equal, structural_hash
 
 from tvm.ir.module import IRModule
 from tvm.runtime import NDArray
-from tvm.meta_schedule.integration import extract_task
+from tvm.meta_schedule.integration import extract_task_from_relay
 from tvm.target.target import Target
 from tvm.te import Tensor, create_prim_func
 from tvm.tir import PrimFunc, Schedule
@@ -651,7 +651,7 @@ def tune_relay(
     """
 
     logger.info("Working directory: %s", work_dir)
-    extracted_tasks = extract_task(mod, target, params)
+    extracted_tasks = extract_task_from_relay(mod, target, params)
     # pylint: disable=protected-access
     tune_contexts = []
     target = Parse._target(target)

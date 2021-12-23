@@ -177,7 +177,7 @@ class ApplyHistoryBest(MetaScheduleContext):
     pass
 
 
-def extract_task(
+def extract_task_from_relay(
     mod: Union[IRModule, RelayFunc],
     target: Target,
     params: Optional[Dict[str, NDArray]] = None,
