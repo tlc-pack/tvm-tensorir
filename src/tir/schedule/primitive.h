@@ -28,15 +28,6 @@
 namespace tvm {
 namespace tir {
 
-/*!
- * \brief Create a sampling function that does multinomial sampling.
- * \param rand_state The random state.
- * \param weights The weights for multinomial sampling.
- * \return The multinomial sampling function.
- */
-TVM_DLL std::function<int32_t()> MakeMultinomialSampler(
-    support::LinearCongruentialEngine::TRandState* rand_state, const std::vector<double>& weights);
-
 /******** Schedule: Sampling ********/
 /*!
  * \brief Sample a random integer from a given range.
