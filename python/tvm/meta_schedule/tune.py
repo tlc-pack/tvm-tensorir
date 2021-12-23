@@ -19,6 +19,7 @@
 import logging
 import os.path
 from typing import Callable, Dict, List, Optional, Union
+from tvm.ir.base import structural_equal, structural_hash
 
 from tvm.ir.module import IRModule
 from tvm.runtime import NDArray
@@ -655,6 +656,7 @@ def tune_relay(
     tune_contexts = []
     target = Parse._target(target)
     database = Parse._database(database, task_name, work_dir)
+    # parse the tuning contexts
     for task in extracted_tasks:
         assert len(task.dispatched) == 1, "Only size 1 dispatched task list is supported for now"
         mod = Parse._mod(task.dispatched[0])
@@ -672,9 +674,27 @@ def tune_relay(
                 num_threads=num_threads,
             )
         )
+    # deduplication
+    logger.info(f"Before task deduplication: {len(tune_contexts)} tasks")
+    tasks: List[TuneContext] = []
+    hashs: List[int] = []
+    for i, task in enumerate(tune_contexts):
+        struct_hash: int = structural_hash(task.mod)
+        flag: bool = False
+        if struct_hash in hashs:
+            for other_task in tune_contexts[i + 1 :]:
+                if structural_equal(task.mod, other_task.mod):
+                    flag = True
+                    break
+        if not flag:
+            tasks.append(task)
+            hashs.append(struct_hash)
+    logger.info(f"After task deduplication: {len(tasks)} tasks")
+
+    # parse the task scheduler
     task_scheduler = Parse._task_scheduler(
         task_scheduler,
-        tune_contexts,
+        tasks,
         builder=Parse._builder(builder),
         runner=Parse._runner(runner),
         database=database,
@@ -684,7 +704,7 @@ def tune_relay(
     # pylint: enable=protected-access
     task_scheduler.tune()
     schs: List[Schedule] = []
-    for task in tune_contexts:
+    for task in tasks:
         mod = task.mod
         workload = database.commit_workload(mod)
         bests: List[TuningRecord] = database.get_top_k(workload, top_k=1)
