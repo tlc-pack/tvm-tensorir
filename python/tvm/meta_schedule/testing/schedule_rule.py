@@ -42,6 +42,7 @@ def get(target: Target) -> List[ScheduleRule]:
     if target.kind.name == "cuda":
         return [
             auto_inline(target),
+            cross_thread_reduction(target),
             multi_level_tiling(target),
             auto_inline_after_tiling(target),
             parallel_vectorize_unroll(target),
@@ -197,5 +198,5 @@ def add_rfactor(target: Target) -> ScheduleRule:
 def cross_thread_reduction(target: Target) -> ScheduleRule:
     """Default schedule rules for with cross-thread reduction"""
     if target.kind.name == "cuda":
-        return CrossThreadReduction()
+        return CrossThreadReduction(max_innermost_factor=64)
     raise NotImplementedError(f"{target.kind.name} is not supported")

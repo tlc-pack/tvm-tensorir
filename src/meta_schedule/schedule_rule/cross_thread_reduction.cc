@@ -67,6 +67,7 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
         GetComputeTargetLoopAndBlock(tmp_sch, block_rv);
 
     // Step 3. Try block fusion.
+    Array<PrimExpr> factors{nullptr};
     if (fusible) {
       ICHECK(target_block.defined());
       ICHECK(target_loop.defined());
@@ -75,8 +76,9 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
       // first bound the innermost outer loop of `target_block` to threadIdx. Possibly we need to
       // split the loop before binding.
       if (!InThreadScope(tmp_sch, target_block)) {
+        factors = tmp_sch->SamplePerfectTile(tgt_block_innermost_loop, 2, max_innermost_factor);
         const Array<tir::LoopRV>& split_res =
-            tmp_sch->Split(tgt_block_innermost_loop, {NullOpt, Integer(warp_size)});
+            tmp_sch->Split(tgt_block_innermost_loop, {factors.begin(), factors.end()});
         tmp_sch->Bind(split_res[1], "threadIdx.x");
         if (tgt_block_innermost_loop.same_as(target_loop)) {
           target_loop = split_res[0];
@@ -94,8 +96,10 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
     tir::LoopRV fused_reduce_loop;
     ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
     // Step 5. Split the fused reduction loop and bind the inner one to threadIdx.
-    const Array<tir::LoopRV>& split_res =
-        tmp_sch->Split(fused_reduce_loop, {NullOpt, Integer(warp_size)});
+    if (!factors.defined()) {
+      factors = tmp_sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor);
+    }
+    const Array<tir::LoopRV>& split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, factors[1]});
     tmp_sch->Bind(split_res[1], "threadIdx.x");
 
     return {tmp_sch, sch};
@@ -198,18 +202,22 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
   int max_threads_per_block;
   /*! \brief The number of threads per warp */
   int warp_size;
+  /*! \brief The maximum size of the innermost factor. "-1" means no limit */
+  int max_innermost_factor;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("max_threads_per_block", &max_threads_per_block);
     v->Visit("warp_size", &warp_size);
+    v->Visit("max_innermost_factor", &max_innermost_factor);
   }
 
   static constexpr const char* _type_key = "meta_schedule.CrossThreadReduction";
   TVM_DECLARE_FINAL_OBJECT_INFO(CrossThreadReductionNode, ScheduleRuleNode);
 };
 
-ScheduleRule ScheduleRule::CrossThreadReduction() {
+ScheduleRule ScheduleRule::CrossThreadReduction(Optional<Integer> max_innermost_factor) {
   ObjectPtr<CrossThreadReductionNode> n = make_object<CrossThreadReductionNode>();
+  n->max_innermost_factor = max_innermost_factor.value_or(Integer(-1))->value;
   return ScheduleRule(n);
 }
 

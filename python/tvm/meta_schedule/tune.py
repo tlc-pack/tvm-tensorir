@@ -158,7 +158,7 @@ class DefaultCUDA:
                 require_ordered=False,
                 disallow_op=None,
             ),
-            M.CrossThreadReduction(),
+            M.CrossThreadReduction(max_innermost_factor=64),
             M.MultiLevelTiling(
                 structure="SSSRRSRS",
                 tile_binds=["blockIdx.x", "vthread.x", "threadIdx.x"],
