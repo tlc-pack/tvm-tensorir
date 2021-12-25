@@ -117,10 +117,8 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
     const Array<tir::LoopRV>& axes = sch->GetLoops(block);
     for (const tir::LoopRV& loop_rv : axes) {
       const tir::For& loop = sch->Get(loop_rv);
-      if (!loop->thread_binding.defined()) {
-        continue;
-      }
-      if (std::string(loop->thread_binding.value()->thread_tag).substr(0, 9) == "threadIdx") {
+      runtime::ThreadScope thread_scope = tir::GetThreadScope(loop.get());
+      if (tir::IsThreadIdx(thread_scope)) {
         return true;
       }
     }
@@ -150,11 +148,17 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
     }
 
     // Step 3. Calculate the lowest common ancestor of all the consumers.
-    // - If the lowest common ancestor is a block, either there is only one consumer, or the LCA is
-    //   the scope block, and thereby the target block is the first consumer;
+    // - If the lowest common ancestor is a block:
+    //   - if there is only one consumer, the target block is that consumer;
+    //   - if there are multiple consumers, they must not share a common loop, and the case is not
+    //     fusible;
     // - If the lowest common ancestor is a loop, the target block is also the first consumer.
     const tir::StmtSRef& lca_sref =
         tir::GetSRefLowestCommonAncestor(tir::BlockRVs2StmtSRefs(sch, consumers));
+    if (consumers.size() > 1 && lca_sref->StmtAs<tir::BlockNode>() != nullptr) {
+      return std::make_tuple(false, tir::LoopRV{nullptr}, tir::BlockRV{nullptr},
+                             tir::LoopRV{nullptr});
+    }
 
     // Step 4. Get the outer loops of the target block, and get the compute-at position index.
     Array<tir::LoopRV> tgt_block_loops = sch->GetLoops(consumers[0]);
