@@ -75,7 +75,7 @@ BindType GetBindType(const StmtSRef& block_sref, int* fuse_first_num) {
   if (i_multi_child == -1) {
     i_multi_child = n;
   }
-  if (i_block_idx != -1 && i_thread_idx != -1) {
+  if ((i_block_idx != -1 && i_thread_idx != -1) || i_spatial_loop == -1) {
     return BindType::kNoBind;
   } else if (i_block_idx != -1 && i_thread_idx == -1) {
     ICHECK(false) << "Unsupported case, where blockIdx is bound but threadIdx is not";
