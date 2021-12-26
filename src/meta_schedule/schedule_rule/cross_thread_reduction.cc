@@ -67,14 +67,16 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
         GetComputeTargetLoopAndBlock(tmp_sch, block_rv);
 
     // Step 3. Try block fusion.
-    Array<PrimExpr> factors{nullptr};
+    Array<tir::ExprRV> factors{nullptr};
     if (fusible) {
       ICHECK(target_block.defined());
       ICHECK(target_loop.defined());
 
-      // Step 3.1. If the outer loops of `target_block` haven't been bound to threadIdx, we should
-      // first bound the innermost outer loop of `target_block` to threadIdx. Possibly we need to
-      // split the loop before binding.
+      // Step 3.1.
+      // - If the outer loops of `target_block` haven't been bound to "threadIdx.x", we should first
+      //   bound the innermost outer loop of `target_block` to threadIdx. Possibly we need to split
+      //   the loop before binding.
+      // - Otherwise, we search for the extent of "threadIdx.x" and use it as the split factor.
       if (!InThreadScope(tmp_sch, target_block)) {
         factors = tmp_sch->SamplePerfectTile(tgt_block_innermost_loop, 2, max_innermost_factor);
         const Array<tir::LoopRV>& split_res =
@@ -83,6 +85,8 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
         if (tgt_block_innermost_loop.same_as(target_loop)) {
           target_loop = split_res[0];
         }
+      } else {
+        factors = {tir::ExprRV{nullptr}, GetThreadIdxExtentFromTrace(tmp_sch->trace().value())};
       }
       // Step 3.2. Do the compute-at.
       tmp_sch->ComputeAt(block_rv, target_loop, /*preserve_unit_loops=*/true);
@@ -123,6 +127,45 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
       }
     }
     return false;
+  }
+
+  /*!
+   * \brief Get the ExprRV which used to define the extent of a given loop.
+   * \param trace The trace of the schedule, where the extent is to be found
+   * \param loop The loop whose extent is to be found
+   * \param extent The finding result
+   * \return Whether the find is successful.
+   */
+  bool GetLoopRVExtentSource(const tir::Trace& trace, const tir::LoopRV& loop,
+                             tir::ExprRV* extent) {
+    for (const tir::Instruction& inst : trace->insts) {
+      if (inst->kind->name == "Split") {
+        int i = std::find(inst->outputs.begin(), inst->outputs.end(), loop) - inst->outputs.begin();
+        CHECK(inst->inputs[1 + i].defined())
+            << "ValueError: Extracting an extent which needs inference is not supported so far";
+        *extent = Downcast<tir::ExprRV>(inst->inputs[1 + i]);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /*!
+   * \brief Get the ExprRV extent of "threadIdx.x" in the given schedule trace.
+   * \param trace The trace of the schedule, where the extent is to be found
+   * \return The extent of "threadIdx.x" in the input schedule
+   */
+  tir::ExprRV GetThreadIdxExtentFromTrace(const tir::Trace& trace) {
+    tir::ExprRV extent{nullptr};
+    for (const tir::Instruction& inst : trace->insts) {
+      if (inst->kind->name == "Bind" && Downcast<String>(inst->attrs[0]) == "threadIdx.x") {
+        if (GetLoopRVExtentSource(trace, Downcast<tir::LoopRV>(inst->inputs[0]), &extent)) {
+          return extent;
+        }
+      }
+    }
+    CHECK(false) << "ValueError: Unable to get the extent of \"threadIdx.x\"";
+    throw;
   }
 
   /*!
