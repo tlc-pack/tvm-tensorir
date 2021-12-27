@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Rules which apply cross-thread reduction to some reduction blocks correspondingly when needed"""
-from typing import List, Optional
+from typing import List
 
 from tvm._ffi import register_object
 
@@ -30,12 +30,12 @@ class CrossThreadReduction(ScheduleRule):
 
     Parameters
     ----------
-    max_innermost_factor: Optional[int] = None
-        The maximum size of the innermost factor. None means no limit.
+    thread_extents: List[int]
+        Candidates of thread axis extent (values are required to be positive).
     """
 
-    def __init__(self, max_innermost_factor: Optional[int] = None) -> None:
+    def __init__(self, thread_extents: List[int]) -> None:
         self.__init_handle_by_constructor__(
             _ffi_api.ScheduleRuleCrossThreadReduction,  # type: ignore # pylint: disable=no-member
-            max_innermost_factor,
+            thread_extents,
         )
