@@ -33,6 +33,7 @@ run DIL
 run GMM
 run GRP
 run NRM
+run SFM
 run T2D
 # Subgraph
 run C2d-BN-RELU

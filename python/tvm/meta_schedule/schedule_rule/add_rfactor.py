@@ -34,7 +34,7 @@ class AddRFactor(ScheduleRule):
         parallelism, i.e. `num_cores * max_jobs_per_core`.
         Use -1 to disable parallelism.
     max_innermost_factor: Optional[int] = None
-        The maximum size of the innermost factor. NullOpt means no limit.
+        The maximum size of the innermost factor. None means no limit.
     """
 
     def __init__(

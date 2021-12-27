@@ -46,6 +46,7 @@ BindType GetBindType(const StmtSRef& block_sref, int* fuse_first_num) {
   int i_block_idx = -1;
   int i_thread_idx = -1;
   int i_multi_child = -1;
+  int i_spatial_loop = -1;
   for (int i = 0; i < n; ++i) {
     const StmtSRef& loop_sref = loops[i];
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
@@ -65,20 +66,25 @@ BindType GetBindType(const StmtSRef& block_sref, int* fuse_first_num) {
         i_multi_child = i + 1;
       }
     }
+    if (tir::GetLoopIterType(loop_sref) == IterVarType::kDataPar) {
+      if (i_spatial_loop == i - 1) {
+        ++i_spatial_loop;
+      }
+    }
   }
   if (i_multi_child == -1) {
     i_multi_child = n;
   }
-  if (i_block_idx != -1 && i_thread_idx != -1) {
+  if ((i_block_idx != -1 && i_thread_idx != -1) || i_spatial_loop == -1) {
     return BindType::kNoBind;
   } else if (i_block_idx != -1 && i_thread_idx == -1) {
     ICHECK(false) << "Unsupported case, where blockIdx is bound but threadIdx is not";
     throw;
   } else if (i_block_idx == -1 && i_thread_idx != -1) {
-    *fuse_first_num = std::min(i_multi_child, i_thread_idx);
+    *fuse_first_num = std::min(std::min(i_multi_child, i_thread_idx), i_spatial_loop + 1);
     return BindType::kBindBlock;
   } else {  // i_block_idx == -1 && i_thread_idx == -1
-    *fuse_first_num = i_multi_child;
+    *fuse_first_num = std::min(i_multi_child, i_spatial_loop + 1);
     return BindType::kBindBlockThread;
   }
 }

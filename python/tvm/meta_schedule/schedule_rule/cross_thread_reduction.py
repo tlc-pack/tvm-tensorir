@@ -27,9 +27,15 @@ from .schedule_rule import ScheduleRule
 class CrossThreadReduction(ScheduleRule):
     """A schedule rule which applies cross-thread reduction to some reduction blocks
     correspondingly when needed
+
+    Parameters
+    ----------
+    max_innermost_factor: Optional[int] = None
+        The maximum size of the innermost factor. None means no limit.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_innermost_factor: Optional[int] = None) -> None:
         self.__init_handle_by_constructor__(
             _ffi_api.ScheduleRuleCrossThreadReduction,  # type: ignore # pylint: disable=no-member
+            max_innermost_factor,
         )

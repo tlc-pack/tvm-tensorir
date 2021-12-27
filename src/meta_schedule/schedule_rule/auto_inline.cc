@@ -130,7 +130,7 @@ inline InlineType AutoInlineNode::CheckInline(const tir::Schedule& sch,
   // Last cond: Check inline into the spatial consumer or the spatial producer
   if (into_consumer) {
     Array<tir::StmtSRef> consumer_srefs = GetConsumers(state, block_sref);
-    if (consumer_srefs.size() == 1 && IsSpatial(consumer_srefs[0])) {
+    if (!consumer_srefs.empty()) {
       if (!into_cache_only ||
           tir::GetAnn<Integer>(consumer_srefs[0], tir::attr::meta_schedule_cache_type).defined()) {
         if (CanComputeInline(state, block_sref)) {

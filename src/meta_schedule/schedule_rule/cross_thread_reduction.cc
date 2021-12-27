@@ -67,20 +67,26 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
         GetComputeTargetLoopAndBlock(tmp_sch, block_rv);
 
     // Step 3. Try block fusion.
+    Array<tir::ExprRV> factors{nullptr};
     if (fusible) {
       ICHECK(target_block.defined());
       ICHECK(target_loop.defined());
 
-      // Step 3.1. If the outer loops of `target_block` haven't been bound to threadIdx, we should
-      // first bound the innermost outer loop of `target_block` to threadIdx. Possibly we need to
-      // split the loop before binding.
+      // Step 3.1.
+      // - If the outer loops of `target_block` haven't been bound to "threadIdx.x", we should first
+      //   bound the innermost outer loop of `target_block` to threadIdx. Possibly we need to split
+      //   the loop before binding.
+      // - Otherwise, we search for the extent of "threadIdx.x" and use it as the split factor.
       if (!InThreadScope(tmp_sch, target_block)) {
+        factors = tmp_sch->SamplePerfectTile(tgt_block_innermost_loop, 2, max_innermost_factor);
         const Array<tir::LoopRV>& split_res =
-            tmp_sch->Split(tgt_block_innermost_loop, {NullOpt, Integer(warp_size)});
+            tmp_sch->Split(tgt_block_innermost_loop, {factors.begin(), factors.end()});
         tmp_sch->Bind(split_res[1], "threadIdx.x");
         if (tgt_block_innermost_loop.same_as(target_loop)) {
           target_loop = split_res[0];
         }
+      } else {
+        factors = {tir::ExprRV{nullptr}, GetThreadIdxExtentFromTrace(tmp_sch->trace().value())};
       }
       // Step 3.2. Do the compute-at.
       tmp_sch->ComputeAt(block_rv, target_loop, /*preserve_unit_loops=*/true);
@@ -94,8 +100,10 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
     tir::LoopRV fused_reduce_loop;
     ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
     // Step 5. Split the fused reduction loop and bind the inner one to threadIdx.
-    const Array<tir::LoopRV>& split_res =
-        tmp_sch->Split(fused_reduce_loop, {NullOpt, Integer(warp_size)});
+    if (!factors.defined()) {
+      factors = tmp_sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor);
+    }
+    const Array<tir::LoopRV>& split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, factors[1]});
     tmp_sch->Bind(split_res[1], "threadIdx.x");
 
     return {tmp_sch, sch};
@@ -113,14 +121,51 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
     const Array<tir::LoopRV>& axes = sch->GetLoops(block);
     for (const tir::LoopRV& loop_rv : axes) {
       const tir::For& loop = sch->Get(loop_rv);
-      if (!loop->thread_binding.defined()) {
-        continue;
-      }
-      if (std::string(loop->thread_binding.value()->thread_tag).substr(0, 9) == "threadIdx") {
+      runtime::ThreadScope thread_scope = tir::GetThreadScope(loop.get());
+      if (tir::IsThreadIdx(thread_scope)) {
         return true;
       }
     }
     return false;
+  }
+
+  /*!
+   * \brief Get the ExprRV which used to define the extent of a given loop.
+   * \param trace The trace of the schedule, where the extent is to be found
+   * \param loop The loop whose extent is to be found
+   * \param extent The finding result
+   * \return Whether the find is successful.
+   */
+  bool GetLoopRVExtentSource(const tir::Trace& trace, const tir::LoopRV& loop,
+                             tir::ExprRV* extent) {
+    for (const tir::Instruction& inst : trace->insts) {
+      if (inst->kind->name == "Split") {
+        int i = std::find(inst->outputs.begin(), inst->outputs.end(), loop) - inst->outputs.begin();
+        CHECK(inst->inputs[1 + i].defined())
+            << "ValueError: Extracting an extent which needs inference is not supported so far";
+        *extent = Downcast<tir::ExprRV>(inst->inputs[1 + i]);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /*!
+   * \brief Get the ExprRV extent of "threadIdx.x" in the given schedule trace.
+   * \param trace The trace of the schedule, where the extent is to be found
+   * \return The extent of "threadIdx.x" in the input schedule
+   */
+  tir::ExprRV GetThreadIdxExtentFromTrace(const tir::Trace& trace) {
+    tir::ExprRV extent{nullptr};
+    for (const tir::Instruction& inst : trace->insts) {
+      if (inst->kind->name == "Bind" && Downcast<String>(inst->attrs[0]) == "threadIdx.x") {
+        if (GetLoopRVExtentSource(trace, Downcast<tir::LoopRV>(inst->inputs[0]), &extent)) {
+          return extent;
+        }
+      }
+    }
+    CHECK(false) << "ValueError: Unable to get the extent of \"threadIdx.x\"";
+    throw;
   }
 
   /*!
@@ -146,11 +191,17 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
     }
 
     // Step 3. Calculate the lowest common ancestor of all the consumers.
-    // - If the lowest common ancestor is a block, either there is only one consumer, or the LCA is
-    //   the scope block, and thereby the target block is the first consumer;
+    // - If the lowest common ancestor is a block:
+    //   - if there is only one consumer, the target block is that consumer;
+    //   - if there are multiple consumers, they must not share a common loop, and the case is not
+    //     fusible;
     // - If the lowest common ancestor is a loop, the target block is also the first consumer.
     const tir::StmtSRef& lca_sref =
         tir::GetSRefLowestCommonAncestor(tir::BlockRVs2StmtSRefs(sch, consumers));
+    if (consumers.size() > 1 && lca_sref->StmtAs<tir::BlockNode>() != nullptr) {
+      return std::make_tuple(false, tir::LoopRV{nullptr}, tir::BlockRV{nullptr},
+                             tir::LoopRV{nullptr});
+    }
 
     // Step 4. Get the outer loops of the target block, and get the compute-at position index.
     Array<tir::LoopRV> tgt_block_loops = sch->GetLoops(consumers[0]);
@@ -198,18 +249,22 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
   int max_threads_per_block;
   /*! \brief The number of threads per warp */
   int warp_size;
+  /*! \brief The maximum size of the innermost factor. "-1" means no limit */
+  int max_innermost_factor;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("max_threads_per_block", &max_threads_per_block);
     v->Visit("warp_size", &warp_size);
+    v->Visit("max_innermost_factor", &max_innermost_factor);
   }
 
   static constexpr const char* _type_key = "meta_schedule.CrossThreadReduction";
   TVM_DECLARE_FINAL_OBJECT_INFO(CrossThreadReductionNode, ScheduleRuleNode);
 };
 
-ScheduleRule ScheduleRule::CrossThreadReduction() {
+ScheduleRule ScheduleRule::CrossThreadReduction(Optional<Integer> max_innermost_factor) {
   ObjectPtr<CrossThreadReductionNode> n = make_object<CrossThreadReductionNode>();
+  n->max_innermost_factor = max_innermost_factor.value_or(Integer(-1))->value;
   return ScheduleRule(n);
 }
 
