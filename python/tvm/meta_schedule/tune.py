@@ -91,7 +91,7 @@ class DefaultLLVM:
                 require_ordered=True,
                 disallow_op=["tir.exp"],
             ),
-            M.AddRFactor(max_job_per_core=16, max_inner_most_factor=64),
+            M.AddRFactor(max_jobs_per_core=16, max_innermost_factor=64),
             M.MultiLevelTiling(
                 structure="SSRSRS",
                 tile_binds=None,
