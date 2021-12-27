@@ -30,18 +30,25 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
 
     Optional<Integer> opt_max_threads_per_block = target->GetAttr<Integer>("max_threads_per_block");
     Optional<Integer> opt_warp_size = target->GetAttr<Integer>("thread_warp_size");
-    CHECK(opt_max_threads_per_block.defined())
-        << "ValueError: Target does not have attribute \"max_threads_per_block\"";
-    CHECK(opt_warp_size.defined())
-        << "ValueError: Target does not have attribute \"thread_warp_size\"";
 
-    max_threads_per_block = opt_max_threads_per_block.value()->value;
-    warp_size = opt_warp_size.value()->value;
+    if (!opt_max_threads_per_block.defined()) {
+      LOG(WARNING) << "Target does not have attribute \"max_threads_per_block\", therefore the "
+                      "rule CrossThreadReduction will not be applied";
+    }
+    if (!opt_warp_size.defined()) {
+      LOG(WARNING) << "Target does not have attribute \"thread_warp_size\", therefore the rule "
+                      "CrossThreadReduction will not be applied";
+    }
+    max_threads_per_block = opt_max_threads_per_block.value_or(Integer(-1))->value;
+    warp_size = opt_warp_size.value_or(Integer(-1))->value;
   }
 
   // Inherited from ScheduleRuleNode
   Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block_rv) final {
     // Step 0. Check the conditions of this rule.
+    if (max_threads_per_block == -1 || warp_size == -1) {
+      return {sch};
+    }
     const tir::StmtSRef& block_sref = sch->GetSRef(block_rv);
     if (!NeedsRFactorOrCrossThreadReduction(sch->state(), block_sref, max_threads_per_block,
                                             warp_size)) {
