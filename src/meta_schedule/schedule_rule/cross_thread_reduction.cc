@@ -30,18 +30,25 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
 
     Optional<Integer> opt_max_threads_per_block = target->GetAttr<Integer>("max_threads_per_block");
     Optional<Integer> opt_warp_size = target->GetAttr<Integer>("thread_warp_size");
-    CHECK(opt_max_threads_per_block.defined())
-        << "ValueError: Target does not have attribute \"max_threads_per_block\"";
-    CHECK(opt_warp_size.defined())
-        << "ValueError: Target does not have attribute \"thread_warp_size\"";
 
-    max_threads_per_block = opt_max_threads_per_block.value()->value;
-    warp_size = opt_warp_size.value()->value;
+    if (!opt_max_threads_per_block.defined()) {
+      LOG(WARNING) << "Target does not have attribute \"max_threads_per_block\", therefore the "
+                      "rule CrossThreadReduction will not be applied";
+    }
+    if (!opt_warp_size.defined()) {
+      LOG(WARNING) << "Target does not have attribute \"thread_warp_size\", therefore the rule "
+                      "CrossThreadReduction will not be applied";
+    }
+    max_threads_per_block = opt_max_threads_per_block.value_or(Integer(-1))->value;
+    warp_size = opt_warp_size.value_or(Integer(-1))->value;
   }
 
   // Inherited from ScheduleRuleNode
   Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block_rv) final {
     // Step 0. Check the conditions of this rule.
+    if (max_threads_per_block == -1 || warp_size == -1) {
+      return {sch};
+    }
     const tir::StmtSRef& block_sref = sch->GetSRef(block_rv);
     if (!NeedsRFactorOrCrossThreadReduction(sch->state(), block_sref, max_threads_per_block,
                                             warp_size)) {
@@ -67,7 +74,9 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
         GetComputeTargetLoopAndBlock(tmp_sch, block_rv);
 
     // Step 3. Try block fusion.
-    Array<tir::ExprRV> factors{nullptr};
+    int n_candidate = static_cast<int>(thread_extents.size());
+    Array<FloatImm> probs(n_candidate, FloatImm(DataType::Float(64), 1.0 / n_candidate));
+    tir::ExprRV thread_extent = tmp_sch->SampleCategorical(thread_extents, probs);
     if (fusible) {
       ICHECK(target_block.defined());
       ICHECK(target_loop.defined());
@@ -78,15 +87,14 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
       //   the loop before binding.
       // - Otherwise, we search for the extent of "threadIdx.x" and use it as the split factor.
       if (!InThreadScope(tmp_sch, target_block)) {
-        factors = tmp_sch->SamplePerfectTile(tgt_block_innermost_loop, 2, max_innermost_factor);
         const Array<tir::LoopRV>& split_res =
-            tmp_sch->Split(tgt_block_innermost_loop, {factors.begin(), factors.end()});
+            tmp_sch->Split(tgt_block_innermost_loop, {NullOpt, thread_extent});
         tmp_sch->Bind(split_res[1], "threadIdx.x");
         if (tgt_block_innermost_loop.same_as(target_loop)) {
           target_loop = split_res[0];
         }
       } else {
-        factors = {tir::ExprRV{nullptr}, GetThreadIdxExtentFromTrace(tmp_sch->trace().value())};
+        thread_extent = GetThreadIdxExtentFromTrace(tmp_sch->trace().value());
       }
       // Step 3.2. Do the compute-at.
       tmp_sch->ComputeAt(block_rv, target_loop, /*preserve_unit_loops=*/true);
@@ -100,10 +108,8 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
     tir::LoopRV fused_reduce_loop;
     ReorderAndFuseReductionLoops(tmp_sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
     // Step 5. Split the fused reduction loop and bind the inner one to threadIdx.
-    if (!factors.defined()) {
-      factors = tmp_sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor);
-    }
-    const Array<tir::LoopRV>& split_res = tmp_sch->Split(fused_reduce_loop, {NullOpt, factors[1]});
+    const Array<tir::LoopRV>& split_res =
+        tmp_sch->Split(fused_reduce_loop, {NullOpt, thread_extent});
     tmp_sch->Bind(split_res[1], "threadIdx.x");
 
     return {tmp_sch, sch};
@@ -249,22 +255,25 @@ class CrossThreadReductionNode : public ScheduleRuleNode {
   int max_threads_per_block;
   /*! \brief The number of threads per warp */
   int warp_size;
-  /*! \brief The maximum size of the innermost factor. "-1" means no limit */
-  int max_innermost_factor;
+  /*! \brief Candidates of thread axis extent (values are required to be positive). */
+  Array<Integer> thread_extents;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("max_threads_per_block", &max_threads_per_block);
     v->Visit("warp_size", &warp_size);
-    v->Visit("max_innermost_factor", &max_innermost_factor);
+    v->Visit("thread_extents", &thread_extents);
   }
 
   static constexpr const char* _type_key = "meta_schedule.CrossThreadReduction";
   TVM_DECLARE_FINAL_OBJECT_INFO(CrossThreadReductionNode, ScheduleRuleNode);
 };
 
-ScheduleRule ScheduleRule::CrossThreadReduction(Optional<Integer> max_innermost_factor) {
+ScheduleRule ScheduleRule::CrossThreadReduction(Array<Integer> thread_extents) {
+  for (const Integer& extent : thread_extents) {
+    CHECK(extent->value > 0) << "ValueError: The candidates of thread extent must be positive";
+  }
   ObjectPtr<CrossThreadReductionNode> n = make_object<CrossThreadReductionNode>();
-  n->max_innermost_factor = max_innermost_factor.value_or(Integer(-1))->value;
+  n->thread_extents = std::move(thread_extents);
   return ScheduleRule(n);
 }
 

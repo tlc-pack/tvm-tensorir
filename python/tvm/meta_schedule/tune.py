@@ -91,7 +91,7 @@ class DefaultLLVM:
                 require_ordered=True,
                 disallow_op=["tir.exp"],
             ),
-            M.AddRFactor(max_job_per_core=16, max_inner_most_factor=64),
+            M.AddRFactor(max_jobs_per_core=16, max_innermost_factor=64),
             M.MultiLevelTiling(
                 structure="SSRSRS",
                 tile_binds=None,
@@ -158,7 +158,7 @@ class DefaultCUDA:
                 require_ordered=False,
                 disallow_op=None,
             ),
-            M.CrossThreadReduction(max_innermost_factor=64),
+            M.CrossThreadReduction(thread_extents=[4, 8, 16, 32, 64, 128, 256, 512]),
             M.MultiLevelTiling(
                 structure="SSSRRSRS",
                 tile_binds=["blockIdx.x", "vthread.x", "threadIdx.x"],
