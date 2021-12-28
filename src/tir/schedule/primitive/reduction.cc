@@ -121,7 +121,7 @@ class LoopHeightError : public ScheduleError {
       // For each block var of type kCommReduce, check its binding
       const IterVar& iter_var = block->iter_vars[i];
       const PrimExpr& binding = realize->iter_values[i];
-      if (iter_var->iter_type != kCommReduce) {
+      if (iter_var->iter_type != IterVarType::kCommReduce) {
         continue;
       }
       for (const StmtSRef& higher_loop : loops) {
@@ -223,7 +223,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     const IterVar& iter_var = block->iter_vars[i];
     const PrimExpr& binding = realize->iter_values[i];
     // Only process data parallel block vars
-    if (iter_var->iter_type != kDataPar) {
+    if (iter_var->iter_type != IterVarType::kDataPar) {
       continue;
     }
     // Create a new block var
@@ -678,7 +678,7 @@ class RFactorBlockCreator : public BaseBlockCreator {
   void CreateNormalIters(int idx) final {
     IterVar old_iter = old_block_realize_->block->iter_vars[idx];
     PrimExpr old_binding = old_block_realize_->iter_values[idx];
-    if (old_iter->iter_type == kDataPar ||
+    if (old_iter->iter_type == IterVarType::kDataPar ||
         !UsesVar(old_binding,
                  [v = rf_loop_->loop_var.get()](const VarNode* var) { return var == v; })) {
       // The old block iter is either a data parallel block iter, or a reduction block iter that
