@@ -101,7 +101,7 @@ class EvolutionarySearchConfig(NamedTuple):
     genetic_num_iters: int = 4
     genetic_mutate_prob: float = 0.85
     genetic_max_fail_count: int = 10
-    eps_greedy: float = 0.05
+    eps_greedy: float = 0.25
 
     def create_strategy(self) -> EvolutionarySearch:
         return EvolutionarySearch(

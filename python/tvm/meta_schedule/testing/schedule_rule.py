@@ -41,7 +41,6 @@ def get(target: Target) -> List[ScheduleRule]:
         ]
     if target.kind.name == "cuda":
         return [
-            auto_inline(target),
             cross_thread_reduction(target),
             multi_level_tiling(target),
             auto_inline_after_tiling(target),
