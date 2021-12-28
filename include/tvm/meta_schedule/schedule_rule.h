@@ -131,8 +131,32 @@ class ScheduleRule : public runtime::ObjectRef {
                                          bool require_injective,      //
                                          bool require_ordered,        //
                                          Optional<Array<String>> disallow_op);
-  /*!
-   * \brief Create a mega rule: multi-level tiling with data reuse
+/*!
+* \brief Create a mega rule: multi-level tiling with data reuse
+* \param structure The tiling structure. Recommended:
+* - 'SSRSRS' on CPU
+* - 'SSSRRSRS' on GPU
+* \param tile_binds For each level of tiles, which thread axis it is bound to. Recommended:
+* - NullOpt on CPU
+* - [blockIdx.x, vthread.x, threadIdx.x] on GPU
+* \param use_tensor_core Whether to apply tensor core wmma intrinsic for the computation
+* \param max_innermost_factor The maximum size of the innermost factor. NullOpt means no limit
+* \param vector_load_max_len The length of vector lane in vectorized cooperative fetching.
+* NullOpt means disable vectorization
+* \param reuse_read Data reuse configuration for reading. NullOpt means no reuse.
+* \param reuse_write Data reuse configuration for writing. NullOpt means no reuse.
+* \return The schedule rule created
+                                                                                            */
+TVM_DLL static ScheduleRule MultiLevelTiling(String structure,                             //
+                                            Optional<Array<String>> tile_binds,           //
+                                            bool use_tensor_core,                         //
+                                            Optional<Integer> max_innermost_factor,       //
+                                            Optional<Integer> vector_load_max_len,        //
+                                            Optional<Map<String, ObjectRef>> reuse_read,  //
+                                            Optional<Map<String, ObjectRef>> reuse_write);
+
+/*!
+   * \brief Create a mega rule: multi-level tiling with data reuse and add constraints for memhammer
    * \param structure The tiling structure. Recommended:
    * - 'SSRSRS' on CPU
    * - 'SSSRRSRS' on GPU
@@ -140,20 +164,26 @@ class ScheduleRule : public runtime::ObjectRef {
    * - NullOpt on CPU
    * - [blockIdx.x, vthread.x, threadIdx.x] on GPU
    * \param use_tensor_core Whether to apply tensor core wmma intrinsic for the computation
+   * \param add_local_stage Whether to add local stage when loading from global to shared
    * \param max_innermost_factor The maximum size of the innermost factor. NullOpt means no limit
    * \param vector_load_max_len The length of vector lane in vectorized cooperative fetching.
    * NullOpt means disable vectorization
    * \param reuse_read Data reuse configuration for reading. NullOpt means no reuse.
    * \param reuse_write Data reuse configuration for writing. NullOpt means no reuse.
    * \return The schedule rule created
-   */
-  TVM_DLL static ScheduleRule MultiLevelTiling(String structure,                             //
-                                               Optional<Array<String>> tile_binds,           //
-                                               bool use_tensor_core,                         //
-                                               Optional<Integer> max_innermost_factor,       //
-                                               Optional<Integer> vector_load_max_len,        //
-                                               Optional<Map<String, ObjectRef>> reuse_read,  //
-                                               Optional<Map<String, ObjectRef>> reuse_write);
+ */
+TVM_DLL static ScheduleRule MultiLevelTilingMemHammer(String structure, //
+                                             Optional<Array<String>> tile_binds,           //
+                                             bool use_tensor_core,                         //
+                                             bool add_local_stage,                         //
+                                             Optional<Integer> max_innermost_factor,       //
+                                             Optional<Integer> vector_load_max_len,        //
+                                             Optional<Map<String, ObjectRef>> reuse_read,  //
+                                             Optional<Map<String, ObjectRef>> reuse_write);
+
+TVM_DLL static ScheduleRule AddDataCopyConstraintsMemHammer();
+
+
   /*!
    * \brief Create a rule: add-rfactor to some blocks if needed
    * \param max_jobs_per_core The maximum number of jobs to be launched per CPU core. It sets the
