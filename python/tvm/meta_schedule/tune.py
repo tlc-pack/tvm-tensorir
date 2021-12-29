@@ -133,6 +133,7 @@ class DefaultLLVM:
 
         return {
             M.MutateTileSize(): 0.9,
+            M.MutateComputeLocation(): 0.05,
             M.MutateUnroll(): 0.03,
             M.MutateParallel(max_jobs_per_core=16): 0.02,
         }

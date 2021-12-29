@@ -23,30 +23,34 @@ namespace meta_schedule {
 
 class RandomComputeLocationNode : public ScheduleRuleNode {
  public:
-  bool IsFreeBlock(const tir::Schedule sch, const tir::StmtSRef& block_sref) const {
+  bool CheckConditions(const tir::Schedule sch, const tir::BlockRV& block_rv,
+                       Array<tir::BlockRV>* consumers) const {
+    const tir::StmtSRef& block_sref = sch->GetSRef(block_rv);
+    const tir::BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+
+    // Cond 1. The block is not the root block.
     if (block_sref->parent == nullptr) {
       return false;
     }
-    if (!tir::IsSubrootBlock(sch->state(), block_sref)) {
+    // Cond 2. The block should be the direct child block of the root block.
+    if (!tir::IsSubrootBlock(sch->state(), block_sref)) {  // Todo
       return false;
     }
-    tir::ScheduleState state = sch->state();
-    if (!tir::IsCompleteBlock(state, block_sref,
-                              tir::GetScopeRoot(state, block_sref, false, false))) {
-      return false;
-    }
+    // Cond 3 & 4. The block has at least one outer loop, and the outermost loop has only one child
+    // block.
     Array<tir::StmtSRef> loop_srefs = tir::GetLoops(block_sref);
-    for (const tir::StmtSRef& loop_sref : loop_srefs) {
-      if (!tir::HasSingleChild(loop_sref)) {
-        return false;
-      }
+    if (loop_srefs.empty()) {
+      return false;
     }
-    Array<PrimExpr> binds = tir::GetBlockRealize(state, block_sref)->iter_values;
-    for (const PrimExpr& bind : binds) {
-      if (!bind->IsInstance<IntImmNode>() && !bind->IsInstance<tir::VarNode>()) {
-        return false;
-      }
+    if (tir::GetChildBlockSRefOnSRefTree(sch->state(), loop_srefs[0]).size() > 1) {
+      return false;
     }
+    // Cond 5. The block has at lease one consumer.
+    *consumers = sch->GetConsumers(block_rv);
+    if (consumers->empty()) {
+      return false;
+    }
+
     return true;
   }
 
@@ -55,24 +59,28 @@ class RandomComputeLocationNode : public ScheduleRuleNode {
 
   // Inherited from ScheduleRuleNode
   Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block_rv) final {
-    tir::StmtSRef block_sref = sch->GetSRef(block_rv);
-    if (!IsFreeBlock(sch, block_sref)) {
+    Array<tir::BlockRV> consumers{nullptr};
+    if (!CheckConditions(sch, block_rv, &consumers)) {
       return {sch};
     }
-    Array<tir::BlockRV> consumers = sch->GetConsumers(block_rv);
-    if (consumers.size() != 1) {
-      return {sch};
-    }
-    tir::BlockRV consumer = consumers[0];
+    ICHECK(consumers.defined());
+
     // Try to compute `block_rv` at `consumer`
+    int err_cnt = 0;
     for (;;) {
-      tir::LoopRV compute_at_loc = sch->SampleComputeLocation(consumer);
+      if (err_cnt == 100) {
+        LOG(WARNING) << "err_cnt = 100, force quit";
+        break;
+      }
+      tir::LoopRV compute_at_loc = sch->SampleComputeLocation(consumers);
       try {
         sch->ComputeAt(block_rv, compute_at_loc, true);
       } catch (const dmlc::Error& e) {
         // ComputeAt fails, cleanup the following before re-try:
         // 1) trace: instruction & decisions
         // 2) sym_tab
+        LOG(INFO) << "fail";
+        ++err_cnt;
         sch->trace().value()->Pop();
         sch->RemoveRV(compute_at_loc);
         continue;

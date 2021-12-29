@@ -25,7 +25,7 @@ using tir::Instruction;
 using tir::InstructionKind;
 using tir::Trace;
 
-/*! \brief Create a Mutator that mutates auto unroll step */
+/*! \brief Create a Mutator that mutates auto unroll step */  // Todo
 class MutateComputeLocationNode : public MutatorNode {
  public:
   /*! \brief JSON representation of the workload */
@@ -73,32 +73,30 @@ std::vector<MutateComputeLocationNode::Candidate> FindCandidates(const Trace& tr
                                 const ObjectRef& decision) -> ObjectRef {
     if (inst->kind.same_as(inst_sample_compute_location)) {
       // The decision made
-      int decided = Downcast<Integer>(decision)->value;
+      int old_decision = Downcast<Integer>(decision)->value;
       // Extract the inputs
-      ICHECK_EQ(inputs.size(), 1);
-      tir::BlockRV block_rv = Downcast<tir::BlockRV>(inputs[0]);
-      tir::StmtSRef block_sref = sch->GetSRef(block_rv);
-      // Extract locations that can be computed at
-      Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->state(), block_sref);
-      std::vector<int> locs{-2, -1};
-      {
-        int i = 0;
-        for (const tir::StmtSRef& loop_sref : loop_srefs) {
-          int64_t extent = *tir::GetLoopIntExtent(loop_sref);
-          if (extent != 1 && extent != -1) {
-            locs.push_back(i);
-          }
-          ++i;
-        }
+      Array<tir::StmtSRef> block_srefs;
+      block_srefs.reserve(inputs.size());
+      for (const ObjectRef& obj : inputs) {
+        block_srefs.push_back(sch->GetSRef(Downcast<tir::BlockRV>(obj)));
       }
-      // Remove `decided`
-      std::vector<int>::iterator rm = std::find(locs.begin(), locs.end(), decided);
+      // Extract locations that can be computed at
+      Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->state(), block_srefs);
+      // std::vector<int> locs{-2, -1};  // Todo: temporarily disable inline
+      std::vector<int> locs{-1};
+      for (int i = 0; i < static_cast<int>(loop_srefs.size()); ++i) {
+        locs.push_back(i);
+      }
+      // Remove `old_decision`
+      std::vector<int>::iterator rm = std::find(locs.begin(), locs.end(), old_decision);
       if (rm != locs.end()) {
         locs.erase(rm);
       }
+
       // Add the candidate
-      ICHECK(!locs.empty());
-      candidates.emplace_back(inst, std::move(locs));
+      if (!locs.empty()) {
+        candidates.emplace_back(inst, std::move(locs));
+      }
     }
     return decision;
   };
