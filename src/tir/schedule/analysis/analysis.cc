@@ -822,15 +822,21 @@ StmtSRef GetSRefLowestCommonAncestor(const Array<StmtSRef>& srefs) {
   return GetRef<StmtSRef>(p);
 }
 
-Array<StmtSRef> CollectComputeLocation(const ScheduleState& self,
+Array<StmtSRef> CollectComputeLocation(const ScheduleState& self,  // Todo: improve (producer input)
                                        const Array<StmtSRef>& block_srefs) {
-  StmtSRef lca_sref = GetSRefLowestCommonAncestor(block_srefs);
-  if (lca_sref->StmtAs<BlockNode>() != nullptr) {
+  if (block_srefs.empty()) {
+    return {};
+  }
+
+  StmtSRef loop_boundary_sref = block_srefs.size() > 1 ? GetSRefLowestCommonAncestor(block_srefs)
+                                                       : GetRef<StmtSRef>(block_srefs[0]->parent);
+  if (loop_boundary_sref->StmtAs<BlockNode>() != nullptr) {
     return {};
   }
 
   Array<StmtSRef> loop_srefs = GetLoops(block_srefs[0]);
-  int lca_pos = std::find(loop_srefs.begin(), loop_srefs.end(), lca_sref) - loop_srefs.begin();
+  int lca_pos =
+      std::find(loop_srefs.begin(), loop_srefs.end(), loop_boundary_sref) - loop_srefs.begin();
   ICHECK_LT(lca_pos, static_cast<int>(loop_srefs.size()));
 
   std::vector<IterVarType> loop_iter_types;
@@ -861,7 +867,7 @@ Array<StmtSRef> CollectComputeLocation(const ScheduleState& self,
     }
   }
 
-  return {};
+  return {loop_srefs.begin(), loop_srefs.begin() + lca_pos + 1};
 }
 
 /******** Tensorization ********/

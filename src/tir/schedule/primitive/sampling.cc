@@ -376,7 +376,7 @@ tir::StmtSRef SampleComputeLocation(tir::ScheduleState self,
     }
   } else {
     // Sample possible combinations
-    i = SampleInt(rand_state, -2, n);
+    i = SampleInt(rand_state, -1, n);  // Todo: Temporarily disable Inline
   }
   *decision = Integer(i);
   return i >= 0 ? loop_srefs[i] : i == -1 ? tir::StmtSRef::RootMark() : tir::StmtSRef::InlineMark();
@@ -471,9 +471,7 @@ struct SampleComputeLocationTraits : public UnpackedInstTraits<SampleComputeLoca
                                  Array<String> block_rvs,  //
                                  Optional<Integer> decision) {
     PythonAPICall py("sample_compute_location");
-    for (const String& block_rv : block_rvs) {
-      py.Input("", block_rv);
-    }
+    py.Input("blocks", block_rvs);
     py.Decision(decision);
     py.SingleOutput(outputs);
     return py.Str();
