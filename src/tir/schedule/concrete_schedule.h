@@ -86,7 +86,7 @@ class ConcreteScheduleNode : public ScheduleNode {
                            Optional<Integer> decision = NullOpt) override;
   Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
                                   Optional<Array<Integer>> decision = NullOpt) override;
-  LoopRV SampleComputeLocation(const Array<BlockRV>& block_rvs,
+  LoopRV SampleComputeLocation(const BlockRV& block_rv,
                                Optional<Integer> decision = NullOpt) override;
   /******** Schedule: Get blocks & loops ********/
   BlockRV GetBlock(const String& name, const String& func_name = "main") override;

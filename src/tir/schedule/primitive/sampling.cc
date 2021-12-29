@@ -357,10 +357,9 @@ std::vector<int64_t> SamplePerfectTile(
 
 tir::StmtSRef SampleComputeLocation(tir::ScheduleState self,
                                     support::LinearCongruentialEngine::TRandState* rand_state,
-                                    const Array<tir::StmtSRef>& block_srefs,
-                                    Optional<Integer>* decision) {
+                                    const StmtSRef& block_sref, Optional<Integer>* decision) {
   // Find all possible compute-at locations
-  Array<tir::StmtSRef> loop_srefs = tir::CollectComputeLocation(self, block_srefs);
+  Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(self, block_sref);
   int n = loop_srefs.size();
   // The decision made, by default it is -1
   int i = -1;
@@ -455,23 +454,17 @@ struct SampleComputeLocationTraits : public UnpackedInstTraits<SampleComputeLoca
   static constexpr size_t kNumAttrs = 0;
   static constexpr size_t kNumDecisions = 1;
 
-  template <size_t delta>
-  static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
-                                           const Array<ObjectRef>& inputs) {
-    setter(delta, inputs);
-  }
-
-  static LoopRV UnpackedApplyToSchedule(Schedule sch,              //
-                                        Array<BlockRV> block_rvs,  //
+  static LoopRV UnpackedApplyToSchedule(Schedule sch,      //
+                                        BlockRV block_rv,  //
                                         Optional<Integer> decision) {
-    return sch->SampleComputeLocation(block_rvs, decision);
+    return sch->SampleComputeLocation(block_rv, decision);
   }
 
-  static String UnpackedAsPython(Array<String> outputs,    //
-                                 Array<String> block_rvs,  //
+  static String UnpackedAsPython(Array<String> outputs,  //
+                                 String block_rv,        //
                                  Optional<Integer> decision) {
     PythonAPICall py("sample_compute_location");
-    py.Input("blocks", block_rvs);
+    py.Input("block", block_rv);
     py.Decision(decision);
     py.SingleOutput(outputs);
     return py.Str();

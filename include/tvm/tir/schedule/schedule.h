@@ -211,13 +211,12 @@ class ScheduleNode : public runtime::Object {
   virtual Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
                                           Optional<Array<Integer>> decision = NullOpt) = 0;
   /*!
-   * \brief Sample a compute-at location on a list of BlockRVs so that their common producer can
-   * compute at that loop
-   * \param block_rvs The consumer blocks that are used to gather the compute-at candidate locations
+   * \brief Sample a compute-at location of the given block
+   * \param block_rv The block whose compute-at location is to be sampled
    * \param decision The sampling decision
-   * \return The sampled loop where the producer is to be computed at
+   * \return The sampled loop where the input block is to be computed at
    */
-  virtual LoopRV SampleComputeLocation(const Array<BlockRV>& block_rvs,
+  virtual LoopRV SampleComputeLocation(const BlockRV& block_rv,
                                        Optional<Integer> decision = NullOpt) = 0;
 
   /******** Schedule: Get blocks & loops ********/

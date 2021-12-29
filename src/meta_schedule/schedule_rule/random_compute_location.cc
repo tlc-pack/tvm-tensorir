@@ -23,8 +23,7 @@ namespace meta_schedule {
 
 class RandomComputeLocationNode : public ScheduleRuleNode {
  public:
-  bool CheckConditions(const tir::Schedule sch, const tir::BlockRV& block_rv,
-                       Array<tir::BlockRV>* consumers) const {
+  bool CheckConditions(const tir::Schedule sch, const tir::BlockRV& block_rv) const {
     const tir::StmtSRef& block_sref = sch->GetSRef(block_rv);
     const tir::BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
 
@@ -46,8 +45,7 @@ class RandomComputeLocationNode : public ScheduleRuleNode {
       return false;
     }
     // Cond 5. The block has at lease one consumer.
-    *consumers = sch->GetConsumers(block_rv);
-    if (consumers->empty()) {
+    if (tir::GetConsumers(sch->state(), sch->GetSRef(block_rv)).empty()) {
       return false;
     }
 
@@ -59,20 +57,17 @@ class RandomComputeLocationNode : public ScheduleRuleNode {
 
   // Inherited from ScheduleRuleNode
   Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block_rv) final {
-    Array<tir::BlockRV> consumers{nullptr};
-    if (!CheckConditions(sch, block_rv, &consumers)) {
+    if (!CheckConditions(sch, block_rv)) {
       return {sch};
     }
-    ICHECK(consumers.defined());
 
-    // Try to compute `block_rv` at `consumer`
     int err_cnt = 0;
     for (;;) {
       if (err_cnt == 100) {
-        LOG(WARNING) << "err_cnt = 100, force quit";
+        LOG(INFO) << "err_cnt = 100, force quit";
         break;
       }
-      tir::LoopRV compute_at_loc = sch->SampleComputeLocation(consumers);
+      tir::LoopRV compute_at_loc = sch->SampleComputeLocation(block_rv);
       try {
         sch->ComputeAt(block_rv, compute_at_loc, true);
       } catch (const dmlc::Error& e) {

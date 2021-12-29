@@ -75,13 +75,10 @@ std::vector<MutateComputeLocationNode::Candidate> FindCandidates(const Trace& tr
       // The decision made
       int old_decision = Downcast<Integer>(decision)->value;
       // Extract the inputs
-      Array<tir::StmtSRef> block_srefs;
-      block_srefs.reserve(inputs.size());
-      for (const ObjectRef& obj : inputs) {
-        block_srefs.push_back(sch->GetSRef(Downcast<tir::BlockRV>(obj)));
-      }
+      ICHECK_EQ(inputs.size(), 1);
+      tir::StmtSRef block_sref = sch->GetSRef(Downcast<tir::BlockRV>(inputs[0]));
       // Extract locations that can be computed at
-      Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->state(), block_srefs);
+      Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->state(), block_sref);
       // std::vector<int> locs{-2, -1};  // Todo: temporarily disable inline
       std::vector<int> locs{-1};
       for (int i = 0; i < static_cast<int>(loop_srefs.size()); ++i) {

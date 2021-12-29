@@ -370,29 +370,28 @@ class Schedule(Object):
             )
         )
 
-    def sample_compute_location(
+    def sample_compute_location(  # Todo: add some unittests
         self,
-        blocks: List[BlockRV],
+        block: BlockRV,
         decision: Optional[int] = None,
     ) -> LoopRV:
-        """Sample a compute-at location on a list of blocks so that its producer can compute at that
-        loop
+        """Sample a compute-at location of the given block
 
         Parameters
         ----------
-        blocks : List[BlockRV]
-            The consumer blocks that are used to gather the compute-at candidate locations
+        block : BlockRV
+            The block whose compute-at location is to be sampled
         decision : Optional[int]
             The sampling decision
 
         Returns
         -------
         result : LoopRV
-            The sampled loop where the producer is to be computed at
+            The sampled loop where the input block is to be computed at
         """
         return _ffi_api.ScheduleSampleComputeLocation(  # pylint: disable=no-member
             self,
-            blocks,
+            block,
             decision,
         )
 

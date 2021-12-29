@@ -822,19 +822,19 @@ StmtSRef GetSRefLowestCommonAncestor(const Array<StmtSRef>& srefs) {
   return GetRef<StmtSRef>(p);
 }
 
-Array<StmtSRef> CollectComputeLocation(const ScheduleState& self,  // Todo: improve (producer input)
-                                       const Array<StmtSRef>& block_srefs) {
-  if (block_srefs.empty()) {
+Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref) {
+  Array<StmtSRef> consumers = GetConsumers(self, block_sref);
+  if (consumers.empty()) {
     return {};
   }
 
-  StmtSRef loop_boundary_sref = block_srefs.size() > 1 ? GetSRefLowestCommonAncestor(block_srefs)
-                                                       : GetRef<StmtSRef>(block_srefs[0]->parent);
+  StmtSRef loop_boundary_sref = consumers.size() > 1 ? GetSRefLowestCommonAncestor(consumers)
+                                                     : GetRef<StmtSRef>(consumers[0]->parent);
   if (loop_boundary_sref->StmtAs<BlockNode>() != nullptr) {
     return {};
   }
 
-  Array<StmtSRef> loop_srefs = GetLoops(block_srefs[0]);
+  Array<StmtSRef> loop_srefs = GetLoops(consumers[0]);
   int lca_pos =
       std::find(loop_srefs.begin(), loop_srefs.end(), loop_boundary_sref) - loop_srefs.begin();
   ICHECK_LT(lca_pos, static_cast<int>(loop_srefs.size()));
@@ -851,6 +851,9 @@ Array<StmtSRef> CollectComputeLocation(const ScheduleState& self,  // Todo: impr
       i_last_datapar = i;
     }
   }
+
+  // Todo 1: take the reduction iterators of the input block into considertion
+  // Todo 2: skip unit loops
 
   for (int i = 0; i <= lca_pos; ++i) {
     if (loop_iter_types[i] == IterVarType::kDataPar) {
