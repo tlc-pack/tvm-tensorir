@@ -822,24 +822,46 @@ StmtSRef GetSRefLowestCommonAncestor(const Array<StmtSRef>& srefs) {
   return GetRef<StmtSRef>(p);
 }
 
-Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref) {
-  Array<StmtSRef> loop_srefs = GetLoops(block_sref);
-  Array<StmtSRef> result;
-  result.reserve(loop_srefs.size());
+Array<StmtSRef> CollectComputeLocation(const ScheduleState& self,
+                                       const Array<StmtSRef>& block_srefs) {
+  StmtSRef lca_sref = GetSRefLowestCommonAncestor(block_srefs);
+  if (lca_sref->StmtAs<BlockNode>() != nullptr) {
+    return {};
+  }
+
+  Array<StmtSRef> loop_srefs = GetLoops(block_srefs[0]);
+  int lca_pos = std::find(loop_srefs.begin(), loop_srefs.end(), lca_sref) - loop_srefs.begin();
+  ICHECK_LT(lca_pos, static_cast<int>(loop_srefs.size()));
+
+  std::vector<IterVarType> loop_iter_types;
+  loop_iter_types.reserve(lca_pos + 1);
+  int i_last_datapar = -1;
   bool visited_reduce = false;
-  for (const StmtSRef& loop_sref : loop_srefs) {
-    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
-    IterVarType iter_type = GetLoopIterType(loop_sref);
+
+  for (int i = 0; i <= lca_pos; ++i) {
+    IterVarType iter_type = GetLoopIterType(loop_srefs[i]);
+    loop_iter_types.push_back(iter_type);
     if (iter_type == IterVarType::kDataPar) {
+      i_last_datapar = i;
+    }
+  }
+
+  for (int i = 0; i <= lca_pos; ++i) {
+    if (loop_iter_types[i] == IterVarType::kDataPar) {
       if (visited_reduce) {
-        break;
+        return {loop_srefs.begin(), loop_srefs.begin() + i};
+      }
+    } else if (loop_iter_types[i] == IterVarType::kCommReduce) {
+      visited_reduce = true;
+      if (i > i_last_datapar) {
+        return {loop_srefs.begin(), loop_srefs.begin() + i};
       }
     } else {
-      visited_reduce = true;
+      return {loop_srefs.begin(), loop_srefs.begin() + i};
     }
-    result.push_back(loop_sref);
   }
-  return result;
+
+  return {};
 }
 
 /******** Tensorization ********/

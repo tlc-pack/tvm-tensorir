@@ -333,7 +333,7 @@ bool HasSingleChild(const StmtSRef& loop_or_block_sref);
 
 /*!
  * \brief Check if a block is the direct children of the root block
- * \param self The TIR schedule class
+ * \param self The schedule state
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if the block is the subroot block
  */
@@ -348,12 +348,13 @@ bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_s
 StmtSRef GetSRefLowestCommonAncestor(const Array<StmtSRef>& srefs);
 
 /*!
- * \brief Collect all the feasible compute locations among the loops above the block
- * \param self The TIR schedule class
- * \param block_sref The input block
- * \return All the feasible compute locations among the loops above the block
+ * \brief Collect all the feasible compute locations among the loops above the input blocks
+ * \param self The schedule state
+ * \param block_srefs The input blocks whose compute locations are to be collected
+ * \return All the feasible compute locations among the loops above the blocks
  */
-Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref);
+Array<StmtSRef> CollectComputeLocation(const ScheduleState& self,
+                                       const Array<StmtSRef>& block_srefs);
 
 /******** Tensorization ********/
 
@@ -452,7 +453,7 @@ class TensorizeInfo : public ObjectRef {
 /*!
  * \brief Check if the given block can be tensorized, and in the meantime gather the necessary
  * information for tensorization
- * \param self The TIR schedule
+ * \param self The schedule state
  * \param block_sref The block to be analyzed
  * \param desc_func The target function for tensorization
  * \return The necessary information used for tensorization, or NullOpt if the block cannot be
