@@ -357,51 +357,29 @@ std::vector<int64_t> SamplePerfectTile(
 
 tir::StmtSRef SampleComputeLocation(tir::ScheduleState self,
                                     support::LinearCongruentialEngine::TRandState* rand_state,
-                                    const tir::StmtSRef& block_sref, Optional<Integer>* decision) {
+                                    const Array<tir::StmtSRef>& block_srefs,
+                                    Optional<Integer>* decision) {
   // Find all possible compute-at locations
-  Array<tir::StmtSRef> loop_srefs = tir::CollectComputeLocation(self, block_sref);
+  Array<tir::StmtSRef> loop_srefs = tir::CollectComputeLocation(self, block_srefs);
   int n = loop_srefs.size();
-  // Extract non-unit loops
-  std::vector<int> choices;
-  choices.reserve(n);
-  for (int i = 0; i < n; ++i) {
-    const int64_t* extent = tir::GetLoopIntExtent(loop_srefs[i]);
-    if (extent != nullptr) {
-      choices.push_back(i);
-    }
-  }
   // The decision made, by default it is -1
   int i = -1;
   if (decision->defined()) {
     // Handle existing decision
-    const auto* int_imm = decision->as<IntImmNode>();
-    int64_t decided = int_imm->value;
-    if (decided == -2 || decided == -1) {
-      i = decided;
+    int64_t val_decision = decision->as<IntImmNode>()->value;
+    if (val_decision >= n) {
+      LOG(WARNING) << "old decision is " << val_decision << " while current candidate count is "
+                   << n << ". Hence cannot reapply the old decision";
+      i = n - 1;
     } else {
-      for (int choice : choices) {
-        if (choice <= decided) {
-          i = choice;
-        } else {
-          break;
-        }
-      }
+      i = val_decision;
     }
   } else {
     // Sample possible combinations
-    i = SampleInt(rand_state, -2, choices.size());
-    if (i >= 0) {
-      i = choices[i];
-    }
+    i = SampleInt(rand_state, -2, n);
   }
   *decision = Integer(i);
-  if (i == -2) {
-    return tir::StmtSRef::InlineMark();
-  }
-  if (i == -1) {
-    return tir::StmtSRef::RootMark();
-  }
-  return loop_srefs[i];
+  return i >= 0 ? loop_srefs[i] : i == -1 ? tir::StmtSRef::RootMark() : tir::StmtSRef::InlineMark();
 }
 
 /******** InstructionKind Registration ********/
@@ -477,17 +455,25 @@ struct SampleComputeLocationTraits : public UnpackedInstTraits<SampleComputeLoca
   static constexpr size_t kNumAttrs = 0;
   static constexpr size_t kNumDecisions = 1;
 
-  static LoopRV UnpackedApplyToSchedule(Schedule sch,      //
-                                        BlockRV block_rv,  //
-                                        Optional<Integer> decision) {
-    return sch->SampleComputeLocation(block_rv, decision);
+  template <size_t delta>
+  static TVM_ALWAYS_INLINE void _SetInputs(const runtime::TVMArgsSetter& setter,
+                                           const Array<ObjectRef>& inputs) {
+    setter(delta, inputs);
   }
 
-  static String UnpackedAsPython(Array<String> outputs,  //
-                                 String block_rv,        //
+  static LoopRV UnpackedApplyToSchedule(Schedule sch,              //
+                                        Array<BlockRV> block_rvs,  //
+                                        Optional<Integer> decision) {
+    return sch->SampleComputeLocation(block_rvs, decision);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs,    //
+                                 Array<String> block_rvs,  //
                                  Optional<Integer> decision) {
     PythonAPICall py("sample_compute_location");
-    py.Input("block", block_rv);
+    for (const String& block_rv : block_rvs) {
+      py.Input("", block_rv);
+    }
     py.Decision(decision);
     py.SingleOutput(outputs);
     return py.Str();

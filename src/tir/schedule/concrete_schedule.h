@@ -86,7 +86,7 @@ class ConcreteScheduleNode : public ScheduleNode {
                            Optional<Integer> decision = NullOpt) override;
   Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
                                   Optional<Array<Integer>> decision = NullOpt) override;
-  LoopRV SampleComputeLocation(const BlockRV& block_rv,
+  LoopRV SampleComputeLocation(const Array<BlockRV>& block_rvs,
                                Optional<Integer> decision = NullOpt) override;
   /******** Schedule: Get blocks & loops ********/
   BlockRV GetBlock(const String& name, const String& func_name = "main") override;
@@ -284,6 +284,7 @@ inline Array<StmtSRef> GetSRefsHelper(const ConcreteScheduleNode* sch, const Arr
   return result;
 }
 
+// Todo: expose it to schedule.h?
 inline Array<StmtSRef> ConcreteScheduleNode::GetSRefs(const Array<BlockRV>& rvs) const {
   return GetSRefsHelper(this, rvs);
 }

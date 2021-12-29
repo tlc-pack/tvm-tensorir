@@ -240,11 +240,11 @@ Array<ExprRV> ConcreteScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int
   throw;
 }
 
-LoopRV ConcreteScheduleNode::SampleComputeLocation(const BlockRV& block_rv,
+LoopRV ConcreteScheduleNode::SampleComputeLocation(const Array<BlockRV>& block_rvs,
                                                    Optional<Integer> decision) {
   TVM_TIR_SCHEDULE_BEGIN();
   return CreateRV<LoopRV>(
-      tir::SampleComputeLocation(state_, &this->rand_state_, this->GetSRef(block_rv), &decision));
+      tir::SampleComputeLocation(state_, &this->rand_state_, this->GetSRefs(block_rvs), &decision));
   TVM_TIR_SCHEDULE_END("sample-compute-location", this->error_render_level_);
   throw;
 }
