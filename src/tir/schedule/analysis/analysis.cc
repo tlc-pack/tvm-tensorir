@@ -845,14 +845,17 @@ std::pair<Array<StmtSRef>, std::vector<int>> CollectComputeLocation(const Schedu
   }
 
   Array<StmtSRef> loop_srefs = GetLoops(consumers[0]);
+
   int lca_pos =
       std::find(loop_srefs.begin(), loop_srefs.end(), loop_boundary_sref) - loop_srefs.begin();
   ICHECK_LT(lca_pos, static_cast<int>(loop_srefs.size()));
+  int n_leading_datapar_iter = GetNumOfLeadingDataParIter(block_sref);
+  int n_candidate = std::min(lca_pos + 1, n_leading_datapar_iter);
 
   std::vector<IterVarType> loop_iter_types;
-  loop_iter_types.reserve(lca_pos + 1);
+  loop_iter_types.reserve(n_candidate);
   int i_last_datapar = -1;
-  for (int i = 0; i <= lca_pos; ++i) {
+  for (int i = 0; i < n_candidate; ++i) {
     IterVarType iter_type = GetLoopIterType(loop_srefs[i]);
     loop_iter_types.push_back(iter_type);
     if (iter_type == IterVarType::kDataPar) {
@@ -860,13 +863,11 @@ std::pair<Array<StmtSRef>, std::vector<int>> CollectComputeLocation(const Schedu
     }
   }
 
-  location_srefs.reserve(lca_pos + 3);
-  location_indices.reserve(lca_pos + 3);
+  location_srefs.reserve(n_candidate + 2);
+  location_indices.reserve(n_candidate + 2);
   bool visited_reduce = false;
 
-  // Todo 1: take the reduction iterators of the input block into considertion
-
-  for (int i = 0; i <= lca_pos; ++i) {
+  for (int i = 0; i < n_candidate; ++i) {
     const int64_t* loop_extent = GetLoopIntExtent(loop_srefs[i]);
     if (loop_extent != nullptr && *loop_extent == 1) {
       continue;
@@ -2083,6 +2084,18 @@ bool HasIfThenElse(const Stmt& stmt) {
   };
   PreOrderVisit(stmt, f_visit);
   return has_branch;
+}
+
+int GetNumOfLeadingDataParIter(const StmtSRef& block_sref) {
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  int n_iter = static_cast<int>(block->iter_vars.size());
+
+  for (int i = 0; i < n_iter; ++i) {
+    if (block->iter_vars[i]->iter_type != kDataPar) {
+      return i;
+    }
+  }
+  return n_iter;
 }
 
 /******** Storage Scope ********/
