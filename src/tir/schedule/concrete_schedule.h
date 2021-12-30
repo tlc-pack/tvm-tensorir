@@ -284,7 +284,6 @@ inline Array<StmtSRef> GetSRefsHelper(const ConcreteScheduleNode* sch, const Arr
   return result;
 }
 
-// Todo: expose it to schedule.h?
 inline Array<StmtSRef> ConcreteScheduleNode::GetSRefs(const Array<BlockRV>& rvs) const {
   return GetSRefsHelper(this, rvs);
 }
