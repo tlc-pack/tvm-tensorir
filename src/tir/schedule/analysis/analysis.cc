@@ -865,9 +865,13 @@ std::pair<Array<StmtSRef>, std::vector<int>> CollectComputeLocation(const Schedu
   bool visited_reduce = false;
 
   // Todo 1: take the reduction iterators of the input block into considertion
-  // Todo 2: skip unit loops
 
   for (int i = 0; i <= lca_pos; ++i) {
+    const int64_t* loop_extent = GetLoopIntExtent(loop_srefs[i]);
+    if (loop_extent != nullptr && *loop_extent == 1) {
+      continue;
+    }
+
     if (loop_iter_types[i] == IterVarType::kDataPar) {
       if (visited_reduce) {
         break;
