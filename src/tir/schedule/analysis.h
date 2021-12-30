@@ -352,8 +352,10 @@ StmtSRef GetSRefLowestCommonAncestor(const Array<StmtSRef>& srefs);
  * \param self The schedule state
  * \param block_sref The block whose compute-at locations are to be collected
  * \return All the feasible compute-at locations of the input block, given as an array of loop srefs
+ * and an array of their indices among the outer loops of the input block
  */
-Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref);
+std::pair<Array<StmtSRef>, std::vector<int>> CollectComputeLocation(const ScheduleState& self,
+                                                                    const StmtSRef& block_sref);
 
 /******** Tensorization ********/
 

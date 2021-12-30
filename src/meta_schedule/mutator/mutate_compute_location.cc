@@ -78,21 +78,22 @@ std::vector<MutateComputeLocationNode::Candidate> FindCandidates(const Trace& tr
       ICHECK_EQ(inputs.size(), 1);
       tir::StmtSRef block_sref = sch->GetSRef(Downcast<tir::BlockRV>(inputs[0]));
       // Extract locations that can be computed at
-      Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->state(), block_sref);
-      // std::vector<int> locs{-2, -1};  // Todo: temporarily disable inline
-      std::vector<int> locs{-1};
-      for (int i = 0; i < static_cast<int>(loop_srefs.size()); ++i) {
-        locs.push_back(i);
-      }
+
+      Array<tir::StmtSRef> location_srefs;
+      std::vector<int> location_indices;
+      std::tie(location_srefs, location_indices) = CollectComputeLocation(sch->state(), block_sref);
+
       // Remove `old_decision`
-      std::vector<int>::iterator rm = std::find(locs.begin(), locs.end(), old_decision);
-      if (rm != locs.end()) {
-        locs.erase(rm);
+      auto it = std::find(location_indices.begin(), location_indices.end(), old_decision);
+      if (it != location_indices.end()) {
+        location_srefs.erase(location_srefs.begin() + (it - location_indices.begin()));
+        location_indices.erase(it);
       }
+      ICHECK_EQ(location_srefs.size(), location_indices.size());
 
       // Add the candidate
-      if (!locs.empty()) {
-        candidates.emplace_back(inst, std::move(locs));
+      if (!location_srefs.empty()) {
+        candidates.emplace_back(inst, std::move(location_indices));
       }
     }
     return decision;

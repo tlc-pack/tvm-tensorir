@@ -822,16 +822,26 @@ StmtSRef GetSRefLowestCommonAncestor(const Array<StmtSRef>& srefs) {
   return GetRef<StmtSRef>(p);
 }
 
-Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref) {
+std::pair<Array<StmtSRef>, std::vector<int>> CollectComputeLocation(const ScheduleState& self,
+                                                                    const StmtSRef& block_sref) {
+  Array<StmtSRef> location_srefs;
+  std::vector<int> location_indices;
+  if (CanComputeInline(self, block_sref)) {
+    location_srefs.push_back(StmtSRef::InlineMark());
+    location_indices.push_back(-2);
+  }
+  location_srefs.push_back(StmtSRef::RootMark());
+  location_indices.push_back(-1);
+
   Array<StmtSRef> consumers = GetConsumers(self, block_sref);
   if (consumers.empty()) {
-    return {};
+    return std::make_pair(location_srefs, location_indices);
   }
 
   StmtSRef loop_boundary_sref = consumers.size() > 1 ? GetSRefLowestCommonAncestor(consumers)
                                                      : GetRef<StmtSRef>(consumers[0]->parent);
   if (loop_boundary_sref->StmtAs<BlockNode>() != nullptr) {
-    return {};
+    return std::make_pair(location_srefs, location_indices);
   }
 
   Array<StmtSRef> loop_srefs = GetLoops(consumers[0]);
@@ -842,8 +852,6 @@ Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef
   std::vector<IterVarType> loop_iter_types;
   loop_iter_types.reserve(lca_pos + 1);
   int i_last_datapar = -1;
-  bool visited_reduce = false;
-
   for (int i = 0; i <= lca_pos; ++i) {
     IterVarType iter_type = GetLoopIterType(loop_srefs[i]);
     loop_iter_types.push_back(iter_type);
@@ -852,25 +860,31 @@ Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef
     }
   }
 
+  location_srefs.reserve(lca_pos + 3);
+  location_indices.reserve(lca_pos + 3);
+  bool visited_reduce = false;
+
   // Todo 1: take the reduction iterators of the input block into considertion
   // Todo 2: skip unit loops
 
   for (int i = 0; i <= lca_pos; ++i) {
     if (loop_iter_types[i] == IterVarType::kDataPar) {
       if (visited_reduce) {
-        return {loop_srefs.begin(), loop_srefs.begin() + i};
+        break;
       }
     } else if (loop_iter_types[i] == IterVarType::kCommReduce) {
       visited_reduce = true;
       if (i > i_last_datapar) {
-        return {loop_srefs.begin(), loop_srefs.begin() + i};
+        break;
       }
     } else {
-      return {loop_srefs.begin(), loop_srefs.begin() + i};
+      break;
     }
+    location_srefs.push_back(loop_srefs[i]);
+    location_indices.push_back(i);
   }
 
-  return {loop_srefs.begin(), loop_srefs.begin() + lca_pos + 1};
+  return std::make_pair(location_srefs, location_indices);
 }
 
 /******** Tensorization ********/

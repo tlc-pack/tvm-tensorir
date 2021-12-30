@@ -359,26 +359,38 @@ tir::StmtSRef SampleComputeLocation(tir::ScheduleState self,
                                     support::LinearCongruentialEngine::TRandState* rand_state,
                                     const StmtSRef& block_sref, Optional<Integer>* decision) {
   // Find all possible compute-at locations
-  Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(self, block_sref);
-  int n = loop_srefs.size();
+  Array<tir::StmtSRef> location_srefs;
+  std::vector<int> location_indices;
+  std::tie(location_srefs, location_indices) = CollectComputeLocation(self, block_sref);
+  ICHECK_EQ(location_srefs.size(), location_indices.size());
+
   // The decision made, by default it is -1
-  int i = -1;
   if (decision->defined()) {
     // Handle existing decision
-    int64_t val_decision = decision->as<IntImmNode>()->value;
-    if (val_decision >= n) {
-      LOG(WARNING) << "old decision is " << val_decision << " while current candidate count is "
-                   << n << ". Hence cannot reapply the old decision";
-      i = n - 1;
+    int64_t old_decision = Downcast<Integer>(*decision)->value;
+    auto it = std::lower_bound(location_indices.begin(), location_indices.end(), old_decision);
+    int idx = it - location_indices.begin();
+
+    if (it != location_indices.end() && *it == old_decision) {
+      *decision = Integer(old_decision);
+      return location_srefs[idx];
+    } else if (it != location_indices.begin()) {
+      *decision = Integer(*--it);
+      LOG(WARNING) << "old decision " << old_decision << " is outdated. Change the decision to "
+                   << *decision;
+      return location_srefs[idx - 1];
     } else {
-      i = val_decision;
+      *decision = Integer(-1);
+      LOG(WARNING) << "old decision " << old_decision << " is outdated. Change the decision to "
+                   << *decision;
+      return StmtSRef::RootMark();
     }
   } else {
     // Sample possible combinations
-    i = SampleInt(rand_state, -1, n);  // Todo: Temporarily disable Inline
+    int sampled_idx = SampleInt(rand_state, 0, location_indices.size());
+    *decision = Integer(location_indices[sampled_idx]);
+    return location_srefs[sampled_idx];
   }
-  *decision = Integer(i);
-  return i >= 0 ? loop_srefs[i] : i == -1 ? tir::StmtSRef::RootMark() : tir::StmtSRef::InlineMark();
 }
 
 /******** InstructionKind Registration ********/
