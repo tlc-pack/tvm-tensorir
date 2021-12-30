@@ -136,5 +136,98 @@ void LeafBlockRemovalPlan(const ScheduleState& self, const StmtSRef& leaf_block_
   throw OnlyLeafError(self->mod, GetRef<Block>(leaf_block), GetRef<Block>(scope_block));
 }
 
+/******** Utilities for tensorization ********/
+
+class IRSubstituteInScope : public StmtExprMutator {
+ public:
+  explicit IRSubstituteInScope(std::function<PrimExpr(const VarNode*)> fmap)
+      : fmap_(std::move(fmap)) {}
+
+  PrimExpr VisitExpr_(const VarNode* op) final {
+    auto it = fmap_(op);
+    if (it.defined()) {
+      return it;
+    } else {
+      return GetRef<PrimExpr>(op);
+    }
+  }
+
+  Stmt VisitStmt_(const BlockRealizeNode* op) final {
+    arith::Analyzer analyzer;
+    auto fmutate = [&](const PrimExpr& e) { return this->VisitExpr(e); };
+    Array<PrimExpr> v = op->iter_values;
+    v.MutateByApply(fmutate);
+    PrimExpr pred = this->VisitExpr(op->predicate);
+    if (v.same_as(op->iter_values) && pred.same_as(op->predicate)) {
+      return GetRef<Stmt>(op);
+    } else {
+      auto n = CopyOnWrite(op);
+      n->iter_values = std::move(v);
+      n->predicate = std::move(analyzer.Simplify(pred));
+      return Stmt(n);
+    }
+  }
+
+ private:
+  const std::function<PrimExpr(const VarNode*)> fmap_;
+};
+
+Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::function<PrimExpr(const VarNode*)>& value_func) {
+  return IRSubstituteInScope(value_func)(stmt);
+}
+
+Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::unordered_map<const VarNode*, PrimExpr>& var_map) {
+  auto vmap = [&](const VarNode* v) -> PrimExpr {
+    const auto& it = var_map.find(v);
+    if (it != var_map.end()) {
+      return it->second;
+    } else {
+      return NullValue<PrimExpr>();
+    }
+  };
+  return IRSubstituteInScope(vmap)(stmt);
+}
+
+PrimExpr SubstituteInScope(const PrimExpr& expr,
+                           const std::unordered_map<const VarNode*, PrimExpr>& var_map) {
+  auto vmap = [&](const VarNode* v) -> PrimExpr {
+    const auto& it = var_map.find(v);
+    if (it != var_map.end()) {
+      return it->second;
+    } else {
+      return NullValue<PrimExpr>();
+    }
+  };
+  return IRSubstituteInScope(vmap)(expr);
+}
+
+Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::unordered_map<const VarNode*, const VarNode*>& var_map) {
+  auto vmap = [&](const VarNode* v) -> PrimExpr {
+    const auto& it = var_map.find(v);
+    if (it != var_map.end()) {
+      return GetRef<Var>(it->second);
+    } else {
+      return NullValue<PrimExpr>();
+    }
+  };
+  return IRSubstituteInScope(vmap)(stmt);
+}
+
+PrimExpr SubstituteInScope(const PrimExpr& expr,
+                           const std::unordered_map<const VarNode*, const VarNode*>& var_map) {
+  auto vmap = [&](const VarNode* v) -> PrimExpr {
+    const auto& it = var_map.find(v);
+    if (it != var_map.end()) {
+      return GetRef<Var>(it->second);
+    } else {
+      return NullValue<PrimExpr>();
+    }
+  };
+  return IRSubstituteInScope(vmap)(expr);
+}
+
 }  // namespace tir
 }  // namespace tvm

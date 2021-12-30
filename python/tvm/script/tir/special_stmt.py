@@ -430,7 +430,8 @@ class BlockAttr(SpecialStmt):
                     span,
                 )
             attrs = {
-                key: String(val) if isinstance(val, str) else val for key, val in attrs.items()
+                key: String(val) if isinstance(val, str) else val
+                for key, val in attrs.items()
             }
             block_scope.annotations = attrs
 

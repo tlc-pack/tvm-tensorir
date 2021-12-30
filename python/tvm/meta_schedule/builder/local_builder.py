@@ -22,12 +22,27 @@ from typing import Callable, Dict, List, Optional, Union
 
 from tvm._ffi import register_func
 from tvm.ir import IRModule
-from tvm.runtime import Module, NDArray, load_param_dict, save_param_dict
+from tvm.runtime import NDArray
+from tvm.runtime import Module, load_param_dict, save_param_dict
 from tvm.target import Target
 
 from ...contrib.popen_pool import MapResult, PopenPoolExecutor, StatusKind
 from ..utils import cpu_count, get_global_func_with_default_on_worker
 from .builder import BuilderInput, BuilderResult, PyBuilder
+
+logger = logging.getLogger(__name__)
+
+
+def _serialize_params(params: Optional[Dict[str, NDArray]]) -> Optional[bytearray]:
+    if params is None:
+        return None
+    return save_param_dict(params)
+
+
+def _deserialize_params(params: Optional[bytearray]) -> Optional[Dict[str, NDArray]]:
+    if params is None:
+        return None
+    return load_param_dict(params)
 
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -127,9 +142,8 @@ class LocalBuilder(PyBuilder):
             The initializer to be used for the worker processes.
         """
         super().__init__()
-
         if max_workers is None:
-            max_workers = cpu_count()
+            max_workers = cpu_count(logical=True)
         logger.info("LocalBuilder: max_workers = %d", max_workers)
 
         self.pool = PopenPoolExecutor(

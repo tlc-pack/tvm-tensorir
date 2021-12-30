@@ -33,7 +33,7 @@ from .utils import (
     run_evaluator_common,
 )
 
-logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 class LocalRunnerFuture(RunnerFuture):

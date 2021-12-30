@@ -271,13 +271,17 @@ def _module_export(module, file_name):  # fcompile, addons, kwargs?
 
 
 @register_func("tvm.relay.build")
+def _build_module_no_factory_impl(mod, target, target_host, params, mod_name):
+    target, target_host = Target.check_and_update_host_consist(target, target_host)
+    return build(mod, target, params=params, mod_name=mod_name).module
+
+
 def _build_module_no_factory(mod, target=None, target_host=None, params=None, mod_name="default"):
     """A wrapper around build which discards the Python GraphFactoryRuntime.
     This wrapper is suitable to be used from other programming languages as
     the runtime::Module can be freely passed between language boundaries.
     """
-    target, target_host = Target.check_and_update_host_consist(target, target_host)
-    return build(mod, target, params=params, mod_name=mod_name).module
+    return _build_module_no_factory_impl(mod, target, target_host, params, mod_name)
 
 
 def _reconstruct_from_deprecated_options(deprecated_params_target):

@@ -20,6 +20,7 @@
 #define TVM_TIR_SCHEDULE_ANALYSIS_H_
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/ir/op.h>
 #include <tvm/tir/schedule/state.h>
 
 #include <tuple>
@@ -68,6 +69,26 @@ const PrimFuncNode* GetRootPrimFunc(const IRModule& mod, const StmtNode* root_bl
  * \return The root node of the sref tree which contains the given node.
  */
 StmtSRef GetSRefTreeRoot(const StmtSRef& sref);
+
+/*!
+ * \brief The information of a block scope, including the leaf blocks,
+ * as well as the loop types (spatial, reduction) for each loop in the scope.
+ */
+struct ScopeBlockLoopInfo {
+  /*! \brief A list of the leaf blocks, from left to right */
+  std::vector<BlockRealize> realizes;
+  /*! \brief The loop vars bound to spatial block iters */
+  std::unordered_set<const VarNode*> spatial_vars;
+  /*! \brief The loop vars bound to non-spatial block iters */
+  std::unordered_set<const VarNode*> non_spatial_vars;
+};
+
+/*!
+ * \brief Inspect the scope of the given sref
+ * \param scope_block The root block of the scope
+ * \return The information of the scope
+ */
+ScopeBlockLoopInfo GetScopeBlockLoopInfo(const Block& scope_block);
 
 /******** Scope ********/
 /*!
@@ -174,6 +195,27 @@ bool IsOutputBlock(const ScheduleState& self, const StmtSRef& block_sref,
 void CheckNotOutputBlock(const ScheduleState& self, const StmtSRef& block_sref,
                          const StmtSRef& scope_root_sref);
 
+/*!
+ * \brief Check if the block is a data parallel block, i.e. all the block vars are data parallel
+ * \param block_sref The block to be checked
+ * \return A boolean flag indicating if the block is a data parallel block
+ */
+bool IsSpatial(const StmtSRef& block_sref);
+
+/*!
+ * \brief Extracts the types of the block vars
+ * \param block_sref The block to be checked
+ * \return A vector of types of the block vars
+ */
+std::vector<IterVarType> GetBlockVarTypes(const StmtSRef& block_sref);
+
+/*!
+ * \brief Checks if a block could be considered as a "write cache"
+ * \param block_sref The block to be checked
+ * \return A boolean flag indicating if the block is a write cache
+ */
+bool IsWriteCache(const StmtSRef& block_sref);
+
 /******** Binding ********/
 /*!
  * \brief Verifies if the block binding in a specific BlockRealize is an affine binding.
@@ -194,6 +236,15 @@ bool IsAffineBinding(const BlockRealize& realize, const Map<Var, Range>& loop_va
  * \throw ScheduleError If the input block does not have an affine binding
  */
 void CheckAffineBinding(const ScheduleState& self, Block block);
+
+/*!
+ * \brief Check whether a block has a trivial binding, i.e. each block var is bound to a outer loop,
+ * from outer to inner.
+ * \param self The schedule state
+ * \param block_sref The block to be checked
+ * \return A boolean flag indicating if the block has a trivial binding
+ */
+bool IsTrivialBinding(const ScheduleState& self, const StmtSRef& block_sref);
 
 /*!
  * \brief Extracts the ranges of loop variables in a path of the sref tree
@@ -266,6 +317,151 @@ BlockRealize CheckGetSingleChildBlockRealizeOnSRefTree(const ScheduleState& self
  */
 BlockRealize GetBlockRealize(const ScheduleState& self, const StmtSRef& block_sref);
 
+/*!
+ * \brief Get the IterVarType of the specific loop, according to the blocks it's bound to
+ * \param loop_sref The loop to be checked
+ * \return The IterVarType of the specific loop
+ */
+IterVarType GetLoopIterType(const StmtSRef& loop_sref);
+
+/*!
+ * \brief Check whether the loop/block has only one child
+ * \param loop_or_block_sref The loop/block to be checked
+ * \return Whether the loop/block has only one child
+ */
+bool HasSingleChild(const StmtSRef& loop_or_block_sref);
+
+/*!
+ * \brief Check if a block is the direct children of the root block
+ * \param self The TIR schedule class
+ * \param block_sref The block to be analyzed
+ * \return A boolean flag indicating if the block is the subroot block
+ */
+bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
+
+/*!
+ * \brief Get the lowest common ancestor of an array of blocks or loops on the sref tree
+ * \param srefs The block srefs or loop srefs whose lowest common ancestor is to be queried
+ * \return The lowest common ancestor of the input block srefs or loop srefs
+ * \note The input array is required to have at least one sref
+ */
+StmtSRef GetSRefLowestCommonAncestor(const Array<StmtSRef>& srefs);
+
+/*!
+ * \brief Collect all the feasible compute locations among the loops above the block
+ * \param self The TIR schedule class
+ * \param block_sref The input block
+ * \return All the feasible compute locations among the loops above the block
+ */
+Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref);
+
+/******** Tensorization ********/
+
+/* \brief Deep comparison to check if two IR graph are equivalent */
+using ExprComparator = ExprFunctor<bool(const PrimExpr& n, const PrimExpr& other)>;
+using StmtComparator = StmtFunctor<bool(const Stmt& n, const Stmt& other)>;
+
+class TensorizeComparator : public ExprComparator, public StmtComparator {
+ public:
+  explicit TensorizeComparator(bool assert_mode = true) : assert_mode_(assert_mode) {}
+
+  // Map from rhs buffer to lhs buffer
+  std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual> rhs_buffer_map_;
+  // Buffer indices mapping
+  std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
+  std::vector<IterVar> extra_block_vars_;
+  // variable remap if any
+  std::unordered_map<ObjectRef, ObjectRef, ObjectPtrHash, ObjectPtrEqual> equal_map_;
+
+  bool VisitExpr(const PrimExpr& n, const PrimExpr& other) override;
+  bool VisitStmt(const Stmt& n, const Stmt& other) override;
+
+  bool VisitStmt_(const ForNode* op, const Stmt& other) override;
+  bool VisitStmt_(const SeqStmtNode* op, const Stmt& other) override;
+  bool VisitStmt_(const BufferStoreNode* op, const Stmt& other) override;
+  bool VisitStmt_(const BlockRealizeNode* op, const Stmt& other) override;
+  bool VisitStmt_(const BlockNode* op, const Stmt& other) override;
+
+  bool VisitExpr_(const AddNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const SubNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const MulNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const DivNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const ModNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const EQNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const NENode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const LTNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const LENode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const GTNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const GENode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const AndNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const OrNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const MinNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const MaxNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const FloorDivNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const FloorModNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const IntImmNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const FloatImmNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const CastNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const VarNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const BufferLoadNode* op, const PrimExpr& other) override;
+
+  bool DefEqual(const ObjectRef& lhs, const ObjectRef& rhs);
+  virtual bool CompareBuffer(const Buffer& lhs, const Buffer& rhs);
+  bool CompareBufferRegion(const BufferRegion& lhs, const BufferRegion& rhs);
+  bool CompareAnnotation(const std::pair<String, ObjectRef>& lhs,
+                         const std::pair<String, ObjectRef>& rhs);
+  bool CompareAnnotationMap(const Map<String, ObjectRef>& lhs, const Map<String, ObjectRef>& rhs);
+  template <typename T>
+  bool CompareBufferAccess(const T* lhs, const T* rhs);
+  template <typename T, typename F>
+  bool CompareArray(const Array<T>& lhs, const Array<T>& rhs, F cmp);
+  bool CompareRange(const Range& lhs, const Range& rhs);
+  bool CompareType(const DataType& lhs, const DataType& rhs);
+
+ protected:
+  bool assert_mode_;
+  bool is_scope_block = true, is_inner_block = true;
+};
+
+/*! \brief Necessary information used for tensorization */
+class TensorizeInfoNode : public Object {
+ public:
+  /*! \brief Maps block loops to desc loops */
+  Map<tir::StmtSRef, tir::For> loop_map;
+  /*! \brief Maps loops in desc to its index, outer to inner */
+  Map<tir::For, Integer> desc_loop_indexer;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("loop_map", &loop_map);
+    v->Visit("desc_loop_indexer", &desc_loop_indexer);
+  }
+
+  static constexpr const char* _type_key = "tir.analysis.TensorizeInfo";
+  TVM_DECLARE_FINAL_OBJECT_INFO(TensorizeInfoNode, Object);
+};
+
+/*!
+ * \brief Managed reference to TensorizeInfoNode
+ * \sa TensorizeInfoNode
+ */
+class TensorizeInfo : public ObjectRef {
+ public:
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(TensorizeInfo, ObjectRef, TensorizeInfoNode);
+};
+
+/*!
+ * \brief Check if the given block can be tensorized, and in the meantime gather the necessary
+ * information for tensorization
+ * \param self The TIR schedule
+ * \param block_sref The block to be analyzed
+ * \param desc_func The target function for tensorization
+ * \return The necessary information used for tensorization, or NullOpt if the block cannot be
+ * tensorized
+ */
+TVM_DLL Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
+                                                        const tir::StmtSRef& block_sref,
+                                                        const tir::PrimFunc& desc_func);
+
 /******** Producer-consumer relation ********/
 
 /*!
@@ -327,6 +523,16 @@ struct ProducerConsumerSplit {
  * \throw ScheduleError If the buffer index is out of bound.
  */
 Buffer GetNthAccessBuffer(const ScheduleState& self, const Block& block, int n, bool is_write);
+
+/*!
+ * \brief Find the defining site of the buffer in the given block and its ancestors
+ * \param block_sref The block sref
+ * \param buffer The buffer
+ * \return The defining site of the buffer and whether the buffer is allocated (otherwise the
+ *         buffer is from match_buffer).
+ */
+std::pair<Optional<StmtSRef>, bool> GetBufferDefiningSite(const StmtSRef& block_sref,
+                                                          const Buffer& buffer);
 
 /******** Reduction Block Related ********/
 
@@ -396,6 +602,72 @@ bool FromIdentityCombiner(const PrimExpr& identity, const BufferStore& combiner,
 /******** Misc ********/
 
 /*!
+ * \brief Given the read/write region, extract the pattern of their index correspondence
+ * namely, the mapping from read index to the write index.
+ * \param read_region The read region
+ * \param write_region The write region
+ * \return A tuple of booleans, the extracted pattern
+ * 0) exists: if the pattern is found
+ * 1) surjective: if the pattern is surjective, i.e. each write index is mapped at least once
+ *    e.g. A[i, j] = B[i, i, j]
+ * 2) injective: if the pattern is injective, i.e. each write index is mapped at most once.
+ *    e.g. A[i, j] = B[i]
+ * 3) ordered: if the mapping is ordered
+ * 4) no_const_read: if there is no constant indexing in the read indices,
+ *    e.g. A[i, j] = B[0, i, j]
+ * 5) no_shift_read: if there is no constant shift in the read indices,
+ *    e.g. A[i, j] = B[i + 1, j]
+ */
+std::tuple</*exists=*/bool,
+           /*surjective=*/bool,
+           /*injective=*/bool,
+           /*ordered=*/bool,
+           /*no_const_read=*/bool,
+           /*no_shift_read=*/bool>
+AnalyzeReadWritePattern(const BufferRegion& read_region, const BufferRegion& write_region);
+
+/*!
+ * \brief Checks if the given block has data reuse opportunity and thus multi-level tiling is
+ * beneficial.
+ * \param self The schedule state
+ * \param block_sref The block to be checked
+ * \return A boolean indicating whether the block has data reuse opportunity
+ */
+bool NeedsMultiLevelTiling(const ScheduleState& self, const StmtSRef& block_sref);
+
+/*!
+ * \brief Checks if the rfactor or cross thread reduction is beneficial to the given block.
+ * \param self The schedule state.
+ * \param block_sref The block to be checked.
+ * \param max_parallel_extent The maximum parallel jobs on the target.
+ * \param max_parallel_extent The maximum cores on the target.
+ * \return A boolean indicating whether the operation is beneficial.
+ */
+bool NeedsRFactorOrCrossThreadReduction(const tir::ScheduleState& self,   //
+                                        const tir::StmtSRef& block_sref,  //
+                                        int64_t max_parallel_extent,      //
+                                        int64_t max_parallel_basic);
+
+/*!
+ * \brief Checks if the given AST contains the specific operators
+ * \param stmt The AST to be checked
+ * \param ops The list of operators to be checked
+ * \return A boolean indicating whether the AST contains the specific operators
+ */
+bool HasOp(const Stmt& stmt, const Array<Op>& ops);
+
+/*!
+ * \brief Checks if the given AST contains if-then-else, including
+ * 1) IfThenElse statement
+ * 2) Select expression
+ * 3) The operator `tir.if_then_else`
+ * 4) Block predicates
+ */
+bool HasIfThenElse(const Stmt& stmt);
+
+/******** Storage Scope ********/
+
+/*!
  * \brief Check whether the input storage scope string is valid. Throw an error if not.
  * \param self The schedule state
  * \param storage_scope The storage scope string to be checked
@@ -420,27 +692,17 @@ bool CanComputeInline(const ScheduleState& self, const StmtSRef& block_sref);
 bool CanReverseComputeInline(const ScheduleState& self, const StmtSRef& block_sref);
 
 /*!
- * \brief Checks if a producer block could be successfully computed at the specific loop.
- * \param self The schedule state
- * \param block_sref The block to be moved
- * \param loop_sref The loop where the block to be moved to
- * \param preserve_unit_loops Whether to keep the trivial loops whose extents are 1
- * \return A boolean indicating whether the block could be successfully compute at the specific loop
+ * \brief Provided the access pattern to a buffer, suggest one of the possible layout
+ * transformation to minimize the locality of the access pattern.
+ * \param buffer The buffer to be transformed
+ * \param indices The access pattern to the buffer
+ * \param loops The loops above the buffer
+ * \param predicate The predicate of the access
+ * \param analyzer Arithmetic analyzer
  */
-bool CanComputeAt(const ScheduleState& self, const StmtSRef& block_sref, const StmtSRef& loop_sref,
-                  bool preserve_unit_loops);
-
-/*!
- * \brief Checks if a consumer block could be successfully computed at the specific loop.
- * \param self The schedule state
- * \param block_sref The block to be moved
- * \param loop_sref The loop where the block to be moved to
- * \param preserve_unit_loops Whether to keep the trivial loops whose extents are 1
- * \return A boolean indicating whether the block could be successfully reverse compute at the
- * specific loop
- */
-bool CanReverseComputeAt(const ScheduleState& self, const StmtSRef& block_sref,
-                         const StmtSRef& loop_sref, bool preserve_unit_loops);
+Optional<IndexMap> SuggestIndexMap(const Buffer& buffer, const Array<PrimExpr>& indices,
+                                   const Array<For>& loops, const PrimExpr& predicate,
+                                   arith::Analyzer* analyzer);
 
 }  // namespace tir
 }  // namespace tvm

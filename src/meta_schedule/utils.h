@@ -20,30 +20,33 @@
 #define TVM_META_SCHEDULE_UTILS_H_
 
 #include <dmlc/memory_io.h>
+#include <tvm/driver/driver_api.h>
 #include <tvm/meta_schedule/arg_info.h>
 #include <tvm/meta_schedule/builder.h>
 #include <tvm/meta_schedule/cost_model.h>
 #include <tvm/meta_schedule/database.h>
 #include <tvm/meta_schedule/feature_extractor.h>
 #include <tvm/meta_schedule/measure_callback.h>
+#include <tvm/meta_schedule/mutator.h>
+#include <tvm/meta_schedule/postproc.h>
 #include <tvm/meta_schedule/runner.h>
 #include <tvm/meta_schedule/schedule_rule.h>
 #include <tvm/meta_schedule/search_strategy.h>
 #include <tvm/meta_schedule/space_generator.h>
 #include <tvm/meta_schedule/task_scheduler.h>
 #include <tvm/meta_schedule/tune_context.h>
-#include <tvm/node/node.h>
-#include <tvm/node/serialization.h>
 #include <tvm/support/parallel_for.h>
-#include <tvm/tir/schedule/schedule.h>
 
+#include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "../printer/text_printer.h"
 #include "../support/array.h"
 #include "../support/base64.h"
-#include "../tir/schedule/primitive.h"
+#include "../support/utils.h"
+#include "../tir/schedule/utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -200,7 +203,7 @@ inline support::LinearCongruentialEngine::TRandState ForkSeed(
 
 /*!
  * \brief Fork a random state into another ones, i.e. PRNG splitting.
- * The given random state is also mutated.
+ *  The given random state is also mutated.
  * \param rand_state The random state to be forked
  * \param n The number of forks
  * \return The forked random states
@@ -213,6 +216,15 @@ inline std::vector<support::LinearCongruentialEngine::TRandState> ForkSeed(
     results.push_back(support::LinearCongruentialEngine(rand_state).ForkSeed());
   }
   return results;
+}
+
+/*!
+ * \brief Get deep copy of an IRModule.
+ * \param mod The IRModule to make a deep copy.
+ * \return The deep copy of the IRModule.
+ */
+inline IRModule DeepCopyIRModule(IRModule mod) {
+  return Downcast<IRModule>(LoadJSON(SaveJSON(mod)));
 }
 
 /*!
@@ -231,6 +243,160 @@ inline std::string Concat(const Array<String>& strs, const std::string& delim) {
     os << delim << strs[i];
   }
   return os.str();
+}
+
+/*!
+ * \brief Get the BlockRV from a block StmtSRef
+ * \param sch The schedule
+ * \param block_sref The block StmtSRef
+ * \param global_var_name The global variable name
+ * \return The BlockRV
+ */
+inline tir::BlockRV GetRVFromSRef(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                                  const String& global_var_name) {
+  const tir::BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  return sch->GetBlock(block->name_hint, global_var_name);
+}
+
+/*!
+ * \brief Get the number of cores in CPU
+ * \param target The target
+ * \return The number of cores.
+ */
+inline int GetTargetNumCores(const Target& target) {
+  int num_cores = target->GetAttr<Integer>("num-cores").value_or(-1);
+  if (num_cores == -1) {
+    static const auto* f_cpu_count = runtime::Registry::Get("meta_schedule.cpu_count");
+    ICHECK(f_cpu_count)
+        << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
+    num_cores = (*f_cpu_count)(false);
+    LOG(FATAL)
+        << "Target does not have attribute \"num-cores\", physical core number must be "
+           "defined! For example, on the local machine, the target must be \"llvm -num-cores "
+        << num_cores << "\"";
+  }
+  return num_cores;
+}
+
+/*!
+ * \brief A helper data structure that replays a trace and collects failure counts
+ * for each postprocessor
+ */
+struct ThreadedTraceApply {
+  /*! \brief Constructor */
+  explicit ThreadedTraceApply(const Array<Postproc>& postprocs)
+      : n_(postprocs.size()), items_(new Item[n_]) {
+    for (int i = 0; i < n_; ++i) {
+      items_[i].postproc = postprocs[i];
+      items_[i].fail_counter = 0;
+    }
+  }
+
+  /*! \brief Destructor */
+  ~ThreadedTraceApply() { delete[] items_; }
+
+  /*!
+   * \brief Apply the trace and postprocessors to an IRModule
+   * \param mod The IRModule to be applied
+   * \param trace The trace to apply to the IRModule
+   * \param rand_state The random seed
+   * \return The schedule created, or NullOpt if any postprocessor fails
+   */
+  Optional<tir::Schedule> Apply(const IRModule& mod, const tir::Trace& trace,
+                                TRandState* rand_state) {
+    tir::Schedule sch =
+        tir::Schedule::Traced(mod,
+                              /*rand_state=*/ForkSeed(rand_state),
+                              /*debug_mode=*/0,
+                              /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
+    trace->ApplyToSchedule(sch, /*remove_postproc=*/true);
+    sch->EnterPostproc();
+    for (int i = 0; i < n_; ++i) {
+      Item& item = items_[i];
+      if (!item.postproc->Apply(sch)) {
+        ++item.fail_counter;
+        return NullOpt;
+      }
+    }
+    return sch;
+  }
+
+  /*! \brief Returns a string summarizing the failures on each postprocessor */
+  std::string SummarizeFailures() const {
+    std::ostringstream os;
+    for (int i = 0; i < n_; ++i) {
+      const Item& item = items_[i];
+      os << "Postproc #" << i << " [" << item.postproc  //
+         << "]: " << item.fail_counter.load() << " failure(s)";
+      if (i != n_ - 1) {
+        os << "\n";
+      }
+    }
+    return os.str();
+  }
+
+ private:
+  struct Item {
+    Postproc postproc{nullptr};
+    std::atomic<int> fail_counter{0};
+  };
+
+  int n_;
+  Item* items_;
+};
+
+/********** Helper Functions for RuleAddRFactor and RuleCrossThreadReduction **********/
+
+/*!
+ * \brief Reorder the reduction loops to innermost positions if needed.
+ * \param sch The schedule
+ * \param block_rv The block where to apply the reorder
+ * \param fused_reduce_loop The fusion-generated loop to return.
+ * \param num_spatial_loops The number of spatial loops to return.
+ * \note Before invoking this helper function, make sure that the block has only spatial and
+ *       reduction loop axes.
+ */
+inline void ReorderAndFuseReductionLoops(const tir::Schedule& sch, const tir::BlockRV& block_rv,
+                                         tir::LoopRV* fused_reduce_loop,
+                                         size_t* num_spatial_loops) {
+  Array<tir::LoopRV> loops = sch->GetLoops(block_rv);
+  Array<tir::StmtSRef> loop_srefs;
+  for (const tir::LoopRV& loop_rv : loops) {
+    loop_srefs.push_back(sch->GetSRef(loop_rv));
+  }
+
+  Array<tir::LoopRV> new_order;
+  // Step 1. Add spatial loops.
+  *num_spatial_loops = 0;
+  for (size_t i = 0; i < loops.size(); ++i) {
+    if (GetLoopIterType(loop_srefs[i]) == tir::kDataPar) {
+      new_order.push_back(loops[i]);
+      (*num_spatial_loops)++;
+    }
+  }
+  // Step 2. Add reduction loops.
+  Array<tir::LoopRV> reduction_loops;
+  for (size_t i = 0; i < loops.size(); ++i) {
+    if (GetLoopIterType(loop_srefs[i]) == tir::kCommReduce) {
+      new_order.push_back(loops[i]);
+      reduction_loops.push_back(loops[i]);
+    }
+  }
+  // Step 3. Apply reordering if new_order differs from the original order.
+  ICHECK_EQ(new_order.size(), loops.size());
+  for (size_t i = 0; i < loops.size(); ++i) {
+    if (!new_order[i].same_as(loops[i])) {
+      sch->Reorder(new_order);
+      break;
+    }
+  }
+  // Step 4. Fuse all the reduction loops if there are multiple reduction loops.
+  CHECK(!reduction_loops.empty()) << "ValueError: There should be at least one reduction loop";
+  if (reduction_loops.size() > 1) {
+    *fused_reduce_loop = sch->Fuse(reduction_loops);
+  } else {
+    *fused_reduce_loop = reduction_loops[0];
+  }
 }
 
 }  // namespace meta_schedule

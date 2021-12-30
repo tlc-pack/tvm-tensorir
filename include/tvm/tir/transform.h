@@ -484,6 +484,13 @@ TVM_DLL Pass MergeDynamicSharedMemoryAllocations();
  */
 TVM_DLL Pass ConvertForLoopsToSerial();
 
+/*!
+ * \brief Transform annotated loops into pipelined one that ovarlaps producers and consumers.
+ * \return The IR transform pass.
+ */
+TVM_DLL Pass InjectSoftwarePipeline();
+
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm

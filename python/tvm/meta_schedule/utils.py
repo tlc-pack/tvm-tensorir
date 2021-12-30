@@ -21,7 +21,7 @@ import os
 import shutil
 from typing import Any, Callable, List, Optional, Union
 
-import psutil  # type: ignore
+import psutil
 import tvm
 from tvm._ffi import get_global_func, register_func
 from tvm.error import TVMError
@@ -33,33 +33,47 @@ from tvm.tir import FloatImm, IntImm
 
 @register_func("meta_schedule.cpu_count")
 def _cpu_count_impl(logical: bool = True) -> int:
-    return psutil.cpu_count(logical=logical) or 1
-
-
-def cpu_count(logical: bool = True) -> int:
     """Return the number of logical or physical CPUs in the system
-
     Parameters
     ----------
     logical : bool = True
         If True, return the number of logical CPUs, otherwise return the number of physical CPUs
-
     Returns
     -------
     cpu_count : int
         The number of logical or physical CPUs in the system
-
     Note
     ----
     The meta schedule search infra intentionally does not adopt the following convention in TVM:
     - C++ API `tvm::runtime::threading::MaxConcurrency()`
     - Environment variable `TVM_NUM_THREADS` or
     - Environment variable `OMP_NUM_THREADS`
-
     This is because these variables are dedicated to controlling
     the runtime behavior of generated kernels, instead of the host-side search.
     Setting these variables may interfere the host-side search with profiling of generated kernels
     when measuring locally.
+    """
+    return psutil.cpu_count(logical=logical) or 1
+
+
+@register_func("meta_schedule._process_error_message")
+def _process_error_message(error_msg: str) -> str:
+    error_msg_lines = str(error_msg).splitlines()
+    if len(error_msg_lines) >= 50:
+        return "\n".join(error_msg_lines[:25] + ["..."] + error_msg_lines[-25:])
+    return error_msg
+
+
+def cpu_count(logical: bool = True) -> int:
+    """Return the number of logical or physical CPUs in the system
+    Parameters
+    ----------
+    logical : bool = True
+        If True, return the number of logical CPUs, otherwise return the number of physical CPUs
+    Returns
+    -------
+    cpu_count : int
+        The number of logical or physical CPUs in the system
     """
     return _cpu_count_impl(logical)
 
@@ -69,17 +83,14 @@ def get_global_func_with_default_on_worker(
     default: Callable,
 ) -> Callable:
     """Get the registered global function on the worker process.
-
     Parameters
     ----------
     name : Union[None, str, Callable]
         If given a string, retrieve the function in TVM's global registry;
         If given a python function, return it as it is;
         Otherwise, return `default`.
-
     default : Callable
         The function to be returned if `name` is None.
-
     Returns
     -------
     result : Callable
@@ -107,7 +118,6 @@ def get_global_func_on_rpc_session(
     extra_error_msg: Optional[str] = None,
 ) -> PackedFunc:
     """Get a PackedFunc from the global registry from an RPCSession.
-
     Parameters
     ----------
     session : RPCSession
@@ -116,7 +126,6 @@ def get_global_func_on_rpc_session(
         The name of the PackedFunc
     extra_error_msg : Optional[str]
         Extra information to provide in the error message
-
     Returns
     -------
     result : PackedFunc
@@ -140,12 +149,10 @@ def remove_build_dir(artifact_path: str) -> None:
 
 def _json_de_tvm(obj: Any) -> Any:
     """Unpack a TVM nested container to a JSON object in python.
-
     Parameters
     ----------
     obj : Any
         The TVM nested container to be unpacked.
-
     Returns
     -------
     result : Any
@@ -193,12 +200,10 @@ def batch_json_str2obj(json_strs: List[str]) -> List[Any]:
 
 def structural_hash(mod: IRModule) -> str:
     """Get the structural hash of a module.
-
     Parameters
     ----------
     mod : IRModule
         The module to be hashed.
-
     Returns
     -------
     result : str
@@ -212,11 +217,24 @@ def structural_hash(mod: IRModule) -> str:
     return str(shash)
 
 
+def _get_hex_address(handle: ctypes.c_void_p) -> str:
+    """Get the hexadecimal address of a handle.
+    Parameters
+    ----------
+    handle : ctypes.c_void_p
+        The handle to be converted.
+    Returns
+    -------
+    result : str
+        The hexadecimal address of the handle.
+    """
+    return hex(ctypes.cast(handle, ctypes.c_void_p).value)
+
+
 def check_override(
     derived_class: Any, base_class: Any, required: bool = True, func_name: str = None
 ) -> Callable:
     """Check if the derived class has overridden the base class's method.
-
     Parameters
     ----------
     derived_class : Any
@@ -228,7 +246,6 @@ def check_override(
     func_name : str
         Name of the method. Default value None, which would be set to substring of the given
         function, e.g. `f_generate`->`generate`.
-
     Returns
     -------
     func : Callable
@@ -250,17 +267,3 @@ def check_override(
         return func
 
     return inner
-
-
-def _get_hex_address(handle: ctypes.c_void_p) -> str:
-    """Get the hexadecimal address of a handle.
-    Parameters
-    ----------
-    handle : ctypes.c_void_p
-        The handle to be converted.
-    Returns
-    -------
-    result : str
-        The hexadecimal address of the handle.
-    """
-    return hex(ctypes.cast(handle, ctypes.c_void_p).value)

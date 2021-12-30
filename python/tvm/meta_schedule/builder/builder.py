@@ -15,8 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 """Meta Schedule builders that translate IRModule to runtime.Module, and then export"""
-from typing import Dict, List, Optional
+from typing import List, Optional, Dict
 
+from tvm.runtime import NDArray
 from tvm._ffi import register_object
 from tvm.ir import IRModule
 from tvm.runtime import NDArray, Object
@@ -42,6 +43,7 @@ class BuilderInput(Object):
 
     mod: IRModule
     target: Target
+    params: Optional[Dict[str, NDArray]]
 
     def __init__(
         self,

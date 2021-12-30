@@ -86,6 +86,8 @@ class ConcreteScheduleNode : public ScheduleNode {
                            Optional<Integer> decision = NullOpt) override;
   Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
                                   Optional<Array<Integer>> decision = NullOpt) override;
+  LoopRV SampleComputeLocation(const BlockRV& block_rv,
+                               Optional<Integer> decision = NullOpt) override;
   /******** Schedule: Get blocks & loops ********/
   BlockRV GetBlock(const String& name, const String& func_name = "main") override;
   Array<LoopRV> GetLoops(const BlockRV& block_rv) override;
@@ -107,6 +109,11 @@ class ConcreteScheduleNode : public ScheduleNode {
                     const String& storage_scope) override;
   BlockRV CacheWrite(const BlockRV& block_rv, int write_buffer_index,
                      const String& storage_scope) override;
+  /******** Schedule: Data movement ********/
+  BlockRV ReadAt(const LoopRV& loop_rv, const BlockRV& block_rv, int read_buffer_index,
+                 const String& storage_scope) override;
+  BlockRV WriteAt(const LoopRV& loop_rv, const BlockRV& block_rv, int write_buffer_index,
+                  const String& storage_scope) override;
   /******** Schedule: Compute location ********/
   void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv, bool preserve_unit_loops) override;
   void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
@@ -121,12 +128,18 @@ class ConcreteScheduleNode : public ScheduleNode {
                     int offset) override;
   void SetScope(const BlockRV& block_rv, int buffer_index, const String& storage_scope) override;
   /******** Schedule: Blockize & Tensorize ********/
+  BlockRV Blockize(const LoopRV& loop_rv) override;
+  void Tensorize(const LoopRV& loop_rv, const TensorIntrin& intrin) override;
+  void Tensorize(const LoopRV& loop_rv, const String& intrin_name) override;
   /******** Schedule: Annotation ********/
   void Annotate(const LoopRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
   void Unannotate(const LoopRV& loop_rv, const String& ann_key) override;
   void Annotate(const BlockRV& loop_rv, const String& ann_key, const ObjectRef& ann_val) override;
   void Unannotate(const BlockRV& loop_rv, const String& ann_key) override;
 
+  /******** Schedule: Layout transformation ********/
+  void TransformLayout(const BlockRV& block_rv, int buffer_index, bool is_write_index,
+                       const IndexMap& index_map) override;
   /******** Schedule: Misc ********/
   void EnterPostproc() override {}
 
@@ -224,7 +237,7 @@ inline StmtSRef ConcreteScheduleNode::GetSRef(const BlockRV& block_rv) const {
   if (it == this->symbol_table_.end()) {
     LOG(FATAL) << "IndexError: Cannot find corresponding BlockRV: " << block_rv;
   }
-  const ObjectRef& obj = (*it).second;
+  ObjectRef obj = (*it).second;
   const auto* sref = obj.as<StmtSRefNode>();
   if (sref == nullptr) {
     LOG(FATAL) << "ValueError: BlockRV's corresponding type is invalid: "
@@ -243,7 +256,7 @@ inline StmtSRef ConcreteScheduleNode::GetSRef(const LoopRV& loop_rv) const {
   if (it == this->symbol_table_.end()) {
     LOG(FATAL) << "IndexError: Cannot find corresponding LoopRV: " << loop_rv;
   }
-  const ObjectRef& obj = (*it).second;
+  ObjectRef obj = (*it).second;
   if (obj.same_as(inline_mark)) {
     return inline_mark;
   }

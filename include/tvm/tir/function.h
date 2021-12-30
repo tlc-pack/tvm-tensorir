@@ -187,6 +187,95 @@ class LinkedParam : public ObjectRef {
   TVM_DEFINE_OBJECT_REF_COW_METHOD(LinkedParamNode);
 };
 
+/*! \brief A mapping from multi-dimensional indices to another set of multi-dimensional indices */
+class IndexMapNode : public Object {
+ public:
+  /*! \brief The source indices */
+  Array<Var> src_iters;
+  /*! \brief The target indices */
+  Array<PrimExpr> tgt_iters;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("src_iters", &src_iters);
+    v->Visit("tgt_iters", &tgt_iters);
+  }
+
+  /*!
+   * \brief Take `inputs` as the source indices and return the corresponding target indices.
+   * \param inputs The source indices.
+   * \return The target indices.
+   */
+  Array<PrimExpr> Apply(const Array<PrimExpr>& inputs) const;
+
+  /*!
+   * \brief Map a shape to the output space
+   * \param shape The shape in the source space
+   * \return The shape in the target space
+   */
+  Array<PrimExpr> MapShape(const Array<PrimExpr>& shape) const;
+
+  /*!
+   * \brief Convert to string representation in Python.
+   * \return The stringified lambda expression in Python.
+   */
+  String ToPythonString() const;
+
+  static constexpr const char* _type_key = "tir.IndexMap";
+  TVM_DECLARE_FINAL_OBJECT_INFO(IndexMapNode, Object);
+};
+
+/*!
+ * \brief Managed reference to IndexMapNode.
+ * \sa IndexMapNode
+ */
+class IndexMap : public ObjectRef {
+ public:
+  /*!
+   * \brief Constructor.
+   * \param src_iters The source indices.
+   * \param tgt_iters The target indices.
+   */
+  explicit IndexMap(Array<Var> src_iters, Array<PrimExpr> tgt_iters);
+  /*!
+   * \brief Create an index map from a packed function
+   * \param ndim The number of dimensions
+   * \param func The function to be applied
+   * \return The created index map
+   */
+  static IndexMap FromFunc(int ndim, runtime::TypedPackedFunc<Array<PrimExpr>(Array<Var>)> func);
+  TVM_DEFINE_OBJECT_REF_METHODS(IndexMap, ObjectRef, IndexMapNode);
+};
+
+/*!
+ * \brief Tensor TensorIntrin for Tensorization
+ */
+class TensorIntrinNode : public Object {
+ public:
+  /*! \brief The function to describe the computation. */
+  PrimFunc description;
+  /*! \brief The intrinsic function for lower-level implement. */
+  PrimFunc implementation;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("description", &description);
+    v->Visit("implementation", &implementation);
+  }
+
+  static constexpr const char* _type_key = "tir.TensorIntrin";
+  TVM_DECLARE_FINAL_OBJECT_INFO(TensorIntrinNode, Object);
+};
+
+class TensorIntrin : public ObjectRef {
+ public:
+  TVM_DLL explicit TensorIntrin(PrimFunc desc_func, PrimFunc intrin_func);
+
+  TVM_DLL static TensorIntrin Register(String name, PrimFunc desc_func, PrimFunc intrin_func);
+
+  TVM_DLL static TensorIntrin Get(String name);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(TensorIntrin, ObjectRef, TensorIntrinNode)
+};
+
 /*!
  * \brief Specialize parameters of PrimFunc.
  * \param func The PrimFunc to be specialized.
