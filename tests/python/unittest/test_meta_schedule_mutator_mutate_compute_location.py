@@ -57,9 +57,8 @@ def _sch(decision: int) -> Schedule:
     sch = Schedule(add, debug_mask="all")
     # pylint: disable=invalid-name
     b0 = sch.get_block(name="move", func_name="main")
-    (b1,) = sch.get_consumers(block=b0)
-    l2 = sch.sample_compute_location(block=b1, decision=decision)
-    sch.compute_at(block=b0, loop=l2, preserve_unit_loops=True)
+    l1 = sch.sample_compute_location(block=b0, decision=decision)
+    sch.compute_at(block=b0, loop=l1, preserve_unit_loops=True)
     # pylint: enable=invalid-name
     return sch
 

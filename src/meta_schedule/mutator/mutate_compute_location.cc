@@ -25,7 +25,7 @@ using tir::Instruction;
 using tir::InstructionKind;
 using tir::Trace;
 
-/*! \brief Create a Mutator that mutates auto unroll step */  // Todo
+/*! \brief A mutator that mutates the compute-at location decision of SampleComputeLocation */
 class MutateComputeLocationNode : public MutatorNode {
  public:
   /*! \brief JSON representation of the workload */
@@ -36,7 +36,18 @@ class MutateComputeLocationNode : public MutatorNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(MutateComputeLocationNode, MutatorNode);
 
  public:
-  struct Candidate;
+  struct Candidate {
+    /*! \brief The SampleComputeLocation instruction */
+    Instruction inst;
+    /*! \brief The candidate compute locations */
+    std::vector<int> locs;
+
+    explicit Candidate(Instruction inst, std::vector<int> locs)
+        : inst(std::move(inst)), locs(std::move(locs)) {}
+  };
+
+  std::vector<Candidate> FindCandidates(const Trace& trace, TRandState* rand_state);
+
   // Inherit from `MutatorNode`
   void InitializeWithTuneContext(const TuneContext& context) final {
     this->json_mod_ = SaveJSON(context->mod.value());
@@ -45,53 +56,44 @@ class MutateComputeLocationNode : public MutatorNode {
   Optional<Trace> Apply(const Trace& trace, TRandState* rand_state) final;
 };
 
-/*! \brief The candidate to be mutated */
-struct MutateComputeLocationNode::Candidate {
-  /*! \brief The SampleComputeLocation instruction */
-  Instruction inst;
-  /*! \brief The candidate compute locations */
-  std::vector<int> locs;
-
-  explicit Candidate(Instruction inst, std::vector<int> locs)
-      : inst(std::move(inst)), locs(std::move(locs)) {}
-};
-
 /*!
- * \brief Find instruction `SampleComputeLocation`
+ * \brief Find all appearances of instruction `SampleComputeLocation` whose decision can be mutated
+ * to at lease one other value
  * \param trace The trace from which to find the instructions
- * \param workload The workload
- * \return All the candidate instructions together with the candidate compute locations
+ * \return All the candidate instructions together with the candidate compute-at locations
  */
-std::vector<MutateComputeLocationNode::Candidate> FindCandidates(const Trace& trace,
-                                                                 const tir::Schedule& sch) {
+std::vector<MutateComputeLocationNode::Candidate> MutateComputeLocationNode::FindCandidates(
+    const Trace& trace, TRandState* rand_state) {
+  tir::Schedule sch = tir::Schedule::Traced(                  //
+      /*mod=*/Downcast<IRModule>(LoadJSON(this->json_mod_)),  //
+      /*rand_state=*/ForkSeed(rand_state),                    //
+      /*debug_mode=*/0,                                       //
+      /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
   static InstructionKind inst_sample_compute_location =
       InstructionKind::Get("SampleComputeLocation");
   std::vector<MutateComputeLocationNode::Candidate> candidates;
-  auto f_provide_decision = [&](const tir::Instruction& inst,
+
+  auto f_provide_decision = [&](const tir::Instruction& inst,    //
                                 const Array<ObjectRef>& inputs,  //
-                                const Array<ObjectRef>& attrs,
+                                const Array<ObjectRef>& attrs,   //
                                 const ObjectRef& decision) -> ObjectRef {
     if (inst->kind.same_as(inst_sample_compute_location)) {
-      // The decision made
-      int old_decision = Downcast<Integer>(decision)->value;
-      // Extract the inputs
+      // Step 1. Extract the instruction input and the old decision.
       ICHECK_EQ(inputs.size(), 1);
       tir::StmtSRef block_sref = sch->GetSRef(Downcast<tir::BlockRV>(inputs[0]));
-      // Extract locations that can be computed at
-
+      int old_decision = Downcast<Integer>(decision)->value;
+      // Step 2. Collect all the compute-at locations.
       Array<tir::StmtSRef> location_srefs;
       std::vector<int> location_indices;
       std::tie(location_srefs, location_indices) = CollectComputeLocation(sch->state(), block_sref);
-
-      // Remove `old_decision`
+      // Step 3. Remove the old decision.
       auto it = std::find(location_indices.begin(), location_indices.end(), old_decision);
       if (it != location_indices.end()) {
         location_srefs.erase(location_srefs.begin() + (it - location_indices.begin()));
         location_indices.erase(it);
       }
       ICHECK_EQ(location_srefs.size(), location_indices.size());
-
-      // Add the candidate
+      // Step 4. Add a new candidate if there are at least one remaining compute-at position.
       if (!location_srefs.empty()) {
         candidates.emplace_back(inst, std::move(location_indices));
       }
@@ -103,12 +105,7 @@ std::vector<MutateComputeLocationNode::Candidate> FindCandidates(const Trace& tr
 }
 
 Optional<Trace> MutateComputeLocationNode::Apply(const Trace& trace, TRandState* rand_state) {
-  tir::Schedule sch = tir::Schedule::Traced(                  //
-      /*mod=*/Downcast<IRModule>(LoadJSON(this->json_mod_)),  //
-      /*rand_state=*/ForkSeed(rand_state),                    //
-      /*debug_mode=*/0,
-      /*error_render_level=*/tir::ScheduleErrorRenderLevel::kNone);
-  std::vector<Candidate> candidates = FindCandidates(trace, sch);
+  std::vector<Candidate> candidates = FindCandidates(trace, rand_state);
   if (candidates.empty()) {
     return NullOpt;
   }
