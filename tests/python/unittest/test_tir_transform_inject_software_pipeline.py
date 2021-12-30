@@ -725,12 +725,12 @@ def test_nest_pipeline_double_buffer():
     _check(nested_pipeline_double_buffer, transformed_nested_pipeline_double_buffer)
 
 
-def test_error_reorder():
-    _check_error(simple_compute_incorrect_reorder)
+# def test_error_reorder():
+#     _check_error(simple_compute_incorrect_reorder)
 
 
-def test_error_conflicting_order():
-    _check_error(simple_compute_conflicting_order)
+# def test_error_conflicting_order():
+#     _check_error(simple_compute_conflicting_order)
 
 
 def test_error_missing_annotation():
