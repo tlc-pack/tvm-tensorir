@@ -332,14 +332,6 @@ IterVarType GetLoopIterType(const StmtSRef& loop_sref);
 bool HasSingleChild(const StmtSRef& loop_or_block_sref);
 
 /*!
- * \brief Check if a block is the direct children of the root block
- * \param self The schedule state
- * \param block_sref The block to be analyzed
- * \return A boolean flag indicating if the block is the subroot block
- */
-bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
-
-/*!
  * \brief Get the lowest common ancestor of an array of blocks or loops on the sref tree
  * \param srefs The block srefs or loop srefs whose lowest common ancestor is to be queried
  * \return The lowest common ancestor of the input block srefs or loop srefs

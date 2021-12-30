@@ -32,7 +32,10 @@ class RandomComputeLocationNode : public ScheduleRuleNode {
       return false;
     }
     // Cond 2. The block should be the direct child block of the root block.
-    if (!tir::IsSubrootBlock(sch->state(), block_sref)) {  // Todo
+    if (GetScopeRoot(sch->state(), block_sref,          //
+                     /*require_stage_pipeline=*/false,  //
+                     /*require_subtree_compact_dataflow=*/false)
+            ->parent != nullptr) {
       return false;
     }
     // Cond 3 & 4. The block has at least one outer loop, and the outermost loop has only one child
@@ -61,12 +64,7 @@ class RandomComputeLocationNode : public ScheduleRuleNode {
       return {sch};
     }
 
-    int err_cnt = 0;
     for (;;) {
-      if (err_cnt == 100) {
-        LOG(INFO) << "err_cnt = 100, force quit";
-        break;
-      }
       tir::LoopRV compute_at_loc = sch->SampleComputeLocation(block_rv);
       try {
         sch->ComputeAt(block_rv, compute_at_loc, true);
@@ -74,8 +72,6 @@ class RandomComputeLocationNode : public ScheduleRuleNode {
         // ComputeAt fails, cleanup the following before re-try:
         // 1) trace: instruction & decisions
         // 2) sym_tab
-        LOG(INFO) << "fail";
-        ++err_cnt;
         sch->trace().value()->Pop();
         sch->RemoveRV(compute_at_loc);
         continue;

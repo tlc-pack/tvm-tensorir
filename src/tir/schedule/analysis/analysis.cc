@@ -796,11 +796,6 @@ bool HasSingleChild(const StmtSRef& loop_or_block_sref) {
   return true;
 }
 
-bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
-  tir::StmtSRef parent_block_sref = GetScopeRoot(self, block_sref, false, false);
-  return parent_block_sref->parent == nullptr;
-}
-
 StmtSRef GetSRefLowestCommonAncestor(const Array<StmtSRef>& srefs) {
   CHECK(!srefs.empty()) << "ValueError: The input array is required to have at least one sref";
 
