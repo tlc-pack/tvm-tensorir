@@ -490,6 +490,12 @@ TVM_DLL Pass ConvertForLoopsToSerial();
  */
 TVM_DLL Pass InjectSoftwarePipeline();
 
+/*!
+ * \brief Automatically do memory optimizations for auto copy blocks
+ * \return The pass.
+ */
+TVM_DLL Pass LowerAutoCopy();
+
 
 }  // namespace transform
 }  // namespace tir

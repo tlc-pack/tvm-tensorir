@@ -761,3 +761,13 @@ def InjectSoftwarePipeline():
     """
     return _ffi_api.InjectSoftwarePipeline()  # type: ignore
 
+def LowerAutoCopy():
+    """Automatically do memory optimizations for auto copy blocks
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.LowerAutoCopy()
+
