@@ -1,20 +1,20 @@
 /*
-* Licensed to the Apache Software Foundation (ASF) under one
-* or more contributor license agreements.  See the NOTICE file
-* distributed with this work for additional information
-* regarding copyright ownership.  The ASF licenses this file
-* to you under the Apache License, Version 2.0 (the
-* "License"); you may not use this file except in compliance
-* with the License.  You may obtain a copy of the License at
-*
-*   http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing,
-* software distributed under the License is distributed on an
-* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-* KIND, either express or implied.  See the License for the
-* specific language governing permissions and limitations
-* under the License.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 #ifndef TVM_META_SCHEDULE_SCHEDULE_RULE_ANALYSIS_H_
 #define TVM_META_SCHEDULE_SCHEDULE_RULE_ANALYSIS_H_
@@ -54,11 +54,11 @@ bool IsCacheReadSharedPattern(const For& loop);
  */
 void FallbackRule(const For& loop, Array<Integer>* stage, Array<Integer>* order);
 
-} // namespace tir
-} // namespace tvm
+}  // namespace tir
+}  // namespace tvm
 
-namespace tvm{
-namespace meta_schedule{
+namespace tvm {
+namespace meta_schedule {
 /*!
  * \brief Configuration of data reuse type:
  * 0) kNoReuse: no reuse is allowed, then no cache_read/write is performed.
@@ -85,7 +85,7 @@ struct ReuseConfig {
   std::vector<int> levels;
   /*! \brief The storage scope */
   String scope;
-  
+
   /*! \brief Default constructor: no data reuse */
   ReuseConfig() : req(ReuseType::kNoReuse) {}
 
@@ -124,7 +124,7 @@ struct State {
   Optional<BlockRV> tensor_core_load_B;
   /*! \brief The Tensor Core cache write block for Tensor Core computation */
   Optional<BlockRV> tensor_core_store;
-  
+
   /*! \brief Default constructor */
   explicit State(Schedule sch, BlockRV block_rv, Optional<BlockRV> write_cache = NullOpt,
                  bool write_cache_is_added = false, Array<Array<LoopRV>> tiles = {},
@@ -155,6 +155,6 @@ std::vector<State> SubRule(std::vector<State> states, FLambda sub_rule) {
   return results;
 }
 
-} // namespace meta_schedule
-} // namespace tvm
+}  // namespace meta_schedule
+}  // namespace tvm
 #endif  // TVM_META_SCHEDULE_SCHEDULE_RULE_ANALYSIS_H_

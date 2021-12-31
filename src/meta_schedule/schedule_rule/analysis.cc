@@ -1,25 +1,25 @@
 /*
-* Licensed to the Apache Software Foundation (ASF) under one
-* or more contributor license agreements.  See the NOTICE file
-* distributed with this work for additional information
-* regarding copyright ownership.  The ASF licenses this file
-* to you under the Apache License, Version 2.0 (the
-* "License"); you may not use this file except in compliance
-* with the License.  You may obtain a copy of the License at
-*
-*   http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing,
-* software distributed under the License is distributed on an
-* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-* KIND, either express or implied.  See the License for the
-* specific language governing permissions and limitations
-* under the License.
-*/
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
 #include "analysis.h"
-namespace tvm{
-namespace tir{
+namespace tvm {
+namespace tir {
 
 std::vector<int> GetReadBufferNDims(const StmtSRef& block_sref) {
   const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
@@ -96,8 +96,7 @@ Optional<LoopRV> TilingwithTensorIntrin(const Schedule& sch, const BlockRV& bloc
   return reorder_suffix[0];
 }
 
-
-bool IsCacheReadSharedPattern(const For& loop){
+bool IsCacheReadSharedPattern(const For& loop) {
   Stmt pipeline_body;
   if (const auto* realize = loop->body.as<BlockRealizeNode>()) {
     const auto& block = realize->block;
@@ -113,8 +112,8 @@ bool IsCacheReadSharedPattern(const For& loop){
     if (const auto* realize = pipeline_body_seq->seq[i].as<BlockRealizeNode>()) {
       if (is_one(Downcast<Integer>(
               realize->block->annotations.Get("auto_copy").value_or(Integer(0))))) {
-        if (is_one(Downcast<Integer>(realize->block->annotations.Get("local_stage").value_or(Integer
-                                                                                             (0))))) {
+        if (is_one(Downcast<Integer>(
+                realize->block->annotations.Get("local_stage").value_or(Integer(0))))) {
           Buffer src = realize->block->reads[0]->buffer;
           Buffer tgt = realize->block->writes[0]->buffer;
           runtime::StorageScope src_scope = runtime::StorageScope::Create(src.scope());
@@ -129,14 +128,14 @@ bool IsCacheReadSharedPattern(const For& loop){
     return false;
   }
   if (const auto* loop = pipeline_body_seq->seq[2].as<ForNode>()) {
-    if(loop->annotations.count("software_pipeline_stage")){
+    if (loop->annotations.count("software_pipeline_stage")) {
       return true;
     }
   }
   return false;
 }
 
-void FallbackRule(const For& loop, Array<Integer>* stage, Array<Integer>* order){
+void FallbackRule(const For& loop, Array<Integer>* stage, Array<Integer>* order) {
   Stmt pipeline_body;
   if (const auto* realize = loop->body.as<BlockRealizeNode>()) {
     const auto& block = realize->block;
@@ -145,14 +144,14 @@ void FallbackRule(const For& loop, Array<Integer>* stage, Array<Integer>* order)
     pipeline_body = loop->body;
   }
   const SeqStmtNode* pipeline_body_seq = pipeline_body.as<SeqStmtNode>();
-  for (int i = 0, ct =0; i < static_cast<int>(pipeline_body_seq->size()); i++) {
+  for (int i = 0, ct = 0; i < static_cast<int>(pipeline_body_seq->size()); i++) {
     if (const auto* realize = pipeline_body_seq->seq[i].as<BlockRealizeNode>()) {
-      if (is_one(Downcast<Integer>(realize->block->annotations.Get("auto_copy").value_or(Integer
-                                                                                         (0))))) {
+      if (is_one(Downcast<Integer>(
+              realize->block->annotations.Get("auto_copy").value_or(Integer(0))))) {
         stage->push_back(0);
         order->push_back(ct++);
-        if (is_one(Downcast<Integer>(realize->block->annotations.Get("local_stage").value_or(Integer
-                                                                                           (0))))) {
+        if (is_one(Downcast<Integer>(
+                realize->block->annotations.Get("local_stage").value_or(Integer(0))))) {
           stage->push_back(0);
           order->push_back(ct++);
         }
@@ -172,11 +171,11 @@ void FallbackRule(const For& loop, Array<Integer>* stage, Array<Integer>* order)
   }
 }
 
-} //namespace tir
-} //namespace tvm
+}  // namespace tir
+}  // namespace tvm
 
-namespace tvm{
-namespace meta_schedule{
+namespace tvm {
+namespace meta_schedule {
 
 ReuseType Str2ReuseType(const String& str) {
   if (str == "no") {
@@ -191,7 +190,5 @@ ReuseType Str2ReuseType(const String& str) {
   }
 }
 
-
-
-} // namespace meta_schedule
-} // namespace tvm
+}  // namespace meta_schedule
+}  // namespace tvm

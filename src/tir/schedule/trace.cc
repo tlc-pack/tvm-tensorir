@@ -56,11 +56,11 @@ Array<ObjectRef> TranslateInputRVs(const Array<ObjectRef>& inputs,
   Array<ObjectRef> result;
   result.reserve(inputs.size());
   for (const ObjectRef& input : inputs) {
-    if (!input.defined() ||                   // constant: nullptr
-        input->IsInstance<StringObj>() ||     // constant: string
-        input->IsInstance<IntImmNode>() ||    // constant: integer
-        input->IsInstance<FloatImmNode>()||
-        input->IsInstance<runtime::ArrayNode>()){  // constant: float
+    if (!input.defined() ||                 // constant: nullptr
+        input->IsInstance<StringObj>() ||   // constant: string
+        input->IsInstance<IntImmNode>() ||  // constant: integer
+        input->IsInstance<FloatImmNode>() ||
+        input->IsInstance<runtime::ArrayNode>()) {  // constant: float
       result.push_back(input);
     } else if (input->IsInstance<BlockRVNode>() ||  // RV: block
                input->IsInstance<LoopRVNode>() ||   // RV: loop
@@ -112,14 +112,14 @@ Array<ObjectRef> TranslateInputRVs(
       results.push_back(input);
     } else if (const auto* array_obj = input.as<runtime::ArrayNode>()) {
       std::stringstream ss;
-      ss<<"[";
-      for (int i=0;i<static_cast<int>(array_obj->size());i++) {
-        ss<<array_obj->at(i);
+      ss << "[";
+      for (int i = 0; i < static_cast<int>(array_obj->size()); i++) {
+        ss << array_obj->at(i);
         if (i != static_cast<int>(array_obj->size()) - 1) {
-          ss<<", ";
+          ss << ", ";
         }
       }
-      ss<<"]";
+      ss << "]";
       results.push_back(String(ss.str()));
     }
 
