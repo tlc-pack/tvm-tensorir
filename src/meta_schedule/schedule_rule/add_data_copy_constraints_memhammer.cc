@@ -30,8 +30,7 @@ class AddDataCopyConstraintsMemHammerNode : public ScheduleRuleNode{
   // Inherited from ScheduleRuleNode
   Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block_rv) final {
     tir::Block block = sch->Get(block_rv);
-    if (block->annotations.count("auto_copy") && tir::is_one
-        (Downcast<PrimExpr>(block->annotations["auto_copy"]))) {
+    if (tir::is_one(Downcast<Integer>(block->annotations.Get("auto_copy").value_or(Integer(0))))) {
       ICHECK_EQ(block->reads.size(),1);
       ICHECK_EQ(block->writes.size(),1);
       tir::Buffer read_buffer = block->reads[0]->buffer;

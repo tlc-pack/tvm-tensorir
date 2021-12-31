@@ -38,8 +38,20 @@ std::vector<int> GetReadBufferNDims(const StmtSRef& block_sref);
 Optional<LoopRV> TilingwithTensorIntrin(const tir::Schedule& sch, const tir::BlockRV& block_rv,
                                         const String& intrin_name);
 
+/*!
+ * \brief whether the loop's body has the pattern: 2 cache read shared followed by a nested
+ * software pipeline
+ * \param the loop
+ * \return whether the loop's body has the pattern
+ */
 bool IsCacheReadSharedPattern(const For& loop);
 
+/*!
+ * \brief calculate the software pipeline annotations for a loop that doesn't have special patterns
+ * \param loop The loop
+ * \param stage The result array of software pipeline stage
+ * \param order The result array of software pipeline order
+ */
 void FallbackRule(const For& loop, Array<Integer>* stage, Array<Integer>* order);
 
 } // namespace tir

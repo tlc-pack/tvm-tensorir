@@ -31,12 +31,12 @@ class MultiLevelTilingMemHammerNode : public ScheduleRuleNode {
 public:
  // SubRule 0. detect compute intrin
  inline std::vector<State> DetectTensorCore(State state) const;
- // SubRule 1. add write cache
- inline std::vector<State> AddWriteReuse(State state) const;
- // SubRule 2. tile the loop nest
+ // SubRule 1. tile the loop nest
  inline std::vector<State> TileLoopNest(State state) const;
- // SubRule 3. add read cache
+ // SubRule 2. add read cache
  inline std::vector<State> AddReadReuse(State state) const;
+ // SubRule 3. add write cache
+ inline std::vector<State> AddWriteReuse(State state) const;
 
  State TensorCoreLoad(State state) const {
    const Array<LoopRV>& r_tiles = state.tiles[r_indices_[r_indices_.size()-2]];
@@ -132,6 +132,7 @@ public:
    v->Visit("structure", &structure);
    v->Visit("tile_binds", &tile_binds);
    v->Visit("use_tensor_core", &use_tensor_core);
+   v->Visit("add_local_stage", &add_local_stage);
    v->Visit("max_innermost_factor", &max_innermost_factor);
    v->Visit("vector_load_max_len", &vector_load_max_len);
    // `reuse_read_` is not visited
@@ -161,6 +162,7 @@ inline std::vector<State> MultiLevelTilingMemHammerNode::DetectTensorCore(State 
  // Annotate the root block to notify the following postprocessors
  state.sch->Annotate(GetRootBlockRV(state.sch, state.block_rv),
                      tir::attr::meta_schedule_tensor_core_enabled, String("1"));
+ // Annotate the root block to represent the constraint that the extent of threadIdx.x should be 32
  state.sch->Annotate(GetRootBlockRV(state.sch, state.block_rv),
                      tir::attr::warp_execution, Integer(1));
  result.push_back(state);
@@ -317,6 +319,7 @@ inline std::vector<State> MultiLevelTilingMemHammerNode::AddReadReuse(State stat
    State new_state = state;
    new_state.sch = sch;
    if (new_state.tensor_core_is_used) new_state = TensorCoreLoad(new_state);
+   // add software pipeline annotations
    Array<Integer> stage;
    Array<Integer> order;
    tir::For loop = new_state.sch->Get(loop_rv);

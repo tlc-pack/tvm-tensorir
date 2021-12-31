@@ -22,7 +22,9 @@ from .schedule_rule import ScheduleRule
 
 @register_object("meta_schedule.AddDataCopyConstraintsMemHammer")
 class AddDataCopyConstraintsMemHammer(ScheduleRule):
-
+    """
+    Add constraints (e.g. vectorization length) for data copy
+    """
     def __init__(self) -> None:
         self.__init_handle_by_constructor__(
             _ffi_api.ScheduleRuleAddDataCopyConstraintsMemHammer,  # type: ignore # pylint: disable=no-member

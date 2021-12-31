@@ -146,7 +146,7 @@ class ScheduleRule : public runtime::ObjectRef {
 * \param reuse_read Data reuse configuration for reading. NullOpt means no reuse.
 * \param reuse_write Data reuse configuration for writing. NullOpt means no reuse.
 * \return The schedule rule created
-                                                                                            */
+*/
 TVM_DLL static ScheduleRule MultiLevelTiling(String structure,                             //
                                             Optional<Array<String>> tile_binds,           //
                                             bool use_tensor_core,                         //
@@ -156,7 +156,7 @@ TVM_DLL static ScheduleRule MultiLevelTiling(String structure,                  
                                             Optional<Map<String, ObjectRef>> reuse_write);
 
 /*!
-   * \brief Create a mega rule: multi-level tiling with data reuse and add constraints for memhammer
+   * \brief Create a mega rule: Multi-level tiling with data reuse for MemHammer
    * \param structure The tiling structure. Recommended:
    * - 'SSRSRS' on CPU
    * - 'SSSRRSRS' on GPU
@@ -180,7 +180,10 @@ TVM_DLL static ScheduleRule MultiLevelTilingMemHammer(String structure, //
                                              Optional<Integer> vector_load_max_len,        //
                                              Optional<Map<String, ObjectRef>> reuse_read,  //
                                              Optional<Map<String, ObjectRef>> reuse_write);
-
+/*!
+   * \brief A rule that adds constraints (e.g. vectorization length) for data copy
+   * \return The rule created
+ */
 TVM_DLL static ScheduleRule AddDataCopyConstraintsMemHammer();
 
 
