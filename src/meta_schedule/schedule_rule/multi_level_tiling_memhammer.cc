@@ -49,12 +49,13 @@ class MultiLevelTilingMemHammerNode : public ScheduleRuleNode {
     const tir::SeqStmtNode* pipeline_body_seq = loop->body.as<tir::SeqStmtNode>();
     ICHECK(pipeline_body_seq);
     // add software pipeline annotation
-    Array<Integer> stage;
-    Array<Integer> order;
-    tir::FallbackRule(loop, &stage, &order);
-    state.sch->Annotate(r_tiles.back(), tir::attr::software_pipeline_stage, stage);
-    state.sch->Annotate(r_tiles.back(), tir::attr::software_pipeline_order, order);
-
+    if(!tir::is_one(loop->extent)) {
+      Array<Integer> stage;
+      Array<Integer> order;
+      tir::FallbackRule(loop, &stage, &order);
+      state.sch->Annotate(r_tiles.back(), tir::attr::software_pipeline_stage, stage);
+      state.sch->Annotate(r_tiles.back(), tir::attr::software_pipeline_order, order);
+    }
     return state;
   }
 
@@ -322,17 +323,19 @@ inline std::vector<State> MultiLevelTilingMemHammerNode::AddReadReuse(State stat
     new_state.sch = sch;
     if (new_state.tensor_core_is_used) new_state = TensorCoreLoad(new_state);
     // add software pipeline annotations
-    Array<Integer> stage;
-    Array<Integer> order;
     tir::For loop = new_state.sch->Get(loop_rv);
-    if (tir::IsCacheReadSharedPattern(loop)) {
-      stage = {0, 0, 0, 0, 0, 1, 1};
-      order = {0, 3, 1, 4, 5, 2, 6};
-    } else {
-      tir::FallbackRule(loop, &stage, &order);
+    if(!tir::is_one(loop->extent)) {
+      Array<Integer> stage;
+      Array<Integer> order;
+      if (tir::IsCacheReadSharedPattern(loop)) {
+        stage = {0, 0, 0, 0, 0, 1, 1};
+        order = {0, 3, 1, 4, 5, 2, 6};
+      } else {
+        tir::FallbackRule(loop, &stage, &order);
+      }
+      new_state.sch->Annotate(loop_rv, tir::attr::software_pipeline_stage, stage);
+      new_state.sch->Annotate(loop_rv, tir::attr::software_pipeline_order, order);
     }
-    new_state.sch->Annotate(loop_rv, tir::attr::software_pipeline_stage, stage);
-    new_state.sch->Annotate(loop_rv, tir::attr::software_pipeline_order, order);
     results.push_back(std::move(new_state));
   }
   return results;
