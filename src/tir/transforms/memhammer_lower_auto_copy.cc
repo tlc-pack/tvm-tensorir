@@ -104,7 +104,7 @@ class AutoPadder {
 
         int n = buffer->shape.size();
         int data_bits = buffer->dtype.bits();
-        // Step 1. initialize `low_dim_iter_space` with the iter space of the last dim
+        // Step 1. initialize `low_dim_iter_space` with the iteration space of the last dim
         for (int i = 0; i < static_cast<int>(iter_spaces.size()); i++) {
           auto last_dim_iter_space = iter_spaces[i][n - 1];
           low_dim_iter_space[i] = last_dim_iter_space;
@@ -397,7 +397,10 @@ class AutoPadder {
     PatternCollector(const Map<Var, Range>& var_range) : var_range_(var_range) {}
 
     /*!
-     * \brief Collect the iteration space for given indices
+     * \brief Collect the iteration space for given indices. The iteration space is the possible
+     * values that an index can take (do not remove duplicate).
+     * For example, the input is [ty, tx*4], where tx is in [0, 16), and ty is in [0, 2).
+     * The output would be {{0, 1}, {0, 4, ..., 60}}
      * \param indices The indices to analyze
      * \param var_range The range of loop variables
      * \param data_bits The size of dtype in bits
@@ -493,7 +496,13 @@ class AutoPadder {
         substitute_map_.erase(op->loop_var);
       }
     }
-
+    /*!
+     * \brief Take a typical warp and collect the iteration space for buffer store
+     * For example, the access is A[outer*2+ty, tx*4+vec] = xxx, where tx is threadIdx.x, and ty is
+     * threadIdx.y. tx is in [0, 16), and ty is in [0, 2).
+     * The iteration space would be {{0, 1}, {0, 4, ..., 60}}.
+     * \param op the buffer store
+     */
     void VisitStmt_(const BufferStoreNode* op) final {
       runtime::StorageScope scope = runtime::StorageScope::Create(op->buffer.scope());
       if (scope.rank == runtime::StorageRank::kShared) {
@@ -514,7 +523,13 @@ class AutoPadder {
       }
       StmtExprVisitor::VisitStmt_(op);
     }
-
+    /*!
+     * \brief Take a typical warp and collect the iteration space for buffer load
+     * For example, the access is xxx = A[outer*2+ty, tx*4+vec], where tx is threadIdx.x, and ty is
+     * threadIdx.y. tx is in [0, 16), and ty is in [0, 2).
+     * The iteration space would be {{0, 1}, {0, 4, ..., 60}}.
+     * \param op the buffer load
+     */
     void VisitExpr_(const BufferLoadNode* op) final {
       runtime::StorageScope scope = runtime::StorageScope::Create(op->buffer.scope());
       if (scope.rank == runtime::StorageRank::kShared) {
@@ -535,7 +550,14 @@ class AutoPadder {
       }
       StmtExprVisitor::VisitExpr_(op);
     }
-
+    
+    /*!
+     * \brief Take a typical warp and collect the iteration space for load_matrix_sync and
+     * store_matrix_sync
+     * For example, the access region is A[y*16+16, x*16+16], where y and x are not bound to
+     * threadIdx. The iteration space would be {{0, 1, ..., 15}, {0, 1, ..., 15}}.
+     * \param op the call node
+     */
     void VisitStmt_(const BlockNode* op) final {
       if (const auto* eval = op->body.as<EvaluateNode>()) {
         if (const auto* call = eval->value.as<CallNode>()) {
@@ -606,8 +628,8 @@ class AutoPadder {
     for (const For& loop : outer_loops) {
       substitute_map.Set(loop->loop_var, loop->min);
     }
-    IterSpaceAnalyzer pa(substitute_map, this, data_bits, warp_thread_extent);
-    pa(stmt);
+    IterSpaceAnalyzer iter_space_analyzer(substitute_map, this, data_bits, warp_thread_extent);
+    iter_space_analyzer(stmt);
   }
 
  private:
@@ -662,6 +684,7 @@ class AutoCopyMutator : public StmtExprMutator {
 
   Stmt VisitStmt_(const BlockNode* op) final {
     Block block;
+    //only rewrite the block annotated with "auto_copy"
     if (is_one(Downcast<PrimExpr>(op->annotations.Get("auto_copy").value_or(Integer(0))))) {
       block = runtime::Downcast<Block>(StmtMutator::VisitStmt_(op));
       ICHECK(block->reads.size() == 1 && block->writes.size() == 1);
