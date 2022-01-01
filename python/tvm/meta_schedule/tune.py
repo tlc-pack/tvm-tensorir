@@ -148,16 +148,6 @@ class DefaultCUDA:
         )
 
         return [
-            M.AutoInline(
-                into_producer=False,
-                into_consumer=True,
-                into_cache_only=False,
-                inline_const_tensor=True,
-                disallow_if_then_else=False,
-                require_injective=False,
-                require_ordered=False,
-                disallow_op=None,
-            ),
             M.CrossThreadReduction(thread_extents=[4, 8, 16, 32, 64, 128, 256, 512]),
             M.MultiLevelTiling(
                 structure="SSSRRSRS",
