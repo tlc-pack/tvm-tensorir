@@ -89,11 +89,7 @@ Array<tir::Schedule> AddRFactorNode::Apply(const tir::Schedule& sch, const tir::
   ReorderAndFuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
 
   // Split the fused reduction loop.
-  Array<tir::ExprRV> factors;
-  do {
-    factors = sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor);
-  } while (*tir::as_const_int(sch->Get(factors[0])) == 1 ||
-           *tir::as_const_int(sch->Get(factors[1])) == 1);
+  Array<tir::ExprRV> factors = sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor);
   const Array<tir::LoopRV>& split_loops =
       sch->Split(fused_reduce_loop, {factors.begin(), factors.end()});
 
@@ -104,6 +100,35 @@ Array<tir::Schedule> AddRFactorNode::Apply(const tir::Schedule& sch, const tir::
     const tir::BlockRV& block_rf = sch_tmp->RFactor(split_loop, num_spatial_loops);
     Array<tir::LoopRV> axes = sch_tmp->GetLoops(block_rf);
     ICHECK_GT(axes.size(), num_spatial_loops);
+
+    for (;;) {
+      tir::LoopRV compute_at_loc = sch_tmp->SampleComputeLocation(block_rv);
+      try {
+        sch_tmp->ComputeAt(block_rv, compute_at_loc, true);
+      } catch (const dmlc::Error& e) {
+        // ComputeAt fails, cleanup the following before re-try:
+        // 1) trace: instruction & decisions
+        // 2) sym_tab
+        sch_tmp->trace().value()->Pop();
+        sch_tmp->RemoveRV(compute_at_loc);
+        continue;
+      }
+      break;
+    }
+    for (;;) {
+      tir::LoopRV compute_at_loc = sch_tmp->SampleComputeLocation(block_rf);
+      try {
+        sch_tmp->ComputeAt(block_rf, compute_at_loc, true);
+      } catch (const dmlc::Error& e) {
+        // ComputeAt fails, cleanup the following before re-try:
+        // 1) trace: instruction & decisions
+        // 2) sym_tab
+        sch_tmp->trace().value()->Pop();
+        sch_tmp->RemoveRV(compute_at_loc);
+        continue;
+      }
+      break;
+    }
     res.push_back(sch_tmp);
   }
 

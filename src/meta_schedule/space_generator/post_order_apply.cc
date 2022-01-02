@@ -105,9 +105,10 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
     Array<tir::Schedule> result{sch};
     // Enumerate the schedule rules first because you can
     // always concat multiple schedule rules as one
+    Array<tir::BlockRV> all_blocks = BlockCollector::Collect(sch);
     for (ScheduleRule sch_rule : sch_rules_) {
       for (const tir::Schedule& sch : result) {
-        stack.emplace_back(sch, BlockCollector::Collect(sch));
+        stack.emplace_back(sch, all_blocks);
       }
       result.clear();
 
