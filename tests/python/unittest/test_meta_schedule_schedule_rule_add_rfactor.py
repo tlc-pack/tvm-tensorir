@@ -48,6 +48,7 @@ def test_cpu_matmul():
             "v4, v5 = sch.sample_perfect_tile(loop=l3, n=2, max_innermost_factor=64)",
             "l6, l7 = sch.split(loop=l3, factors=[v4, v5])",
             "b8 = sch.rfactor(loop=l7, factor_axis=2)",
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.random_compute_producer", ann_val=1)',
         ],
         [
             'b0 = sch.get_block(name="C", func_name="main")',
@@ -55,6 +56,7 @@ def test_cpu_matmul():
             "v4, v5 = sch.sample_perfect_tile(loop=l3, n=2, max_innermost_factor=64)",
             "l6, l7 = sch.split(loop=l3, factors=[v4, v5])",
             "b8 = sch.rfactor(loop=l6, factor_axis=2)",
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.random_compute_producer", ann_val=1)',
         ],
     ]
     target = Target("llvm --num-cores=32")

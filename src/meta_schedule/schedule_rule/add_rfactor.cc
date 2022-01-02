@@ -101,34 +101,7 @@ Array<tir::Schedule> AddRFactorNode::Apply(const tir::Schedule& sch, const tir::
     Array<tir::LoopRV> axes = sch_tmp->GetLoops(block_rf);
     ICHECK_GT(axes.size(), num_spatial_loops);
 
-    for (;;) {
-      tir::LoopRV compute_at_loc = sch_tmp->SampleComputeLocation(block_rv);
-      try {
-        sch_tmp->ComputeAt(block_rv, compute_at_loc, true);
-      } catch (const dmlc::Error& e) {
-        // ComputeAt fails, cleanup the following before re-try:
-        // 1) trace: instruction & decisions
-        // 2) sym_tab
-        sch_tmp->trace().value()->Pop();
-        sch_tmp->RemoveRV(compute_at_loc);
-        continue;
-      }
-      break;
-    }
-    for (;;) {
-      tir::LoopRV compute_at_loc = sch_tmp->SampleComputeLocation(block_rf);
-      try {
-        sch_tmp->ComputeAt(block_rf, compute_at_loc, true);
-      } catch (const dmlc::Error& e) {
-        // ComputeAt fails, cleanup the following before re-try:
-        // 1) trace: instruction & decisions
-        // 2) sym_tab
-        sch_tmp->trace().value()->Pop();
-        sch_tmp->RemoveRV(compute_at_loc);
-        continue;
-      }
-      break;
-    }
+    sch_tmp->Annotate(block_rv, tir::attr::meta_schedule_random_compute_producer, Bool(true));
     res.push_back(sch_tmp);
   }
 

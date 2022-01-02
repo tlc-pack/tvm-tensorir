@@ -1385,6 +1385,10 @@ constexpr const int meta_schedule_cache_type_read = 0;
 /*! \sa meta_schedule_cache_type */
 constexpr const int meta_schedule_cache_type_write = 1;
 
+/*! \brief Mark the block whose producer needs to be applied by rule Random-Compute-Location */
+constexpr const char* meta_schedule_random_compute_producer =
+    "meta_schedule.random_compute_producer";
+
 /*! \brief Mark auto-parallel setting on the block. */
 constexpr const char* meta_schedule_parallel = "meta_schedule.parallel";
 
