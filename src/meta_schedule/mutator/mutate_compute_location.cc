@@ -39,7 +39,7 @@ class MutateComputeLocationNode : public MutatorNode {
   struct Candidate {
     /*! \brief The SampleComputeLocation instruction */
     Instruction inst;
-    /*! \brief The candidate compute locations */
+    /*! \brief The candidate compute-at locations */
     std::vector<int> locs;
 
     explicit Candidate(Instruction inst, std::vector<int> locs)

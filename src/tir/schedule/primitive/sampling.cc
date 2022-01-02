@@ -377,13 +377,9 @@ tir::StmtSRef SampleComputeLocation(tir::ScheduleState self,
       return location_srefs[idx];
     } else if (it != location_indices.begin()) {
       *decision = Integer(*--it);
-      // LOG(WARNING) << "old decision " << old_decision << " is outdated. Change the decision to "
-      //  << *decision;
       return location_srefs[idx - 1];
     } else {
       *decision = Integer(-1);
-      // LOG(WARNING) << "old decision " << old_decision << " is outdated. Change the decision to "
-      //  << *decision;
       return StmtSRef::RootMark();
     }
   } else {

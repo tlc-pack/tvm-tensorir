@@ -101,6 +101,8 @@ Array<tir::Schedule> AddRFactorNode::Apply(const tir::Schedule& sch, const tir::
     Array<tir::LoopRV> axes = sch_tmp->GetLoops(block_rf);
     ICHECK_GT(axes.size(), num_spatial_loops);
 
+    // Annotate that the rfactor block, which is now the producer of the original block, needs to be
+    // considered by the rule Random-Compute-Location.
     sch_tmp->Annotate(block_rv, tir::attr::meta_schedule_random_compute_producer, Bool(true));
     res.push_back(sch_tmp);
   }
