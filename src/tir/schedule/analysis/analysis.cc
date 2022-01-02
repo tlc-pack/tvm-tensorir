@@ -845,7 +845,8 @@ std::pair<Array<StmtSRef>, std::vector<int>> CollectComputeLocation(const Schedu
       std::find(loop_srefs.begin(), loop_srefs.end(), loop_boundary_sref) - loop_srefs.begin();
   ICHECK_LT(lca_pos, static_cast<int>(loop_srefs.size()));
   int n_leading_datapar_iter = GetNumOfLeadingDataParIter(block_sref);
-  int n_candidate = std::min(lca_pos + 1, n_leading_datapar_iter);
+  // int n_candidate = std::min(lca_pos + 1, n_leading_datapar_iter);
+  int n_candidate = lca_pos + 1;
 
   std::vector<IterVarType> loop_iter_types;
   loop_iter_types.reserve(n_candidate);
