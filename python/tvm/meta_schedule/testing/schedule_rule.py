@@ -93,7 +93,7 @@ def auto_inline_after_tiling(target: Target) -> ScheduleRule:
         return AutoInline(
             into_producer=True,
             into_consumer=True,
-            into_cache_only=True,
+            into_cache_only=False,
             inline_const_tensor=True,
             disallow_if_then_else=False,
             require_injective=False,
