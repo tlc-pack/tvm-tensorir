@@ -821,6 +821,9 @@ std::pair<Array<StmtSRef>, std::vector<int>> CollectComputeLocation(const Schedu
                                                                     const StmtSRef& block_sref) {
   Array<StmtSRef> location_srefs;
   std::vector<int> location_indices;
+
+  // Step 1. Add the "compute-root" candidate. Add the "compute-inline" candidate if the block can
+  // be inlined.
   if (CanComputeInline(self, block_sref)) {
     location_srefs.push_back(StmtSRef::InlineMark());
     location_indices.push_back(-2);
@@ -828,26 +831,28 @@ std::pair<Array<StmtSRef>, std::vector<int>> CollectComputeLocation(const Schedu
   location_srefs.push_back(StmtSRef::RootMark());
   location_indices.push_back(-1);
 
+  // Step 2. If the block has no consumer, there is no more candidate.
   Array<StmtSRef> consumers = GetConsumers(self, block_sref);
   if (consumers.empty()) {
     return std::make_pair(location_srefs, location_indices);
   }
-
-  StmtSRef loop_boundary_sref = consumers.size() > 1 ? GetSRefLowestCommonAncestor(consumers)
-                                                     : GetRef<StmtSRef>(consumers[0]->parent);
-  if (loop_boundary_sref->StmtAs<BlockNode>() != nullptr) {
+  // Step 3. Get the deepest loop that the input block can be computed at (namely "boundary"). If
+  // such a loop cannot be found, there is no more candidate and we just return.
+  StmtSRef loop_boundary = consumers.size() > 1 ? GetSRefLowestCommonAncestor(consumers)
+                                                : GetRef<StmtSRef>(consumers[0]->parent);
+  if (loop_boundary->StmtAs<BlockNode>() != nullptr) {
     return std::make_pair(location_srefs, location_indices);
   }
 
+  // Step 4. Collect the loops outside the first consumer and locate the boundary loop. The position
+  // of the boundary loop reveals the number of possible additional candidates.
   Array<StmtSRef> loop_srefs = GetLoops(consumers[0]);
-
-  int lca_pos =
-      std::find(loop_srefs.begin(), loop_srefs.end(), loop_boundary_sref) - loop_srefs.begin();
+  int lca_pos = std::find(loop_srefs.begin(), loop_srefs.end(), loop_boundary) - loop_srefs.begin();
   ICHECK_LT(lca_pos, static_cast<int>(loop_srefs.size()));
-  int n_leading_datapar_iter = GetNumOfLeadingDataParIter(block_sref);
-  // int n_candidate = std::min(lca_pos + 1, n_leading_datapar_iter);
   int n_candidate = lca_pos + 1;
 
+  // Step 5. Find the position of the deepest data-parallel loop among the candidate loops. This
+  // position is used for removing the unwanted candidates from the perspective of performance.
   std::vector<IterVarType> loop_iter_types;
   loop_iter_types.reserve(n_candidate);
   int i_last_datapar = -1;
@@ -858,11 +863,13 @@ std::pair<Array<StmtSRef>, std::vector<int>> CollectComputeLocation(const Schedu
       i_last_datapar = i;
     }
   }
-
+  // Step 6. Check and add the candidates in turn according to the following rules:
+  //  - skip the unit loops (loops with extent 1);
+  //  - do not consider the data-parallel loops after a not-data-parallel loop;
+  //  - do not consider the trailing not-data-parallel loops.
   location_srefs.reserve(n_candidate + 2);
   location_indices.reserve(n_candidate + 2);
   bool visited_reduce = false;
-
   for (int i = 0; i < n_candidate; ++i) {
     const int64_t* loop_extent = GetLoopIntExtent(loop_srefs[i]);
     if (loop_extent != nullptr && *loop_extent == 1) {
@@ -873,14 +880,13 @@ std::pair<Array<StmtSRef>, std::vector<int>> CollectComputeLocation(const Schedu
       if (visited_reduce) {
         break;
       }
-    } else if (loop_iter_types[i] == IterVarType::kCommReduce) {
+    } else {
       visited_reduce = true;
       if (i > i_last_datapar) {
         break;
       }
-    } else {
-      break;
     }
+
     location_srefs.push_back(loop_srefs[i]);
     location_indices.push_back(i);
   }
@@ -2080,18 +2086,6 @@ bool HasIfThenElse(const Stmt& stmt) {
   };
   PreOrderVisit(stmt, f_visit);
   return has_branch;
-}
-
-int GetNumOfLeadingDataParIter(const StmtSRef& block_sref) {
-  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
-  int n_iter = static_cast<int>(block->iter_vars.size());
-
-  for (int i = 0; i < n_iter; ++i) {
-    if (block->iter_vars[i]->iter_type != kDataPar) {
-      return i;
-    }
-  }
-  return n_iter;
 }
 
 /******** Storage Scope ********/

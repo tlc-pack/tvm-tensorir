@@ -659,13 +659,6 @@ bool HasOp(const Stmt& stmt, const Array<Op>& ops);
  */
 bool HasIfThenElse(const Stmt& stmt);
 
-/*!
- * \brief Get the number of continuously leading data-parallel block iterator of the given block
- * \param block_sref The sref of the block to be queried
- * \return The number of continuously leading data-parallel block iterator of the input block
- */
-int GetNumOfLeadingDataParIter(const StmtSRef& block_sref);
-
 /******** Storage Scope ********/
 
 /*!
