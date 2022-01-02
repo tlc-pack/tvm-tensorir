@@ -21,6 +21,9 @@ from tvm.meta_schedule.testing.schedule_rule import (
     auto_inline,
     auto_inline_after_tiling,
 )
+from tvm.meta_schedule.schedule_rule import (
+    AutoInline,
+)
 from tvm.meta_schedule.tune_context import TuneContext
 from tvm.script import tir as T
 from tvm.target import Target
@@ -348,7 +351,16 @@ def test_inline_into_cache():
     ctx = _create_context(
         mod=mod,
         target=target,
-        rule=auto_inline_after_tiling(target=target),
+        rule=AutoInline(
+            into_producer=True,
+            into_consumer=True,
+            into_cache_only=True,
+            inline_const_tensor=True,
+            disallow_if_then_else=False,
+            require_injective=False,
+            require_ordered=False,
+            disallow_op=None,
+        ),
     )
     (space,) = ctx.space_generator.generate_design_space(mod=mod)
     tvm.ir.assert_structural_equal(lhs=space.mod, rhs=PaddingAndEpilogueInlined)

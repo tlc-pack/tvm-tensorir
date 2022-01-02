@@ -578,9 +578,6 @@ Feature::ArithOps::ArithOps(const BufferStoreNode* store, int64_t prod_loop_exte
   ArithOpCounter counter;
   counter.prod_loop_extent_ = prod_loop_extent;
   counter(store->value);
-  for (const PrimExpr& index : store->indices) {
-    counter(index);
-  }
   *this = counter.result_;
 }
 
