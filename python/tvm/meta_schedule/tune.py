@@ -106,7 +106,7 @@ class DefaultLLVM:
             ),
             M.ParallelizeVectorizeUnroll(
                 max_jobs_per_core=16,
-                max_vectorize_extent=32,
+                max_vectorize_extent=64,
                 unroll_max_steps=[0, 16, 64, 512],
                 unroll_explicit=True,
             ),

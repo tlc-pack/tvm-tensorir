@@ -370,7 +370,7 @@ class Schedule(Object):
             )
         )
 
-    def sample_compute_location(  # Todo: add some unittests
+    def sample_compute_location(
         self,
         block: BlockRV,
         decision: Optional[int] = None,
