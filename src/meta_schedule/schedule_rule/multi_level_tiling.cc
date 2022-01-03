@@ -293,6 +293,8 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
     if (!NeedsMultiLevelTiling(sch->state(), sch->GetSRef(block_rv))) {
       return {sch};
     }
+    sch->Annotate(block_rv, tir::attr::meta_schedule_tiling_structure, structure);
+
     std::vector<State> states{State(sch, block_rv)};
     states = SubRule(std::move(states), [&](State state) { return DetectTensorCore(state); });
     states = SubRule(std::move(states), [&](State state) { return AddWriteReuse(state); });

@@ -24,7 +24,7 @@ from tvm.script import tir as T
 from tvm.tir.schedule.testing import verify_trace_roundtrip
 
 
-# pylint: disable=no-member,invalid-name,unused-variable
+# pylint: disable=no-member,invalid-name,unused-variable,line-too-long
 
 
 @T.prim_func
@@ -59,7 +59,7 @@ def tiled_conv2d_with_padding(inputs: T.Buffer[(1, 224, 224, 3), "float32"], wei
             conv2d_nhwc[n, h, w, co] = conv2d_nhwc[n, h, w, co] + PadInput[n, h * 2 + rh, w * 2 + rw, co // 64 * 3 + rc] * weight[rh, rw, rc, co]
 
 
-# pylint: enable=no-member,invalid-name,unused-variable
+# pylint: enable=no-member,invalid-name,unused-variable,line-too-long
 
 
 def test_sample_categorical():

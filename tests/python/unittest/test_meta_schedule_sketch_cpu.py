@@ -33,6 +33,7 @@ def test_meta_schedule_cpu_sketch_matmul():
         [
             'b0 = sch.get_block(name="C", func_name="main")',
             'b1 = sch.get_block(name="root", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             "l2, l3, l4 = sch.get_loops(block=b0)",
             "v5, v6, v7, v8 = sch.sample_perfect_tile(loop=l2, n=4, max_innermost_factor=64)",
             "l9, l10, l11, l12 = sch.split(loop=l2, factors=[v5, v6, v7, v8])",
@@ -49,6 +50,7 @@ def test_meta_schedule_cpu_sketch_matmul():
         [
             'b0 = sch.get_block(name="C", func_name="main")',
             'b1 = sch.get_block(name="root", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             'b2 = sch.cache_write(block=b0, write_buffer_index=0, storage_scope="global")',
             "l3, l4, l5 = sch.get_loops(block=b0)",
             "v6, v7, v8, v9 = sch.sample_perfect_tile(loop=l3, n=4, max_innermost_factor=64)",
@@ -67,6 +69,7 @@ def test_meta_schedule_cpu_sketch_matmul():
         [
             'b0 = sch.get_block(name="C", func_name="main")',
             'b1 = sch.get_block(name="root", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             'b2 = sch.cache_write(block=b0, write_buffer_index=0, storage_scope="global")',
             "l3, l4, l5 = sch.get_loops(block=b0)",
             "v6, v7, v8, v9 = sch.sample_perfect_tile(loop=l3, n=4, max_innermost_factor=64)",
@@ -105,6 +108,7 @@ def test_meta_schedule_cpu_sketch_matmul_relu():
         [
             'b0 = sch.get_block(name="C", func_name="main")',
             'b1 = sch.get_block(name="root", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             "l2, l3, l4 = sch.get_loops(block=b0)",
             "v5, v6, v7, v8 = sch.sample_perfect_tile(loop=l2, n=4, max_innermost_factor=64)",
             "l9, l10, l11, l12 = sch.split(loop=l2, factors=[v5, v6, v7, v8])",
@@ -121,6 +125,7 @@ def test_meta_schedule_cpu_sketch_matmul_relu():
         [
             'b0 = sch.get_block(name="C", func_name="main")',
             'b1 = sch.get_block(name="root", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             "b2, = sch.get_consumers(block=b0)",
             "l3, l4, l5 = sch.get_loops(block=b0)",
             "v6, v7, v8, v9 = sch.sample_perfect_tile(loop=l3, n=4, max_innermost_factor=64)",
@@ -139,6 +144,7 @@ def test_meta_schedule_cpu_sketch_matmul_relu():
         [
             'b0 = sch.get_block(name="C", func_name="main")',
             'b1 = sch.get_block(name="root", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             "b2, = sch.get_consumers(block=b0)",
             "l3, l4, l5 = sch.get_loops(block=b0)",
             "v6, v7, v8, v9 = sch.sample_perfect_tile(loop=l3, n=4, max_innermost_factor=64)",

@@ -47,6 +47,7 @@ def test_cpu_matmul():
     expected = [
         [
             'b0 = sch.get_block(name="C", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             'b1 = sch.cache_write(block=b0, write_buffer_index=0, storage_scope="global")',
             "l2, l3, l4 = sch.get_loops(block=b0)",
             "v5, v6, v7, v8 = sch.sample_perfect_tile(loop=l2, n=4, max_innermost_factor=64)",
@@ -60,6 +61,7 @@ def test_cpu_matmul():
         ],
         [
             'b0 = sch.get_block(name="C", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             'b1 = sch.cache_write(block=b0, write_buffer_index=0, storage_scope="global")',
             "l2, l3, l4 = sch.get_loops(block=b0)",
             "v5, v6, v7, v8 = sch.sample_perfect_tile(loop=l2, n=4, max_innermost_factor=64)",
@@ -73,6 +75,7 @@ def test_cpu_matmul():
         ],
         [
             'b0 = sch.get_block(name="C", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             "l1, l2, l3 = sch.get_loops(block=b0)",
             "v4, v5, v6, v7 = sch.sample_perfect_tile(loop=l1, n=4, max_innermost_factor=64)",
             "l8, l9, l10, l11 = sch.split(loop=l1, factors=[v4, v5, v6, v7])",
@@ -105,6 +108,7 @@ def test_cpu_matmul_relu():
     expected = [
         [
             'b0 = sch.get_block(name="C", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             "b1, = sch.get_consumers(block=b0)",
             "l2, l3, l4 = sch.get_loops(block=b0)",
             "v5, v6, v7, v8 = sch.sample_perfect_tile(loop=l2, n=4, max_innermost_factor=64)",
@@ -118,6 +122,7 @@ def test_cpu_matmul_relu():
         ],
         [
             'b0 = sch.get_block(name="C", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             "b1, = sch.get_consumers(block=b0)",
             "l2, l3, l4 = sch.get_loops(block=b0)",
             "v5, v6, v7, v8 = sch.sample_perfect_tile(loop=l2, n=4, max_innermost_factor=64)",
@@ -131,6 +136,7 @@ def test_cpu_matmul_relu():
         ],
         [
             'b0 = sch.get_block(name="C", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSRSRS")',
             "l1, l2, l3 = sch.get_loops(block=b0)",
             "v4, v5, v6, v7 = sch.sample_perfect_tile(loop=l1, n=4, max_innermost_factor=64)",
             "l8, l9, l10, l11 = sch.split(loop=l1, factors=[v4, v5, v6, v7])",
@@ -164,6 +170,7 @@ def test_cuda_matmul():
     expected = [
         [
             'b0 = sch.get_block(name="C", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSSRRSRS")',
             'b1 = sch.cache_write(block=b0, write_buffer_index=0, storage_scope="local")',
             "l2, l3, l4 = sch.get_loops(block=b0)",
             "v5, v6, v7, v8, v9 = sch.sample_perfect_tile(loop=l2, n=5, max_innermost_factor=64)",
@@ -217,6 +224,7 @@ def test_cuda_matmul_relu():
     expected = [
         [
             'b0 = sch.get_block(name="C", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSSRRSRS")',
             'b1 = sch.cache_write(block=b0, write_buffer_index=0, storage_scope="local")',
             "l2, l3, l4 = sch.get_loops(block=b0)",
             "v5, v6, v7, v8, v9 = sch.sample_perfect_tile(loop=l2, n=5, max_innermost_factor=64)",
@@ -269,6 +277,7 @@ def test_cuda_tensor_core_matmul():
     expected = [
         [
             'b0 = sch.get_block(name="C", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSSRRSRS")',
             "l1, l2, l3 = sch.get_loops(block=b0)",
             "l4, l5 = sch.split(loop=l1, factors=[32, 16])",
             "l6, l7 = sch.split(loop=l2, factors=[32, 16])",
@@ -340,6 +349,7 @@ def test_cuda_tensor_core_matmul_relu():
     expected = [
         [
             'b0 = sch.get_block(name="C", func_name="main")',
+            'sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSSRRSRS")',
             "l1, l2, l3 = sch.get_loops(block=b0)",
             "l4, l5 = sch.split(loop=l1, factors=[32, 16])",
             "l6, l7 = sch.split(loop=l2, factors=[32, 16])",
