@@ -38,6 +38,7 @@ def get(target: Target) -> List[ScheduleRule]:
             add_rfactor(target),
             multi_level_tiling(target),
             parallel_vectorize_unroll(target),
+            random_compute_location(target),
         ]
     if target.kind.name == "cuda":
         return [
