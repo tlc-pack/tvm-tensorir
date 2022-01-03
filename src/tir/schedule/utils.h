@@ -371,9 +371,9 @@ inline bool HasAnn(const StmtSRef& sref, const String& ann_key, const String& an
  * \param ann_val The boolean annotation value to be checked
  * \return Whether a Block/For has a specific pair of annotation key and values
  */
-inline bool HasAnn(const StmtSRef& sref, const String& ann_key, const Bool& ann_val) {
+inline bool HasAnn(const StmtSRef& sref, const String& ann_key, bool ann_val) {
   Optional<Bool> result = GetAnn<Bool>(sref, ann_key);
-  return result.defined() && result.value()->value == ann_val->value;
+  return result.defined() && result.value()->value == ann_val;
 }
 
 /******** Tensorization ******/
