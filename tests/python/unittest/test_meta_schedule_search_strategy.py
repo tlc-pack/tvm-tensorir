@@ -269,5 +269,4 @@ def test_meta_schedule_evolutionary_search():  # pylint: disable = invalid-name
 
 
 if __name__ == "__main__":
-    test_meta_schedule_evolutionary_search()
-    # sys.exit(pytest.main([__file__] + sys.argv[1:]))
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))
