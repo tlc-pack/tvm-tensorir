@@ -65,6 +65,12 @@ class BufferFlattener : public StmtExprMutator {
     if (!is_one(predicate)) {
       body = IfThenElse(predicate, std::move(body));
     }
+    // If the block has bound predicates, transform it to if-then-else
+    const Optional<ObjectRef>& bound_predicate =
+        new_block->annotations.Get(tir::attr::require_block_var_bound_predicate);
+    if (bound_predicate.defined()) {
+      body = IfThenElse(Downcast<PrimExpr>(bound_predicate.value()), std::move(body));
+    }
     // Step 3. Handle allocations in reverse order
     for (size_t i = new_block->alloc_buffers.size(); i > 0; --i) {
       const Buffer& buffer = new_block->alloc_buffers[i - 1];
