@@ -338,6 +338,10 @@ class BlockInfoCollector : private StmtVisitor {
                   /*dom_low_inclusive=*/parent_sref,
                   /*dom_high_exclusive=*/lca,
                   /*analyzer=*/&analyzer_);
+              for (size_t i = 0; i < consumed_region.size(); ++i) {
+                const arith::IntSet consumed_interset = arith::Intersect(
+                    {consumed_region[i], arith::IntSet::FromMinExtent(0, buffer->shape[i])});
+              }
               if (!ProducerCoversConsumer(buffer->shape, produced_region, consumed_region,
                                           &analyzer_)) {
                 region_cover = false;

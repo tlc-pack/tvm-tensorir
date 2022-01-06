@@ -46,7 +46,6 @@ class Move_PUV:
                     B[vi, vj, vk] = A[vi, vj, vk]
 
 
-
 @T.prim_func
 def Move_PUV0(a: T.handle, b: T.handle) -> None:
     # function attr dict
@@ -63,9 +62,9 @@ def Move_PUV0(a: T.handle, b: T.handle) -> None:
                         vj = T.axis.spatial(1024, i0_j0_fused % 64 * 32 + j1 * 8 + j2)
                         vk = T.axis.spatial(1024, k0 * 32 + k1_fused)
                         T.where(
-                            (i0_j0_fused // 64 % 128 * 4 + i1) * 4 + i2 < 1024
+                            (i0_j0_fused // 64 * 4 + i1) * 4 + i2 < 1024
                             and (i0_j0_fused % 64 * 4 + j1) * 8 + j2 < 1024
-                            and k0 * 32 + k1_fused % 32 < 1024
+                            and k0 * 32 + k1_fused < 1024
                         )
                         T.reads([A[vi, vj, vk]])
                         T.writes([B[vi, vj, vk]])

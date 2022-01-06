@@ -54,7 +54,8 @@ Region SimplifyAndNarrowBufferRegionFromNDIntSet(const NDIntSet& nd_int_set,
     const arith::IntSet& int_set = nd_int_set[i];
     Range range = int_set.CoverRange(Range(/*begin=*/0, /*end=*/original_shape[i]));
     result.push_back(
-        Range::FromMinExtent(analyzer->Simplify(range->min), analyzer->Simplify(range->extent)));
+        Range::FromMinExtent(analyzer->Simplify(range->min), 
+                             analyzer->Simplify(min(original_shape[i], range->extent))));
   }
   return result;
 }

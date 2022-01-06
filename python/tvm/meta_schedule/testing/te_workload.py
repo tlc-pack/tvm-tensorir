@@ -135,8 +135,8 @@ def conv3d_ndhwc(  # pylint: disable=invalid-name,missing-docstring
     dilation: int = 1,
     groups: int = 1,
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
-    inputs = te.placeholder((N, D, H, W, CI))
-    weight = te.placeholder((kernel_size, kernel_size, kernel_size, CI // groups, CO))
+    inputs = te.placeholder((N, D, H, W, CI), name="inputs")
+    weight = te.placeholder((kernel_size, kernel_size, kernel_size, CI // groups, CO), name="weight")
     batch_size, in_d, in_h, in_w, _ = inputs.shape
     k_d, k_h, k_w, channel_per_group, out_channel = weight.shape
     out_channel_per_group = out_channel // groups

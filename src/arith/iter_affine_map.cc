@@ -917,7 +917,7 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
                   << "Fail to collect constraints from iteration predicate: " << predicate);
     return Array<IterSumExpr>();
   }
-
+ 
   // We have to make sure when we visit an iterator, all the constraints related with its successors
   // in the iter var graph has been visited, where the expression of this iterator will contain the
   // expression of its successor, so we sort them by their sizes.
@@ -944,7 +944,10 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   Array<IterSumExpr> results;
   for (PrimExpr value : indices) {
     results.push_back(rewriter.Rewrite(value));
-    if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
+    if (rewriter.unresolved_count() != 0) {
+      diag_ctx.Emit(Diagnostic::Error(predicate->span) << "Affine mapping detection failed");
+      return Array<IterSumExpr>();
+    }
   }
   // Step1: IterIndependenceChecker checks if the iterator are independent.
   if (!rewriter.CheckMapping(results, require_bijective)) {
@@ -1305,7 +1308,7 @@ class IterMapToExprNormalizer : public ExprMutator {
     } else if (analyzer_->CanProve(expr->source->extent == expr->lower_factor * expr->extent)) {
       return floordiv(source, expr->lower_factor) * expr->scale;
     } else {
-      return floormod(floordiv(source, expr->lower_factor), expr->extent) * expr->scale;
+      return floordiv(floormod(source, expr->lower_factor * expr->extent), expr->lower_factor) * expr->scale;
     }
   }
 

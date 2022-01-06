@@ -220,7 +220,7 @@ def compacted_symbolic_func(a: T.handle, c: T.handle, n: T.int32) -> None:
         with T.block():
             T.reads(A[i * 8 : i * 8 + 8])
             T.writes(C[i * 8 : i * 8 + 8])
-            B = T.alloc_buffer((8,), "float32")
+            B = T.alloc_buffer((T.min(n, 1) * 8,), "float32")
             for j in range(0, 8):
                 with T.block() as []:
                     T.reads(A[i * 8 + j])
