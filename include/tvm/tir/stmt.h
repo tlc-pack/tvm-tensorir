@@ -1358,6 +1358,11 @@ constexpr const char* script_parsing_detect_access = "tir.script_parsing_detect_
 constexpr const char* pragma_loop_partition_hint = "pragma_loop_partition_hint";
 
 /*!
+ * \brief Mark that the block need to add predicate for block var bounds during lowering 
+ */
+constexpr const char* require_block_var_bound_predicate = "require_bound_predicate";
+
+/*!
  * \brief Mark that the loop should be further skip and bound to environment threads to enable
  * cooperative fetching.
  */

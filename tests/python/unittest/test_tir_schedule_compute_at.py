@@ -742,19 +742,129 @@ def read_out_of_bound(a: T.handle, c:T.handle) -> None:
 
 
 @T.prim_func
-def read_out_of_bound_after_compute_at(a: T.handle, c: T.handle) -> None:
-    A = T.match_buffer(a, [16], "float32")
-    B = T.alloc_buffer([16], "float32")
-    C = T.match_buffer(c, [16], "float32")
-    for j in T.serial(0, 16):
-        for i in T.serial(0, T.min(1, 15 - j) + 1):
+def read_out_of_bound_after_compute_at(A: T.Buffer[(16,), "float32"], C: T.Buffer[(16,), "float32"]) -> None:
+    # body
+    # with T.block("root")
+    B = T.alloc_buffer([16], dtype="float32")
+    for j in T.serial(16):
+        for ax0 in T.serial(2):
             with T.block("B"):
-                v = T.axis.S(16, j + i)
+                v = T.axis.spatial(16, j + ax0)
+                T.reads(A[v])
+                T.writes(B[v])
+                T.block_attr({"require_bound_predicate":j + ax0 >= 0 and j + ax0 < 16})
                 B[v] = A[v]
         with T.block("C"):
-            v = T.axis.S(16, j)
-            T.reads([B[v : v + 2]])
+            v = T.axis.spatial(16, j)
+            T.reads(B[v : v + 2])
+            T.writes(C[v])
             C[v] = T.if_then_else(v < 15, T.max(B[v], B[v + 1]), B[v], dtype="float32")
+
+
+@T.prim_func
+def tiled_pooling_cache(a: T.handle, b: T.handle) -> None:
+    X = T.match_buffer(a, [224, 224], dtype="float32")
+    Y = T.match_buffer(b, [224, 224], dtype="float32")
+    cache = T.alloc_buffer([224, 224], dtype="float32")
+    dache = T.alloc_buffer([224, 224], dtype="float32")
+    for hh, ww in T.grid(224, 224):
+        with T.block("cache"):
+            h, w = T.axis.remap("SS", [hh, ww])
+            T.reads([X[h, w]])
+            T.writes([cache[h, w]])
+            cache[h, w] = X[h, w]
+    for hh, ww in T.grid(224, 224):
+        with T.block("dache"):
+            h, w = T.axis.remap("SS", [hh, ww])
+            T.reads([X[h, w]])
+            T.writes([dache[h, w]])
+            dache[h, w] = X[h, w]
+    for hh_0, ww_0, hh_1, ww_1, khh, kww in T.grid(28, 28, 8, 8, 3, 3):
+        with T.block("compute"):
+            h = T.axis.spatial(224, hh_0 * 8 + hh_1)
+            w = T.axis.spatial(224, ww_0 * 8 + ww_1)
+            kh, kw = T.axis.remap("RR", [khh, kww])
+            T.reads([Y[h, w], cache[h + kh - 1, w + kw - 1], dache[h + kh - 1, w + kw - 1]])
+            T.writes([Y[h, w]])
+            with T.init():
+                Y[h, w] = 0.0
+            Y[h, w] = T.max(Y[h, w], T.if_then_else(
+                T.likely(1 <= h + kh, dtype="bool") and \
+                T.likely(h + kh < 225, dtype="bool") and \
+                T.likely(1 <= w + kw, dtype="bool") and \
+                T.likely(w + kw < 225, dtype="bool"),
+                cache[h + kh - 1, w + kw - 1] + dache[h + kh - 1, w + kw - 1], 0.0, dtype="float32"))
+
+
+@T.prim_func
+def tiled_pooling_cache_after_compute_at(a: T.handle, b: T.handle) -> None:
+    X = T.match_buffer(a, [224, 224], dtype="float32")
+    Y = T.match_buffer(b, [224, 224], dtype="float32")
+    cache = T.alloc_buffer([224, 224], dtype="float32")
+    dache = T.alloc_buffer([224, 224], dtype="float32")
+    for hh_0, ww_0 in T.grid(28, 28):
+        for ax0, ax1 in T.grid(10, 10):
+            with T.block("cache"):
+                h = T.axis.spatial(224, hh_0 * 8 - 1 + ax0)
+                w = T.axis.spatial(224, ww_0 * 8 - 1 + ax1)
+                T.reads(X[h, w])
+                T.writes(cache[h, w])
+                T.block_attr({"require_bound_predicate":hh_0 * 8 - 1 + ax0 >= 0 and hh_0 * 8 - 1 + ax0 < 224 and ww_0 * 8 - 1 + ax1 >= 0 and ww_0 * 8 - 1 + ax1 < 224})
+                cache[h, w] = X[h, w]
+        for ax0, ax1 in T.grid(10, 10):
+            with T.block("dache"):
+                h = T.axis.spatial(224, hh_0 * 8 - 1 + ax0)
+                w = T.axis.spatial(224, ww_0 * 8 - 1 + ax1)
+                T.reads(X[h, w])
+                T.writes(dache[h, w])
+                T.block_attr({"require_bound_predicate":hh_0 * 8 - 1 + ax0 >= 0 and hh_0 * 8 - 1 + ax0 < 224 and ww_0 * 8 - 1 + ax1 >= 0 and ww_0 * 8 - 1 + ax1 < 224})
+                dache[h, w] = X[h, w]
+        for hh_1, ww_1, khh, kww in T.grid(8, 8, 3, 3):
+            with T.block("compute"):
+                h = T.axis.spatial(224, hh_0 * 8 + hh_1)
+                w = T.axis.spatial(224, ww_0 * 8 + ww_1)
+                kh, kw = T.axis.remap("RR", [khh, kww])
+                T.reads([Y[h, w], cache[h + kh - 1, w + kw - 1], dache[h + kh - 1, w + kw - 1]])
+                T.writes([Y[h, w]])
+                with T.init():
+                    Y[h, w] = 0.0
+                Y[h, w] = T.max(Y[h, w], T.if_then_else(
+                    T.likely(1 <= h + kh, dtype="bool") and \
+                    T.likely(h + kh < 225, dtype="bool") and \
+                    T.likely(1 <= w + kw, dtype="bool") and \
+                    T.likely(w + kw < 225, dtype="bool"),
+                    cache[h + kh - 1, w + kw - 1]+ dache[h + kh - 1, w + kw - 1], 0.0, dtype="float32"))
+
+
+@T.prim_func
+def floordiv_and_floormod_indices(a: T.handle, b: T.handle) -> None:
+    X = T.match_buffer(a, [16, 16])
+    Y = T.match_buffer(b, [256])
+    temp = T.alloc_buffer([16, 16])
+    for i, j in T.grid(16, 16):
+        with T.block("A"):
+            v_i, v_j = T.axis.remap("SS", [i, j])
+            temp[v_i, v_j] = X[v_j, v_i] + 1.0
+    for i in T.serial(0, 256):
+        with T.block("B"):
+            v_i = T.axis.remap("S", [i])
+            Y[v_i] = temp[v_i // 16, v_i % 16]
+
+
+@T.prim_func
+def floordiv_and_floormod_indices_after_reverse_compute_at(a: T.handle, b: T.handle) -> None:
+    X = T.match_buffer(a, [16, 16], dtype="float32")
+    Y = T.match_buffer(b, [256], dtype="float32")
+    temp = T.alloc_buffer([16, 16], dtype="float32")
+    for i in T.serial(0, 16):
+        for j in T.serial(0, 16):
+            with T.block("A"):
+                v_i, v_j = T.axis.remap("SS", [i, j])
+                temp[v_i, v_j] = X[v_j, v_i] + T.float32(1)
+        for ax0 in T.serial(0, 16):
+            with T.block("B"):
+                v_i = T.axis.spatial(256, i * 16 + ax0)
+                Y[v_i] = temp[v_i // 16, v_i % 16]
 
 
 # pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name,unexpected-keyword-arg,too-many-nested-blocks
@@ -924,6 +1034,29 @@ def test_fail_all_producers_under_loop():
     loop, _ = sch.get_loops(sch.get_block("C"))
     with pytest.raises(tvm.tir.ScheduleError, match="requires all the producer"):
         sch.reverse_compute_at(block, loop)
+
+
+def test_compute_at_tiled_pooling_cache():
+    sch = tir.Schedule(tiled_pooling_cache, debug_mask="all")
+    compute = sch.get_block("compute")
+    _, w_o, _, _, _, _ = sch.get_loops(compute)
+    cache = sch.get_block("cache")
+    dache = sch.get_block("dache")
+    sch.compute_at(cache, w_o)
+    sch.compute_at(dache, w_o)
+    tvm.ir.assert_structural_equal(tiled_pooling_cache_after_compute_at, sch.mod["main"])
+    verify_trace_roundtrip(sch=sch, mod=tiled_pooling_cache)
+
+
+def test_reverse_compute_at_floordiv_and_floormod_indices():
+    sch = tir.Schedule(floordiv_and_floormod_indices, debug_mask="all")
+    A = sch.get_block("A")
+    B = sch.get_block("B")
+    sch.reverse_compute_at(B, sch.get_loops(A)[0])
+    tvm.ir.assert_structural_equal(
+        floordiv_and_floormod_indices_after_reverse_compute_at, sch.mod["main"]
+    )
+    verify_trace_roundtrip(sch=sch, mod=floordiv_and_floormod_indices)
 
 
 if __name__ == "__main__":

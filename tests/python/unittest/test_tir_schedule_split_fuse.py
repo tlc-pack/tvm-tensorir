@@ -66,7 +66,7 @@ def elementwise_symbolic_fused(a: T.handle, b: T.handle, n: T.int32) -> None:
     for i_j_k_fused in T.serial(0, (n * 16384)):
         with T.block("B"):
             vi = T.axis.S(128, T.floordiv(i_j_k_fused, n * 128))
-            vj = T.axis.S(128, T.floormod(T.floordiv(i_j_k_fused, n), 128))
+            vj = T.axis.S(128, T.floordiv(T.floormod(i_j_k_fused, n*128), n))
             vk = T.axis.S(n, T.floormod(i_j_k_fused, n))
             T.reads([A[vi, vj, vk]])
             T.writes([B[vi, vj, vk]])
@@ -164,7 +164,7 @@ def elementwise_fused(a: T.handle, b: T.handle) -> None:
     for fused in T.serial(0, 2097152):
         with T.block("B"):
             vi = T.axis.S(128, T.floordiv(fused, 16384))
-            vj = T.axis.S(128, T.floormod(T.floordiv(fused, 128), 128))
+            vj = T.axis.S(128, T.floordiv(T.floormod(fused, 16384), 128))
             vk = T.axis.S(128, T.floormod(fused, 128))
             T.reads([A[vi, vj, vk]])
             T.writes([B[vi, vj, vk]])
@@ -223,8 +223,8 @@ def elementwise_fuse_with_opaque_block(a: T.handle, b: T.handle) -> None:
             T.reads(
                 [
                     A[
-                        T.floormod(T.floordiv(T.floordiv(i_j_k_fused, 128), 128), 128),
-                        T.floormod(T.floordiv(i_j_k_fused, 128), 128),
+                        T.floordiv(i_j_k_fused, 16384),
+                        T.floordiv(T.floormod(i_j_k_fused, 16384), 128),
                         T.floormod(i_j_k_fused, 128),
                     ]
                 ]
@@ -232,15 +232,15 @@ def elementwise_fuse_with_opaque_block(a: T.handle, b: T.handle) -> None:
             T.writes(
                 [
                     B[
-                        T.floormod(T.floordiv(T.floordiv(i_j_k_fused, 128), 128), 128),
-                        T.floormod(T.floordiv(i_j_k_fused, 128), 128),
+                        T.floordiv(i_j_k_fused, 16384),
+                        T.floordiv(T.floormod(i_j_k_fused, 16384), 128),
                         T.floormod(i_j_k_fused, 128),
                     ]
                 ]
             )
             with T.block("B"):
                 vi = T.axis.S(128, T.floordiv(i_j_k_fused, 16384))
-                vj = T.axis.S(128, T.floormod(T.floordiv(i_j_k_fused, 128), 128))
+                vj = T.axis.S(128, T.floordiv(T.floormod(i_j_k_fused, 16384), 128))
                 vk = T.axis.S(128, T.floormod(i_j_k_fused, 128))
                 T.reads([A[vi, vj, vk]])
                 T.writes([B[vi, vj, vk]])
@@ -343,7 +343,7 @@ def elementwise_not_affine_fused(a: T.handle, b: T.handle) -> None:
             with T.block("B"):
                 vi = T.axis.S(
                     127,
-                    i * 32 + T.floormod(T.floordiv(j_k_fused, 128), T.min(31, 126 - i * 32) + 1),
+                    i * 32 + T.floordiv(j_k_fused, 128),
                 )
                 vj = T.axis.S(128, T.floormod(j_k_fused, 128))
                 T.reads([A[vi, vj]])
