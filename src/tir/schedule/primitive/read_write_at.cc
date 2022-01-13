@@ -134,7 +134,7 @@ struct ReadWriteAtImpl {
         impl.MakeLoopAndBlock<is_read>(src->name + "_" + storage_scope);
     StmtSRef result_block_sref =
         impl.ReplaceScopeBlock(new_loop_block.first.get(), new_loop_block.second->block.get());
-    impl.UpdateBlockInfo(result_block_sref);
+    impl.UpdateBlockInfo(result_block_sref, !new_loop_block.second->iter_values.empty());
     return result_block_sref;
   }
 
@@ -159,9 +159,9 @@ struct ReadWriteAtImpl {
     return self_->stmt2ref.at(new_block);
   }
 
-  void UpdateBlockInfo(const StmtSRef& new_block_sref) {
+  void UpdateBlockInfo(const StmtSRef& new_block_sref, bool affine_binding) {
     BlockInfo& block_info = self_->block_info[new_block_sref];
-    block_info.affine_binding = true;
+    block_info.affine_binding = affine_binding;
     block_info.region_cover = true;
     block_info.scope->stage_pipeline = true;
   }

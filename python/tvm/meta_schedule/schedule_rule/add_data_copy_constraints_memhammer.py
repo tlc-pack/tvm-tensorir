@@ -14,17 +14,18 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""
-The tvm.meta_schedule.schedule_rule package.
-Meta Schedule schedule rules are used for modification of
-blocks in a schedule. See also PostOrderApply.
-"""
-from .add_rfactor import AddRFactor
-from .auto_inline import AutoInline
-from .cross_thread_reduction import CrossThreadReduction
-from .multi_level_tiling import MultiLevelTiling, ReuseType
-from .parallel_vectorize_unroll import ParallelizeVectorizeUnroll
-from .random_compute_location import RandomComputeLocation
-from .schedule_rule import PyScheduleRule, ScheduleRule
-from .multi_level_tiling_memhammer import MultiLevelTilingMemHammer
-from .add_data_copy_constraints_memhammer import AddDataCopyConstraintsMemHammer
+from tvm._ffi import register_object
+
+from .. import _ffi_api
+from .schedule_rule import ScheduleRule
+
+
+@register_object("meta_schedule.AddDataCopyConstraintsMemHammer")
+class AddDataCopyConstraintsMemHammer(ScheduleRule):
+    """
+    Add constraints (e.g. vectorization length) for data copy
+    """
+    def __init__(self) -> None:
+        self.__init_handle_by_constructor__(
+            _ffi_api.ScheduleRuleAddDataCopyConstraintsMemHammer,  # type: ignore # pylint: disable=no-member
+        )

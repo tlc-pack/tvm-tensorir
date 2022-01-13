@@ -1417,6 +1417,15 @@ constexpr const char* software_pipeline_stage = "software_pipeline_stage";
 /*! \brief Mark the order of a statement in the software pipeline */
 constexpr const char* software_pipeline_order = "software_pipeline_order";
 
+/*! \brief Mark warp execution on block */
+constexpr const char* warp_execution = "warp_execution";
+
+/*! \brief Mark local stage constraint on data copy */
+constexpr const char* local_stage = "local_stage";
+
+/*! \brief Mark vectorization length constraint on block */
+constexpr const char* vector_bytes = "vector_bytes";
+
 /*! \brief Mark the stage of the result of the software pipeline lowering. This is used to specify
  * the behavior of nested software pipelines. Should be a 3-tuple consisting of the stage of the
  * prologue, the body, and the epilogue of the software pipeline.
